@@ -159,9 +159,12 @@ export function pageShowsIt(path: string, kidSlug: string | null | undefined, re
  */
 export const dismissValue = (s: Pick<Status, 'id'>, stage: BannerStage) => `${s.id}:${stage}`;
 
-/** What a banner must never sit on: anything you can press or type in, any video, and the answer a form just gave */
+/**
+ * What a banner must never sit on: anything you can press or type in (every link, a word in a sentence or a whole
+ * card, as much as a button), any video, and the answer a form just gave
+ */
 export const MAIN_CONTROLS = [
-  'button', 'summary', '[role="button"]', '.btn', 'a[class*="btn"]', 'a[class*="cta"]', '.pstrip__link', '.ps__link', '.upn-act', '.upn-card',
+  'button', 'summary', '[role="button"]', '.btn', 'a[href]', 'a[class*="btn"]', 'a[class*="cta"]', '.pstrip__link', '.ps__link', '.upn-act', '.upn-card',
   'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])', 'select', 'textarea', 'footer a', 'video', 'iframe',
   '[role="status"]:not(:empty)',
 ].join(',');

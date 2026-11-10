@@ -480,6 +480,19 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     let remindNamed = ''; // the child the block names (its slug), whichever reveals they pick
     let remindShown = ''; // that child's name (empty: the block names nobody, and signs up for every reveal)
     const upNextBand = () => document.getElementById('up-next');
+    // Someone who came for what's next (the starting-soon screen's "Coming up next" code opens /live/#up-next). The
+    // browser looked for the band while the page was still laid out as built, often with it hidden: between reveals
+    // the hero shows the same list instead. So go there now, to whichever is showing. Once, on arrival (not on Back).
+    let upNextArrived = location.hash !== '#up-next' || (history.state?.scrollY || 0) > 0;
+    function arriveAtUpNext() {
+      if (upNextArrived) return;
+      const shown = (el: HTMLElement | null) => (el && el.getBoundingClientRect().height > 0 ? el : null);
+      const target = shown(upNextBand()) || shown(hero.querySelector<HTMLElement>('[data-hero-next]'));
+      if (!target) return; // the next draw tries again
+      upNextArrived = true;
+      requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+    }
+
     // Whether the Coming up band is on screen (see the .live-next rule): the page going idle doesn't pull it from under someone
     const nextWrap = document.querySelector<HTMLElement>('.live-next');
     const bandSeen = nextWrap && 'IntersectionObserver' in window
@@ -843,6 +856,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       }
 
       rendered = true;
+      arriveAtUpNext();
       if (!viewed) {
         viewed = true;
         const src = new URLSearchParams(location.search).get('src') || '';
@@ -866,6 +880,21 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         : 'No reveal is scheduled right now. Watch the last few while you wait.';
       return `Next up: ${next.name}'s reveal, ${next.confirmed ? revealWhen(next) : next.window.label}.`;
     }
+    /** The hero's rows for this list, in this browser's time zone: drawn only when they'd say something different */
+    const drawHeroRows = (list: UpcomingReveal[]) => {
+      const box = hero.querySelector<HTMLElement>('[data-hero-next]');
+      const rows = box?.querySelector<HTMLElement>('[data-hnx-list]');
+      const sig = rowsSignature(list);
+      if (box && rows && box.dataset.sig !== sig) { keepFocus(rows, () => { rows.innerHTML = heroRowsHtml(list); }); box.dataset.sig = sig; }
+    };
+    // At once, in this browser's zone: the build drew the rows in Eastern, the edge in the zone Cloudflare places the
+    // visitor in. Only when they're the build's rows (the same reveals): rows the edge drew from a newer schedule wait
+    // for that schedule (refreshUpcoming), rather than going back to the build's
+    {
+      const drawnSig = hero.querySelector<HTMLElement>('[data-hero-next]')?.dataset.sig || '';
+      const reveals = (sig: string) => sig.slice(sig.indexOf('|') + 1);
+      if (reveals(drawnSig) === reveals(rowsSignature(upcoming))) drawHeroRows(upcoming);
+    }
     const refreshUpcoming = () => readUpcoming().then((list) => {
       // A read that failed keeps what's on the page: not knowing isn't the same as nothing planned
       if (!alive || !list) return;
@@ -874,10 +903,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       upcomingLoaded = true;
       if (changed) upNextBand()?.dispatchEvent(new Event('upnext:refresh'));
       // The hero's rows as JobTread has them now (the build wrote the last copy's)
-      const box = hero.querySelector<HTMLElement>('[data-hero-next]');
-      const rows = box?.querySelector<HTMLElement>('[data-hnx-list]');
-      const sig = rowsSignature(list);
-      if (box && rows && box.dataset.sig !== sig) { keepFocus(rows, () => { rows.innerHTML = heroRowsHtml(list); }); box.dataset.sig = sig; }
+      drawHeroRows(list);
       if (rendered && last) render(last, lastMeta);
       else if (page && !pageKid) holdPlace(() => setAttr(page, 'data-next', list.length > 0));
     });

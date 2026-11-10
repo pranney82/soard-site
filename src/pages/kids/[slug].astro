@@ -2948,6 +2948,13 @@ const planOrientation = (() => {
   @media (max-width: 768px) {
     :global(.hero__reveal-add) { min-height: 44px; }
   }
+  /* The button opens the invite sheet, which needs the script; with none, the child's calendar feed itself
+     (functions/_kid-reveal.js draws both) */
+  :global(.hero__reveal-add--feed) { display: none; text-decoration: none; }
+  @media (scripting: none) {
+    :global(.hero__reveal-add[data-invite]) { display: none; }
+    :global(.hero__reveal-add--feed) { display: inline-flex; }
+  }
   :global(.hero__reveal-day) {
     display: inline-flex;
     align-items: center;

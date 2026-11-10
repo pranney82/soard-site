@@ -231,6 +231,7 @@ test('the control list covers anything you can press, not just .btn', () => {
   const list = MAIN_CONTROLS.split(',');
   for (const c of ['button', 'summary', '[role="button"]', '.btn', 'a[class*="btn"]', 'a[class*="cta"]', 'select', 'textarea', 'footer a', 'video', 'iframe']) assert.ok(list.includes(c), c);
   assert.ok(!list.includes('[class*="cta"]'), 'a class match only counts on a link, never on a section called cta-…');
+  assert.ok(list.includes('a[href]'), 'any link: a word in a sentence or a whole card is as pressable as a button');
 });
 
 test('none of it uses an em dash', () => {

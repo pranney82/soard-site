@@ -28,7 +28,8 @@ test('the reveal line: the day to the live page, and Add to calendar with the in
   assert.match(html, /aria-label="Max&#39;s reveal day is Friday, November 20 at 4:00 PM EST\. Watch it live\."/);
   // Its spoken name begins with the words on the button (WCAG 2.5.3)
   assert.match(html, /<button type="button" class="hero__reveal-add" data-invite="max" data-invite-name="Max" data-invite-when="Friday, November 20 at 4:00 PM EST" data-invite-set="1" aria-label="Add to calendar: Max’s reveal">/);
-  assert.match(html, /<span>Add to calendar<\/span><\/button><\/div>$/);
+  assert.match(html, /<span>Add to calendar<\/span><\/button><a class="hero__reveal-add hero__reveal-add--feed" href="webcal:\/\/sunshineonaranneyday\.com\/api\/reveals\.ics\?kid=max" aria-label="Add to calendar: Max’s reveal">/, 'with no script, the calendar feed itself');
+  assert.match(html, /<span>Add to calendar<\/span><\/a><\/div>$/);
   const planned = revealLine(colin);
   assert.match(planned, />Reveal planned for early December<\/a>/);
   assert.match(planned, /data-invite-name="Colin O&#39;Neil"/, 'names are escaped');

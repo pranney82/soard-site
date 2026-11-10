@@ -21,6 +21,7 @@
  */
 
 import { revealShortDate, revealWhen, windowShort, inviteData, possessive } from '../src/utils/reveals-client.ts';
+import { kidFeed } from '../src/utils/upcoming-rows.ts';
 import { fullPageRequest, PAGE_REUSE } from './_apply-bar.js';
 
 const WAIT_MS = 350; // longest a page waits for a schedule the edge doesn't have yet
@@ -41,7 +42,9 @@ export function revealLine(r) {
     : { text: `Reveal planned for ${r.window.label}`, aria: `${r.name}'s reveal is planned for ${r.window.label}, streamed live. See the live page.` };
   const invite = Object.entries(inviteData(r)).map(([k, v]) => ` ${k}="${esc(v)}"`).join('');
   return `<div class="hero__reveal"><a class="hero__reveal-day" href="${esc(r.liveUrl)}" aria-label="${esc(day.aria)}">${esc(day.text)}</a>`
-    + `<button type="button" class="hero__reveal-add"${invite} aria-label="${esc(`Add to calendar: ${possessive(r.name)} reveal`)}">${CALENDAR(16)}<span>Add to calendar</span></button></div>`;
+    + `<button type="button" class="hero__reveal-add"${invite} aria-label="${esc(`Add to calendar: ${possessive(r.name)} reveal`)}">${CALENDAR(16)}<span>Add to calendar</span></button>`
+    // With no script the button can't open its sheet: the child's calendar feed itself (shown only then, by the page's CSS)
+    + `<a class="hero__reveal-add hero__reveal-add--feed" href="${esc(kidFeed(r.slug))}" aria-label="${esc(`Add to calendar: ${possessive(r.name)} reveal`)}">${CALENDAR(16)}<span>Add to calendar</span></a></div>`;
 }
 
 /** The schedule's upcoming reveals, as the page script reads them, or null when not known in time */

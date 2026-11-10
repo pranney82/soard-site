@@ -8,8 +8,11 @@
  * RevealInvite.astro). Tentative reveals show only their third of the month.
  *
  * Written at build time from the reveals copy, so it's there on first
- * paint; LivePage refreshes the rows from /api/reveals and decides when the
- * frame shows this (hero[data-next]) or the stage (a reveal is on).
+ * paint; functions/live/[[path]].js redraws the rows on the way out from the
+ * current schedule, in the visitor's own time zone, so they're right before
+ * the page script runs; LivePage refreshes them from /api/reveals and decides
+ * when the frame shows this (hero[data-next]) or the stage (a reveal is on).
+ * With no script, Add and "Add every reveal" are the calendar feeds themselves.
  */
 import { upcomingAtBuild } from '../../utils/reveals-copy';
 import { heroRowsHtml, rowsSignature } from '../../utils/upcoming-rows';
@@ -29,6 +32,10 @@ const list = upcomingAtBuild();
       Add every reveal to your calendar
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
     </button>
+    <a class="hnx__all hnx__all--feed" href="webcal://sunshineonaranneyday.com/api/reveals.ics">
+      Add every reveal to your calendar
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
   </section>
 </div>
 
@@ -102,6 +109,13 @@ const list = upcomingAtBuild();
   .hnx__all svg { transition: transform 0.25s ease; }
   .hnx__all:hover svg { transform: translateX(3px); }
   .hnx__all:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 3px; border-radius: 4px; }
+  /* The buttons open the invite sheet, which needs the script; with none, the calendar feeds themselves */
+  .hnx-add--feed, .hnx__all--feed { display: none; }
+  .hnx-add--feed { text-decoration: none; }
+  @media (scripting: none) {
+    .hnx-add[data-invite], .hnx__all[data-invite] { display: none; }
+    .hnx-add--feed, .hnx__all--feed { display: inline-flex; }
+  }
 
   @media (max-width: 960px) {
     .hnx { margin: 0 auto; max-width: 560px; text-align: left; }

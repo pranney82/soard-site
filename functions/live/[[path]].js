@@ -24,6 +24,13 @@
  *     the video is the only thing. Someone arriving from the Instagram bio is
  *     exactly who should hear the application is open.
  *
+ *   - Between reveals, /live/'s hero lists what's coming up. The build wrote
+ *     those rows from the schedule it had, in Eastern time; they go out
+ *     redrawn from the schedule as it is now (the same edge copy the kid
+ *     pages read, ../_kid-reveal.js) and in the visitor's own time zone
+ *     (Cloudflare's request.cf.timezone), so the page script finds nothing
+ *     to change and nothing moves after load.
+ *
  * Everything else under /live/ passes straight through. Any error serves the
  * static page untouched.
  */
@@ -32,7 +39,9 @@ import { readState, readConfig, publicState, visibleState } from '../api/_broadc
 import { watchParty } from './_watch-party.js';
 import { revealSlides, designWindow } from '../../public/admin/reveal-design.js';
 import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
-import { barFor, addBar } from '../_apply-bar.js';
+import { barFor, addBar, PAGE_REUSE } from '../_apply-bar.js';
+import { upcomingReveals } from '../_kid-reveal.js';
+import { heroRowsHtml, rowsSignature } from '../../src/utils/upcoming-rows.ts';
 
 const ACTIVE = new Set(['scheduled', 'armed', 'live', 'ending', 'replay']);
 const SITE = 'https://sunshineonaranneyday.com';
@@ -142,6 +151,39 @@ function rewrite(res, { kid, party, messages, design }) {
   return new Response(out.body, { status: out.status, headers });
 }
 
+const EASTERN = 'America/New_York';
+/** The visitor's time zone as Cloudflare places them, when it's one this runtime knows; Eastern otherwise */
+export function visitorZone(request) {
+  const tz = request?.cf?.timezone;
+  if (typeof tz !== 'string' || !tz) return EASTERN;
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch { return EASTERN; }
+}
+
+const SLUG = /^[a-z0-9-]+$/;
+/** The reveals a row can be drawn for: a known child, with a day (confirmed) or a third of a month (tentative) */
+export const drawable = (list) => (list || []).filter((r) => r && SLUG.test(String(r.slug || '')) && (r.confirmed ? r.date : r.window?.label));
+
+/**
+ * /live/'s hero rows from the schedule as it is now, in the visitor's zone. `between`: nothing is on (no reveal
+ * scheduled, live or on replay), so the hero shows the list when there is one (.live-page data-next), as the page
+ * script would decide.
+ */
+export function addHeroRows(res, { list, zone, between }) {
+  if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
+  let rw = new HTMLRewriter()
+    .on('#live-hero [data-hero-next]', setAttrs({ 'data-sig': rowsSignature(list, zone), 'data-count': String(list.length) }))
+    .on('#live-hero [data-hnx-list]', { element(e) { e.setInnerContent(heroRowsHtml(list, zone), { html: true }); } });
+  if (between) rw = rw.on('.live-page', setAttrs({ 'data-next': list.length ? '' : null }));
+  const out = rw.transform(res);
+  const headers = new Headers(out.headers);
+  // The rows follow JobTread and the visitor's zone, not the build: never a 304, reused for half a minute at most
+  if (!/no-store/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', PAGE_REUSE);
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
+  headers.delete('Content-Length');
+  return new Response(out.body, { status: out.status, statusText: out.statusText, headers });
+}
+
 /** The full page, never a 304: a cached copy would skip the rewrite */
 function fresh(request) {
   const r = new Request(request);
@@ -183,16 +225,24 @@ export async function onRequest(context) {
     if (isIndex && !liveNow) {
       try { bar = await barFor(context, url.pathname); } catch { bar = null; }
     }
-    const res = await next(kid || party || bar ? fresh(request) : request);
+    // Between reveals the hero lists what's coming up: drawn from the schedule as it is now (null: not known in time,
+    // and the page goes out as built)
+    let rows = null;
+    if (isIndex && !party) {
+      try { rows = await upcomingReveals(context); } catch { rows = null; }
+      rows = rows ? drawable(rows) : null;
+    }
+    const res = await next(kid || party || bar || rows ? fresh(request) : request);
     if (res.status === 404 && pageKid) return Response.redirect(`${url.origin}/live/${url.search}`, 302);
-    if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar)) return res;
+    if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar || rows)) return res;
     let design = null;
     if (party) {
       const slug = pageKid || broadcast.state.kidSlug || '';
       const data = kid && kid.slug === slug ? kid.data : slug ? (await kidData(env, slug)).data : null;
       design = designFor(slug, data, broadcast.state);
     }
-    const page = kid || party ? rewrite(res, { kid, party, messages: broadcast.config?.messages?.enabled !== false, design }) : res;
+    let page = kid || party ? rewrite(res, { kid, party, messages: broadcast.config?.messages?.enabled !== false, design }) : res;
+    if (rows) page = addHeroRows(page, { list: rows, zone: visitorZone(request), between: !!broadcast && !kid && !ACTIVE.has(broadcast.state?.phase) });
     return addBar(page, bar);
   } catch {
     return next();
