@@ -119,7 +119,8 @@ const REF_HOSTS = [
   [/(^|\.)(youtube\.com|youtu\.be)$/, 'youtube'],
   [/(^|\.)(mail\.google\.com|outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com|mail\.yahoo\.com|mail\.aol\.com|icloud\.com|kit\.com|convertkit\.com|convertkit-mail\d*\.com|ck\.page)$/, 'email'],
   [/(^|\.)(calendar\.google\.com|calendar\.yahoo\.com)$/, 'calendar'],
-  [/(^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|search\.yahoo\.com|yahoo\.com|ecosia\.org|search\.brave\.com|baidu\.com)$/, 'search'],
+  // Google's search itself (www.google.*), not its other apps (Groups, Docs, Drive, Chat, Sites)
+  [/^((www\.)?google\.[a-z.]+|(www\.)?bing\.com|duckduckgo\.com|search\.yahoo\.com|(www\.)?yahoo\.com|(www\.)?ecosia\.org|search\.brave\.com|(www\.)?baidu\.com)$/, 'search'],
 ];
 
 /**
@@ -311,7 +312,7 @@ export async function sampleLive(env, state, health, { hubStatus = null } = {}) 
         ELSE json_set(broadcast_stats.facebook, '$.liveVideoId', json_extract(?4, '$.liveVideoId'), '$.permalink', json_extract(?4, '$.permalink')) END,
       updated_at = ?5`)
     .bind(state.broadcastId, JSON.stringify(point), yt, fbIds, iso(now)).run();
-  if (hubStatus) await copyHearts(DB, state.broadcastId, await hubStatus().catch(() => null));
+  if (hubStatus) await copyHearts(DB, state.broadcastId, await Promise.race([hubStatus().catch(() => null), new Promise((r) => setTimeout(() => r(null), 3000))]));
   return true;
 }
 
@@ -348,7 +349,7 @@ export async function maybeRefreshRevealStats(env, { readState, hubStatus, force
     const since = iso(now - REFRESH_DAYS * 86400e3);
     const due = await DB.prepare(`SELECT b.id, b.live_at, b.ended_at, b.fb_live_video_id, b.fb_permalink, s.facebook, s.youtube, s.next_check_at
         FROM broadcasts b LEFT JOIN broadcast_stats s ON s.broadcast_id = b.id
-        WHERE b.live_at IS NOT NULL AND b.live_at >= ?1 AND b.ended_at IS NOT NULL AND (s.next_check_at IS NULL OR s.next_check_at <= ?2)
+        WHERE b.live_at IS NOT NULL AND b.live_at >= ?1 AND (b.ended_at IS NOT NULL OR b.phase = 'ended') AND (s.next_check_at IS NULL OR s.next_check_at <= ?2)
         ORDER BY b.live_at DESC LIMIT 2`).bind(since, iso(now)).all();
     for (const row of due.results || []) {
       if (state?.broadcastId === row.id && (state.phase === 'live' || state.phase === 'ending')) continue;
@@ -381,7 +382,7 @@ export async function refreshPlatforms(env, row, now = Date.now()) {
     // checkedAt: the last time Facebook was asked; readAt: when the numbers shown came back (a failed read leaves it)
     // A read that failed outright says nothing about the permission: the last word on it stands
     // checkedAt: last asked; readAt: when what came back came back; viewsReadAt: when the view totals themselves did
-    facebook = { ...prevFb, liveVideoId: row.fb_live_video_id || prevFb.liveVideoId || null, permalink: row.fb_permalink || prevFb.permalink || null, ...(r.ok ? numbersOnly(r.totals) : {}), error: r.ok ? (r.partial || null) : r.error, missing: r.ok && !r.partial ? null : (r.missing || prevFb.missing || null), checkedAt: iso(now), ...(r.ok ? { readAt: iso(now) } : {}), ...(r.ok && !r.partial ? { viewsReadAt: iso(now) } : {}) };
+    facebook = { ...prevFb, liveVideoId: row.fb_live_video_id || prevFb.liveVideoId || null, permalink: row.fb_permalink || prevFb.permalink || null, ...(r.ok ? numbersOnly(r.totals) : {}), error: r.ok ? (r.partial || null) : r.error, errorKind: r.ok ? (r.partial ? 'partial' : null) : 'failed', missing: r.ok && !r.partial ? null : (r.missing || prevFb.missing || null), checkedAt: iso(now), ...(r.ok ? { readAt: iso(now) } : {}), ...(r.ok && !r.partial ? { viewsReadAt: iso(now) } : {}) };
   }
   let youtube = prevYt;
   if (prevYt.videoId && yt.youtubeConfigured(env)) {
@@ -428,29 +429,35 @@ export const isTestReveal = (row) => !!row?.data?.test || /^\s*TEST\b/i.test(row
 
 /** The line through the reveal, its peaks and its average (all places together where known) */
 export function summarizeSeries(series) {
-  const pts = (Array.isArray(series) ? series : []).filter((p) => Array.isArray(p) && Number.isFinite(p[0])).sort((a, b) => a[0] - b[0]);
+  // One point a second at most (two samples in the same second keep the bigger), in time order
+  const bySec = new Map();
+  for (const p of (Array.isArray(series) ? series : [])) {
+    if (!Array.isArray(p) || !Number.isFinite(p[0])) continue;
+    const have = bySec.get(p[0]);
+    const sum = (q) => (q[1] || 0) + (q[2] || 0) + (q[3] || 0);
+    if (!have || sum(p) > sum(have)) bySec.set(p[0], p);
+  }
+  const pts = [...bySec.values()].sort((a, b) => a[0] - b[0]);
   if (!pts.length) return null;
   const n = (v) => (Number.isFinite(v) ? v : 0);
   const peakOf = (i) => { let best = null; for (const p of pts) if (Number.isFinite(p[i]) && (!best || p[i] > best[i])) best = p; return best; };
   const hasFb = pts.some((p) => Number.isFinite(p[2])), hasYt = pts.some((p) => Number.isFinite(p[3]));
   // A missed reading isn't nobody: a place's last reading stands for up to 2 minutes; past that it isn't known
   const filled = fillGaps(pts);
-  const whole = filled.filter((q) => Number.isFinite(q[1]) && (!hasFb || Number.isFinite(q[2])) && (!hasYt || Number.isFinite(q[3])));
+  const isWhole = (q) => Number.isFinite(q[1]) && (!hasFb || Number.isFinite(q[2])) && (!hasYt || Number.isFinite(q[3]));
   const tot = (q) => n(q[1]) + n(q[2]) + n(q[3]);
-  let top = whole.length ? whole.reduce((a, b) => (tot(b) > tot(a) ? b : a)) : null;
-  let peakAll = top ? tot(top) : 0;
-  let split = top ? [top[1], hasFb ? top[2] : null, hasYt ? top[3] : null] : [null, null, null];
-  let at = top ? top[0] : null;
-  let partial = false;
-  // Each place's own peak is a floor: one place alone beating every fully read moment is the most at once anyone knows
-  for (const i of [1, 2, 3]) {
-    const p = peakOf(i);
-    if (p && p[i] > peakAll) { peakAll = p[i]; at = p[0]; split = [1, 2, 3].map((k) => (k === i ? p[i] : null)); partial = true; }
-  }
+  // The most at once anyone knows: every place read at that moment added up (one not read then counts nothing,
+  // and the note says so), so it's never below what any single place had
+  const top = filled.reduce((a, b) => (tot(b) > tot(a) ? b : a));
+  const whole = filled.filter(isWhole);
   return {
-    peakAll, peakAllAt: at, peakSplit: split, peakPartial: partial,
-    // Only when most of the reveal was read everywhere (otherwise the average would be a guess)
-    avgAll: whole.length && whole.length >= pts.length / 2 ? Math.round((whole.reduce((a, q) => a + tot(q), 0) / whole.length) * 10) / 10 : null,
+    peakAll: tot(top), peakAllAt: top[0],
+    // Where those people were at that moment: site, Facebook, YouTube (null where not read)
+    peakSplit: [top[1] ?? null, hasFb ? top[2] ?? null : null, hasYt ? top[3] ?? null : null],
+    peakPartial: !isWhole(top),
+    // Every moment, counting the places read then (with the 2-minute carry); avgPartial: some place wasn't, sometimes
+    avgAll: Math.round((filled.reduce((a, q) => a + tot(q), 0) / filled.length) * 10) / 10,
+    avgPartial: whole.length < filled.length,
     peakSite: peakOf(1)?.[1] ?? null, peakFb: peakOf(2)?.[2] ?? null, peakYt: peakOf(3)?.[3] ?? null,
     hasFb, hasYt,
   };
@@ -471,7 +478,7 @@ export function fillGaps(pts, carrySec = 120) {
 
 /** Thin a long line to at most `max` points, keeping each stretch's highest total (so a peak is never thinned away) */
 export function thinSeries(series, max = 240) {
-  const pts = Array.isArray(series) ? series : [];
+  const pts = (Array.isArray(series) ? series : []).filter((p) => Array.isArray(p) && Number.isFinite(p[0]));
   if (pts.length <= max) return pts;
   const size = Math.ceil(pts.length / max);
   const out = [];
@@ -548,7 +555,9 @@ export async function historyStats(DB, rows) {
     const revealAt = revealAtBy[row.id];
     const liveN = Number(p.live_n) || 0;
     const atReveal = row.id in atRevealBy ? atRevealBy[row.id] : null;
-    const counted = !!since && (Date.parse(row.live_at || row.scheduled_at || row.created_at || '') >= Date.parse(since) || Number(p.people) > 0);
+    // Counted: went live after counting began, or hasn't gone live yet (its "before" is coming in). One that went live
+    // before isn't, however many later look at its replay
+    const counted = !!since && (row.live_at ? Date.parse(row.live_at) >= Date.parse(since) : true);
     byId[row.id] = {
       counted,
       partial: counted && !!since && Date.parse(row.created_at || '') < Date.parse(since),

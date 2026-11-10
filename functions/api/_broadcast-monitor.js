@@ -107,8 +107,10 @@ async function facebookLive(env, config, state) {
       value = { configured: true, ok: h.ok, live: h.status === 'LIVE', status: h.status, health: h.health, permalink: state.fb?.permalink || null, error: h.error || null };
       if (value.live) value.viewers = n;
     } else {
-      const [cur, n] = await Promise.all([fb.fbCurrentLive(env), counting]);
-      value = { configured: true, ok: true, live: !!cur, permalink: cur?.permalink || state.fb?.permalink || null, videoId: cur?.id || null, error: null };
+      const [read, n] = await Promise.all([fb.fbCurrentLiveRead(env), counting]);
+      // Facebook not answering isn't "not live": the Page's state (and its viewers) just aren't known this time
+      const cur = read.live;
+      value = { configured: true, ok: read.ok, live: !!cur, permalink: cur?.permalink || state.fb?.permalink || null, videoId: cur?.id || null, error: read.ok ? null : read.error };
       if (value.live) value.viewers = n;
     }
   } catch (e) {
@@ -473,9 +475,11 @@ export async function watch(env, config, state, health, work, record = async () 
   m.destinations = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.status]));
   // How many watch on Facebook and YouTube right now, sampled every 30 s for the reveal stats (_reveal-stats.js
   // sampleLive): a number when it's known, 0 when the place is set up and not live yet, null when nobody knows
-  const watching = (dest, src, n) => (dest?.status === 'off' || !src?.configured || src.ok === false ? null : src.live ? (Number.isFinite(n) ? n : null) : 0);
+  const watching = (dest, src, n, absentIsNobody = false) => (dest?.status === 'off' || !src?.configured || src.ok === false ? null
+    : src.live ? (Number.isFinite(n) ? n : absentIsNobody ? 0 : null) : 0);
   m.fbViewers = watching(d.facebook, facebook, facebook?.viewers);
-  m.ytViewers = watching(d.youtube, youtube, youtube?.live?.viewers);
+  // YouTube leaves concurrentViewers out when nobody is watching (or the owner hides the count, which SOARD doesn't)
+  m.ytViewers = watching(d.youtube, youtube, youtube?.live?.viewers, true);
   for (const [key, label] of [['facebook', 'Facebook'], ['youtube', 'YouTube']]) {
     const v = d[key];
     if (v.status === 'ok' && m.firsts[key] == null) m.firsts[key] = Math.round(c.liveForMs / 1000);

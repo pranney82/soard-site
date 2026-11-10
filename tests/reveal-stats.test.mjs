@@ -243,6 +243,9 @@ test('History: rehearsals and reveals from before counting began', async () => {
   const { byId, since } = await rs.historyStats(DB, rows);
   assert.ok(since);
   assert.equal(byId['live-1'].counted, false, 'before the site counted people');
+  // Someone watching its replay after counting began doesn't make it counted (its live wasn't)
+  await DB.prepare(`INSERT INTO broadcast_viewers (broadcast_id, vid, replay_sec, live_min) VALUES ('live-1', 'lateviewer1', 30, ',')`).run();
+  assert.equal((await rs.historyStats(DB, rows)).byId['live-1'].counted, false);
   assert.equal(byId['live-2'].test, true);
 });
 
@@ -377,11 +380,25 @@ test('admin: rows left behind, bold as the reader sees it, no replay without a r
   const gap = rs.summarizeSeries([[0, 50, 100, null], [30, 60, null, null], [60, 55, 110, null]]);
   assert.equal(gap.peakAll, 165, 'a moment Facebook wasn\'t read isn\'t a moment it had nobody');
   assert.equal(gap.avgAll, Math.round(((150 + 160 + 165) / 3) * 10) / 10, 'a missed reading stands in for up to 2 minutes');
+  assert.equal(gap.avgPartial, false);
+  // Bad points never take the numbers down (one null in a long line)
+  assert.ok(rs.thinSeries([...Array.from({ length: 300 }, (_, k) => [k * 30, 1, null, null]), null, 'x']).length <= 240);
+  // Google's own apps aren't search
+  assert.equal(rs.classifySource({ ref: 'groups.google.com' }), 'other');
+  assert.equal(rs.classifySource({ ref: 'docs.google.com' }), 'other');
+  assert.equal(rs.classifySource({ ref: 'www.google.com' }), 'search');
   // Facebook read only in the first 90 s, then never again: the site's own peak still counts
   const lost = rs.summarizeSeries(Array.from({ length: 81 }, (_, k) => [k * 30, k === 40 ? 300 : 40, k < 4 ? 5 : null, null]));
   assert.equal(lost.peakAll, 300, 'never less than one place\'s own peak');
   assert.equal(lost.peakPartial, true, 'and it says not every place was read then');
-  assert.equal(lost.avgAll, null, 'no average when most of the reveal wasn\'t read everywhere');
+  assert.equal(lost.avgPartial, true, 'the average says some place wasn\'t read at some moments');
+  assert.ok(lost.avgAll >= 40, `the average still counts what was read (${lost.avgAll})`);
+  // YouTube stops reporting after a minute: the peak still adds the site and Facebook read at that moment
+  const drop = rs.summarizeSeries(Array.from({ length: 73 }, (_, k) => [k * 30, k === 40 ? 119 : 60, k === 40 ? 159 : 80, k < 2 ? 18 : null]));
+  assert.equal(drop.peakAll, 278, 'site 119 + Facebook 159 at the same moment');
+  assert.deepEqual(drop.peakSplit, [119, 159, null]);
+  assert.equal(admin.peakNote(drop), 'Site 119 · Facebook 159, 20:00 after going live. YouTube wasn\'t read then, so it may have been more.');
+  assert.equal(admin.peakNote({ peakAll: 0, peakSplit: [0, null, null] }), 'Nobody was watching at once.');
 });
 
 // ─── The live page's meter ──────────────────────────────────────────

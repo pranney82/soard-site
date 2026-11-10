@@ -1694,7 +1694,7 @@ async function runAdminAction(env, action, body, userEmail) {
       if (!/^[a-f0-9]{32}$/i.test(uid)) return fail('uid must be a Stream video id');
       if (state.phase !== 'replay') return fail('Only while a replay is showing');
       // When that recording began, so the reveal stats line its moment up with the live minutes
-      const picked = stream.streamConfigured(env) ? await stream.getVideo(env, uid).catch(() => null) : null;
+      const picked = stream.streamConfigured(env) ? await Promise.race([stream.getVideo(env, uid).catch(() => null), new Promise((r) => setTimeout(() => r(null), 5000))]) : null;
       const began = Date.parse(picked?.result?.created || '');
       state = { ...state, replayUid: uid, replayReadyAt: nowIso(), replayStartedAt: Number.isFinite(began) ? new Date(began).toISOString() : null, updatedBy: userEmail };
       if (reels.reelEnabled(config) && (!state.reel || state.reel.stage !== 'done')) state.reel = reels.startReel(state, uid, state.revealAtSeconds);

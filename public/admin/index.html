@@ -5986,7 +5986,7 @@
       };
 
       return html`
-        <${RevealStatsLazy} rows=${rows} since=${data.statsSince} error=${data.statsError} currentId=${data.state?.broadcastId || null} youtubeKey=${!!s?.youtubeConfigured} youtubeOn=${(data.outputs || []).some((o) => o.target === 'youtube' && o.enabled !== false)} replayHours=${Number(data.config?.replayHours) || 72} when=${when} fmtDate=${bcFmt} renderExtra=${extras} />
+        <${RevealStatsLazy} rows=${rows} since=${data.statsSince} error=${data.statsError} currentId=${data.state?.broadcastId || null} youtubeKey=${!!s?.youtubeConfigured} youtubeOn=${(data.outputs || []).some((o) => o.target === 'youtube' && o.enabled !== false)} facebookOn=${!!s?.fbConfigured} replayHours=${Number(data.config?.replayHours) || 72} when=${when} fmtDate=${bcFmt} renderExtra=${extras} />
         ${data.recordings?.length ? html`<details class="card bc-fold">
           <summary>Recordings on the live input <span class="bc-fold-note">${data.recordings.length}</span></summary>
           <div class="bc-fold-body bc-recs">${data.recordings.map((v) => html`<a class="bc-rec-card" href=${v.watch} target="_blank" rel="noopener">${v.thumbnail ? html`<img src=${v.thumbnail} alt="" />` : html`<div class="bc-rec-ph"></div>`}<div class="bc-rec-meta"><strong>${v.name || v.uid.slice(0, 8)}</strong><div class="text-muted">${bcFmt(v.created)} · ${v.isLiveNow ? 'live now' : v.duration ? `${Math.round(v.duration / 60)} min` : v.state}</div></div></a>`)}</div>

@@ -97,6 +97,21 @@ export async function fbCurrentLive(env) {
   }
 }
 
+/** The Page's live video as fbCurrentLive finds it, and whether Facebook answered at all → { ok, live, error } */
+export async function fbCurrentLiveRead(env) {
+  if (!fbConfigured(env)) return { ok: false, live: null, error: 'not configured' };
+  try {
+    const r = await graph(env, 'GET', `${env.FB_PAGE_ID}/videos`, { fields: 'live_status,permalink_url,title,created_time', limit: '5' });
+    if (!r.ok) return { ok: false, live: null, error: r.error };
+    const v = (r.data.data || []).find(x => x.live_status === 'LIVE' && x.permalink_url);
+    if (!v) return { ok: true, live: null, error: null };
+    const permalink = v.permalink_url.startsWith('http') ? v.permalink_url : `https://www.facebook.com${v.permalink_url}`;
+    return { ok: true, live: { id: v.id, permalink, title: v.title || null }, error: null };
+  } catch (e) {
+    return { ok: false, live: null, error: e.message };
+  }
+}
+
 /**
  * Text that might name the kid being revealed right now: the Page's live
  * (or just-started) video title + description, then the Page's own posts
@@ -283,9 +298,9 @@ export async function fbVideoTotals(env, { liveVideoId = null, permalink = null,
     totals.reactions = n(eng.data.reactions?.summary?.total_count);
     totals.comments = n(eng.data.comments?.summary?.total_count);
   }
-  if (!ins.ok && !eng.ok) return { ok: false, error: ins.error };
   // (#10)/(#200)/(#283) or a message naming a permission: the token can't read insights
   const blocked = !ins.ok && (/permission|read_insights|pages_manage_engagement|\(#(10|200|283)\)/i.test(ins.error || '') || [10, 200, 283].includes(ins.code));
+  if (!ins.ok && !eng.ok) return { ok: false, error: ins.error, missing: blocked ? 'read_insights' : null };
   return { ok: true, totals, partial: ins.ok ? null : ins.error, missing: blocked ? 'read_insights' : null };
 }
 
