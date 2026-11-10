@@ -35,7 +35,7 @@
  */
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback } from './vendor.js';
 import { PLAN_KINDS, kindFromText, suggestBefores, addressWords, BEFORE_SHOWN } from './reveal-design.js';
-import { findAddress, sheetTitle, kindFromSheet, keepBox, captionOf, coverRects } from './reveal-design-draw.js';
+import { findAddress, sheetTitle, kindFromSheet, keepBox, captionOf, coverRects, isDocumentName } from './reveal-design-draw.js';
 import { ask } from './ask.js';
 
 const html = htm.bind(h);
@@ -521,7 +521,9 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
           const page = await doc.getPage(n);
           const drawn = await drawPage(page, { width: THUMB_W, words });
           const sheet = sheetsOf.find((s) => s.page === (zeroBased ? n - 1 : n))?.name || '';
-          const { kind, title } = kindFromSheet({ sheet, title: drawn.title, body: drawn.body }, kindFromText);
+          const found = kindFromSheet({ sheet, title: drawn.title, body: drawn.body }, kindFromText);
+          // A document's pages (a scope of work, a letter) are listed to pick by hand, never guessed
+          const { kind, title } = isDocumentName(f.name) ? { kind: null, title: found.title } : found;
           pages.push({ n, sheet, title, guess: kind, thumb: keepUrl(await toBlob(drawn.canvas, 'image/jpeg', 0.85)) });
           page.cleanup?.();
           setFiles((m) => ({ ...m, [f.id]: { state: 'loading', pages: [...pages], of: doc.numPages } }));
@@ -532,7 +534,7 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
         const small = canvasOf(THUMB_W, (canvas.height / canvas.width) * THUMB_W);
         small.getContext('2d').drawImage(canvas, 0, 0, small.width, small.height);
         const label = f.name.replace(/\.\w+$/, '');
-        const guess = kindFromSheet({ sheet: label }, kindFromText).kind || (/png|hei[cf]$/i.test(f.type) || /\.(png|heic|heif)$/i.test(f.name) ? 'board' : null);
+        const guess = isDocumentName(f.name) ? null : kindFromSheet({ sheet: label }, kindFromText).kind || (/png|hei[cf]$/i.test(f.type) || /\.(png|heic|heif)$/i.test(f.name) ? 'board' : null);
         pages.push({ n: null, sheet: label, title: label, guess, thumb: keepUrl(await toBlob(small, 'image/jpeg', 0.85)) });
       }
       setFiles((m) => ({ ...m, [f.id]: { state: 'ready', pages } }));

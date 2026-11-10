@@ -178,9 +178,18 @@ export function sheetTitle(items, vt, scale, words = []) {
   return { big, numbered: numberedLines.sort(byPlace).map((l) => l.text), index: numberedLines.length >= 3 };
 }
 
-// Sheets that are never the reveal's: covers and indexes, notes, elevations and sections, trade plans, schedules, details
-const NOT_FOR_REVEAL = /\b(cover|title\s+sheet|index|general|notes?|specifications?|specs|elevations?|sections?|details?|electrical|plumbing|mechanical|hvac|lighting|reflected|ceiling|schedules?|site\s+plan|roof|framing|structural|foundation|door|window|finish\s+schedule)\b/i;
+// Sheets that are never the reveal's: covers, contents and indexes, summaries, notes, elevations and sections, trade
+// plans, schedules, details. A ceiling PLAN is a trade plan; "CEILING HEIGHT: 8 FT" on a floor plan is only a note
+// (Max's set, Nov 10 2026: that note threw out his existing layout)
+const NOT_FOR_REVEAL = /\b(cover|title\s+sheet|index|(?:table\s+of\s+)?contents|(?:project\s+)?summary|general|notes?|specifications?|specs|elevations?|sections?|details?|electrical|plumbing|mechanical|hvac|lighting|reflected\s+ceiling|ceiling\s+plan|schedules?|site\s+plan|roof|framing|structural|foundation|door|window|finish\s+schedule)\b/i;
 const NAMED_KIND = /\b(existing\s+floor\s+plan|existing\s+plan|as[\s-]?built(?:\s+(?:floor\s+)?plan)?|demolition\s+plan|proposed\s+floor\s+plan|proposed\s+plan|new\s+floor\s+plan|(?:design|mood|inspiration|finish(?:es)?|material|concept|presentation)\s+boards?|renderings?)\b/i;
+
+/**
+ * A file that's a document, not a drawing, by its name ("Scope of Work", "Project Summary Letter", a résumé, a
+ * countertop template): its pages are never guessed to be the reveal's (they can still be picked by hand). Max's
+ * Scope of Work mentions a "demolition plan" in its words, which made it the as-built (Nov 10 2026).
+ */
+export const isDocumentName = (name) => /\b(scope\s+of\s+work|sow|summary|letter|r[eé]sum[eé]|template|contract|agreement|invoice|estimate|budget|quote|schedule|checklist|w-?9|insurance|coi|permit|warranty|receipt)\b/i.test(String(name || '').replace(/[_.]+/g, ' '));
 
 /**
  * Which kind a page is, by its title first: JobTread's sheet name, then the
@@ -198,8 +207,9 @@ export function kindFromSheet({ sheet = '', title = { big: [], numbered: [], ind
     const named = s.match(NAMED_KIND);
     if (named) return { kind: kindFromText(named[0]), title: s };
     if (NOT_FOR_REVEAL.test(s)) return { kind: null, title: s };
-    // A title says what it is ("EXISTING CONDITIONS PLAN", "PROPOSED LAYOUT"); a stray "existing" in a sentence doesn't
-    if (!/\b(plan|layout|board|renderings?|as[\s-]?built)\b/i.test(s)) return undefined;
+    // A title says what it is ("EXISTING CONDITIONS PLAN", "PROPOSED LAYOUT", a designer's "PROPOSED V1"); a stray
+    // "existing" in a sentence doesn't
+    if (!/\b(plan|layout|board|renderings?|as[\s-]?built)\b/i.test(s) && !/^\s*(proposed|existing)\b/i.test(s)) return undefined;
     const k = kindFromText(s);
     return k ? { kind: k, title: s } : undefined;
   };

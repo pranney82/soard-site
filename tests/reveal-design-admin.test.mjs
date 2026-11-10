@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { onRequestGet, familyName, sortFiles } from '../functions/api/reveal-design-admin.js';
-import { isAddressText, addressHit, wipeBoxes, findAddress, findTitleBlock, contentBox, keepBox, captionOf, plainWords, sheetTitle, kindFromSheet, coverRects } from '../public/admin/reveal-design-draw.js';
+import { isAddressText, addressHit, wipeBoxes, findAddress, findTitleBlock, contentBox, keepBox, captionOf, plainWords, sheetTitle, kindFromSheet, coverRects, isDocumentName } from '../public/admin/reveal-design-draw.js';
 import { addressWords, kindFromText, suggestBefores } from '../public/admin/reveal-design.js';
 
 // ── The endpoint ──────────────────────────────────────────────────────
@@ -268,6 +268,26 @@ test('sheets are sorted by their titles: cover, notes, elevations and trade plan
   // With no title to go by, only an exact name for a kind in the words
   assert.equal(kindOf([item('see existing floor plan for dimensions', 60, 300, 10, 200)]).kind, 'as-built');
   assert.equal(kindOf([item('verify existing conditions', 60, 300, 10, 200)]).kind, null);
+});
+
+// Max's real plan set (Nov 10 2026): what the import got wrong, and Dylan's had the same contents page
+test('a contents page isn’t the as-built; a "ceiling height" note doesn’t throw out the floor plan; "PROPOSED V1" is a proposed plan', () => {
+  const contents = [item('TABLE OF CONTENTS', 60, 560, 18, 170), item('1 PROJECT SUMMARY', 60, 520, 12, 130), item('2 EXISTING LAYOUT', 60, 500, 12, 130), item('3 DIMENTIONED PROPOSED LAYOUT', 60, 480, 12, 200), item('5 ELECTRICAL PLAN', 60, 460, 12, 130)];
+  assert.equal(kindOf(contents).kind, null, 'the contents page lists the sheets; it is none of them');
+  const existing = [item('*CEILING HEIGHT: 8 FT*', 300, 560, 16, 170), item('EXISTING LAYOUT', 60, 540, 16, 140), item('BATH', 200, 320, 10, 40)];
+  assert.equal(kindOf(existing).kind, 'as-built');
+  assert.equal(kindOf(pageItems('RCP-1 REFLECTED CEILING PLAN')).kind, null, 'a real ceiling plan is still a trade plan');
+  assert.equal(kindOf(pageItems('A3 CEILING PLAN')).kind, null);
+  assert.equal(kindOf(pageItems('DIMENTIONED PROPOSED LAYOUT')).kind, 'proposed');
+  assert.equal(kindOf(pageItems('PROPOSED V1')).kind, 'proposed');
+  assert.equal(kindOf(pageItems('DIMENSIONED EXISTING PLAN')).kind, 'as-built');
+  assert.equal(kindOf(pageItems('PROPOSED LAYOUT DETAILS')).kind, null, 'details stay out');
+  assert.equal(kindOf([item('Remove existing outlet here', 60, 560, 16, 200), item('ELECTRICAL PLAN', 60, 540, 16, 140)]).kind, null);
+});
+
+test('a document by its name is never guessed to be a drawing', () => {
+  for (const n of ['Max 2026_Scope of Work.pdf', 'Max 2026_Project Summary Letter_notes.pdf', "Max's Resume.pdf", 'Max_2026 Countertop Template.pdf', 'W9.pdf', 'COI 2026.pdf']) assert.ok(isDocumentName(n), n);
+  for (const n of ['Max 2026_Plan Set_08172026.pdf', 'Max 2026_Existing & Proposed.pdf', 'Max 2026_Proposed.pdf', 'Max 2026_Design Board.png', 'Max 2026_Signed Final Layout.pdf', 'Dylan 2026_Plan Set_09302026.pdf']) assert.ok(!isDocumentName(n), n);
 });
 
 test('captions lose sheet numbers', () => {

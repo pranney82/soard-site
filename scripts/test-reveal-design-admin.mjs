@@ -38,6 +38,8 @@ const OUT = join(ROOT, 'test-results/reveal-design-admin/');
 mkdirSync(OUT, { recursive: true });
 const SITE = (process.env.SITE || 'http://127.0.0.1:4417').replace(/\/$/, '');
 const failures = [];
+// Cloudflare's visitor-stats beacon can't report from a local copy (CORS): not the page's error
+const real = (errs) => errs.filter((e) => !/cloudflareinsights\.com/.test(e));
 const ok = (cond, msg) => { if (!cond) failures.push(msg); console.log(`${cond ? '  ✓' : '  ✗'} ${msg}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SLUG = 'dylan-2026';
@@ -431,7 +433,7 @@ async function desktop(browser, files) {
   await sleep(300);
   ok(!(await page.$('.rdi')), 'closes at once when nothing is picked');
 
-  ok(errors.length === 0, `no console errors (${errors.join(' | ').slice(0, 300)})`);
+  ok(real(errors).length === 0, `no console errors (${errors.join(' | ').slice(0, 300)})`);
   await page.close();
 }
 
@@ -479,7 +481,7 @@ async function phone(browser, files) {
   await page.click('.rdi .kd-dialog__head .kd-x');
   await sleep(500);
   ok(!(await page.$('.rdi')), 'Close closes it');
-  ok(errors.length === 0, `no console errors (${errors.join(' | ').slice(0, 300)})`);
+  ok(real(errors).length === 0, `no console errors (${errors.join(' | ').slice(0, 300)})`);
   await page.close();
 }
 
@@ -657,7 +659,7 @@ async function addressCases(browser) {
     ok(up.red === 0, `(a) the uploaded bytes have no red (${up.red})`);
     await page.click('.kd-bar__save .kd-save'); await sleep(1000);
     ok(api.st.saves.at(-1)?.plans?.[0]?.addressCheck === 'covered', '(a) saved as covered');
-    ok(errors.length === 0, `(a) no console errors (${errors.join(' | ').slice(0, 200)})`);
+    ok(real(errors).length === 0, `(a) no console errors (${errors.join(' | ').slice(0, 200)})`);
     await page.close();
   }
 
@@ -675,7 +677,7 @@ async function addressCases(browser) {
     await sleep(200);
     const [t2] = await tilesOf(page);
     ok(/Checked: no address on it/.test(t2.chip) && !(await page.$eval('.rdi .rdi-foot .btn-primary', (b) => b.disabled)), `(b) ticking it is staff’s word, said as such: “${t2.chip}”`);
-    ok(errors.length === 0, `(b) no console errors (${errors.join(' | ').slice(0, 200)})`);
+    ok(real(errors).length === 0, `(b) no console errors (${errors.join(' | ').slice(0, 200)})`);
     await page.close();
   }
 
@@ -689,7 +691,7 @@ async function addressCases(browser) {
     const [t] = await tilesOf(page);
     ok(t.on && /Address wiped/.test(t.chip), `(c) letter-spaced words are found: “${t.chip}”`);
     ok(!(await redArea(page, t.src)), '(c) not one red pixel left');
-    ok(errors.length === 0, `(c) no console errors (${errors.join(' | ').slice(0, 200)})`);
+    ok(real(errors).length === 0, `(c) no console errors (${errors.join(' | ').slice(0, 200)})`);
     await page.close();
   }
 
@@ -704,7 +706,7 @@ async function addressCases(browser) {
     const tiles = await tilesOf(page);
     ok(tiles.filter((x) => x.on).every((x) => /Check for the address/.test(x.chip)), `(d) every picked drawing asks for a look: ${tiles.filter((x) => x.on).map((x) => x.chip).join(' | ')}`);
     ok(await page.$eval('.rdi .rdi-foot .btn-primary', (b) => b.disabled), '(d) nothing can be added unlooked');
-    ok(errors.length === 0, `(d) no console errors (${errors.join(' | ').slice(0, 200)})`);
+    ok(real(errors).length === 0, `(d) no console errors (${errors.join(' | ').slice(0, 200)})`);
     await page.close();
   }
 }
@@ -756,7 +758,7 @@ async function editorFlows(browser) {
   await sleep(500);
   const t2 = await page.$$eval('.toast, [class*="toast"]', (t) => t.map((x) => x.textContent.replace(/\s+/g, ' ').trim()).join(' | '));
   ok(/Left out “not-a-picture\.pdf”: it isn’t a picture/.test(t2), `a file that isn’t a picture is left out, and it says so: “${t2.slice(-90)}”`);
-  ok(errors.length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
+  ok(real(errors).length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
   await page.close();
 }
 
@@ -827,7 +829,7 @@ async function handAdded(browser) {
   const saved = api.st.saves.at(-1);
   ok(saved?.plans?.map((x) => `${x.type}:${x.addressCheck}`).join() === 'as-built:covered,proposed:checked', `saved: ${saved?.plans?.map((x) => `${x.type}:${x.addressCheck}`).join()}`);
   await shot(page, 'hand-added-1440');
-  ok(errors.length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
+  ok(real(errors).length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
   await page.close();
 }
 
@@ -839,7 +841,7 @@ async function otherKids(browser) {
     const note = await page.$eval('#kd-sec-plans .kd-design-when', (e) => e.textContent.replace(/\s+/g, ' ').trim());
     ok(/profile is hidden, so the design doesn’t show anywhere/.test(note), `a hidden profile says the design won’t show: “${note.slice(0, 90)}”`);
     ok(/show nowhere while/.test(await page.$eval('#kd-sec-transform .kd-design-short', (e) => e.textContent)), 'Before & after has the short line');
-    ok(errors.length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
+    ok(real(errors).length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
     await page.close();
   }
   {
@@ -849,7 +851,7 @@ async function otherKids(browser) {
     await openImport(page, 5);
     ok(await page.$$eval('.rdi .rdi-grid--photos .is-on', (x) => x.length) === 0, 'a revealed room gets no before photos picked');
     ok(/Design chapter/.test(await page.$eval('.rdi .kd-dialog__sub', (e) => e.textContent)), 'its subtitle fits a revealed room');
-    ok(errors.length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
+    ok(real(errors).length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
     await page.close();
   }
   {
@@ -870,7 +872,7 @@ async function otherKids(browser) {
     ok(t[2].kind === 'As-built' && t[3].kind === 'Proposed', `as-built and proposed (${t[2].kind}, ${t[3].kind})`);
     ok(t[2].label === 'Existing floor plan' && /^Existing floor plan Page 3/.test(t[2].name), `named by their titles: “${t[2].name}”, “${t[2].label}”`);
     await shot(page, 'designer-set-1440');
-    ok(errors.length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
+    ok(real(errors).length === 0, `no console errors (${errors.join(' | ').slice(0, 200)})`);
     await page.close();
   }
 }
