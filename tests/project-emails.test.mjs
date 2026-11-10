@@ -842,7 +842,7 @@ test('straight quotes come out curly everywhere a family or staff typed them', a
 });
 
 test('small copy: three ages, a ramp is named as itself, partners only when shown, no blank runs', () => {
-  assert.match(projectKickoffEmail({ kid: { ...KID, age: [8, 11, 13] } }).html, />8, 11 &amp;&nbsp;13</);
+  assert.match(projectKickoffEmail({ kid: { ...KID, age: [8, 11, 13] } }).html, />8, 11&nbsp;&amp;&nbsp;13</);
   const ramp = { ...DONE, roomTypes: ['Wheelchair Ramp'], roomCount: 1 };
   const rev = projectRevealEmail({ kid: ramp });
   assert.equal(rev.subject, 'Rowan’s Wheelchair Ramp Is Complete');
@@ -899,7 +899,7 @@ test('ramps and lifts are never called rooms', () => {
 test('typed notes: a pasted link is a short name to tap, no em dash, curly quotes, and no word alone', () => {
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: "1234 O'Malley's Crossing, Roswell, GA 30076",
     notes: "Park on Holcomb Bridge Rd — it's tight. Map: https://maps.app.goo.gl/AbC123" });
-  assert.match(e.html, /Park on Holcomb Bridge Rd \u2013 it’s tight\. Map:&nbsp;<a href="https:\/\/maps\.app\.goo\.gl\/AbC123"[^>]*>Google&nbsp;Maps<\/a>/, 'the word before a closing link stays on its line');
+  assert.match(e.html, /Park on Holcomb Bridge Rd\u00A0\u2013 it’s tight\. Map:&nbsp;<a href="https:\/\/maps\.app\.goo\.gl\/AbC123"[^>]*>Google&nbsp;Maps<\/a>/, 'the word before a closing link stays on its line');
   assert.match(e.html, /1234 O’Malley’s Crossing/);
   assert.ok(!/—/.test(e.html + e.text));
   const noAddress = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00' }).html;
@@ -908,7 +908,7 @@ test('typed notes: a pasted link is a short name to tap, no em dash, curly quote
 
 test('a bio with an em dash reads with a comma', () => {
   const inv = revealInviteEmail({ kid: { ...KID, heroSummary: '', bio: '<p>Tyrece loves music and plays—especially the drums—every day after school.</p>' }, date: '2027-03-12', time: '16:00' });
-  assert.match(inv.html, /plays \u2013 especially the drums \u2013 every day/);
+  assert.match(inv.html, /plays\u00A0\u2013 especially the drums\u00A0\u2013 every day/);
 });
 
 // ─── Found by the fifth independent review (Nov 9 2026) ───
@@ -928,7 +928,7 @@ test('a quote typed with who said it keeps its own marks, with no stray one adde
 
 test('a typed em dash becomes a spaced en dash, never a comma splice', async () => {
   const { tidy } = await import('../functions/api/_reveal-invite-email.js');
-  assert.equal(tidy('Park at the church lot across the street—it’s free.'), 'Park at the church lot across the street – it’s free.');
+  assert.equal(tidy('Park at the church lot across the street—it’s free.'), 'Park at the church lot across the street\u00A0– it’s free.');
 });
 
 test('the inbox preview is padded so the email’s first words never run on after it', () => {
@@ -1025,7 +1025,7 @@ test('quotes in every shape a family types them come out curly and matched', () 
   assert.match(q('"We will forever be grateful. It is what we pray for" - Jade, Dewone’s mother'), /^“We will forever be grateful\. It is what we pray&nbsp;for”<span [^>]*>–&nbsp;Jade, Dewone’s&nbsp;mother<\/span>$/);
   assert.match(q('We love it. - Mom'), /^“We love&nbsp;it\.”<span [^>]*>–&nbsp;Mom<\/span>$/);
   // A dash inside a sentence is not a signature, and a typed " - " reads as a dash
-  assert.equal(q('We cried - happy tears all day.'), '“We cried – happy tears all&nbsp;day.”');
+  assert.equal(q('We cried - happy tears all day.'), '“We cried\u00A0– happy tears all&nbsp;day.”');
   assert.equal(q('"They can finally get through the door," Vicki said.'), '“They can finally get through the door,” Vicki&nbsp;said.');
   assert.equal(q('She said, "This is home now."'), 'She said, “This is home&nbsp;now.”');
   assert.equal(q('When he saw it he said "wow" and cried.'), '“When he saw it he said ‘wow’ and&nbsp;cried.”');
@@ -1252,8 +1252,8 @@ test('status: each email as Kit has it, and what the page still needs', async ()
 test('a diagnosis never ends a line on "&"', () => {
   const html = projectKickoffEmail({ kid: { ...KID, diagnosis: 'Autism Spectrum Disorder & Global Development Delays' } }).html;
   assert.match(html, />Autism Spectrum Disorder &amp;&nbsp;Global Development&nbsp;Delays</);
-  assert.match(projectKickoffEmail({ kid: { ...KID, diagnosis: 'Spina Bifida, Deaf, & Blind' } }).html, />Spina Bifida, Deaf, &amp;&nbsp;Blind</);
-  assert.match(projectKickoffEmail({ kid: { ...KID, diagnosis: 'Spina Bifida, Neurogenic Bowel and Bladder' } }).html, />Spina Bifida, Neurogenic Bowel and&nbsp;Bladder</);
+  assert.match(projectKickoffEmail({ kid: { ...KID, diagnosis: 'Spina Bifida, Deaf, & Blind' } }).html, />Spina Bifida, Deaf,&nbsp;&amp;&nbsp;Blind</);
+  assert.match(projectKickoffEmail({ kid: { ...KID, diagnosis: 'Spina Bifida, Neurogenic Bowel and Bladder' } }).html, />Spina Bifida, Neurogenic Bowel&nbsp;and&nbsp;Bladder</);
 });
 
 test('a name typed with a stray space reads right everywhere', () => {
@@ -1340,7 +1340,7 @@ test('quotes signed at length, signed without marks, and with a quote inside, al
   assert.match(q('We love it so much. - Monique and Darnell, Jaylen\'s parents'), /^“We love it so&nbsp;much\.”<span [^>]*>–&nbsp;Monique and&nbsp;Darnell, Jaylen’s&nbsp;parents<\/span>$/);
   assert.equal(q('"He said "wow" and cried."'), '“He said ‘wow’ and&nbsp;cried.”');
   assert.equal(q('He said "wow" and cried.'), '“He said ‘wow’ and&nbsp;cried.”');
-  assert.equal(q('It was amazing - The whole family cried.'), '“It was amazing – The whole family&nbsp;cried.”', 'a sentence after a dash isn’t a signature');
+  assert.equal(q('It was amazing - The whole family cried.'), '“It was amazing\u00A0– The whole family&nbsp;cried.”', 'a sentence after a dash isn’t a signature');
 });
 
 test('typed bullets in the team’s note are dropped, and only an arrival note stands in for ours', () => {
@@ -1380,7 +1380,8 @@ test('the header logo has as much room above it as below, and a Kickoff with no 
 test('iPhone Mail’s detected dates and addresses keep the email’s own look, and a typed email address is a link in the note’s colors', () => {
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', notes: 'Questions? Email events@soardcharity.com.' }).html;
   assert.match(e, /a\[x-apple-data-detectors\]\{color:inherit!important;text-decoration:none!important;/);
-  assert.match(e, /<a href="mailto:events@soardcharity\.com" style="color:#FFFFFF;[^"]*">events@&#8203;soardcharity\.com<\/a>/, 'it may break after its @, never mid-letter');
+  assert.match(e, /<a href="mailto:events@soardcharity\.com" style="color:#FFFFFF;[^"]*">events@soardcharity\.com<\/a>/, 'a short address stays whole');
+  assert.match(revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', notes: 'Email info@sunshineonaranneyday.com' }).html, />info@&#8203;sunshineonaranneyday\.com<\/a>/, 'a long one may break after its @, never mid-letter');
 });
 
 test('an address breaks only after a comma, and the city stays with its state and ZIP', async () => {
@@ -1394,14 +1395,14 @@ test('an address breaks only after a comma, and the city stays with its state an
 
 test('a typed "--" reads as a dash; the last two words of a diagnosis or a room stay together', async () => {
   const { tidy } = await import('../functions/api/_reveal-invite-email.js');
-  assert.equal(tidy('Park on the street -- the drive is tight'), 'Park on the street – the drive is tight');
-  assert.equal(tidy('well--known'), 'well – known');
+  assert.equal(tidy('Park on the street -- the drive is tight'), 'Park on the street\u00A0– the drive is tight');
+  assert.equal(tidy('well--known'), 'well\u00A0– known');
   const max = projectKickoffEmail({ kid: { ...KID, age: 6, diagnosis: 'Multiple Sulfatase Deficiency', roomTypes: ['Accessible Bathroom', 'Dream Bedroom'], bathroomCount: 2, bedroomCount: 3, roomCount: 5 } }).html;
   assert.match(max, />Multiple Sulfatase&nbsp;Deficiency</);
   assert.match(max, />Two Accessible&nbsp;Bathrooms<\/td>/);
   assert.match(max, />Three Dream&nbsp;Bedrooms<\/td>/);
   // Ages stay as they were: "8, 11 & 13"
-  assert.match(projectKickoffEmail({ kid: { ...KID, age: [8, 11, 13] } }).html, />8, 11 &amp;&nbsp;13</);
+  assert.match(projectKickoffEmail({ kid: { ...KID, age: [8, 11, 13] } }).html, />8, 11&nbsp;&amp;&nbsp;13</);
 });
 
 test('the cover is only ever a picture that was checked, and "Photos by" only shows with photos', async () => {
@@ -1437,4 +1438,29 @@ test('JobTread’s multi-choice rooms read as a list; the preview with only phot
   assert.match(few, /padding:0px 0 0;[^"]*" class="pd">\s*<div style="padding-top:16px;"><a /, 'the story link 16px under the story');
   const bare = projectKickoffEmail({ kid: { ...KID, heroImage: '', photos: [] } }).html;
   assert.match(bare, /<h1 class="[^"]*" style="margin:0 0 0px;/, 'no picture: no gap under the headline');
+});
+
+// ─── Found by the twelfth independent review (Nov 9 2026) ───
+
+test('a Kickoff bio that opens "Meet Dylan, a…" says it once under the "Meet Dylan." headline', () => {
+  const html = projectKickoffEmail({ kid: { ...KID, name: 'Dylan', heroSummary: '', bio: '<p>Meet Dylan, a teenager with a quiet sense of humor and a playful spirit.</p>' } }).html;
+  assert.match(html, /class="ld"[^>]*>Dylan is a teenager with a quiet sense of humor/);
+  assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Remi & Nico', heroSummary: '', bio: '<p>Meet Remi &amp; Nico, two brothers who love trains and music.</p>' } }).html, /class="ld"[^>]*>Remi &amp;&nbsp;Nico are two brothers/);
+  // The invite keeps the page's own words under "Dylan’s story"
+  assert.match(revealInviteEmail({ kid: { ...KID, name: 'Dylan', heroSummary: '', bio: '<p>Meet Dylan, a teenager with a quiet sense of humor and a playful spirit.</p>' }, date: '2027-03-12', time: '16:00' }).html, /Meet Dylan, a teenager/);
+});
+
+test('our arrival line steps aside only for the team’s own arrival time or "arrive early"', () => {
+  const ours = (notes) => /Please arrive 15 minutes early/.test(revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', notes }).html);
+  for (const n of ['Please be there by 3:30', 'Gather at 3:30 pm', 'Plan to be here no later than 3:40', 'Please arrive at least 15 mins early!', 'Please arrive early']) assert.equal(ours(n), false, n);
+  for (const n of ['Arrival parking is at the church', 'Kids can come early to make signs', 'Park on the street', 'The Early Intervention team will be there']) assert.equal(ours(n), true, n);
+});
+
+test('a dash never starts a line, and "and" between names stays with the name after it', async () => {
+  const { tidy, label, textLink } = await import('../functions/api/_reveal-invite-email.js');
+  assert.equal(tidy('a productive member of society - to give back'), 'a productive member of society – to give back');
+  assert.match(label('Jean-Luc and Marie’s story'), />Jean-Luc and&nbsp;Marie’s&nbsp;story</);
+  assert.match(textLink('Read Jean-Luc and Marie’s story →', 'https://x'), /Jean-Luc and&nbsp;Marie’s&nbsp;story&nbsp;→/);
+  // "& Hearing Impaired" keeps together, so "Impaired" never ends a line alone
+  assert.match(projectKickoffEmail({ kid: { ...KID, diagnosis: 'Down Syndrome, Autism & Hearing Impaired' } }).html, />Down Syndrome, Autism &amp;&nbsp;Hearing&nbsp;Impaired</);
 });

@@ -55,6 +55,14 @@ const PAIR_TRANSFORM = 'w=600,h=640,fit=cover,gravity=auto,q=80';
 /** The short version of the story, the same as the invite's */
 const storyOf = (kid) => shortStory(kid, STORY_MAX);
 
+/** Under the Kickoff's "Meet Dylan." a story that opens the same way says it once: "Meet Dylan, a teenager…" reads "Dylan is a teenager…" */
+const unmeet = (story) => {
+  const m = String(story || '').match(/^Meet\s+([^,.!?]+?)([,.!])\s+([\s\S]+)$/);
+  if (!m) return story;
+  if (m[2] === ',' && /^(a|an|the|two|three)\s/i.test(m[3])) return `${m[1]} ${/\s(&|and)\s/.test(m[1]) ? 'are' : 'is'} ${m[3]}`;
+  return m[2] === ',' ? story : m[3].charAt(0).toUpperCase() + m[3].slice(1);
+};
+
 /** A quote as the page has it, without the quote marks it was typed with */
 /** A quote without the marks around the whole of it (only a pair that opens and closes it: "He said "wow"" keeps its own) */
 const bareQuote = (q) => {
@@ -127,7 +135,7 @@ function factsRow(facts) {
   // "Multiple Sulfatase / Deficiency") while they fit a phone's full width
   // A hyphen inside a word doesn't break ("Non‑Verbal", "Rubinstein‑Taybi": a no-break hyphen)
   const glue = (t) => String(t).replace(/(\w)-(?=\w)/g, '$1\u2011').replace(/ (&|and) /g, ' $1\u00A0')
-    .replace(/ ([^ ]+) ([^ ]+)$/, (m, x, y) => (!/\u00A0/.test(x + y) && `${x} ${y}`.length <= 20 ? ` ${x}\u00A0${y}` : m));
+    .replace(/ ([^ ]+) ([^ ]+)$/, (m, x, y) => (`${x} ${y}`.length <= 20 ? ` ${x}\u00A0${y}` : m));
   const longest = (t) => Math.max(...glue(t).split(' ').map((w) => w.length));
   // Side by side only while the value's longest unbreakable run fits beside the first fact on a phone
   const stack = facts.length > 1 && facts[0].main.length + longest(facts[facts.length - 1].main) > 18;
@@ -215,7 +223,7 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const own = !!kid.fundraisingUrl;
   const giveUrl = kid.fundraisingUrl || `${site}/donate/`;
   const rooms = roomsOf(kid);
-  const story = storyOf(kid);
+  const story = unmeet(storyOf(kid));
   const lead = leadOf(kid, brokenLogos);
 
   const space = makeoverWord(rooms);

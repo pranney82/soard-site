@@ -19,7 +19,7 @@ export const SITE_URL = 'https://sunshineonaranneyday.com';
  * every draft still waiting in Kit that nobody has edited is then rebuilt on the next look, by itself.
  * tests/email-design.test.mjs fails if the emails change and this doesn't.
  */
-export const EMAIL_DESIGN = '2026-11-09e';
+export const EMAIL_DESIGN = '2026-11-09f';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const Y = '#FFDA24';
@@ -278,7 +278,7 @@ export const twoKids = (name) => /\s(&|and)\s/.test(String(name || ''));
 
 /** Typographic apostrophes, so names and copy read like the rest of the email */
 /** Text a family or staff typed, made to read like the rest of the email: curly quotes, and a spaced en dash where they typed an em dash (a comma there would make two sentences one) */
-export const tidy = (s) => curly(s).replace(/\s*(\u2014|--+)\s*/g, ' \u2013 ').replace(/ +- +/g, ' \u2013 ');
+export const tidy = (s) => curly(s).replace(/\s*(\u2014|--+)\s*/g, '\u00A0\u2013 ').replace(/ +- +/g, '\u00A0\u2013 ');
 
 export const curly = (s) => String(s || '')
   .replace(/(^|[\s(\[{“‘])"/g, '$1“').replace(/"/g, '”')
@@ -337,7 +337,7 @@ export function label(text, bar = Y, color = D) {
   // The bar is its own small block at the first line's height, so a label that wraps ("TYRECE & MADDIE’S / STORY") keeps a bar, not a slab
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
     <td valign="top" width="28" style="width:28px;padding-top:4px;"><div style="width:28px;height:10px;background:${bar};border-radius:2px;font-size:0;line-height:0;">&nbsp;</div></td>
-    <td valign="top" style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${(String(text).trim().split(/\s+/).length > 2 || String(text).length > 20 ? noWidow(escapeHtml(text)) : escapeHtml(text)).replace(/ &amp; /g, ' &amp;&nbsp;')}</td>
+    <td valign="top" style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${(String(text).trim().split(/\s+/).length > 2 || String(text).length > 20 ? noWidow(escapeHtml(text)) : escapeHtml(text)).replace(/ (&amp;|and) /g, ' $1&nbsp;')}</td>
   </tr></table>`;
 }
 
@@ -441,7 +441,7 @@ export function button(text, url, { fill = Y, ink = D, center = false, small = f
 
 /** A plain link with its arrow, for the second thing a reader might do */
 export function textLink(text, url, color = D) {
-  return `<a href="${href(url)}" target="_blank" style="font-family:${SANS};font-size:15px;font-weight:700;color:${color};text-decoration:underline;text-underline-offset:4px;">${escapeHtml(text).replace(/ &amp; /g, ' &amp;&nbsp;').replace(/ (\S+ →)$/, '&nbsp;$1').replace(/ →$/, '&nbsp;→')}</a>`;
+  return `<a href="${href(url)}" target="_blank" style="font-family:${SANS};font-size:15px;font-weight:700;color:${color};text-decoration:underline;text-underline-offset:4px;">${escapeHtml(text).replace(/ (&amp;|and) /g, ' $1&nbsp;').replace(/ (\S+ →)$/, '&nbsp;$1').replace(/ →$/, '&nbsp;→')}</a>`;
 }
 
 /** The dark cover all three emails open with: the kicker, the name large, the lead photo, then whatever comes first */
@@ -500,7 +500,7 @@ const lastLink = (h) => h.replace(/ ([^\s<>]+) (<a [^>]*>[^<]*<\/a>[^\s<]*)$/, (
 
 export function noteHtml(text, color = '#FFFFFF') {
   const parts = String(text || '').split(/(https?:\/\/[^\s<>"]+)/g);
-  const mail = (t) => escapeHtml(t).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, (m) => `<a href="mailto:${m}" style="color:${color};font-weight:600;text-decoration:underline;text-underline-offset:2px;">${m.replace('@', '@&#8203;')}</a>`);
+  const mail = (t) => escapeHtml(t).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, (m) => `<a href="mailto:${m}" style="color:${color};font-weight:600;text-decoration:underline;text-underline-offset:2px;">${m.length > 26 ? m.replace('@', '@&#8203;') : m}</a>`);
   return lastLink(noWidow(parts.map((part, i) => {
     if (i % 2 === 0) return mail(tidy(part));
     const url = part.replace(/[.,;:!?)\]]+$/, '');
@@ -700,7 +700,11 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim().replace(/^([-*•·]|\d+[.)])\s+/, '').trim()).filter(Boolean);
   // The team's own arrival note stands in for ours, so it isn't said twice
   // ("Early Intervention" isn't an arrival note; "come 15 minutes early" is)
-  const arrive = /\barriv|\b(come|be|get there|get here|show up)\s+(\w+\s+){0,3}early\b|\b\d+\s*(min|mins|minutes)\s+early\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
+  // The team's note gives its own arrival time ("be there by 3:30", "gather at 3:30", "arrive 15 mins early") or says
+  // to arrive early: ours would be a second time. A note that only mentions arriving ("Arrival parking…") keeps ours.
+  const teamTime = /(\d{1,2}:\d{2}|\b\d{1,2}\s*(a\.?m\.?|p\.?m\.?)|\b\d+\s*(min|mins|minutes)\b)/i.test(notes)
+    && /\b(arriv\w*|be (there|here)|by|gather\w*|no later|early|before)\b/i.test(notes);
+  const arrive = teamTime || /\barriv\w*\s+(\w+\s+){0,3}early\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
 
   // No date or no confirmed time yet (an early draft): no calendar buttons, since there's nothing to save yet
   const timed = !!when && /^\d{1,2}:\d{2}/.test(String(time || ''));
@@ -736,7 +740,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     action: `${ticket(rows, [arrive, ...noteLines].filter(Boolean))}${calendar}`,
   })}
   ${lede(opening)}
-  ${summary ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 0;${SIDE}" class="pd">
+  ${summary ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
     ${label(`${name}’s story`)}
     <p style="margin:14px 0 0;font-family:${SERIF};font-size:17px;line-height:1.7;color:${D};">${noWidow(escapeHtml(summary))}</p>
   </td></tr>` : ''}
