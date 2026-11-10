@@ -1,0 +1,98 @@
+---
+/**
+ * ShareSheet.astro — "send this to someone": text, email, Facebook, or the link
+ * =============================================================================
+ * Peter, Nov 9 2026: "where is the share thing to share like on text, email,
+ * etc????" A Share button that only copied the link (on a laptop) or only
+ * opened the phone's own menu didn't say what it could do. This sheet does:
+ * Text message (on phones and Macs, where a text can be sent), Email,
+ * Facebook, Copy link, and on a phone the phone's own share menu for
+ * everything else. Place once per page, at page level (a native <dialog> in
+ * the top layer); src/utils/share-sheet.ts opens it with what to share.
+ * A bottom sheet on phones, a small card on larger screens, like the
+ * reveal invite sheet.
+ */
+---
+
+<dialog class="shs" data-share-sheet aria-labelledby="shs-title" aria-describedby="shs-text">
+  <div class="shs__inner">
+    <form method="dialog" class="shs__close-form">
+      <button class="shs__close" type="submit" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </form>
+    <span class="shs__icon" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+    </span>
+    <p class="shs__eyebrow" data-shs="eyebrow">Invite someone to watch</p>
+    <h2 class="shs__title" id="shs-title" data-shs="title">Share</h2>
+    <p class="shs__text" id="shs-text" data-shs="text"></p>
+    <div class="shs__options">
+      <a class="shs__opt" data-how="text" href="#">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Text message
+      </a>
+      <a class="shs__opt" data-how="email" href="#">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        Email
+      </a>
+      <a class="shs__opt" data-how="facebook" href="#" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M14 8V6.5c0-.7.3-1.2 1.3-1.2H17V2.2C16.4 2.1 15.4 2 14.3 2 11.9 2 10.4 3.4 10.4 6.1V8H8v3.4h2.4V22H14V11.4h2.8L17.3 8z"/></svg>
+        Facebook
+      </a>
+      <button class="shs__opt" data-how="copy" type="button">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        <span data-shs="copy-label">Copy link</span>
+      </button>
+      <button class="shs__opt shs__opt--more" data-how="more" type="button" hidden>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+        More ways to share
+      </button>
+    </div>
+    <p class="shs__link" data-shs="link"></p>
+    <p class="shs__note" data-shs="note" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
+
+<style is:global>
+  .shs {
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    width: min(420px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px);
+    margin: auto; padding: 0; border: 0; border-radius: 24px;
+    background: var(--c-white, #fff); color: var(--c-text, #373A36);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28), 0 8px 24px rgba(0, 0, 0, 0.12);
+    overflow: auto; overscroll-behavior: contain;
+  }
+  .shs[open] { animation: shs-in 0.42s var(--ease) both; }
+  .shs::backdrop { background: rgba(30, 31, 37, 0.55); }
+  @keyframes shs-in { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+  html:has(.shs[open]) { overflow: hidden; }
+  .shs__inner { position: relative; padding: 28px 28px 22px; }
+  .shs__close-form { position: absolute; top: 14px; right: 14px; margin: 0; }
+  .shs__close { width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--c-warm-gray, #F5F4F0); color: var(--c-dark, #373A36); display: grid; place-items: center; cursor: pointer; }
+  .shs__close:focus-visible { outline: 2px solid var(--c-dark, #373A36); outline-offset: 2px; }
+  .shs__icon { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: var(--c-yellow, #FFDA24); color: var(--c-dark-deep, #1E1F25); margin-bottom: 18px; }
+  .shs__eyebrow { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted, #5A5B61); }
+  .shs__title { margin: 0 52px 10px 0; font-size: clamp(1.5rem, 4vw, 1.85rem); letter-spacing: -0.02em; line-height: 1.15; }
+  .shs__text { margin: 0 0 20px; color: var(--c-text-muted, #5A5B61); font-size: 15.5px; line-height: 1.6; }
+  .shs__text:empty { display: none; }
+  .shs__options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .shs__opt {
+    display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 12px 16px;
+    border-radius: 100px; border: 1.5px solid var(--c-border, #E5E4E0); background: var(--c-white, #fff);
+    font: inherit; font-size: 15.5px; font-weight: 700; color: var(--c-dark, #373A36); text-decoration: none; cursor: pointer;
+  }
+  .shs__opt[hidden] { display: none; }
+  .shs__opt:hover { border-color: var(--c-dark, #373A36); }
+  .shs__opt:focus-visible { outline: 3px solid var(--c-yellow, #FFDA24); outline-offset: 2px; box-shadow: 0 0 0 5px var(--c-dark, #373A36); }
+  .shs__opt--more { grid-column: 1 / -1; }
+  /* An odd one out at the end spans the row */
+  .shs__options > .shs__opt:not([hidden]):last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .shs__link { margin: 16px 0 0; font-size: 13.5px; color: var(--c-text-muted, #5A5B61); text-align: center; overflow-wrap: anywhere; }
+  .shs__note { margin: 8px 0 0; min-height: 1.4em; font-size: 14px; font-weight: 600; text-align: center; color: var(--c-text, #373A36); }
+  @media (max-width: 560px) {
+    .shs { width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: 24px 24px 0 0; max-height: 92dvh; }
+    .shs__inner { padding: 26px 20px max(20px, env(safe-area-inset-bottom)); }
+  }
+  @media (prefers-reduced-motion: reduce) { .shs[open] { animation: none; } }
+</style>

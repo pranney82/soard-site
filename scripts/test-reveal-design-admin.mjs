@@ -330,16 +330,23 @@ async function desktop(browser, files) {
   ok(await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Preview the reveal screen'), 'Preview the reveal screen opens');
   await page.waitForSelector('.rdp iframe', { timeout: 10000 });
   const frameSrc = await page.$eval('.rdp iframe', (f) => f.getAttribute('src'));
-  ok(frameSrc === `/live/${SLUG}/slate/?design=preview&o=landscape`, `frames the kid's slate: ${frameSrc}`);
+  ok(frameSrc === `/live/${SLUG}/slate/?design=preview&o=portrait&embed=1`, `frames the kid's slate as the live page shows it (portrait, no codes to scan): ${frameSrc}`);
   // (main's dev server rebuilds the slate while it's being edited: give it time)
   await page.waitForFunction(() => !!document.querySelector('.rdp iframe')?.contentDocument?.getElementById('canvas'), { timeout: 30000 }).catch(() => {});
   await sleep(1500);
   const framed = await page.evaluate(() => { const d = document.querySelector('.rdp iframe')?.contentDocument; return { canvas: !!d?.getElementById('canvas'), text: d?.body?.innerText.slice(0, 120) || '' }; });
   ok(framed.canvas, `the slate loaded in the frame (${framed.text.replace(/\s+/g, ' ').slice(0, 60)})`);
+  await shot(page, 'preview-page-1440');
+  await clickText(page, '.rdp .seg [role="radio"]', 'On Facebook and YouTube');
+  await sleep(600);
+  ok(!/embed=1/.test(await page.$eval('.rdp iframe', (f) => f.getAttribute('src'))), 'the stream version carries the codes (no embed)');
+  await clickText(page, '.rdp .seg [role="radio"]', 'Landscape');
+  await sleep(600);
+  ok(/o=landscape/.test(await page.$eval('.rdp iframe', (f) => f.getAttribute('src'))), 'landscape frames the wide shape');
   await shot(page, 'preview-landscape-1440');
   await clickText(page, '.rdp .seg [role="radio"]', 'Portrait');
   await sleep(1500);
-  ok((await page.$eval('.rdp iframe', (f) => f.getAttribute('src'))).endsWith('o=portrait'), 'portrait frames the phone shape');
+  ok(/o=portrait/.test(await page.$eval('.rdp iframe', (f) => f.getAttribute('src'))), 'portrait frames the phone shape');
   await shot(page, 'preview-portrait-1440');
   await clickText(page, '.rdp .kd-dialog__foot .btn', 'Done');
   await sleep(300);
@@ -761,7 +768,7 @@ async function handAdded(browser) {
   await clickText(page, '.rdp .seg [role="radio"]', 'Portrait');
   await sleep(400);
   const pf = await page.evaluate(() => { const f = document.querySelector('.rdp iframe'); const d = document.querySelector('.rdp').getBoundingClientRect(); return { src: f.getAttribute('src'), bottom: d.bottom, frameBottom: f.getBoundingClientRect().bottom }; });
-  ok(/o=portrait&slide=1/.test(pf.src), `portrait keeps the slide (${pf.src})`);
+  ok(/o=portrait(&embed=1)?&slide=1/.test(pf.src), `portrait keeps the slide (${pf.src})`);
   ok(pf.bottom <= 900 && pf.frameBottom <= 900, `the portrait screen fits at 1440×900 (dialog ends at ${Math.round(pf.bottom)})`);
   await shot(page, 'preview-portrait-steps-1440');
   await clickText(page, '.rdp .kd-dialog__foot .btn', 'Done');

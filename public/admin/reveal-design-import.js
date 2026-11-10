@@ -828,24 +828,32 @@ const STEPS = [['before', 'The room today'], ['as-built', 'Floor plan today'], [
  */
 export function RevealPreview({ slug, name, published = true, kinds = [], waiting = 0, uploading = 0, Dialog, onClose }) {
   useStyles();
-  const [o, setO] = useState('landscape');
+  // Where it's seen: inside the live page (the default; no QR cards, nobody needs to scan the page they're on) or on the
+  // Facebook and YouTube stream (with the cards, for people watching on a TV or laptop)
+  const [where, setWhere] = useState('page');
+  const [o, setO] = useState(where === 'page' ? 'portrait' : 'landscape');
   const [slide, setSlide] = useState(null); // null: plays through; N: holds slide N (0 is the kid's photo)
   const [fallback, setFallback] = useState(!published);
   const base = fallback || !slug ? '/live/slate/' : `/live/${encodeURIComponent(slug)}/slate/`;
-  const src = `${base}?design=preview&o=${o}${slide != null ? `&slide=${slide}` : ''}`;
+  const src = `${base}?design=preview&o=${o}${where === 'page' ? '&embed=1' : ''}${slide != null ? `&slide=${slide}` : ''}`;
   const onLoad = (e) => {
     // A profile with no page built yet gets the screen that follows whoever is next, showing this design
     try { if (!fallback && !e.currentTarget.contentDocument?.getElementById('canvas')) setFallback(true); } catch { /* not ours to read */ }
   };
   const steps = STEPS.map(([k, label]) => [k, label, kinds.indexOf(k)]).filter(([, , i]) => i >= 0);
   const shapes = ['landscape', 'portrait'];
+  const places = ['page', 'stream'];
   const who = possessive(name || 'this kid');
-  return html`<${Dialog} title="Preview the reveal screen" sub=${`The starting-soon screen with ${who} design as it is here, saved or not. It opens on the live page and stream an hour before the reveal.`}
+  return html`<${Dialog} title="Preview the reveal screen" sub=${`The starting-soon screen with ${who} design as it is here, saved or not. It opens on the live page and the stream an hour before the reveal; on the stream it also carries codes to scan, for people watching on a TV or laptop.`}
     onClose=${onClose} size="lg" className="rdp" footer=${html`<button type="button" class="btn btn-secondary" onClick=${onClose}>Done</button>`}>
     ${!kinds.length ? html`<p class="notice notice--info">${icon.shield}<span class="notice__body">No design to show yet. Add plans or before photos, or bring them in from JobTread; until then the screen shows ${who} photo.</span></p>` : null}
     ${waiting ? html`<p class="notice notice--warn">${icon.alert}<span class="notice__body">${plural(waiting, 'drawing is', 'drawings are')} waiting for an address check, so ${waiting === 1 ? 'it doesn’t' : 'they don’t'} play yet.</span></p>` : null}
     ${uploading ? html`<p class="notice">${icon.alert}<span class="notice__body">${plural(uploading, 'picture')} still going up: ${uploading === 1 ? 'it shows' : 'they show'} here once ${uploading === 1 ? 'it’s' : 'they’re'} up.</span></p>` : null}
     <div class="rdp-bar">
+      <div class="seg" role="radiogroup" aria-label="Where it's seen">
+        ${places.map((s) => html`<button type="button" role="radio" aria-checked=${where === s} tabindex=${where === s ? 0 : -1}
+          onKeyDown=${(e) => radioKeys(e, places, where, setWhere)} onClick=${() => setWhere(s)}>${s === 'page' ? 'On the live page' : 'On Facebook and YouTube'}</button>`)}
+      </div>
       <div class="seg" role="radiogroup" aria-label="Screen shape">
         ${shapes.map((s) => html`<button type="button" role="radio" aria-checked=${o === s} tabindex=${o === s ? 0 : -1}
           onKeyDown=${(e) => radioKeys(e, shapes, o, setO)} onClick=${() => setO(s)}>${s === 'landscape' ? 'Landscape' : 'Portrait (phones)'}</button>`)}

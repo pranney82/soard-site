@@ -38,6 +38,7 @@ import UpcomingReveals from './UpcomingReveals.astro';
 import HeroUpcoming from './HeroUpcoming.astro';
 import RevealInvite from './RevealInvite.astro';
 import LiveDesign from './LiveDesign.astro';
+import ShareSheet from '../ui/ShareSheet.astro';
 import { upcomingAtBuild } from '../../utils/reveals-copy';
 
 interface KidLite {
@@ -169,6 +170,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 <div class="live-past"><PastReveals limit={6} /></div>
 <LiveGive />
 <RevealInvite />
+<ShareSheet />
 </div>
 
 <style>
@@ -404,6 +406,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { createMessages } from '../../utils/live-messages';
   import { createGive } from '../../utils/live-give';
   import { createLiveDesign } from '../../utils/live-design';
+  import { openShareSheet } from '../../utils/share-sheet';
   import { cfRaw } from '../../utils/cf-image';
   import { readUpcoming, loadSignup, revealWhen, revealDay, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
   import { heroRowsHtml, rowsSignature } from '../../utils/upcoming-rows';
@@ -967,14 +970,20 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     // Share
     // Shared without ?src= (a friend's visit isn't the sharer's email or QR scan)
     const pageUrl = () => shareable(location.href.split('#')[0]);
-    // Hero share: the phone's share sheet where there is one, otherwise copy the link
+    // Hero share: a sheet that says what it can do (text, email, Facebook, copy, and the phone's own menu); without one, copy the link
     q<HTMLButtonElement>('cta-share')?.addEventListener('click', async () => {
       const label = q<HTMLElement>('share-label');
-      const title = q<HTMLElement>('title')?.textContent?.trim() || document.title;
-      if (navigator.share) {
-        try { await navigator.share({ title, text: display === 'live' ? `${title}, live now` : title, url: pageUrl() }); client.beacon('share', { how: 'sheet' }); } catch { /* dismissed */ }
-        return;
-      }
+      const title = q<HTMLElement>('title')?.textContent?.replace(/\s+/g, ' ').trim() || document.title;
+      const name = (shownKid && upcoming.find((r) => r.slug === shownKid)?.name) || (last?.kidName || '');
+      const live = display === 'live';
+      const opened = openShareSheet({
+        title: name ? `Share ${name}'s reveal` : 'Share the reveal',
+        text: live ? `${title}, live now` : display === 'replay' ? `Watch ${title}` : `Watch ${title} live`,
+        lead: live ? 'Send the link: it opens right here, live.' : 'Send the link: it opens right here, and plays live when it starts.',
+        url: pageUrl(),
+        onShare: (how) => client.beacon('share', { how }),
+      });
+      if (opened) return;
       try { await navigator.clipboard.writeText(pageUrl()); if (label) { label.textContent = 'Link copied'; setTimeout(() => { label.textContent = 'Share'; }, 2000); } client.beacon('share', { how: 'copy' }); } catch { /* blocked */ }
     });
 
