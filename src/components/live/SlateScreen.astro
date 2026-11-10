@@ -566,6 +566,8 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     .photo .paper img { object-fit: contain; object-position: center top; padding: 116px 40px 44px; }
     body[data-o='landscape'] .photo .paper img { padding: 116px 36px 204px; }
     body[data-o='portrait'] .photo .paper img { padding: 104px 36px 32px; }
+    /* With nothing over the frame's lower part (portrait, or inside the live page) a drawing sits in the middle of its paper */
+    body[data-o='portrait'] .photo .paper img, body.embed .photo .paper img { object-position: center; }
     /* The new plan wipes in over the old one, a yellow line leading it */
     .slide.is-wiping { opacity: 1; transition: none; animation: wipe 2.6s cubic-bezier(0.65, 0, 0.35, 1) both; }
     @keyframes wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
@@ -597,6 +599,14 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     body[data-partners='no'] .cards { top: 679px; }
     body[data-o='portrait'] .cards { left: 60px; top: 1560px; width: 960px; height: 196px; }
     body[data-o='portrait'][data-partners='no'] .cards { top: 1660px; }
+
+    /* Inside the live page (.embed) someone is already here: a code to scan does nothing for them, and the page has
+       real Share and Give buttons under the frame (Peter, Nov 9 2026). The cards are for the stream and a TV at the
+       house; here the picture takes their room. */
+    body.embed .cards { display: none; }
+    body.embed[data-o='portrait'] .frame { height: calc(1920px - var(--pt) - 440px - 164px); }
+    body.embed[data-o='portrait'][data-partners='no'] .frame { height: calc(1920px - var(--pt) - 440px - 56px); }
+    body.embed[data-o='landscape'] .photo .paper img { padding-bottom: 44px; }
     .card {
       position: absolute; inset: 0; display: flex; align-items: center; gap: 26px;
       background: #fff; border: 1px solid var(--c-border); border-radius: 24px; padding: 22px 28px 22px 22px;
