@@ -32,6 +32,7 @@
 import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { MindMap, prepareMap, Ago, STATUS, plural } from './mindmap.js';
 import { SentView } from './messages-sent.js';
+import { WriteEmail } from './write-email.js';
 
 const html = htm.bind(h);
 
@@ -1365,8 +1366,8 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
 }
 
 // ─── The page ─────────────────────────────
-const TABS = [['map', 'Everything we send'], ['sent', 'What went out']];
-const tabOfHash = () => (location.hash.startsWith('#messages/sent') ? 'sent' : 'map');
+const TABS = [['map', 'Everything we send'], ['sent', 'What went out'], ['write', 'Write an email']];
+const tabOfHash = () => (location.hash.startsWith('#messages/sent') ? 'sent' : location.hash.startsWith('#messages/write') ? 'write' : 'map');
 const TAB_CSS = `
 .mm-tabs { margin-bottom: 1.25rem; }
 .mm-tab-n { display: inline-grid; place-items: center; min-width: 1.25rem; height: 1.25rem; margin-left: 0.4rem; padding: 0 0.35rem; border-radius: 999px; background: color-mix(in srgb, var(--tone-warn-dot) 18%, var(--color-bg-card)); color: #8A5A12; font-size: var(--fs-2xs); font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -1407,7 +1408,7 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
   const preview = (entry) => { opener.current = document.activeElement; setOpen(entry); };
 
   const goTab = (t) => {
-    history.replaceState(null, '', t === 'sent' ? '#messages/sent' : '#messages');
+    history.replaceState(null, '', t === 'sent' ? '#messages/sent' : t === 'write' ? '#messages/write' : '#messages');
     setTab(t);
   };
   useEffect(() => {
@@ -1510,6 +1511,7 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
       <${SentView} entryOf=${entryOf} branchOf=${branchOf} labelOf=${rowLabel} senderOf=${rowSender} Sender=${Sender} EmailFrame=${EmailFrame}
         onPreview=${preview} only=${only} setOnly=${setOnly} show=${show} setShow=${setShow} onProblems=${setProblems} />
     </div>`}
+    ${tab === 'write' && html`<div role="tabpanel" aria-label="Write an email"><${WriteEmail} addToast=${addToast} EmailFrame=${EmailFrame} /></div>`}
     ${open && html`<${PreviewSheet} entry=${open} returnTo=${opener.current} onClose=${() => setOpen(null)} addToast=${addToast} />`}
   </div>`;
 }
