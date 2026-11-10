@@ -30,7 +30,9 @@ const recap = over ? recapMeta(ev, allEvents, cms, '/events/golf/') : null;
 const dateISO: string = ev.date || '2026-05-18';
 const year = dateISO.slice(0, 4);
 const dateLong = fmtDay(dateISO, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-const ZEFFY = ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/sunshine-on-a-ranney-fairway--2026';
+// Its registration: the event's own link (Admin → Site Config → Zeffy, or the tournament's editor). None yet: no
+// register buttons, never last year's form
+const ZEFFY: string = String(ev.ticketUrl || '').trim();
 const venue: string = String(ev.location || 'Indian Hills Country Club').trim();
 const address: string = String(ev.address || '4001 Clubland Dr. Marietta, GA 30068').trim();
 /* "4001 Clubland Dr. Marietta, GA 30068" → street / city lines */
@@ -86,7 +88,7 @@ const eventJsonLd = {
       "name": "Foursome",
       "price": "1500",
       "priceCurrency": "USD",
-      "url": ZEFFY,
+      "url": ZEFFY || undefined,
       "availability": "https://schema.org/InStock",
       "validFrom": `${year}-01-01`,
     },
@@ -95,7 +97,7 @@ const eventJsonLd = {
       "name": "Gold Sponsor",
       "price": "5000",
       "priceCurrency": "USD",
-      "url": ZEFFY,
+      "url": ZEFFY || undefined,
       "availability": "https://schema.org/InStock",
       "validFrom": `${year}-01-01`,
     },
@@ -104,7 +106,7 @@ const eventJsonLd = {
       "name": "Presenting Sponsor",
       "price": "20000",
       "priceCurrency": "USD",
-      "url": ZEFFY,
+      "url": ZEFFY || undefined,
       "availability": "https://schema.org/InStock",
       "validFrom": `${year}-01-01`,
     },
@@ -274,7 +276,7 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
           </p>
           <a
             class="ev-gallery__download"
-            href="https://www.dropbox.com/scl/fo/dh29kk8xjgloo5132bo6e/AO7WdbXwMEP9XxoPEaD1MEA?rlkey=q22xgsirxacra69ouuxw1902v&e=1&st=yp3itz2c&dl=0"
+            href="https://drive.google.com/drive/folders/1mE340ldWGHPt5anWairvGaKD0WxZWwna?usp=sharing"
             target="_blank"
             rel="noopener noreferrer"
             data-reveal
@@ -480,16 +482,20 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
       </details>
 
       <!-- CTA -->
-      <div class="ev-tickets__cta" data-reveal>
-        <a href={ZEFFY} target="_blank" rel="noopener" class="ev-btn ev-btn--gold ev-btn--hero">
-          Register &amp; Select Your Package
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-        </a>
-        <p class="ev-tickets__secure-note">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          Secure checkout powered by Zeffy &middot; Zero platform fees
-        </p>
-      </div>
+      {ZEFFY ? (
+        <div class="ev-tickets__cta" data-reveal>
+          <a href={ZEFFY} target="_blank" rel="noopener" class="ev-btn ev-btn--gold ev-btn--hero">
+            Register &amp; Select Your Package
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+          </a>
+          <p class="ev-tickets__secure-note">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Secure checkout powered by Zeffy &middot; Zero platform fees
+          </p>
+        </div>
+      ) : (
+        <div class="ev-tickets__cta" data-reveal><p class="ev-tickets__secure-note">Registration opens soon.</p></div>
+      )}
     </div>
   </section>
 
@@ -632,12 +638,14 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
   </section>
 
   <!-- ═══ STICKY MOBILE CTA ═══ -->
-  <div class="ev-sticky-cta" aria-hidden="true">
-    <a href={ZEFFY} target="_blank" rel="noopener" class="ev-sticky-cta__btn">
-      Register Now
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-    </a>
-  </div>
+  {ZEFFY && (
+    <div class="ev-sticky-cta" aria-hidden="true">
+      <a href={ZEFFY} target="_blank" rel="noopener" class="ev-sticky-cta__btn">
+        Register Now
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+    </div>
+  )}
   </Fragment>
   )}
 

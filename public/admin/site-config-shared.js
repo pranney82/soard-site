@@ -18,7 +18,10 @@
  */
 
 export const DOC_KEYS = ['settings', 'faq', 'our-story', 'media', 'financial-snapshot', 'financials', 'book'];
-export const docPath = (key) => `src/content/site/${key}.json`;
+// A page can also edit fields of other records (Zeffy: a kid's fundraising link), keyed '<collection>/<slug>'
+export const docPath = (key) => (String(key).includes('/') ? `src/content/${key}.json` : `src/content/site/${key}.json`);
+/** The collection a record's key is in ('kids/peter' → 'kids'); a key with no slash is itself ('@advisory') */
+export const recordOf = (key) => String(key).split('/')[0];
 export const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 
 // ─── Paths ─────────────────────────────────────────────────────────
@@ -251,6 +254,10 @@ export const PAGES = [
   { key: 'social', title: 'Social links', url: '/', group: 'site', docs: ['settings'], blurb: 'Footer icons', fields: { settings: ['social'] } },
   { key: 'badges', title: 'Trust badges', url: '/about/financials/', group: 'site', docs: ['settings'], blurb: 'Rating seals in the footer', fields: { settings: ['trustBadges'] } },
   { key: 'newsletter', title: 'Newsletter', url: '/', group: 'site', docs: [], blurb: 'Where signups go', fields: {} },
+  // Every Zeffy link on the site in one place. records: the fields of other records it edits, by collection, beside
+  // its own documents ('@advisory' is the Advisory Board's campaign, saved through /api/advisory-admin)
+  { key: 'zeffy', title: 'Zeffy', url: null, group: 'site', docs: ['settings'], blurb: 'Every Zeffy link: Donate, kids, events, Advisory Board',
+    fields: { settings: ['zeffy'] }, records: { kids: ['fundraisingUrl'], events: ['ticketUrl'], '@advisory': ['campaignUrl', 'campaignId', 'hosted'] } },
 ];
 export const pageByKey = (key) => PAGES.find((p) => p.key === key) || null;
 /** Old Site Config tab names (command palette, links) → pages */
@@ -259,9 +266,11 @@ export const OLD_TABS = { 'kids-on-site': 'home', faq: 'faq', ourstory: 'about',
 /** Changed fields of one page: [{ doc, path }] */
 export function pageChanges(page, docs) {
   const out = [];
-  for (const [doc, fields] of Object.entries(page.fields || {})) {
+  const fieldsOf = (doc) => page.fields?.[doc] || (doc.includes('/') || doc.startsWith('@') ? page.records?.[recordOf(doc)] : null);
+  for (const doc of Object.keys(docs)) {
+    const fields = fieldsOf(doc);
     const d = docs[doc];
-    if (!d?.base || !d?.edit) continue;
+    if (!fields || !d?.base || !d?.edit) continue;
     for (const p of changedPaths(d.base, d.edit)) if (fields.includes('') || touches(p, fields)) out.push({ doc, path: p });
   }
   return out;
@@ -271,5 +280,6 @@ export function pageChanges(page, docs) {
 export function pageOf(doc, path) {
   if (FLAT_MAPS.has(path)) return null;
   const p = path;
-  return PAGES.find((pg) => (pg.fields?.[doc] || []).some((f) => f === '' || p === f || p.startsWith(`${f}.`) || f.startsWith(`${p}.`))) || null;
+  const record = String(doc).includes('/') || String(doc).startsWith('@');
+  return PAGES.find((pg) => ((record ? pg.records?.[recordOf(doc)] : pg.fields?.[doc]) || []).some((f) => f === '' || p === f || p.startsWith(`${f}.`) || f.startsWith(`${p}.`))) || null;
 }

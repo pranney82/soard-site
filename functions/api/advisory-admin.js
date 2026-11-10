@@ -61,6 +61,15 @@ export async function onRequestGet(context) {
     if (refused) return refused;
     // The Zeffy form dropdowns (public/admin/zeffy-forms.js): the staff route is out of reach from the advisors' page
     if (new URL(context.request.url).searchParams.get('zeffyForms')) return Response.json({ ok: true, forms: await zeffyForms(env) });
+    // Admin → Site Config → Zeffy: the group's campaign and each approved fundraiser's Zeffy page, nothing else
+    if (new URL(context.request.url).searchParams.get('zeffyLinks')) {
+      const s = await getSettings(env.DB);
+      const hosted = (await listHosted(env.DB)).filter((h) => h.status === 'approved');
+      return Response.json({
+        ok: true, campaignUrl: s.campaignUrl || '', campaignId: s.campaignId || '',
+        hosted: Object.fromEntries(hosted.map((h) => [h.id, { title: h.title || '', date: h.date || '', status: h.status, giveUrl: h.giveUrl || '' }])),
+      }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     await seedOnce(env.DB, () => sharableBoardDocs(env.DB));
     await boardPapers(env.DB, await getSettings(env.DB));
     let settings = await getSettings(env.DB);

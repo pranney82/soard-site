@@ -28,6 +28,10 @@ import * as S from './site-config-shared.js';
 import * as OF from './org-facts-shared.js';
 import { floatRef } from './float.js';
 import { BookPage, BOOK_CSS, bookAddressProblem } from './book-editor.js';
+import { ZeffyLink } from './zeffy-forms.js';
+import { SITE_FORMS, zeffyKey } from './zeffy-links.js';
+import { seriesOf, isLatest } from './events-shared.js';
+import { statusOf, isListed } from './kids-shared.js';
 
 const html = htm.bind(h);
 const CF = `/cdn-cgi/imagedelivery/${S.CF_HASH}`;
@@ -104,7 +108,38 @@ const ICONS = {
 const Icon = ({ name, size = 16 }) => html`<svg class="sc-ico" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
 
 // ─── Documents: load, edit, save only what changed ─────────────────
+// Records kept somewhere other than the content tables, read and written through their own route. They load, merge
+// and save like any document (Zeffy's '@advisory': the Advisory Board's campaign and its fundraisers' Zeffy pages).
+const SOURCES = {
+  '@advisory': {
+    async read() {
+      const j = await call('/api/advisory-admin?zeffyLinks=1');
+      if (j.status === 403) return { error: 'Only the people who run the Advisory Board can change these: Peter, Holly and the board member who leads it.', refused: true };
+      if (!j.ok) return { error: j.error || 'Couldn’t load the Advisory Board’s links' };
+      return { data: { campaignUrl: j.campaignUrl || '', campaignId: j.campaignId || '', hosted: j.hosted || {} }, sha: null };
+    },
+    /** Only what changed: the campaign through save-settings (the server asks Zeffy which campaign it is), each fundraiser's page through its own row */
+    async write(next, { base, edit, fresh }) {
+      const changed = S.changedPaths(base, edit);
+      if (changed.some((p) => p === 'campaignUrl' || p === 'campaignId')) {
+        const settings = { campaignUrl: next.campaignUrl || '' };
+        if (!S.same(base.campaignId, edit.campaignId)) settings.campaignId = next.campaignId || '';
+        const j = await call('/api/advisory-admin', { action: 'save-settings', settings });
+        if (!j.ok) return { success: false, error: j.error || `HTTP ${j.status}` };
+      }
+      for (const id of new Set(changed.filter((p) => p.startsWith('hosted.')).map((p) => p.split('.')[1]))) {
+        const h = fresh.hosted?.[id];
+        if (!h?.status) return { success: false, error: 'An Advisory Board fundraiser was taken off the approved list meanwhile. Reload the page.' };
+        const j = await call('/api/advisory-admin', { action: 'hosted-status', id, status: h.status, giveUrl: next.hosted[id].giveUrl || '' });
+        if (!j.ok) return { success: false, error: j.error || `HTTP ${j.status}` };
+      }
+      return { success: true };
+    },
+  },
+};
+
 async function readDoc(key) {
+  if (SOURCES[key]) return SOURCES[key].read();
   const j = await call(`/api/read-content?path=${encodeURIComponent(S.docPath(key))}`);
   if (j.status === 404) return { data: {}, sha: null, missing: true };
   if (!j.success) return { error: j.error || 'Could not load it' };
@@ -120,7 +155,7 @@ function normalize(key, d) {
   return data;
 }
 
-function useDocs(addToast) {
+function useDocs(addToast, onRecords = null) {
   const [docs, setDocs] = useState({});
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(null);
@@ -129,7 +164,7 @@ function useDocs(addToast) {
   const load = async (key) => {
     setDocs(d => ({ ...d, [key]: { ...(d[key] || {}), status: 'loading', error: null } }));
     const r = await readDoc(key);
-    if (r.error) { setDocs(d => ({ ...d, [key]: { status: 'error', error: r.error } })); return; }
+    if (r.error) { setDocs(d => ({ ...d, [key]: { status: 'error', error: r.error, refused: !!r.refused } })); return; }
     const data = normalize(key, r.data);
     setDocs(d => ({ ...d, [key]: { status: 'ready', base: data, edit: data, sha: r.sha } }));
   };
@@ -144,6 +179,8 @@ function useDocs(addToast) {
     if (!keys.length || saving) return true;
     setSaving(true);
     const clashes = [];
+    // Records of other collections saved here (a kid's Zeffy link): the admin's own lists follow
+    const records = [];
     try {
       for (const key of keys) {
         const mine = ref.current[key];
@@ -155,15 +192,20 @@ function useDocs(addToast) {
           const { next, conflicts } = S.mergeForSave(mine.base, mine.edit, theirs);
           const open = conflicts.filter(p => !(keep?.[key] || []).includes(p));
           if (open.length) { clashes.push({ key, paths: open, theirs, mine: mine.edit, base: mine.base }); done = true; break; }
-          const j = await call('/api/save-content', { path: S.docPath(key), content: JSON.stringify(next, null, 2), message: `Site Config: ${saveMessage(key, mine)}`, sha: fresh.sha || undefined });
+          const src = SOURCES[key];
+          const j = src ? await src.write(next, { base: mine.base, edit: mine.edit, fresh: theirs })
+            : await call('/api/save-content', { path: S.docPath(key), content: JSON.stringify(next, null, 2), message: `Site Config: ${saveMessage(key, mine)}`, sha: fresh.sha || undefined });
           if (j.success) {
-            const norm = normalize(key, next);
+            // A source's server may settle more than was sent (the campaign's ID): read back what it kept
+            const back = src ? await readDoc(key) : null;
+            const norm = normalize(key, back?.data || next);
             // Typing during the save stays: it's laid onto what was saved
             setDocs(d => {
               const now = d[key];
               const edit = S.same(now.edit, mine.edit) ? norm : S.mergeForSave(mine.edit, now.edit, norm).next;
               return { ...d, [key]: { status: 'ready', base: norm, edit, sha: j.sha || null } };
             });
+            if (key.includes('/')) records.push({ key, data: next });
             done = true;
           } else if (j.status !== 409) {
             addToast(`Couldn't save: ${j.error || `HTTP ${j.status}`}`, 'error');
@@ -178,6 +220,7 @@ function useDocs(addToast) {
       return true;
     } finally {
       setSaving(false);
+      if (records.length) onRecords?.(records);
     }
   };
 
@@ -206,8 +249,9 @@ function useDocs(addToast) {
   return { docs, ensure, load, update, set, save, saving, discard, dirtyKeys, conflict, resolve, cancelConflict: () => setConflict(null) };
 }
 
-/** "Homepage, Apply" for the audit message */
+/** "Homepage, Apply" for the audit message; a record's own name ("Zeffy: Peter's fundraising link") */
 function saveMessage(key, d) {
+  if (key.includes('/')) return `${S.pageOf(key, S.changedPaths(d.base, d.edit)[0] || '')?.title || 'Site Config'}: ${labelOf(S.changedPaths(d.base, d.edit)[0] || '')} for ${d.edit?.name || d.edit?.title || key}`;
   const names = [...new Set(S.changedPaths(d.base, d.edit).map(p => S.pageOf(key, p)?.title).filter(Boolean))];
   return names.length ? names.join(', ') : key;
 }
@@ -225,6 +269,8 @@ const LABELS = {
   documents: 'Tax returns, audits and other files', annualReports: 'Annual reports', categories: 'FAQ categories', items: 'Questions',
   show: 'On the site', slug: 'Address', eyebrow: 'Small line above the title', insetPage: 'Page beside the cover', chapters: 'Chapters',
   pages: 'The book’s pages', pdf: 'The PDF', version: 'The PDF', textUrl: 'The PDF', uploadedAt: 'The PDF', spreadsCut: 'The PDF',
+  zeffy: 'Zeffy forms', 'zeffy.donateUrl': 'Donate page: one-time gifts', 'zeffy.monthlyUrl': 'Donate page: monthly gifts', 'zeffy.liveUrl': 'Live reveal: Fund the next room',
+  fundraisingUrl: 'Fundraising link', ticketUrl: 'Tickets link', campaignUrl: 'The Advisory Board’s campaign', campaignId: 'The Advisory Board’s campaign', hosted: 'A fundraiser’s Zeffy page',
 };
 function labelOf(path) {
   const p = String(path).replace(/^photoTimestamps\./, '');
@@ -1119,6 +1165,11 @@ function DonatePage({ c }) {
         ${!starred.length && html`<li><span>No category is starred, so the Donate page has no questions.</span></li>`}
         <li><span>Star a category in FAQ to show it here.</span><button type="button" class="btn btn-ghost btn-sm" onClick=${() => c.go('faq')}>Open FAQ</button></li>
       </ul>
+    <//>
+    <${Card} title="Zeffy forms" sub="The one-time and monthly forms the gift buttons open.">
+      <ul class="sc-links">
+        <li><span>Set on Zeffy, with every other Zeffy link on the site.</span><button type="button" class="btn btn-ghost btn-sm" onClick=${() => c.go('zeffy', 'sc-zeffy-giving')}>Open Zeffy</button></li>
+      </ul>
     <//>`;
 }
 
@@ -1823,8 +1874,121 @@ function QuietCard() {
     <//>`;
 }
 
+// ─── Zeffy: every Zeffy link on the site, in one place ─────────────
+// The site's own forms are the settings document's (settings.zeffy). A kid's fundraising link and an event's tickets
+// link are those records' own fields, the same ones their editors show; the Advisory Board's are its own route's
+// (SOURCES['@advisory']). One Save writes each over a fresh copy, so nothing else on a kid or event is touched.
+const GIVING = [
+  { key: 'donateUrl', label: 'Donate page: one-time gifts', hint: 'Donate Now and the one-time amounts on /donate/ open it in a pop-up.' },
+  { key: 'monthlyUrl', label: 'Donate page: monthly gifts', hint: 'The monthly amounts on /donate/ open it in a pop-up.' },
+  { key: 'liveUrl', label: 'Live reveal: Fund the next room', hint: 'Opens beside the video on /live/ while a reveal plays.' },
+];
+// A cleared link goes back to however the record had none (null, '' or no field), so clearing an empty one isn't a change
+const typedLink = (v, base, empty) => { const t = String(v ?? '').trim(); return t || (base == null || base === '' ? base : empty); };
+const zeffyProblem = (v) => (!String(v || '').trim() ? 'Pick a Zeffy form' : S.urlProblem(v) || (!zeffyKey(v) ? 'Use a Zeffy form’s link (zeffy.com)' : null));
+const kidOrder = (k) => (k.status === 'needs-funding' ? 0 : k.status === 'in-progress' ? 1 : 2);
+const dayLabel = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(String(iso || '')) ? new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : String(iso || ''));
+
+/** One Zeffy link: the shared field (dropdown, link box, Open) under its label, its hint or problem under it */
+function ZeffyField({ label, name = null, value, onChange, onPick, prefer, problem = null, hint = null, formId }) {
+  const id = useId('sc-zf');
+  return html`
+    <${Field} label=${label} id=${id} hint=${hint} problem=${problem} wide>
+      <${ZeffyLink} inputId=${id} value=${value ?? ''} id=${formId} prefer=${prefer} label=${name || (typeof label === 'string' ? label : 'Zeffy link')} invalid=${!!problem}
+        onPick=${onPick} onChange=${onChange} />
+    <//>`;
+}
+
+/** A record's row, while it loads or if it can't */
+function RecordState({ r, label, onRetry }) {
+  if (!r || r.status === 'loading') return html`<div class="sc-field is-wide"><span class="sc-label">${label}</span><div class="sc-zf-wait"><span class="spinner" /></div></div>`;
+  return html`<div class="sc-field is-wide"><span class="sc-label">${label}</span><p class="sc-note is-warn"><${Icon} name="warn" /> Couldn’t load it: ${r.error}. Nothing here changes until it does. <button type="button" class="sc-link" onClick=${onRetry}>Try again</button></p></div>`;
+}
+
+function ZeffyPage({ c }) {
+  const st = c.doc('settings');
+  const z = st.zeffy || {};
+  // Kids now raising money or being built, and any other kid whose page links to a form. A kid whose record is open
+  // here stays listed, so clearing a link doesn't make the row vanish
+  const kids = c.kids.filter((k) => k?.slug && (k.status !== 'completed' || String(k.fundraisingUrl || '').trim() || c.record(`kids/${k.slug}`)))
+    .sort((a, b) => kidOrder(a) - kidOrder(b) || String(a.name || '').localeCompare(String(b.name || '')));
+  const events = [...c.events].filter((e) => e?.slug).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const keys = [...kids.map((k) => `kids/${k.slug}`), ...events.map((e) => `events/${e.slug}`), '@advisory'];
+  useEffect(() => { c.ensure(keys); }, [keys.join('|')]);
+  const rec = (key) => c.record(key);
+  const adv = rec('@advisory');
+  const hosted = Object.entries(adv?.edit?.hosted || {});
+  const giving = GIVING.map((g) => ({ ...g, value: g.key in z ? z[g.key] : SITE_FORMS[g.key] }));
+
+  return html`
+    <p class="sc-note">Every Zeffy link on the site. Pick a form from SOARD’s Zeffy, or paste a link. Save, then publish: the site changes when it’s published (the Advisory Board’s campaign counts as soon as it’s saved).</p>
+    <${Card} id="sc-zeffy-giving" title="Giving" sub="The site’s own donation forms.">
+      ${giving.map((g) => html`
+        <${ZeffyField} key=${g.key} label=${g.label} value=${g.value} prefer=${['donation']} problem=${zeffyProblem(g.value)} hint=${g.hint}
+          onChange=${(v) => c.set('settings', `zeffy.${g.key}`, String(v).trim())} onPick=${(f) => c.set('settings', `zeffy.${g.key}`, f.url)} />`)}
+    <//>
+    <${Card} id="sc-zeffy-kids" title="Kids" sub="Each kid’s Give button. Kids awaiting funding or in build, and any other kid whose page has a link.">
+      ${!c.kids.length ? html`<p class="sc-hint">Loading the kids…</p>` : !kids.length ? html`<p class="sc-hint">No kid is awaiting funding or in build.</p>` : null}
+      ${kids.map((k) => {
+        const key = `kids/${k.slug}`;
+        const r = rec(key);
+        const label = html`${k.name || k.slug} <span class="tag">${statusOf(k.status).short}</span>${!isListed(k) ? html` <span class="tag">Page hidden</span>` : null}`;
+        if (r?.status !== 'ready') return html`<${RecordState} key=${key} r=${r} label=${label} onRetry=${() => c.load(key)} />`;
+        const v = r.edit.fundraisingUrl || '';
+        const base = r.base.fundraisingUrl;
+        return html`<${ZeffyField} key=${key} label=${label} name=${`${k.name || k.slug}’s fundraising link`} value=${v} prefer=${['donation', 'peer']}
+          problem=${v ? S.urlProblem(v) : null} hint=${!v ? (k.status === 'needs-funding' ? 'No link: visitors have no way to give toward this room.' : 'No link: their page has no Give button.') : `On /kids/${k.slug}/`}
+          onChange=${(x) => c.set(key, 'fundraisingUrl', typedLink(x, base, null))} onPick=${(f) => c.set(key, 'fundraisingUrl', f.url)} />`;
+      })}
+    <//>
+    <${Card} id="sc-zeffy-events" title="Events" sub="Each event’s tickets or registration link, newest first.">
+      ${!events.length ? html`<p class="sc-hint">No events yet.</p>` : null}
+      ${events.map((e) => {
+        const key = `events/${e.slug}`;
+        const r = rec(key);
+        const series = seriesOf(e);
+        const page = series && isLatest(e, c.events) ? series.path : null;
+        const label = html`${String(e.title || e.slug).trim()}${e.date ? html` <span class="tag">${dayLabel(e.date)}</span>` : null}`;
+        if (r?.status !== 'ready') return html`<${RecordState} key=${key} r=${r} label=${label} onRetry=${() => c.load(key)} />`;
+        const v = r.edit.ticketUrl || '';
+        const base = r.base.ticketUrl;
+        return html`<${ZeffyField} key=${key} label=${label} name=${`${String(e.title || e.slug).trim()} tickets link`} value=${v} prefer=${['tickets', 'auction']}
+          problem=${v ? S.urlProblem(v) : null}
+          hint=${!v ? `No link: ${page ? `${page} and ` : ''}its card on the events list have no ticket button` : page ? `On ${page} and the events list` : 'On the events list'}
+          onChange=${(x) => c.set(key, 'ticketUrl', typedLink(x, base, ''))} onPick=${(f) => c.set(key, 'ticketUrl', f.url)} />`;
+      })}
+    <//>
+    <${Card} id="sc-zeffy-advisory" title="Advisory Board" sub="What these raise counts toward the group’s goal on the advisors’ Fundraise page.">
+      ${adv?.status !== 'ready' ? (adv?.refused ? html`<p class="sc-hint">${adv.error}</p>` : html`<${RecordState} r=${adv} label="The group’s campaign" onRetry=${() => c.load('@advisory')} />`) : html`
+        <${ZeffyField} label="The group’s campaign" value=${adv.edit.campaignUrl} formId=${adv.edit.campaignId || ''} prefer=${['peer']}
+          problem=${adv.edit.campaignUrl ? S.urlProblem(adv.edit.campaignUrl) : null}
+          hint=${!adv.edit.campaignUrl ? 'Not connected: nothing counts toward the goal until a campaign is picked.' : !adv.edit.campaignId ? 'Zeffy checks which campaign this is when it’s saved.' : 'Connected.'}
+          onChange=${(x) => c.update('@advisory', (d) => ({ ...d, campaignUrl: typedLink(x, adv.base.campaignUrl, ''), campaignId: adv.base.campaignId }))}
+          onPick=${(f) => c.update('@advisory', (d) => ({ ...d, campaignUrl: f.url, campaignId: f.id }))} />
+        ${hosted.map(([id, h]) => html`
+          <${ZeffyField} key=${id} label=${html`${h.title || 'A fundraiser'}${h.date ? html` <span class="tag">${dayLabel(h.date)}</span>` : null}`} name=${`${h.title || 'The fundraiser'}’s Zeffy page`} value=${h.giveUrl} prefer=${['peer', 'tickets', 'donation']}
+            problem=${h.giveUrl ? S.urlProblem(h.giveUrl) : null} hint="An advisor’s fundraiser the group approved"
+            onChange=${(x) => c.set('@advisory', `hosted.${id}.giveUrl`, typedLink(x, adv.base.hosted?.[id]?.giveUrl, ''))} onPick=${(f) => c.set('@advisory', `hosted.${id}.giveUrl`, f.url)} />`)}`}
+    <//>`;
+}
+
 // ─── What must be fixed before saving, per page ────────────────────
 const PROBLEMS = {
+  zeffy: (d, docs = {}) => {
+    const out = GIVING.filter((g) => g.key in (d.settings?.zeffy || {}) && zeffyProblem(d.settings.zeffy[g.key])).map((g) => `“${g.label}”`);
+    // Only links changed here: one already saved some other way doesn't stop this page saving
+    for (const [k, r] of Object.entries(docs)) {
+      if (!r?.edit || !r.base || !(k.startsWith('kids/') || k.startsWith('events/') || k === '@advisory')) continue;
+      const name = r.edit.name || String(r.edit.title || '').trim() || k;
+      if (k.startsWith('kids/') && !S.same(r.base.fundraisingUrl, r.edit.fundraisingUrl) && S.urlProblem(r.edit.fundraisingUrl)) out.push(`${name}’s fundraising link`);
+      if (k.startsWith('events/') && !S.same(r.base.ticketUrl, r.edit.ticketUrl) && S.urlProblem(r.edit.ticketUrl)) out.push(`the ${name} tickets link`);
+      if (k === '@advisory') {
+        if (!S.same(r.base.campaignUrl, r.edit.campaignUrl) && S.urlProblem(r.edit.campaignUrl)) out.push('the Advisory Board’s campaign');
+        for (const [id, h] of Object.entries(r.edit.hosted || {})) if (!S.same(r.base.hosted?.[id]?.giveUrl, h.giveUrl) && S.urlProblem(h.giveUrl)) out.push(`the “${h.title || 'fundraiser'}” Zeffy page`);
+      }
+    }
+    return out;
+  },
   home: (d) => { const h = d.settings?.homeHero || {}; const up = d.settings?.upNext || {}; return [S.linkProblem(h.cta1Link) && 'the first hero button’s link', S.linkProblem(h.cta2Link) && 'the second hero button’s link', up.mode === 'manual' && S.linkProblem(up.ctaLink) && 'the Up Next button’s link'].filter(Boolean); },
   apply: (d) => ((d.settings?.applyFaqs || []).some(q => !String(q.question || '').trim() || !S.plainText(q.answer)) ? ['a question without its words'] : []),
   faq: (d) => [(d.faq?.categories || []).some(x => !String(x.label || '').trim()) && 'a category without a name', (d.faq?.items || []).some(i => !String(i.question || '').trim() || !S.plainText(i.answer)) && 'a question without its words'].filter(Boolean),
@@ -1849,7 +2013,7 @@ function BookView({ c }) {
   return html`<${BookPage} c=${c} ui=${{ Card, TextField, AreaField, InlineRich, Segmented, Icon, Dialog }} />`;
 }
 
-const VIEWS = { book: BookView, home: HomePage, kids: KidsPage, how: HowPage, apply: ApplyPage, donate: DonatePage, ways: WaysPage, partners: PartnersPage, community: CommunityPage, resources: ResourcesPage, about: AboutPage, financials: FinancialsPage, faq: FaqPage, advisory: AdvisoryPage, store: StorePage, media: MediaPage, org: OrgPage, social: SocialPage, badges: BadgesPage, newsletter: NewsletterPage };
+const VIEWS = { zeffy: ZeffyPage, book: BookView, home: HomePage, kids: KidsPage, how: HowPage, apply: ApplyPage, donate: DonatePage, ways: WaysPage, partners: PartnersPage, community: CommunityPage, resources: ResourcesPage, about: AboutPage, financials: FinancialsPage, faq: FaqPage, advisory: AdvisoryPage, store: StorePage, media: MediaPage, org: OrgPage, social: SocialPage, badges: BadgesPage, newsletter: NewsletterPage };
 const KEYWORDS = {
   home: 'hero headline button eyebrow paragraph up next now building featured story kid strip showcase mission rooms bathroom bedroom therapy',
   kids: 'summary line title', how: 'project drawings plans reveal video', apply: 'applications open closed photos journey quote testimonial questions faq meet family',
@@ -1857,16 +2021,17 @@ const KEYWORDS = {
   about: 'our story founders tripp turning point gracie mascot store timeline milestones today closing', financials: '990 tax return audit annual report numbers revenue expenses programs net assets volunteers employees',
   faq: 'questions answers categories donate star', advisory: 'hero', store: 'sunny ranney rooms cards', media: 'press branding bio boilerplate founders story photos download',
   book: 'anniversary 15 fifteen years flip flipbook pdf pages chapters bookmarks download',
+  zeffy: 'zeffy donate donation give gift monthly fundraising fund campaign tickets ticket registration register gala golf advisory fundraiser form link live reveal',
   org: 'name legal ein duns dun bradstreet irs w-9 w9 tax phone email address mailing street city zip contact mission vision values board facts', social: 'facebook instagram youtube tiktok', badges: 'charity navigator candid guidestar rating seal footer', newsletter: 'kit signups subscribers',
 };
 
 const readHash = () => { const m = String(location.hash).match(/^#site(?:\/([\w-]+))?/); return m ? (S.pageByKey(m[1]) ? m[1] : null) : undefined; };
 
 // ─── The area ──────────────────────────────────────────────────────
-export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onPublish = null, kids = [], partners = [], initialTab = null, guides = null }) {
+export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onPublish = null, onRecordsSaved = null, kids = [], partners = [], events = [], initialTab = null, guides = null }) {
   injectStyles();
   const narrow = useNarrow();
-  const docs = useDocs(addToast);
+  const docs = useDocs(addToast, onRecordsSaved);
   const [pageKey, setPageKey] = useState(() => readHash() || S.OLD_TABS[initialTab] || (S.pageByKey(initialTab) ? initialTab : null));
   const key = pageKey || (narrow ? null : 'home');
   const page = S.pageByKey(key);
@@ -1904,13 +2069,15 @@ export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onP
     doc: (k) => docs.docs[k]?.edit || {},
     set: docs.set, update: docs.update,
     photo: (path, v) => docs.update('settings', (e) => S.withPhoto(e, path, v)),
-    kids, partners, addToast, go, guides,
+    kids, partners, events, addToast, go, guides,
+    // Other records a page edits (Zeffy): their load state, base and edit
+    record: (k) => docs.docs[k], ensure: docs.ensure, load: docs.load,
     open: (view, hash = null) => { if (hash) history.replaceState?.(null, '', hash); window.dispatchEvent(new CustomEvent('soard-navigate', { detail: view })); },
   };
 
   const edits = Object.fromEntries(Object.entries(docs.docs).map(([k, v]) => [k, v.edit]));
   const changed = S.PAGES.filter(p => S.pageChanges(p, docs.docs).length);
-  const problemsOf = (p) => (PROBLEMS[p.key] && p.docs.every(k => docs.docs[k]?.edit) ? PROBLEMS[p.key](edits) : []);
+  const problemsOf = (p) => (PROBLEMS[p.key] && p.docs.every(k => docs.docs[k]?.edit) ? PROBLEMS[p.key](edits, docs.docs) : []);
   const blocking = changed.map(p => ({ page: p, list: problemsOf(p) })).filter(x => x.list.length);
   const dirty = docs.dirtyKeys.length > 0;
 
@@ -1940,7 +2107,7 @@ export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onP
   // Which documents are saved but not on the live site yet (Publish to site)
   const loadPending = async () => { const j = await call('/api/pending-changes'); if (j.success) setPending(j.changes || []); };
   useEffect(() => { loadPending(); const on = () => setTimeout(loadPending, 600); window.addEventListener('soard-content-changed', on); return () => window.removeEventListener('soard-content-changed', on); }, []);
-  const waiting = page && pending ? pending.filter(x => page.docs.includes(x.type)) : [];
+  const waiting = page && pending ? pending.filter(x => page.docs.includes(x.type) || (page.records?.[x.type] && docs.docs[`${x.type}/${x.slug}`])) : [];
   useEffect(() => { if (!waiting.length) return undefined; const t = setInterval(loadPending, 30000); return () => clearInterval(t); }, [waiting.length]);
 
   return html`
@@ -2105,7 +2272,7 @@ function ConflictDialog({ clashes, onResolve, onClose }) {
       <ul class="sc-diff">
         ${all.map(({ c, p, id }) => html`
           <li key=${id}>
-            <strong>${S.pageOf(c.key, p)?.title ? `${S.pageOf(c.key, p).title}: ` : ''}${labelOf(p)}</strong>
+            <strong>${S.pageOf(c.key, p)?.title ? `${S.pageOf(c.key, p).title}: ` : ''}${c.key.includes('/') ? `${c.mine?.name || String(c.mine?.title || '').trim() || c.key}, ` : ''}${labelOf(p)}</strong>
             <label class="sc-check"><input type="radio" name=${id} checked=${choice[id] !== 'theirs'} onChange=${() => setChoice(x => ({ ...x, [id]: 'mine' }))} /> Keep mine: <q>${valueText(S.getPath(c.mine, p))}</q></label>
             <label class="sc-check"><input type="radio" name=${id} checked=${choice[id] === 'theirs'} onChange=${() => setChoice(x => ({ ...x, [id]: 'theirs' }))} /> Use theirs: <q>${valueText(S.getPath(c.theirs, p))}</q></label>
           </li>`)}
@@ -2404,6 +2571,8 @@ const CSS = `
 
 /* Social, badges, history */
 .sc-social { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: center; }
+.sc-zf-wait { min-height: var(--control-h, 38px); display: flex; align-items: center; }
+.sc-label .tag { font-weight: 500; }
 .sc-badge { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 1rem; align-items: start; }
 .sc-badge-art { display: grid; gap: .45rem; justify-items: center; }
 .sc-badge-tile { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 12px; background: #1E1F25; color: rgba(255,255,255,.7); font-size: var(--fs-2xs); text-align: center; padding: .5rem; }

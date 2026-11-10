@@ -830,7 +830,8 @@ for (const width of [390, 1280]) {
   await page.evaluate(() => [...document.querySelectorAll('#goal-fold button')].find((b) => b.textContent === 'Save').click());
   await settle(260);
   const patch = w.posts.find((x) => x.action === 'save-settings')?.settings || {};
-  check(Object.keys(patch).join() === 'campaignUrl', `round three: only what changed is sent (${Object.keys(patch)})`);
+  // The campaign's ID travels with its address (3e86de92), so a changed link sends both; nothing else goes
+  check(Object.keys(patch).sort().join() === 'campaignId,campaignUrl', `round three: only what changed is sent, the campaign’s link and its ID (${Object.keys(patch)})`);
   check(w.admin.settings.goal === 30000, 'round three: someone else’s goal survives');
   // Back to the tab: what changed meanwhile
   w.admin.settings = { ...w.admin.settings, goal: 40000 };

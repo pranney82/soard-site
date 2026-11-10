@@ -19,7 +19,7 @@
  *                     (functions/api/_newsletter-drafts.js drafts it by itself, too)
  */
 import { h, htm, useState, useRef, useEffect, useCallback } from './vendor.js';
-import { ZeffyFormSelect } from './zeffy-forms.js';
+import { ZeffyLink } from './zeffy-forms.js';
 import {
   seriesOf, isOver, isLatest, eventPath, yearPath, yearOf, fmtDay, recapPhotos, recapSponsors,
   sponsorCount, recapLead, cleanHighlights, HIGHLIGHTS_MAX, displayName, cleanSponsors,
@@ -411,8 +411,7 @@ export function EventBasics({ event, onEvent }) {
       ${field('address', 'Address', { placeholder: '4001 Clubland Dr. Marietta, GA 30068' })}
       <div class="form-group er-wide">
         <label class="form-label" for="er-ticket-url">Registration link</label>
-        <${ZeffyFormSelect} value=${ev.ticketUrl || ''} prefer=${['tickets']} label="Registration link" onPick=${(f) => onEvent('ticketUrl', f.url)} />
-        <input id="er-ticket-url" class="form-input" type="url" placeholder="https://www.zeffy.com/…" aria-label="Registration link" value=${ev.ticketUrl || ''} onInput=${(e) => onEvent('ticketUrl', e.target.value)} />
+        <${ZeffyLink} inputId="er-ticket-url" value=${ev.ticketUrl || ''} prefer=${['tickets']} label="Registration link" onPick=${(f) => onEvent('ticketUrl', f.url)} onChange=${(v) => onEvent('ticketUrl', v)} />
       </div>
     </div>
     <label class="checkbox-label u-mt-1" style="display: inline-flex; align-items: center; gap: 0.5rem;">

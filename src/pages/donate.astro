@@ -23,6 +23,7 @@ import ProcessStrip from '../components/ui/ProcessStrip.astro';
 import { getPublishedKids } from '../utils/collections';
 import faqData from '../content/site/faq.json';
 import siteSettings from '../content/site/settings.json';
+import { siteForm, embedOf, withParam } from '../../public/admin/zeffy-links.js';
 import { getDonateSchema, getFAQSchema } from '../utils/schema';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, CF_BASE, cfLqip, cfId } from '../utils/cf-image';
@@ -56,9 +57,14 @@ const storyExcerpt = bioSentences.slice(0, 2).join(' ');
 const addressLine = `${siteSettings.address.street}, ${siteSettings.address.city}, ${siteSettings.address.state} ${siteSettings.address.zip}`;
 const legalName = 'Sunshine on a Ranney Day, Inc.';
 
-/* ── Zeffy form URLs ── */
-const ZEFFY_ONETIME = 'https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home';
-const ZEFFY_MONTHLY = 'https://www.zeffy.com/en-US/donation-form/soard-monthly-builders';
+/* ── The Zeffy forms: Admin → Site Config → Zeffy. A gift button opens the form's
+   embed in the pop-up below (data-zeffy), with its amount ── */
+const ZEFFY_ONETIME = siteForm(siteSettings, 'donateUrl');
+const ZEFFY_MONTHLY = siteForm(siteSettings, 'monthlyUrl');
+const ONETIME_EMBED = embedOf(ZEFFY_ONETIME);
+const MONTHLY_EMBED = embedOf(ZEFFY_MONTHLY);
+const once = (amount: number) => withParam(ZEFFY_ONETIME, 'amount', amount);
+const monthly = (amount: number) => withParam(ZEFFY_MONTHLY, 'amount', amount);
 
 const donateFaqs = faqData.items
   .filter(item => {
@@ -91,7 +97,7 @@ const breadcrumbs = [
         <h1>A room can change<br/>a child's <em>entire</em> life.</h1>
         <p class="hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs, at <strong>no cost to families</strong>.</p>
         <div class="hero-ctas">
-          <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-lg btn-hero-glow">Donate Now →</a>
+          <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-primary btn-lg btn-hero-glow">Donate Now →</a>
           <a href="#impact" class="btn btn-outline-dark">See Your Impact</a>
         </div>
         <div class="hero-trust">
@@ -189,32 +195,32 @@ const breadcrumbs = [
             <span class="tier-feature-what">Furniture & Flooring</span>
           </div>
           <p class="tier-feature-desc">Adaptive furniture or new accessible flooring: the structural pieces that change a child's daily life.</p>
-          <a href={`${ZEFFY_ONETIME}?amount=500`} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary">Give $500 →</a>
+          <a href={once(500)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-primary">Give $500 →</a>
         </div>
         <div class="tier-row">
           <div class="tier-item" data-reveal>
             <span class="tier-item-amount">$60</span>
             <strong class="tier-item-what">Paint & Supplies</strong>
             <p>Transforms a child's walls into their dream canvas. Paint, primer, and all materials included.</p>
-            <a href={`${ZEFFY_ONETIME}?amount=60`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $60 →</a>
+            <a href={once(60)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="tier-item-cta">Give $60 →</a>
           </div>
           <div class="tier-item" data-reveal data-delay="1">
             <span class="tier-item-amount">$125</span>
             <strong class="tier-item-what">Bedding & Decor</strong>
             <p>New bedding, curtains, rugs, and wall art. The details that make a room feel like <em>home</em>.</p>
-            <a href={`${ZEFFY_ONETIME}?amount=125`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $125 →</a>
+            <a href={once(125)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="tier-item-cta">Give $125 →</a>
           </div>
           <div class="tier-item" data-reveal data-delay="2">
             <span class="tier-item-amount">$1,000</span>
             <strong class="tier-item-what">Full Room Sponsor</strong>
             <p>Funds a complete room transformation, from design to demolition to the big reveal moment.</p>
-            <a href={`${ZEFFY_ONETIME}?amount=1000`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $1,000 →</a>
+            <a href={once(1000)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="tier-item-cta">Give $1,000 →</a>
           </div>
           <div class="tier-item tier-item--custom" data-reveal data-delay="3">
             <span class="tier-item-amount">Any $</span>
             <strong class="tier-item-what">Your Amount</strong>
             <p>Every dollar has a purpose. Give whatever feels right. Your gift helps build rooms for kids.</p>
-            <a href={`${ZEFFY_ONETIME}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Choose Your Amount →</a>
+            <a href={once(50)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="tier-item-cta">Choose Your Amount →</a>
           </div>
         </div>
       </div>
@@ -228,32 +234,32 @@ const breadcrumbs = [
             <span class="tier-feature-what">Room Champion</span>
           </div>
           <p class="tier-feature-desc">$600/year funds adaptive furniture and flooring that transforms a child's daily life.</p>
-          <a href={`${ZEFFY_MONTHLY}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary">Give $50/mo →</a>
+          <a href={monthly(50)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="btn btn-primary">Give $50/mo →</a>
         </div>
         <div class="tier-row">
           <div class="tier-item">
             <span class="tier-item-amount">$10<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Sunshine Starter</strong>
             <p>Less than 35¢ a day provides essential supplies for room makeovers all year long.</p>
-            <a href={`${ZEFFY_MONTHLY}?amount=10`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $10/mo →</a>
+            <a href={monthly(10)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="tier-item-cta">Give $10/mo →</a>
           </div>
           <div class="tier-item">
             <span class="tier-item-amount">$25<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Dream Builder</strong>
             <p>$300/year is enough to furnish a child's entire dream bedroom with new bedding, decor, and rugs.</p>
-            <a href={`${ZEFFY_MONTHLY}?amount=25`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $25/mo →</a>
+            <a href={monthly(25)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="tier-item-cta">Give $25/mo →</a>
           </div>
           <div class="tier-item">
             <span class="tier-item-amount">$100<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Legacy Builder</strong>
             <p>At $1,200/year, you're directly sponsoring a complete room transformation for a child in need.</p>
-            <a href={`${ZEFFY_MONTHLY}?amount=100`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $100/mo →</a>
+            <a href={monthly(100)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="tier-item-cta">Give $100/mo →</a>
           </div>
           <div class="tier-item tier-item--custom">
             <span class="tier-item-amount">Any $</span>
             <strong class="tier-item-what">Your Amount</strong>
             <p>Set your own monthly amount. Your recurring gift helps build rooms for kids who need them most.</p>
-            <a href={`${ZEFFY_MONTHLY}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Choose Your Amount →</a>
+            <a href={monthly(50)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="tier-item-cta">Choose Your Amount →</a>
           </div>
         </div>
       </div>
@@ -399,7 +405,7 @@ const breadcrumbs = [
       <h2 data-reveal>Every child deserves a room<br/>that feels like <em>home</em>.</h2>
       <p data-reveal data-delay="1">You can make that happen today.</p>
       <div class="donate-finale-ctas" data-reveal data-delay="2">
-        <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-dark btn-lg">Donate Now →</a>
+        <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-dark btn-lg">Donate Now →</a>
         <a href="/kids/" class="btn btn-outline-dark">Meet the Kids</a>
       </div>
       <p class="donate-finale-note" data-reveal data-delay="3">501(c)(3) · EIN {siteSettings.ein} · All donations tax-deductible</p>
@@ -410,7 +416,7 @@ const breadcrumbs = [
   <div class="sticky-cta" id="sticky-cta" aria-hidden="true" inert>
     <div class="sticky-cta-inner">
       <span class="sticky-cta-text">Help build dreams</span>
-      <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary sticky-cta-btn">Donate Now</a>
+      <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-primary sticky-cta-btn">Donate Now</a>
     </div>
   </div>
 
@@ -428,9 +434,6 @@ const breadcrumbs = [
 </BaseLayout>
 
 <script>
-  const ZEFFY_ONETIME_EMBED = 'https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home';
-  const ZEFFY_MONTHLY_EMBED = 'https://www.zeffy.com/embed/donation-form/soard-monthly-builders';
-
   /* Per-visit lifecycle — aborted on astro:before-swap so document-level
      listeners and the sticky-bar observer never accumulate across
      client-side navigations (they previously stacked one set per visit). */
@@ -474,13 +477,13 @@ const breadcrumbs = [
     //     restore focus on close) ---
     let previousFocus: HTMLElement | null = null;
 
-    function openModal(href: string) {
+    // The link's own form, as Zeffy embeds it (data-zeffy), with the link's amount
+    function openModal(link: HTMLAnchorElement) {
       if (!modal || !iframe) return;
-      const url = new URL(href);
-      const amount = url.searchParams.get('amount') || undefined;
-      const isMonthly = href.includes('monthly-builders');
-      const base = isMonthly ? ZEFFY_MONTHLY_EMBED : ZEFFY_ONETIME_EMBED;
-      iframe.src = amount ? `${base}?amount=${amount}` : base;
+      const amount = new URL(link.href).searchParams.get('amount');
+      const src = new URL(link.dataset.zeffy || '');
+      if (amount) src.searchParams.set('amount', amount);
+      iframe.src = src.toString();
       previousFocus = document.activeElement as HTMLElement | null;
       modal.classList.add('is-open');
       modal.setAttribute('aria-hidden', 'false');
@@ -529,7 +532,7 @@ const breadcrumbs = [
     document.querySelectorAll('[data-zeffy]').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        openModal((link as HTMLAnchorElement).href);
+        openModal(link as HTMLAnchorElement);
       });
     });
 

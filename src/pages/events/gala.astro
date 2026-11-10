@@ -25,6 +25,9 @@ import { isOver, latestOf, seriesByKey } from '../../../public/admin/events-shar
 const allEvents = (await getCollection('events')).map(e => e.data);
 const ev: any = latestOf(seriesByKey('gala'), allEvents) ?? {};
 const themeName = galaThemeName(ev);
+// Its tickets: the event's own link (Admin → Site Config → Zeffy, or the gala's editor). None yet: no ticket buttons,
+// never last year's form
+const TICKETS: string = String(ev.ticketUrl || '').trim();
 
 /* ── Online bidding: while it's open, "Bid Now" outranks the ticket CTA
    everywhere on this page. Cutoff lives in utils/auction.ts. ── */
@@ -175,7 +178,7 @@ const eventJsonLd = {
   "image": cfAbsolute(heroImageId),
   "offers": {
     "@type": "Offer",
-    "url": ev.ticketUrl || "https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine",
+    "url": TICKETS || undefined,
     "availability": "https://schema.org/InStock",
     "validFrom": "2026-01-01",
     "priceCurrency": "USD",
@@ -422,15 +425,16 @@ const eventJsonLd = {
           {mainTiers.map(tier => {
             const inclusions = perkToInclusions(tier.perk);
             const isSoldOut = tier.status === 'sold-out';
-            const TierTag = isSoldOut ? 'div' : 'a';
-            const tierLink = isSoldOut ? {} : {
-              href: ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine',
+            const linked = !isSoldOut && !!TICKETS;
+            const TierTag = linked ? 'a' : 'div';
+            const tierLink = !linked ? {} : {
+              href: TICKETS,
               target: '_blank',
               rel: 'noopener',
               'aria-label': `Purchase the ${tier.name} package — opens ticketing in a new tab`,
             };
             return (
-              <TierTag class={`gv-tier ${tier.highlight === 'featured' ? 'gv-tier--featured' : tier.highlight === 'popular' ? 'gv-tier--popular' : ''} ${isSoldOut ? 'gv-tier--sold-out' : 'gv-tier--link'}`} {...tierLink}>
+              <TierTag class={`gv-tier ${tier.highlight === 'featured' ? 'gv-tier--featured' : tier.highlight === 'popular' ? 'gv-tier--popular' : ''} ${isSoldOut ? 'gv-tier--sold-out' : linked ? 'gv-tier--link' : ''}`} {...tierLink}>
                 {tier.status === 'sold-out' && (
                   <span class="gv-tier__badge gv-tier__badge--sold-out">Sold Out</span>
                 )}
@@ -463,7 +467,7 @@ const eventJsonLd = {
                     </ul>
                   )}
                 </div>
-                {!isSoldOut && (
+                {linked && (
                   <span class="gv-tier__cta" aria-hidden="true">
                     Purchase
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
@@ -486,9 +490,10 @@ const eventJsonLd = {
             {addOnTiers.map(tier => {
               const icon = iconForAddon(tier.name);
               const isSoldOut = tier.status === 'sold-out';
-              const AddonTag = isSoldOut ? 'div' : 'a';
-              const addonLink = isSoldOut ? {} : {
-                href: ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine',
+              const linked = !isSoldOut && !!TICKETS;
+              const AddonTag = linked ? 'a' : 'div';
+              const addonLink = !linked ? {} : {
+                href: TICKETS,
                 target: '_blank',
                 rel: 'noopener',
                 'aria-label': `Purchase the ${tier.name} — opens ticketing in a new tab`,
@@ -529,7 +534,7 @@ const eventJsonLd = {
                     {tier.perk && <p class="gv-addon__perk">{tier.perk}</p>}
                   </div>
                   <span class="gv-addon__price">{formatPrice(tier.price)}</span>
-                  {!isSoldOut && (
+                  {linked && (
                     <span class="gv-addon__go" aria-hidden="true">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
                     </span>
@@ -542,19 +547,23 @@ const eventJsonLd = {
         </div>
       )}
 
-      <div class="gv-tickets__cta" data-reveal>
-        <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class="gv-btn gv-btn--coral gv-btn--hero">
-          Reserve &amp; Choose Your Package
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-        </a>
-        <p class="gv-tickets__secure-note">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          Secure checkout via Zeffy &middot; Zero platform fees
-        </p>
-        <p class="gv-tickets__trust-note">
-          Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN {siteSettings.ein}). Your contribution is tax-deductible to the fullest extent allowed by law.
-        </p>
-      </div>
+      {TICKETS ? (
+        <div class="gv-tickets__cta" data-reveal>
+          <a href={TICKETS} target="_blank" rel="noopener" class="gv-btn gv-btn--coral gv-btn--hero">
+            Reserve &amp; Choose Your Package
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+          </a>
+          <p class="gv-tickets__secure-note">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Secure checkout via Zeffy &middot; Zero platform fees
+          </p>
+          <p class="gv-tickets__trust-note">
+            Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN {siteSettings.ein}). Your contribution is tax-deductible to the fullest extent allowed by law.
+          </p>
+        </div>
+      ) : (
+        <div class="gv-tickets__cta" data-reveal><p class="gv-tickets__secure-note">Tickets go on sale soon.</p></div>
+      )}
     </div>
   </section>
 
@@ -1027,7 +1036,7 @@ const eventJsonLd = {
               Bid Now
             </a>
           )}
-          <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class:list={['gv-btn', auctionOpen ? 'gv-btn--outline-white' : 'gv-btn--coral']}>Reserve a Seat</a>
+          {TICKETS && <a href={TICKETS} target="_blank" rel="noopener" class:list={['gv-btn', auctionOpen ? 'gv-btn--outline-white' : 'gv-btn--coral']}>Reserve a Seat</a>}
           <a href="/donate/" class="gv-btn gv-btn--outline-white">Donate Directly</a>
         </div>
       </div>
@@ -1035,17 +1044,19 @@ const eventJsonLd = {
   </section>
 
   <!-- ═══ STICKY MOBILE CTA ═══ -->
-  <div class="gv-sticky-cta" aria-hidden="true">
-    <a
-      href={auctionOpen ? BID_URL : (ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine')}
-      target="_blank" rel="noopener"
-      class:list={['gv-sticky-cta__btn', { 'gv-sticky-cta__btn--bid': auctionOpen }]}
-    >
-      {auctionOpen && <span class="gv-btn__dot" aria-hidden="true"></span>}
-      {auctionOpen ? 'Bid Now' : 'Reserve Your Seat'}
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-    </a>
-  </div>
+  {(auctionOpen || TICKETS) && (
+    <div class="gv-sticky-cta" aria-hidden="true">
+      <a
+        href={auctionOpen ? BID_URL : (TICKETS)}
+        target="_blank" rel="noopener"
+        class:list={['gv-sticky-cta__btn', { 'gv-sticky-cta__btn--bid': auctionOpen }]}
+      >
+        {auctionOpen && <span class="gv-btn__dot" aria-hidden="true"></span>}
+        {auctionOpen ? 'Bid Now' : 'Reserve Your Seat'}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+    </div>
+  )}
   </Fragment>
   )}
 </BaseLayout>

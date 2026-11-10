@@ -8,10 +8,14 @@
  * bottom on phones (the video moves to a small player above it). The reveal
  * keeps playing either way. Behaviour: src/utils/live-give.ts.
  */
-const ZEFFY_EMBED = 'https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home';
+import siteSettings from '../../content/site/settings.json';
+import { siteForm, embedOf, withParam } from '../../../public/admin/zeffy-links.js';
+
+// The form: Admin → Site Config → Zeffy ("Fund the next room" on /live/)
+const ZEFFY_EMBED = embedOf(siteForm(siteSettings, 'liveUrl'));
 ---
 
-<div class="give" data-give data-src={`${ZEFFY_EMBED}?utm_source=live-reveal`} role="dialog" aria-modal="false" aria-labelledby="give-title" hidden>
+<div class="give" data-give data-src={withParam(ZEFFY_EMBED, 'utm_source', 'live-reveal')} role="dialog" aria-modal="false" aria-labelledby="give-title" hidden>
   <div class="give__panel">
     <div class="give__head">
       <div>

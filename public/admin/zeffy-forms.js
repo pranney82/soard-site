@@ -1,13 +1,14 @@
 /**
- * Admin → the Zeffy form dropdown
+ * Admin → a Zeffy link field (ZeffyLink)
  * ===========================================================================
- * Wherever admin asks for a Zeffy link, this dropdown sits above the link box and lists the forms in SOARD's Zeffy:
- * pick one and its link fills in. The box stays, so the link is always in view and a link that isn't a Zeffy form
- * (an event's sign-up sheet, say) can still be pasted. The dropdown shows the form the link already goes to.
+ * Wherever admin asks for a Zeffy link: a dropdown of the forms in SOARD's Zeffy beside the link box. Pick one and its
+ * link fills in. The box stays, so the link is always in view and a link that isn't a Zeffy form (an event's sign-up
+ * sheet, say) can still be pasted. The dropdown shows the form the link already goes to.
  *
- * Used by a kid's Fundraising link, an event's Tickets link and the gala's Ticket URL (index.html), the golf
- * tournament's Registration link (./event-recap-admin.js), and the Advisory Board's campaign and a hosted fundraiser's
- * page (./advisory-admin.js, which reads the list through /api/advisory-admin: Mary can't reach the staff routes).
+ * Every Zeffy link on the site is in Site Config → Zeffy (./site-config.js). The same field is on a kid's Giving,
+ * an event's and the gala's tickets (index.html), the golf tournament's registration (./event-recap-admin.js), and
+ * the Advisory Board's campaign and a hosted fundraiser's page (./advisory-admin.js, which reads the list through
+ * /api/advisory-admin: Mary runs the group from the advisors' page and can't reach the staff routes).
  *
  * The list is Zeffy's (functions/api/_zeffy-forms.js), read once for every dropdown on the page and again when the tab
  * comes back after a minute away, so a form just made in Zeffy in another tab shows up.
@@ -126,9 +127,12 @@ export function useZeffyFormList(from = STAFF) {
 function useZeffyForms(from) {
   const s = storeFor(from);
   const [, tick] = useState(0);
+  const seen = s.at;
   useEffect(() => {
     const fn = () => tick((n) => n + 1);
     s.subs.add(fn);
+    // The list came between drawing and listening (refresh won't tell anyone again while it's fresh): draw it now
+    if (s.at !== seen) fn();
     refresh(s);
     return () => { s.subs.delete(fn); };
   }, [s]);
@@ -140,8 +144,17 @@ function useZeffyForms(from) {
   return s;
 }
 
-// The space sits on a wrapper: a page's own rule for its inputs (the advisors' page zeroes their margins) can't undo it
-const CSS = '.zf-pick { display: block; margin-bottom: 0.5rem; }';
+// The dropdown beside the link box where there's room for both, under each other where there isn't (the box's own
+// width decides, not the screen's). The spacing is the grid's: a page's own rule for its inputs (the advisors' page
+// zeroes their margins) can't undo it
+const CSS = `
+.zf-link { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .5rem; align-items: center; min-width: 0; }
+.zf-link > .zf-pick { display: block; min-width: 0; }
+.zf-link .zf-select { width: 100%; margin: 0; }
+.zf-link__box { display: flex; gap: .5rem; align-items: center; min-width: 0; }
+.zf-link__box > input { flex: 1 1 auto; min-width: 0; width: auto; margin: 0; }
+.zf-link__open { flex-shrink: 0; display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; }
+.zf-link__open svg { width: 12px; height: 12px; }`;
 function injectStyles() {
   if (typeof document === 'undefined' || document.getElementById('zf-style')) return;
   const el = document.createElement('style');
@@ -151,7 +164,7 @@ function injectStyles() {
 }
 
 /**
- * The dropdown. Goes just above the field's link box.
+ * The dropdown on its own (ZeffyLink puts it beside the link box, as every field uses it).
  *   value    the link as it stands, so the dropdown shows its form
  *   id       for a field that keeps the form's ID too: the ID as it stands (see formGroups)
  *   onPick   called with the form picked ({ id, title, url, kind }); the field sets its link to form.url
@@ -160,7 +173,7 @@ function injectStyles() {
  *   cls      the page's own select class (form-select in the admin, ar-input on the advisors' page)
  *   from     where the list comes from (STAFF unless the page can't reach the staff routes)
  */
-export function ZeffyFormSelect({ value = '', id, onPick, prefer = [], label = 'Zeffy link', cls = 'form-select', from = STAFF, disabled = false }) {
+function ZeffyFormSelect({ value = '', id, onPick, prefer = [], label = 'Zeffy link', cls = 'form-select', from = STAFF, disabled = false }) {
   injectStyles();
   const s = useZeffyForms(from);
   const { chosen, groups } = formGroups(s.forms, { value, prefer, id });
@@ -184,4 +197,34 @@ export function ZeffyFormSelect({ value = '', id, onPick, prefer = [], label = '
       ${g.forms.map((f) => html`<option key=${f.id} value=${f.id}>${f.label}</option>`)}
     </optgroup>`)}
   </select></span>`;
+}
+
+const EXT = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></svg>`;
+
+/**
+ * A Zeffy link field: the dropdown of SOARD's forms, the link box (for a form made since the list was read, or a link
+ * that isn't a Zeffy form: an event's sign-up sheet), and Open. Every field that takes a Zeffy link is this; the page
+ * puts its own label over it and its own hint or problem under it.
+ *   value      the link as it stands
+ *   onChange   the text as typed (the page decides what an empty box means for its record)
+ *   onPick     the form picked ({ id, title, url, kind }); the page sets its link to form.url
+ *   inputId    the link box's id, for the page's <label for>; without one the box is named by `label`
+ *   label      the field's name, for screen readers
+ *   invalid    marks the box (the page says why under it); describedBy: the id of that line
+ *   prefer, id, from, disabled   as the dropdown's
+ *   cls, inputCls, openCls       the page's own classes (form-select / form-input / btn in the admin; ar-input and ar-btn on the advisors' page)
+ */
+export function ZeffyLink({ value = '', onChange, onPick, prefer = [], label = 'Zeffy link', inputId, id, from = STAFF, invalid = false, describedBy, disabled = false,
+  placeholder = 'https://www.zeffy.com/…', cls = 'form-select', inputCls = 'form-input', openCls = 'btn btn-ghost btn-sm' }) {
+  injectStyles();
+  const v = value ?? '';
+  const href = /^https:\/\/[^\s/]+\.\S+$/i.test(v.trim()) ? v.trim() : '';
+  return html`<div class="zf-link">
+    <${ZeffyFormSelect} value=${v} id=${id} onPick=${onPick} prefer=${prefer} label=${label} cls=${cls} from=${from} disabled=${disabled} />
+    <span class="zf-link__box">
+      <input id=${inputId} class=${`${inputCls}${invalid ? ' is-invalid' : ''}`} type="url" inputmode="url" value=${v} placeholder=${placeholder} disabled=${disabled}
+        aria-label=${inputId ? undefined : label} aria-describedby=${describedBy} aria-invalid=${invalid ? 'true' : 'false'} onInput=${(e) => onChange(e.currentTarget.value)} />
+      ${href ? html`<a class=${`zf-link__open ${openCls}`} href=${href} target="_blank" rel="noopener" aria-label=${`Open ${label} in a new tab`}>Open ${EXT}</a>` : null}
+    </span>
+  </div>`;
 }

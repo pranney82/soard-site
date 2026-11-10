@@ -23,7 +23,7 @@ import { ReportEditor } from './board-report.js';
 import { AdvisoryMeetings } from './advisory-meeting.js';
 import { api } from './advisory/api.js';
 import { Thermometer } from './advisory/thermometer.js';
-import { ZeffyFormSelect, useZeffyFormList, sameForm } from './zeffy-forms.js';
+import { ZeffyLink, useZeffyFormList, sameForm } from './zeffy-forms.js';
 
 const html = htm.bind(h);
 const API = '/api/advisory-admin';
@@ -274,7 +274,7 @@ function HostedRow({ x, ctx }) {
     ${held ? (x.note ? html`<p class="ar-quote">${x.note}</p>` : null) : html`
       <div class="ar-grid2">
         <${Field} label="The date" hint=${x.status === 'approved' && !date ? 'It won’t show under Coming up until it has one.' : ''}><input class="ar-input" type="date" value=${date} onInput=${(e) => setDate(e.currentTarget.value)} /><//>
-        <${Field} label="Its Zeffy page" hint="So what it raises counts toward the goal" for=${`ar-give-${x.id}`}><${ZeffyFormSelect} cls="ar-input" from=${ZEFFY_FROM} value=${giveUrl} prefer=${['peer', 'tickets', 'donation']} label="Its Zeffy page" onPick=${(f) => setGiveUrl(f.url)} /><input id=${`ar-give-${x.id}`} class="ar-input" type="url" inputmode="url" placeholder="https://www.zeffy.com/" aria-label="Its Zeffy page" aria-describedby=${`ar-give-${x.id}-hint`} value=${giveUrl} onInput=${(e) => setGiveUrl(e.currentTarget.value)} /><//>
+        <${Field} label="Its Zeffy page" hint="So what it raises counts toward the goal" for=${`ar-give-${x.id}`}><${ZeffyLink} cls="ar-input" inputCls="ar-input" openCls="ar-btn" from=${ZEFFY_FROM} inputId=${`ar-give-${x.id}`} describedBy=${`ar-give-${x.id}-hint`} value=${giveUrl} prefer=${['peer', 'tickets', 'donation']} label="Its Zeffy page" onPick=${(f) => setGiveUrl(f.url)} onChange=${setGiveUrl} /><//>
       </div>
       <${Field} label="A note for the advisor"><input class="ar-input" value=${note} maxlength="800" onInput=${(e) => setNote(e.currentTarget.value)} /><//>
       <div class="ar-btns">
@@ -464,8 +464,7 @@ function Goal({ ctx }) {
     const listed = zeffyList.find((c) => sameForm(c.url, edits.campaignUrl));
     if (!byHand && listed && edits.campaignId !== listed.id) { autoId.current = listed.id; setEdits({ ...edits, campaignId: listed.id }); }
   }, [zeffyList]);
-  const typeCampaignUrl = (e) => {
-    const url = e.currentTarget.value;
+  const typeCampaignUrl = (url) => {
     const next = { ...edits, campaignUrl: url };
     const byHand = 'campaignId' in edits && edits.campaignId !== '' && edits.campaignId !== autoId.current && edits.campaignId !== (s.campaignId || '');
     if (!url.trim()) { next.campaignId = ''; autoId.current = ''; } else if (!byHand) {
@@ -514,7 +513,7 @@ function Goal({ ctx }) {
         <${Field} label="The term starts"><input class="ar-input" type="date" value=${f.termStart} onInput=${up('termStart')} /><//>
         <${Field} label="The term ends"><input class="ar-input" type="date" value=${f.termEnd} onInput=${up('termEnd')} /><//>
       </div>
-      <${Field} label="The Zeffy campaign’s web address" for="ar-campaign-url"><${ZeffyFormSelect} cls="ar-input" from=${ZEFFY_FROM} value=${f.campaignUrl} id=${f.campaignId || ''} prefer=${['peer']} label="The Zeffy campaign’s web address" onPick=${pickCampaign} /><input id="ar-campaign-url" class="ar-input" type="url" inputmode="url" placeholder="https://www.zeffy.com/" aria-label="The Zeffy campaign’s web address" value=${f.campaignUrl} onInput=${typeCampaignUrl} /><//>
+      <${Field} label="The Zeffy campaign’s web address" for="ar-campaign-url"><${ZeffyLink} cls="ar-input" inputCls="ar-input" openCls="ar-btn" from=${ZEFFY_FROM} inputId="ar-campaign-url" value=${f.campaignUrl} id=${f.campaignId || ''} prefer=${['peer']} label="The Zeffy campaign’s web address" onPick=${pickCampaign} onChange=${typeCampaignUrl} /><//>
       <${Field} label="The campaign’s ID in Zeffy, if you have it" hint="The site finds it from the address when it can, and says so if it can’t"><input class="ar-input" value=${f.campaignId} onInput=${up('campaignId')} /><//>
       <div class="ar-btns"><button type="button" class="ar-btn ar-btn--go" disabled=${!changed || ctx.busy} onClick=${saveIt}>Save</button></div>
     <//>

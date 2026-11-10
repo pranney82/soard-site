@@ -4598,7 +4598,7 @@
     import * as ES from './events-shared.js';
     import { AfterEventPanel, SponsorsList, EventBasics } from './event-recap-admin.js';
     // Above every Zeffy link box: SOARD's Zeffy forms, and picking one fills in its link
-    import { ZeffyFormSelect } from './zeffy-forms.js';
+    import { ZeffyLink } from './zeffy-forms.js';
     // Every "are you sure?" in the admin: an in-app dialog, never the browser's confirm()
     import { ask, askToLeave } from './ask.js';
     import { useDialog as usePplDialog } from './dialog.js';
@@ -13880,12 +13880,8 @@
         ${sec('giving', 'Giving', null, null, html`
           <div class="form-group u-m-0">
             <label class="form-label" for="kd-fund">Fundraising link <span class="form-optional">Zeffy</span></label>
-            <${ZeffyFormSelect} value=${data.fundraisingUrl || ''} prefer=${['donation', 'peer']} label="Fundraising link" onPick=${(f) => set({ fundraisingUrl: f.url })} />
-            <div class="ppl-inline">
-              <input id="kd-fund" class=${`form-input${data.fundraisingUrl && !fundOk ? ' is-invalid' : ''}`} type="url" inputmode="url" value=${data.fundraisingUrl || ''}
-                placeholder="https://www.zeffy.com/…" onInput=${(e) => set({ fundraisingUrl: e.target.value })} />
-              ${fundOk ? html`<a class="btn btn-ghost btn-sm" href=${data.fundraisingUrl.trim()} target="_blank" rel="noopener">Open ${kdIcon.external}</a>` : null}
-            </div>
+            <${ZeffyLink} inputId="kd-fund" value=${data.fundraisingUrl || ''} prefer=${['donation', 'peer']} label="Fundraising link" invalid=${!!data.fundraisingUrl && !fundOk}
+              onPick=${(f) => set({ fundraisingUrl: f.url })} onChange=${(v) => set({ fundraisingUrl: v })} />
             <div class=${`form-hint${data.fundraisingUrl && !fundOk ? ' kd-bad' : ''}`}>${data.fundraisingUrl && !fundOk
               ? 'Paste the whole link, starting with https://'
               : data.fundraisingUrl ? 'Adds “Help fund this room” at the top of the page and at the end of the story.'
@@ -20424,9 +20420,8 @@ ${sections || '<p>No one yet.</p>'}
           </div>
           <div class="form-group u-mb-field">
             <label class="form-label" for="ev-ticket-url">Tickets or sign-up link</label>
-            <${ZeffyFormSelect} value=${data.ticketUrl || ''} prefer=${['tickets']} label="Tickets or sign-up link" onPick=${(f) => update('ticketUrl', f.url)} />
-            <input id="ev-ticket-url" class="form-input" type="url" value=${data.ticketUrl || ''} aria-label="Tickets or sign-up link"
-              onInput=${e => update('ticketUrl', e.target.value)} placeholder="https://" />
+            <${ZeffyLink} inputId="ev-ticket-url" value=${data.ticketUrl || ''} prefer=${['tickets']} label="Tickets or sign-up link" placeholder="https://"
+              onPick=${(f) => update('ticketUrl', f.url)} onChange=${(v) => update('ticketUrl', v)} />
           </div>
           <div class="form-group u-mb-field">
             <span class="form-label">Short description</span>
@@ -23242,9 +23237,8 @@ ${sections || '<p>No one yet.</p>'}
                 </div>
                 <div class="form-group u-span-all">
                   <label for="gala-ticket-url">Ticket URL</label>
-                  <${ZeffyFormSelect} value=${eventData.ticketUrl || ''} prefer=${['tickets', 'auction']} label="Ticket URL" onPick=${(f) => updateEvent('ticketUrl', f.url)} />
-                  <input id="gala-ticket-url" class="form-input" placeholder="https://www.zeffy.com/..." value=${eventData.ticketUrl || ''} aria-label="Ticket URL"
-                    onInput=${e => updateEvent('ticketUrl', e.target.value)} />
+                  <${ZeffyLink} inputId="gala-ticket-url" value=${eventData.ticketUrl || ''} prefer=${['tickets', 'auction']} label="Ticket URL"
+                    onPick=${(f) => updateEvent('ticketUrl', f.url)} onChange=${(v) => updateEvent('ticketUrl', v)} />
                 </div>
                 <div class="form-group u-span-all ev-center-y">
                   <label class="checkbox-label">
@@ -24389,7 +24383,7 @@ ${sections || '<p>No one yet.</p>'}
             ['ways', 'Ways to Give page'], ['partners', 'Partners page'], ['community', 'Community Projects page'], ['resources', 'Resources page and its guides'],
             ['about', 'Our Story'], ['financials', 'Financials (numbers, 990s, reports)'], ['faq', 'FAQs'], ['advisory', 'Advisory Board page'],
             ['store', 'Sunny & Ranney page'], ['media', 'Media Kit'], ['org', 'Organization, phone, email, address'], ['social', 'Social links'],
-            ['badges', 'Trust badges'], ['newsletter', 'Newsletter']]
+            ['badges', 'Trust badges'], ['newsletter', 'Newsletter'], ['zeffy', 'Zeffy links (Donate, kids, events, Advisory Board)']]
             .map(([k, label]) => ({ type: 'page', label, meta: 'Site Config', id: 'site-hub', subTab: k, section: 'Pages' })),
           { type: 'page', label: 'Reveal invites', meta: 'Reveals', id: 'broadcast', hash: '#broadcast/invites', section: 'Pages' },
           { type: 'page', label: 'What went out', meta: 'Emails & invites', id: 'messages', hash: '#messages/sent', section: 'Pages' },
@@ -25255,6 +25249,15 @@ ${sections || '<p>No one yet.</p>'}
       };
 
       useEffect(() => { loadData(); }, []);
+      // Site Config → Zeffy saved a kid's or an event's link: the lists follow without reloading everything
+      const recordsSaved = (list) => {
+        for (const { key, data } of list) {
+          const [coll, slug] = key.split('/');
+          const swap = (xs) => xs.map((x) => (x.slug === slug ? data : x));
+          if (coll === 'kids') setKids(swap);
+          else if (coll === 'events') setEvents(swap);
+        }
+      };
 
       // The site updates when someone uses "Publish to site" in the sidebar.
 
@@ -25713,7 +25716,7 @@ ${sections || '<p>No one yet.</p>'}
           case 'articles':
             return editSlug !== null
               ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('site-hub', null, 'resources'); loadData(); }} addToast=${addToast} existingSlugs=${articles.map(a => a.slug)} />`
-              : html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} initialTab="resources" onPublish=${promptDeploy} guides=${guidesList} />`;
+              : html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} onRecordsSaved=${recordsSaved} initialTab="resources" onPublish=${promptDeploy} guides=${guidesList} />`;
           case 'events': {
             // The newest gala or tournament opens its own editor (it lays out
             // /events/gala/ or /events/golf/); older years are plain events
@@ -25810,7 +25813,7 @@ ${sections || '<p>No one yet.</p>'}
 
           // ─── Site Config: ./site-config.js, by public page (#site/<page>) ───
           case 'site-hub':
-            return html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} initialTab=${subTab} onPublish=${promptDeploy} guides=${guidesList} />`;
+            return html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} onRecordsSaved=${recordsSaved} initialTab=${subTab} onPublish=${promptDeploy} guides=${guidesList} />`;
 
           default:
             return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} pendingData=${publishData} onDeploy=${promptDeploy} deploying=${deploying} />`;
