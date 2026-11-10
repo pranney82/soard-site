@@ -254,7 +254,7 @@ test('board status field: alumni and memorials are never invited; a draft is sti
 });
 
 test('confirming adds the stage-two guests and emails everyone; un-confirming takes them back off', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   boardMembers = [{ user: { name: 'Board Person', emailAddress: 'board@example.com' } }];
   jt = islaLike();
   await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
@@ -354,7 +354,7 @@ test('nothing is sent until sending is turned on', async () => {
 });
 
 test('create, move, confirm, cancel: one event, updated in place', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const id = eventIdFor('soardreveal', jt.id);
 
   let r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
@@ -400,7 +400,7 @@ test('create, move, confirm, cancel: one event, updated in place', async () => {
 });
 
 test('calling a reveal off is done by hand in Google Calendar, and the site never brings it back', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const id = eventIdFor('soardreveal', jt.id);
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'created');
 
@@ -433,7 +433,7 @@ test('calling a reveal off is done by hand in Google Calendar, and the site neve
 });
 
 test('an invite deleted by hand is caught before any update writes over it', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const id = eventIdFor('soardreveal', jt.id);
   await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
   events.delete(id); // deleted long enough ago that Google no longer has it
@@ -514,7 +514,7 @@ test('staff come from a staff-only read, so new staff are never cut off by famil
     if (where && where[0] === 'isInternal') staffQuery = q.organization.memberships.$;
     return fakeFetch(url, init);
   };
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await reconcileJob(env, jt.id, { fetchImpl: spy, now: NOW });
   assert.deepEqual(staffQuery.where, ['isInternal', '=', true]);
   const ev = events.get(eventIdFor('soardreveal', jt.id));
@@ -523,7 +523,7 @@ test('staff come from a staff-only read, so new staff are never cut off by famil
 });
 
 test('staff guest list changes update quietly; family changes email everyone', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   members = [...BASE_MEMBERS, { isInternal: true, role: { name: 'Admin' }, user: { name: 'Peter Ranney', emailAddress: 'peter@ranneyblair.com' } }];
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'created');
   const id = eventIdFor('soardreveal', jt.id);
@@ -557,7 +557,7 @@ test('staff guest list changes update quietly; family changes email everyone', a
 });
 
 test('new wording never emails guests on its own; facts do, and an admin can push the wording', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const id = eventIdFor('soardreveal', jt.id);
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'created');
   const googleWrites = () => calls.filter((c) => /^(POST|PUT|PATCH) www\.googleapis\.com/.test(c));
@@ -592,7 +592,7 @@ test('new wording never emails guests on its own; facts do, and an admin can pus
 });
 
 test('an invite sent before invites kept their facts is checked against the calendar, not sent again', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS reveal_invites (job_id TEXT PRIMARY KEY, event_id TEXT, state TEXT, hash TEXT, reveal_date TEXT, guests TEXT, last_action TEXT, error TEXT, updated_at TEXT)').run();
   const id = eventIdFor('soardreveal', jt.id);
   const legacy = 'a'.repeat(32);
@@ -647,7 +647,7 @@ test('an invite sent before invites kept their facts is checked against the cale
 });
 
 test('Google errors are recorded, not thrown', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const failing = async (url, init) => (new URL(url).hostname === 'oauth2.googleapis.com'
     ? Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens' }, { status: 401 })
     : fakeFetch(url, init));
@@ -743,7 +743,7 @@ test('wording from admin fills in name, date and time', () => {
 });
 
 test('admin list: upcoming reveals with the exact invite each would send, guests named', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
   const jobs = [
     jt,
@@ -798,7 +798,7 @@ test('admin list: upcoming reveals with the exact invite each would send, guests
 });
 
 test('a new problem emails the team once; the same problem again does not', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   env.RESEND_API_KEY = 're_test';
   const sent = [];
   const realFetch = globalThis.fetch;
@@ -826,7 +826,7 @@ test('a new problem emails the team once; the same problem again does not', asyn
 });
 
 test('two changes at once: the second insert updates instead of failing', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const id = eventIdFor('soardreveal', jt.id);
   const racing = async (url, init) => {
     const u = new URL(url);
@@ -847,7 +847,7 @@ test('safety sweep: only when sending is on, at most every 6 hours', async () =>
     return fakeFetch(url, init);
   };
   assert.equal(await maybeSweep(env, { fetchImpl: sweepFetch, now: NOW }), null, 'off while sending is paused');
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const first = await maybeSweep(env, { fetchImpl: sweepFetch, now: NOW });
   assert.deepEqual({ checked: first.checked, changed: first.changed, errors: first.errors }, { checked: 1, changed: 1, errors: 0 }, 'creates the missed invite; skips the sandbox');
   assert.equal(await maybeSweep(env, { fetchImpl: sweepFetch, now: NOW + 60 * 60 * 1000 }), null, 'not again within 6 hours');
@@ -860,7 +860,7 @@ test('guest check: a vendor given access after the confirmed invite went out get
   const id = eventIdFor('soardreveal', jt.id);
   jt = islaLike({ confirmed: true, time: '16:00:00.000' });
   assert.equal(await maybeCheckGuests(env, { fetchImpl: fakeFetch, now: NOW }), null, 'off while sending is paused');
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
   const before = events.get(id).attendees.length;
 
@@ -884,7 +884,7 @@ test('guest check: a vendor given access after the confirmed invite went out get
 });
 
 test('one update per invite at a time: two at the same moment never email everyone twice', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = islaLike({ confirmed: true, time: '16:00:00.000' });
   const googleWrites = () => calls.filter((c) => /^(POST|PUT|PATCH) www\.googleapis\.com/.test(c)).length;
   // The guest check and the sweep skip a job that's being updated
@@ -914,7 +914,7 @@ test('one update per invite at a time: two at the same moment never email everyo
 const jobReads = () => calls.filter((c) => c.startsWith('POST api.jobtread.com')).length;
 
 test('wake-ups: a few a minute per job; past that the job is owed one look, which the next heartbeat gives it', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const turns = [];
   for (let i = 0; i < 5; i++) turns.push(await admitWake(env.DB, jt.id, { now: NOW }));
   assert.deepEqual(turns, ['run', 'run', 'run', 'later', 'later']);
@@ -933,7 +933,7 @@ test('wake-ups: a few a minute per job; past that the job is owed one look, whic
 });
 
 test('an owed look that finds the invite busy stays owed', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   for (let i = 0; i < 4; i++) await admitWake(env.DB, jt.id, { now: NOW });
   await env.DB.prepare('INSERT INTO reveal_invite_locks (job_id, until) VALUES (?, ?)').bind(jt.id, Date.now() + 60_000).run();
   const [r] = await runOwedWakes(env, { fetchImpl: fakeFetch, now: NOW + 61_000 });
@@ -983,7 +983,7 @@ function clockAtNow(t) {
 
 test('the wake-up route: the shared secret when one is set, and { ok } is all it says', async (t) => {
   clockAtNow(t);
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const secret = { JOBTREAD_WEBHOOK_SECRET: 'wake-secret-example' };
   assert.equal((await wake({ jobId: jt.id, eventId: logJobEvent() }, { envOver: secret })).status, 401);
   assert.equal((await wake({ jobId: jt.id, eventId: logJobEvent() }, { envOver: secret, headers: { 'X-Webhook-Secret': 'wrong' } })).status, 401);
@@ -1002,7 +1002,7 @@ test('the wake-up route: the shared secret when one is set, and { ok } is all it
 
 test('the wake-up route: only a change JobTread logged on the job counts', async (t) => {
   clockAtNow(t);
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const junk = [
     {},                                                                  // no event at all
     { eventId: 'evtNoSuchThing' },                                       // never logged
@@ -1020,7 +1020,7 @@ test('the wake-up route: only a change JobTread logged on the job counts', async
 
 test('junk from one address is cut off at 30 a minute, never counted, and a real wake-up still runs', async (t) => {
   clockAtNow(t);
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   // About two junk calls a second for a minute, naming the real job, from one address
   const answers = [];
   for (let i = 0; i < 120; i++) answers.push((await wake({ jobId: jt.id, eventId: `junk${String(i).padStart(6, '0')}` }, { ip: '203.0.113.9' })).status);
@@ -1050,7 +1050,7 @@ test('with the secret set, JobTread itself is never held to the per-address limi
 
 test('the wake-up route: hammering one job never holds its invite; the real change still lands', async (t) => {
   clockAtNow(t);
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   for (let i = 0; i < 3; i++) assert.deepEqual((await wake({ jobId: jt.id, eventId: logJobEvent() })).body, { ok: true });
   const reads = jobReads();
   // Past three a minute: answered after the event lookup, nothing else read, the job owed a look
@@ -1099,7 +1099,7 @@ async function withKit(fn, { kitDown = false } = {}) {
 }
 
 test('JobTread confirms a reveal: the same look drafts the Kit email to Reveal Emails and asks Linzi to review it', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job({ confirmed: true, time: '16:00:00.000', details: 'Park on the street.' });
   let r;
   const { posts, mail } = await withKit(async (e) => { r = await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
@@ -1117,7 +1117,7 @@ test('JobTread confirms a reveal: the same look drafts the Kit email to Reveal E
 });
 
 test('a save-the-date (not confirmed) drafts nothing in Kit', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job();
   const { posts, mail } = await withKit(async (e) => { await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
   assert.equal(posts.length, 0);
@@ -1125,7 +1125,7 @@ test('a save-the-date (not confirmed) drafts nothing in Kit', async () => {
 });
 
 test('confirmed, drafted, then the job is closed: the same look tells Linzi to hold it', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job({ confirmed: true, time: '16:00:00.000' });
   const { mail } = await withKit(async (e) => {
     await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
@@ -1139,7 +1139,7 @@ test('confirmed, drafted, then the job is closed: the same look tells Linzi to h
 });
 
 test('the calendar invite deleted by hand: nothing new is drafted, and a waiting draft is held', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job({ confirmed: true, time: '16:00:00.000' });
   const { posts, mail } = await withKit(async (e) => {
     await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
@@ -1152,7 +1152,7 @@ test('the calendar invite deleted by hand: nothing new is drafted, and a waiting
 });
 
 test('Kit runs after the calendar, so a slow Kit can’t hold up the invite', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job({ confirmed: true, time: '16:00:00.000' });
   let eventFirst = null;
   const { posts } = await withKit(async (e) => {
@@ -1168,7 +1168,7 @@ test('Kit runs after the calendar, so a slow Kit can’t hold up the invite', as
 });
 
 test('the button drafts for any kid with a Reveal date, even before construction starts', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job({ demo: false });
   let r;
   const { posts, mail } = await withKit(async (e) => { r = await draftInviteEmailNow(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
@@ -1180,7 +1180,7 @@ test('the button drafts for any kid with a Reveal date, even before construction
 });
 
 test('an early draft follows the date before construction starts, and nothing is drafted on its own', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job({ demo: false });
   const quiet = await withKit(async (e) => { await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
   assert.equal(quiet.posts.length, 0, 'no draft of its own');
@@ -1201,7 +1201,7 @@ test('the button won’t draft while invites are paused (nothing would follow Jo
   assert.equal(r.kit, 'skip');
   assert.match(r.reason, /paused/);
   assert.equal(off.posts.length, 0);
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const gone = await withKit(async (e) => {
     await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
     events.delete(eventIdFor('soardreveal', jt.id));
@@ -1215,7 +1215,7 @@ test('the button won’t draft while invites are paused (nothing would follow Jo
 });
 
 test('the button goes through the admin’s POST: a job id, a known person, and the draft’s link back', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job({ date: '2099-10-27', confirmed: true, time: '16:00:00.000' }); // the admin runs on today's clock
   const press = (e, body, userEmail = 'staff@soardcharity.com') => inviteAdmin.onRequestPost({ env: e, data: { userEmail }, request: new Request('https://sunshineonaranneyday.com/api/reveal-invites-admin', { method: 'POST', body: JSON.stringify(body) }) });
   let out;
@@ -1236,7 +1236,7 @@ test('a community project stays out of it, with or without its page', () => {
 });
 
 test('Kit being down never stops the calendar invite', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   jt = job({ confirmed: true, time: '16:00:00.000' });
   let r;
   await withKit(async (e) => { r = await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); }, { kitDown: true });

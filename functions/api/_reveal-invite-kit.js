@@ -31,11 +31,15 @@ import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
 import { revealInviteEmail, revealWhen, partnerLogoUrls, kidPhotoUrls, cleanAddress, TEAM_PICTURE, TIME_LATER, SITE_URL, EMAIL_DESIGN } from './_reveal-invite-email.js';
 
-export const KIT_INVITE_DEFAULTS = Object.freeze({ enabled: true, reviewer: 'linzi@soardcharity.com', audience: 'Reveal Emails' });
+// reviewer: who's emailed to review every draft the site makes in Kit (Peter, Nov 9 2026: him too). One address or several, comma-separated.
+export const KIT_INVITE_DEFAULTS = Object.freeze({ enabled: true, reviewer: 'linzi@soardcharity.com, peter@soardcharity.com', audience: 'Reveal Emails' });
 export const kitInviteSettings = (config) => ({ ...KIT_INVITE_DEFAULTS, ...(config?.kitInvite || {}) });
 export const kitDraftUrl = (id) => `https://app.kit.com/campaigns/${encodeURIComponent(id)}`;
 const ADMIN_URL = `${SITE_URL}/admin/#broadcast/invites`;
 const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
+/** The reviewers, from the setting: one address, several separated by commas, or a list */
+export const reviewersOf = (settings) => [...new Set((Array.isArray(settings?.reviewer) ? settings.reviewer : String(settings?.reviewer || '').split(/[,;\s]+/))
+  .map((e) => String(e).trim().toLowerCase()).filter(isEmail))];
 
 const SCHEMA = `CREATE TABLE IF NOT EXISTS reveal_invite_kit (
   job_id TEXT PRIMARY KEY, broadcast_id TEXT, slug TEXT, reveal_date TEXT, hash TEXT,
@@ -287,7 +291,7 @@ export function reviewNote(kind, { name, f = {}, id, audienceName, count, reason
 async function notify(env, kind, settings, ctx) {
   // An email to the reviewer, and nothing else (Peter, Nov 4 2026: "an email to linzi ... not slack")
   const note = reviewNote(kind, ctx);
-  const to = [settings.reviewer].filter(isEmail);
+  const to = reviewersOf(settings);
   if (!emailConfigured(env) || !to.length) return false;
   const out = await sendEmails(env, { to, subject: note.subject, html: note.html, text: note.text, tags: [{ name: 'category', value: 'reveal-invite-review' }] }).catch(() => null);
   return (out?.sent || 0) > 0;
@@ -339,7 +343,7 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
   if (who?.project || (who && !who.slug && who.url)) return { kit: 'skip', reason: 'a community project has no kid page to fill it from' };
   const { DB } = env;
   const name = who?.name || 'A kid';
-  const everyone = [...new Set([...alertTo, s.reviewer].filter(isEmail))];
+  const everyone = [...new Set([...alertTo, ...reviewersOf(s)].filter(isEmail))];
   let row = null;
   let wrongAim = null; // once Kit's copy is read: why it isn't safe. That comes before any other news.
   // Told or not, the next look tries again; once told, staff aren't told again

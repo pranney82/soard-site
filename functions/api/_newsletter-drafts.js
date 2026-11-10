@@ -30,7 +30,7 @@ import { kitConfigured, kitCreateBroadcast, kitFindDraft, kitReadBroadcast, kitU
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
 import { SITE_URL, TEAM_PICTURE } from './_reveal-invite-email.js';
-import { brokenLogos, kitInviteSettings, kitDraftUrl, copyHash, wentOut } from './_reveal-invite-kit.js';
+import { brokenLogos, kitInviteSettings, reviewersOf, kitDraftUrl, copyHash, wentOut } from './_reveal-invite-kit.js';
 import { readConfig, alertList } from './_reveal-invites.js';
 import {
   getReveals, fetchJobs, pave, matchKid, loadKids as loadMatchKids, easternParts, isRehearsalJob, SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
@@ -403,8 +403,10 @@ export function newsletterNote(note, { kind, title, id, subject, by = null, agai
 }
 async function tell(env, settings, note, ctx) {
   const n = newsletterNote(note, ctx);
-  const to = [settings.reviewer].filter(isEmail);
-  if (!emailConfigured(env) || !to.length) return false;
+  // Every reviewer but the one who drafted it by hand: nobody needs an email about their own press of a button
+  const to = reviewersOf(settings).filter((r) => !samePerson(ctx.by, r));
+  if (!to.length) return true;
+  if (!emailConfigured(env)) return false;
   const out = await sendEmails(env, { to, subject: n.subject, html: n.html, text: n.text, tags: [{ name: 'category', value: 'newsletter-review' }] }).catch(() => null);
   return (out?.sent || 0) > 0;
 }
@@ -435,7 +437,7 @@ export async function syncNewsletter(env, row, { config = {}, alertTo = [], now 
   const s = kitInviteSettings(config);
   if (!s.enabled || config.enabled === false) return { newsletter: 'off', reason: OFF_REASON };
   if (!kitConfigured(env)) return { newsletter: 'skip', reason: 'Kit isn’t connected' };
-  const everyone = [...new Set([...alertTo, s.reviewer].filter(isEmail))];
+  const everyone = [...new Set([...alertTo, ...reviewersOf(s)].filter(isEmail))];
   let title = row.key;
   // The row as it now stands: once a draft is saved, a later failure never takes it back
   let current = row;
@@ -499,8 +501,7 @@ export async function syncNewsletter(env, row, { config = {}, alertTo = [], now 
     const seenCopy = await kitReadBroadcast(env, id);
     current = { ...row, broadcast_id: id, state: 'drafted', error: null, alarmed: null, by: by || null, facts: await factsOf(ctx.render(new Set())), content_hash: seenCopy.ok ? await copyHash(seenCopy.broadcast) : null, followed_at: iso(now) };
     await writeRow(DB, current); // kept first: a draft Kit has is never made twice
-    // A reviewer who drafted it by hand needs no email about it
-    const heard = samePerson(by, s.reviewer) || await tell(env, s, 'ready', { kind: row.kind, title, id, subject: email.subject, by });
+    const heard = await tell(env, s, 'ready', { kind: row.kind, title, id, subject: email.subject, by });
     if (heard) { current = { ...current, told: iso(now) }; await writeRow(DB, current); }
     return { newsletter: 'drafted', id, told: heard };
   } catch (err) {

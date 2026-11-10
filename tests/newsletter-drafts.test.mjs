@@ -121,7 +121,7 @@ beforeEach(async () => {
   await putEvent(GALA);
   await putEvent(GOLF);
   await putDoc('gala', GALA_DOC);
-  await writeConfig(DB, { enabled: true });
+  await writeConfig(DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
 });
 const only = () => [...kit.broadcasts.values()][0];
 const look = (when) => runNewsletterDrafts(env, { now: at(when) });
@@ -360,7 +360,7 @@ test('by hand: off while invites are paused; Kit down drafts nothing and says so
   const now = at('2027-08-22T15:00:00Z');
   await writeConfig(env.DB, { enabled: false });
   assert.equal((await draftNewsletterNow(env, { key: recapKey(GALA.slug), by: STAFF, now })).newsletter, 'off');
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   kit.down = true;
   const r = await draftNewsletterNow(env, { key: recapKey(GALA.slug), by: STAFF, now });
   assert.equal(r.newsletter, 'error');
@@ -466,7 +466,7 @@ test('drafts paused past an event’s 60 days: when they’re back on, it’s le
   await writeConfig(env.DB, { enabled: false });
   publish();
   await look('2027-08-22T15:00:00Z');
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await look('2027-11-05T15:00:00Z');
   assert.ok(![...kit.broadcasts.values()].some((b) => /What a Night/.test(b.subject)));
   assert.equal((await readNewsletterRow(env.DB, recapKey(GALA.slug))).state, 'skipped');
@@ -546,4 +546,14 @@ test('status: an event long over that the site never saw end says it won’t com
   const st = await newsletterStatus(env, recapKey('kids-fest-2019'), { now: at('2027-08-02T15:00:00Z') });
   assert.equal(st.state, 'skipped');
   assert.equal(st.block, null, 'and By hand still drafts it');
+});
+
+
+test('the reviewers by default: Linzi and Peter; whoever drafts it by hand isn’t emailed about it, the other is', async () => {
+  await writeConfig(env.DB, { enabled: true, kitInvite: {} });
+  publish();
+  await draftNewsletterNow(env, { key: recapKey(GALA.slug), by: 'Peter@soardcharity.com', now: at('2027-08-22T15:00:00Z') });
+  assert.deepEqual(emails.map((e) => e.to[0]), ['linzi@soardcharity.com']);
+  assert.match(emails[0].text, /Peter drafted it from the admin/);
+  assert.ok((await readNewsletterRow(env.DB, recapKey(GALA.slug))).told);
 });

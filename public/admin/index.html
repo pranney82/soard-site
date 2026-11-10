@@ -6979,7 +6979,7 @@
         : ki?.state === 'sent' ? { state: 'done', text: ki.at ? `Sent from Kit ${rtWhen(ki.at)}` : 'Sent from Kit', link: inKit }
         : ki?.state === 'scheduled' ? { state: 'done', text: ki.at ? `Scheduled in Kit for ${rtWhen(ki.at)}` : 'Scheduled in Kit', link: inKit }
         : ki?.state === 'draft' ? (ki.error ? { state: 'warn', text: ki.error, link: inKit }
-          : ki.edited ? { state: 'wait', text: 'Edited in Kit, so JobTread changes won\'t rewrite it: Linzi is emailed them instead. Waiting for staff to send it', link: inKit }
+          : ki.edited ? { state: 'wait', text: 'Edited in Kit, so JobTread changes won\'t rewrite it: Linzi and Peter are emailed them instead. Waiting for staff to send it', link: inKit }
           : r.confirmed && r.time ? { state: 'wait', text: 'Drafted. Waiting for staff to review it and send it from Kit', link: inKit }
           : { state: 'wait', text: `Drafted early. Hold it until ${r.confirmed ? 'the Reveal task has a time' : 'the reveal is confirmed'}: that fills in the time and calendar buttons`, link: inKit })
         : live.kit && !live.kit.configured ? { state: 'off', text: 'Kit isn\'t connected' }
@@ -7080,7 +7080,7 @@
           const d = await res.json().catch(() => ({}));
           if (!d.ok) throw new Error(d.error || d.reason || `Couldn't draft it (${res.status})`);
           if (d.kit === 'check') addToast(`${r.name}'s invite is in Kit. Check who it goes to before anyone sends it`, 'error');
-          else if (d.kit === 'drafted') addToast(`${r.name}'s invite email is in Kit${d.told === false ? '. The email to Linzi hasn\'t gone yet; the site keeps trying' : ', and Linzi was emailed to review it'}`, 'success');
+          else if (d.kit === 'drafted') addToast(`${r.name}'s invite email is in Kit${d.told === false ? '. The email to the reviewers hasn\'t gone yet; the site keeps trying' : ', and Linzi and Peter were emailed to review it'}`, 'success');
           else addToast(`${r.name}'s invite email is already in Kit`, 'info');
           await load();
         } catch (e) { addToast(e.message, 'error'); }

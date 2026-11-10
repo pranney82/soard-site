@@ -86,7 +86,7 @@ beforeEach(async () => {
   await DB.prepare('INSERT INTO kids (slug, name, year, status, data) VALUES (?, ?, ?, ?, ?)').bind(SLUG, KID.name, 2027, KID.status, JSON.stringify(KID)).run();
   env = { DB, KIT_API_KEY: 'kit_test', RESEND_API_KEY: 're_test', SLACK_WEBHOOK_URL: 'https://hooks.slack.example/never', SLACK_BOT_TOKEN: 'xoxb-never' };
 });
-const config = { enabled: true };
+const config = { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } };
 const queued = (kind, at = NOW) => queueProjectEmail(env, { slug: SLUG, kind, jobId: '22PTestJob001', now: at });
 const look = async (kind, extra = {}) => syncProjectEmail(env, await readProjectRow(env.DB, SLUG, kind), { config, alertTo: ['peter@soardcharity.com'], now: NOW, ...extra });
 const only = () => [...kit.broadcasts.values()][0];
@@ -472,7 +472,7 @@ const addKid = (slug, data) => env.DB.prepare('INSERT OR REPLACE INTO kids (slug
 const hourly = (at = NOW) => runProjectEmails(env, { now: at });
 
 test('every kid already Completed at the first look is marked done for good, and none is drafted', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await addKid('old-one', { status: 'completed', year: 2016 });
   await addKid('old-two', { status: 'completed', year: 2024 });
   await hourly();
@@ -486,7 +486,7 @@ test('every kid already Completed at the first look is marked done for good, and
 });
 
 test('a warranty repair: a finished kid’s job leaves Completed and comes back, and nothing happens', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await addKid('old-one', { status: 'completed', year: 2024 });
   await hourly();
   await addKid('old-one', { status: 'in-progress', year: 2024 });
@@ -499,7 +499,7 @@ test('a warranty repair: a finished kid’s job leaves Completed and comes back,
 });
 
 test('the first look failing part way leaves nothing behind, and no kid counts as new', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await addKid('old-one', { status: 'completed', year: 2024 });
   const realBatch = env.DB.batch.bind(env.DB);
   env.DB.batch = async () => { throw new Error('D1_ERROR: Network connection lost.'); };
@@ -512,7 +512,7 @@ test('the first look failing part way leaves nothing behind, and no kid counts a
 });
 
 test('a kid who finishes after that is found on the next look, even if nothing marked the moment', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await hourly();
   await putKid(DONE);
   const out = await hourly(NOW + DAY);
@@ -523,7 +523,7 @@ test('a kid who finishes after that is found on the next look, even if nothing m
 });
 
 test('kids waiting on a video can’t hold up a kid who’s ready', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await hourly();
   for (let i = 0; i < 15; i += 1) await addKid(`waiting-${i}`, { status: 'completed', videoUrl: null });
   await hourly(NOW + DAY);
@@ -534,7 +534,7 @@ test('kids waiting on a video can’t hold up a kid who’s ready', async () => 
 });
 
 test('a reopened job: not "complete" until it says so again', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await hourly();
   await putKid({ ...DONE, videoUrl: null });
   await hourly(NOW + DAY);
@@ -547,7 +547,7 @@ test('a reopened job: not "complete" until it says so again', async () => {
 });
 
 test('months after the reveal it’s no longer news: dropped quietly', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await hourly();
   await putKid({ ...DONE, videoUrl: null });
   await hourly(NOW);
@@ -697,7 +697,7 @@ test('switched off, paused or Kit not connected: nothing happens', async () => {
 });
 
 test('a draft deleted in Kit stays deleted', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await queued('kickoff');
   await look('kickoff');
   kit.broadcasts.clear();
@@ -1129,7 +1129,7 @@ const STAFF = 'clareece@soardcharity.com';
 const byHand = (kind, extra = {}) => draftProjectEmailNow(env, { slug: SLUG, kind, by: STAFF, now: NOW, ...extra });
 
 test('by hand: a Kickoff drafts now, before JobTread’s step, as a draft only, and Linzi hears who drafted it', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   const r = await byHand('kickoff');
   assert.equal(r.project, 'drafted');
   const b = only();
@@ -1149,14 +1149,14 @@ test('by hand: a Kickoff drafts now, before JobTread’s step, as a draft only, 
 });
 
 test('by hand: Linzi drafting it herself gets no email about it', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   assert.equal((await byHand('kickoff', { by: 'Linzi@soardcharity.com' })).project, 'drafted');
   assert.equal(emails.length, 0);
   assert.ok((await readProjectRow(env.DB, SLUG, 'kickoff')).told, 'and the hourly look owes her nothing');
 });
 
 test('by hand: only what would make the email untrue holds it back', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   assert.match((await byHand('reveal')).reason, /Ready once the kid is Completed/);
   await putKid(DONE);
   assert.match((await byHand('kickoff')).reason, /makeover is finished/);
@@ -1167,7 +1167,7 @@ test('by hand: only what would make the email untrue holds it back', async () =>
 });
 
 test('by hand: a Project Reveal for a kid finished before these emails began, without its video', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await putKid({ ...DONE, videoUrl: '', photos: DONE.photos.slice(0, 2) });
   await hourly(NOW); // the first look marks every finished kid as past
   assert.equal((await readProjectRow(env.DB, SLUG, 'reveal')).state, 'skipped');
@@ -1186,7 +1186,7 @@ test('by hand: a Project Reveal for a kid finished before these emails began, wi
 });
 
 test('by hand: deleted in Kit, it can be drafted again; scheduled or sent, never', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await byHand('kickoff');
   const first = String(only().id);
   kit.broadcasts.get(first).status = 'scheduled';
@@ -1204,7 +1204,7 @@ test('by hand: deleted in Kit, it can be drafted again; scheduled or sent, never
 });
 
 test('by hand: Kit not answering drafts nothing, and says so', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   await byHand('kickoff');
   kit.readDown = true;
   const r = await byHand('kickoff');
@@ -1220,14 +1220,14 @@ test('by hand: off while invites are paused, and with no one to say who asked', 
   await writeConfig(env.DB, { enabled: false });
   assert.equal((await byHand('kickoff')).project, 'off');
   assert.match((await projectEmailStatus(env, SLUG)).off, /paused/);
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   assert.equal((await byHand('kickoff', { by: 'unknown' })).project, 'error');
   assert.equal((await byHand('invite')).project, 'error');
   assert.equal(kit.broadcasts.size, 0);
 });
 
 test('status: each email as Kit has it, and what the page still needs', async () => {
-  await writeConfig(env.DB, { enabled: true });
+  await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
   let st = await projectEmailStatus(env, SLUG, { now: NOW });
   assert.equal(st.off, null);
   assert.deepEqual(st.page, { published: true, completed: false });

@@ -33,7 +33,7 @@ import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
 import { SITE_URL, TEAM_PICTURE, EMAIL_DESIGN } from './_reveal-invite-email.js';
 import { projectKickoffEmail, projectRevealEmail, revealChecks } from './_project-email.js';
-import { brokenLogos, kidPageReady, kitInviteSettings, kitDraftUrl, copyHash, wentOut } from './_reveal-invite-kit.js';
+import { brokenLogos, kidPageReady, kitInviteSettings, reviewersOf, kitDraftUrl, copyHash, wentOut } from './_reveal-invite-kit.js';
 import { readConfig, alertList } from './_reveal-invites.js';
 
 const KINDS = {
@@ -166,8 +166,10 @@ export function projectNote(note, { kind, name, id, subject, missing = [], by = 
 
 async function tell(env, settings, note, ctx) {
   const n = projectNote(note, ctx);
-  const to = [settings.reviewer].filter(isEmail);
-  if (!emailConfigured(env) || !to.length) return false;
+  // Every reviewer but the one who drafted it by hand: nobody needs an email about their own press of a button
+  const to = reviewersOf(settings).filter((r) => !samePerson(ctx.by, r));
+  if (!to.length) return true;
+  if (!emailConfigured(env)) return false;
   const out = await sendEmails(env, { to, subject: n.subject, html: n.html, text: n.text, tags: [{ name: 'category', value: 'project-email-review' }] }).catch(() => null);
   return (out?.sent || 0) > 0;
 }
@@ -205,7 +207,7 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
   const { kind, slug } = row;
   if (!s.enabled || config.enabled === false) return { project: 'off' };
   if (!kitConfigured(env)) return { project: 'skip', reason: 'Kit is not connected' };
-  const everyone = [...new Set([...alertTo, s.reviewer].filter(isEmail))];
+  const everyone = [...new Set([...alertTo, ...reviewersOf(s)].filter(isEmail))];
   let name = 'A kid';
   // A blip isn't an alarm; still failing on the next look is. Back to waiting either way.
   const trouble = async (error) => {
@@ -272,8 +274,7 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
     const seen = await kitReadBroadcast(env, id);
     const drafted = { ...row, broadcast_id: id, state: 'drafted', error: null, alarmed: null, design: EMAIL_DESIGN, content_hash: seen.ok ? await copyHash(seen.broadcast) : null };
     await writeRow(DB, drafted); // kept first: a draft Kit has is never made twice
-    // A reviewer who drafted it by hand needs no email about it
-    const heard = samePerson(by, s.reviewer) || await tell(env, s, 'ready', { kind, name, id, subject: email.subject, by });
+    const heard = await tell(env, s, 'ready', { kind, name, id, subject: email.subject, by });
     if (heard) await writeRow(DB, { ...drafted, told: iso(now) });
     return { project: 'drafted', id, told: heard };
   } catch (err) {

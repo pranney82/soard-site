@@ -92,7 +92,9 @@ beforeEach(async () => {
   env = { DB, KIT_API_KEY: 'kit_test', RESEND_API_KEY: 're_test', SLACK_WEBHOOK_URL: 'https://hooks.slack.example/never', SLACK_BOT_TOKEN: 'xoxb-never' };
 });
 
-const sync = (p = plan(), extra = {}) => syncKitInvite(env, { jobId: '22PTestJob001', plan: p, who: WHO, room: 'Bathroom', config: { enabled: true }, alertTo: ['peter@soardcharity.com'], ...extra });
+// One reviewer here, so each note is one email (the default is two people: see the reviewers test)
+const ONE_REVIEWER = { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } };
+const sync = (p = plan(), extra = {}) => syncKitInvite(env, { jobId: '22PTestJob001', plan: p, who: WHO, room: 'Bathroom', config: ONE_REVIEWER, alertTo: ['peter@soardcharity.com'], ...extra });
 
 test('the email: filled in from the kid page and JobTread, the Remi & Nico design, nothing Kit adds itself', () => {
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way, Atlanta, GA 30301', notes: 'Park on the street.\nBring a smile.' });
@@ -131,7 +133,7 @@ test('confirmed in JobTread: one draft in Kit, to the Reveal Emails segment, pri
   assert.match(b.content, /100[ \u00A0]Example[ \u00A0]Way/);
 
   assert.equal(emails.length, 1);
-  assert.deepEqual(emails[0].to, [KIT_INVITE_DEFAULTS.reviewer]);
+  assert.deepEqual(emails[0].to, ['linzi@soardcharity.com']);
   assert.equal(emails[0].to[0], 'linzi@soardcharity.com');
   assert.equal(emails[0].subject, 'Review Rowan’s reveal invite in Kit');
   assert.match(emails[0].html, new RegExp(`app\\.kit\\.com/campaigns/${b.id}`), 'a link straight to the draft');
@@ -508,7 +510,7 @@ test('the signature has the team, and a picture that won’t load is left out, n
 
 test('JobTread says the reveal may be off: Linzi hears once to hold the draft, and again when it’s back on', async () => {
   await sync();
-  const hold = () => holdKitInvite(env, { jobId: '22PTestJob001', reason: 'status is Denied', name: 'Rowan', config: { enabled: true } });
+  const hold = () => holdKitInvite(env, { jobId: '22PTestJob001', reason: 'status is Denied', name: 'Rowan', config: ONE_REVIEWER });
   assert.equal((await hold()).kit, 'held');
   assert.equal(emails.at(-1).subject, 'Hold Rowan’s reveal invite');
   assert.deepEqual(emails.at(-1).to, ['linzi@soardcharity.com']);
@@ -524,7 +526,7 @@ test('JobTread says the reveal may be off: Linzi hears once to hold the draft, a
 test('the reveal may be off after Linzi sent it: the note says so, never "don’t send it"', async () => {
   await sync();
   [...kit.broadcasts.values()][0].status = 'completed';
-  await holdKitInvite(env, { jobId: '22PTestJob001', reason: 'job closed', name: 'Rowan', config: { enabled: true } });
+  await holdKitInvite(env, { jobId: '22PTestJob001', reason: 'job closed', name: 'Rowan', config: ONE_REVIEWER });
   assert.equal(emails.at(-1).subject, 'Rowan’s reveal may be off, after the invite went out');
   assert.match(emails.at(-1).html, /short update/);
   assert.ok(!/don’t send/.test(emails.at(-1).html));
@@ -533,12 +535,12 @@ test('the reveal may be off after Linzi sent it: the note says so, never "don’
 test('the reveal may be off while it’s scheduled: she’s told to unschedule it', async () => {
   await sync();
   Object.assign([...kit.broadcasts.values()][0], { status: 'scheduled', send_at: '2027-03-01T15:00:00Z' });
-  await holdKitInvite(env, { jobId: '22PTestJob001', reason: 'job closed', name: 'Rowan', config: { enabled: true } });
+  await holdKitInvite(env, { jobId: '22PTestJob001', reason: 'job closed', name: 'Rowan', config: ONE_REVIEWER });
   assert.equal(emails.at(-1).subject, 'Unschedule Rowan’s reveal invite');
 });
 
 test('nothing waiting in Kit: nothing to hold, and a hold note that didn’t go is tried again', async () => {
-  const hold = () => holdKitInvite(env, { jobId: '22PTestJob001', reason: 'job closed', name: 'Rowan', config: { enabled: true } });
+  const hold = () => holdKitInvite(env, { jobId: '22PTestJob001', reason: 'job closed', name: 'Rowan', config: ONE_REVIEWER });
   assert.equal((await hold()).kit, 'skip');
   assert.equal(emails.length, 0);
   await sync();
@@ -552,7 +554,7 @@ test('nothing waiting in Kit: nothing to hold, and a hold note that didn’t go 
 });
 
 // ─── A second reviewer's sequences (Nov 4 2026): every look starts from Kit's copy ─────────
-const hold = (reason = 'job closed') => holdKitInvite(env, { jobId: '22PTestJob001', reason, name: 'Rowan', config: { enabled: true }, alertTo: ['peter@soardcharity.com'] });
+const hold = (reason = 'job closed') => holdKitInvite(env, { jobId: '22PTestJob001', reason, name: 'Rowan', config: ONE_REVIEWER, alertTo: ['peter@soardcharity.com'] });
 const only = () => [...kit.broadcasts.values()][0];
 const everyone = [{ all: [{ type: 'all_subscribers' }] }];
 
@@ -1205,4 +1207,14 @@ test('a new design: the next look rebuilds an untouched draft quietly, and an ed
   kit.calls = [];
   await sync();
   assert.ok(!kit.calls.some((c) => c.startsWith('PUT')), 'her edit stays');
+});
+
+
+test('the reviewers by default: Linzi and Peter each get the note (Peter, Nov 9 2026)', async () => {
+  const { reviewersOf } = await import('../functions/api/_reveal-invite-kit.js');
+  assert.deepEqual(reviewersOf(KIT_INVITE_DEFAULTS), ['linzi@soardcharity.com', 'peter@soardcharity.com']);
+  assert.deepEqual(reviewersOf({ reviewer: 'A@x.org; b@y.org, a@x.org, not-an-email' }), ['a@x.org', 'b@y.org']);
+  assert.deepEqual(reviewersOf({ reviewer: ['c@z.org'] }), ['c@z.org']);
+  await sync(plan(), { config: { enabled: true } });
+  assert.deepEqual(emails.map((e) => e.to[0]).sort(), ['linzi@soardcharity.com', 'peter@soardcharity.com']);
 });
