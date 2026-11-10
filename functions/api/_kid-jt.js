@@ -72,19 +72,23 @@ export function partLine(it) {
   else if (it.source === 'donated') bits.push('donated, coming');
   else if (it.also?.typed) bits.push(`bought${it.cents ? `, ${usd(it.cents)}` : ''}`);
   const got = (it.receipts || []).filter((r) => !r.undone && r.kind === 'receive');
+  const outs = (it.receipts || []).filter((r) => !r.undone && r.kind === 'out');
   const last = got[got.length - 1];
+  const lastOut = outs[outs.length - 1];
+  const by = (r) => (r?.who ? ` (${r.who})` : '');
   if (it.status === 'house') bits.push('went to the house, not the Office');
-  else if (it.status === 'here') bits.push(`${it.qty > 1 ? `all ${it.qty} here` : 'here'} ${day(last?.at)}${it.shelf ? `, ${shelfName(it.shelf)}` : ''}`);
-  else if (it.status === 'partly') bits.push(`${it.got} of ${it.qty} here ${day(last?.at)}${it.shelf ? `, ${shelfName(it.shelf)}` : ''}`);
+  else if (it.status === 'here' || it.status === 'out') bits.push(`${it.qty > 1 ? `all ${it.qty} here` : 'here'} ${day(last?.at)}${by(last)}${it.shelf && it.status === 'here' && (it.sent || 0) < it.got ? `, ${shelfName(it.shelf)}` : ''}`);
+  else if (it.status === 'partly') bits.push(`${it.got} of ${it.qty} here ${day(last?.at)}${by(last)}${it.shelf ? `, ${shelfName(it.shelf)}` : ''}`);
   else if (!bits.length) bits.push('not ordered yet');
+  if (it.sent) bits.push(`${it.sent >= it.got ? 'out to the house' : `${it.sent} of ${it.got} out to the house`} ${day(lastOut?.at)}${by(lastOut)}`);
   return `${it.qty > 1 ? `${it.name} (${it.qty})` : it.name}: ${bits.join('; ')}`;
 }
 
 /** A line's status from its parts; an allowance (decor) line is never complete, so it's only ever "Partly" */
 export function lineStatus(items, { allowance = false } = {}) {
   if (!items.length) return null;
-  const done = items.filter((i) => i.status === 'here' || i.status === 'house').length;
-  const some = items.filter((i) => i.status === 'partly' || i.status === 'here' || i.status === 'house').length;
+  const done = items.filter((i) => i.status === 'here' || i.status === 'house' || i.status === 'out').length;
+  const some = items.filter((i) => i.status === 'partly' || i.status === 'here' || i.status === 'house' || i.status === 'out').length;
   const coming = items.filter((i) => i.order || i.source === 'donated' || i.also || i.status !== 'not').length;
   if (allowance) return some ? 'Partly received' : coming ? 'Partly ordered' : null;
   if (done === items.length) return 'Received';
@@ -95,11 +99,13 @@ export function lineStatus(items, { allowance = false } = {}) {
 
 /** What a line's three fields should say → { status, details, shelf } */
 export function lineValues(items, { allowance = false } = {}) {
-  const shelves = [...new Set(items.filter((i) => i.shelf && (i.status === 'here' || i.status === 'partly')).map((i) => i.shelf))]
-    .sort((a, b) => SHELVES.indexOf(a) - SHELVES.indexOf(b));
+  // Where it is: the shelves holding what's still at the Office; once all of it went out, the house
+  const atOffice = items.filter((i) => i.shelf && (i.status === 'here' || i.status === 'partly') && (i.sent || 0) < i.got);
+  const shelves = [...new Set(atOffice.map((i) => i.shelf))].sort((a, b) => SHELVES.indexOf(a) - SHELVES.indexOf(b));
+  const allOut = !atOffice.length && items.some((i) => i.sent);
   let details = items.map(partLine).join('\n');
   if (details.length > DETAILS_MAX) details = `${details.slice(0, DETAILS_MAX - 1)}…`;
-  return { status: lineStatus(items, { allowance }), details, shelf: shelves.length ? shelves.map(shelfName).join(', ') : null };
+  return { status: lineStatus(items, { allowance }), details, shelf: shelves.length ? shelves.map(shelfName).join(', ') : allOut ? 'At the house' : null };
 }
 
 /** Each JobTread line the site writes, from the view → [{ jobId, kid, itemId, also, allowance, items }] */

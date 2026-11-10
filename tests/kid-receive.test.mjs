@@ -414,3 +414,42 @@ test('Nov 10 live check: a line read as one whole part takes each thing ordered 
   const l = linesOf(v).find((x) => x.itemId === 'a-sensory');
   assert.equal(lineValues(l.items, { allowance: l.allowance }).status, 'Partly ordered', 'never “Ordered”: the line’s full list isn’t known');
 });
+
+test('check-out: a scanned label sends its check-in to the house once; when all of it is out the shelf frees, and JobTread says where', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  await env.DB.prepare("INSERT INTO staff_state (key, data) VALUES ('directory', ?)").bind(JSON.stringify({ accounts: [{ name: 'Pat Lee', email: 'pat@soardcharity.com' }, { name: 'Sam Fox', email: 'sam@soardcharity.com' }] })).run();
+  const v0 = await view();
+  const head = itemOf(v0, 'Rowan S.', 'Raincan Shower Head');
+  const valve = itemOf(v0, 'Rowan S.', 'Shower Valve');
+  const a = tap(), b = tap(), c = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, line: head.line, units: 1, boxes: 1 }, { by: 'pat@soardcharity.com' });
+  await receive(env.DB, { tap: b, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, line: valve.line, units: 1, boxes: 1 }, { by: 'pat@soardcharity.com' });
+  await receive(env.DB, { tap: c, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, line: valve.line, units: 1, boxes: 1 }, { by: 'pat@soardcharity.com' });
+  const out1 = await checkOut(env.DB, { tap: tap(), ref: a }, { by: 'sam@soardcharity.com' });
+  assert.equal(out1.repeat, false);
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a })).repeat, true, 'the same label again counts once');
+  await checkOut(env.DB, { tap: tap(), ref: b }, { by: 'sam@soardcharity.com' });
+  let v = await view();
+  assert.equal(itemOf(v, 'Rowan S.', 'Raincan Shower Head').status, 'out');
+  assert.deepEqual([itemOf(v, 'Rowan S.', 'Shower Valve').status, itemOf(v, 'Rowan S.', 'Shower Valve').sent], ['here', 1], 'one of the two valves is still at the Office');
+  assert.deepEqual(kidOf(v, 'Rowan S.').shelves, ['1']);
+  const l = linesOf(v).find((x) => x.itemId === 'r-shower');
+  let vals = lineValues(l.items);
+  assert.equal(vals.shelf, 'Shelf 1');
+  assert.match(vals.details, /Raincan Shower Head: ordered Oct 30.*; here Nov \d+ \(Pat\); out to the house Nov \d+ \(Sam\)/);
+  assert.match(vals.details, /Shower Valve \(2\): all 2 here .*\(Pat\), Shelf 1; 1 of 2 out to the house/);
+  await checkOut(env.DB, { tap: tap(), ref: c }, { by: 'sam@soardcharity.com' });
+  v = await view();
+  assert.deepEqual(kidOf(v, 'Rowan S.').shelves, [], 'everything out: the shelf is free for the next kid');
+  vals = lineValues(linesOf(v).find((x) => x.itemId === 'r-shower').items);
+  assert.deepEqual([vals.status, vals.shelf], ['Received', 'At the house']);
+  await assert.rejects(checkOut(env.DB, { tap: tap(), ref: 'not-a-real-label' }), /isn’t one of SOARD’s/);
+});
+
+test('each makeover’s Project Manager rides along, for who opens on Check out', async () => {
+  await env.DB.exec("CREATE TABLE IF NOT EXISTS kid_parts_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)");
+  await env.DB.prepare("INSERT INTO kid_parts_state (key, data) VALUES ('state', ?)").bind(JSON.stringify({ jobs: [{ id: 'j-rowan', name: 'Rowan Sample (2026)', pm: 'Sam' }] })).run();
+  const v = await view();
+  assert.equal(kidOf(v, 'Rowan S.').pm, 'Sam');
+  assert.equal(kidOf(v, 'Ava E.').pm, null);
+});

@@ -43,10 +43,18 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS kid_shelves (shelf TEXT PRIMARY KEY, job_id TEXT NOT NULL, at TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS kid_items_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
 ];
+// Added Nov 10 2026 with checking out: an "out" names the check-in whose label was scanned
+const RECEIPT_COLUMNS = ['ref TEXT'];
 const _ready = new WeakSet();
 export async function ensureRecord(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
+  const have = new Set(((await DB.prepare('PRAGMA table_info(kid_receipts)').all()).results || []).map((c) => c.name));
+  for (const c of RECEIPT_COLUMNS) {
+    if (have.has(c.split(' ')[0])) continue;
+    // Two requests at once can both see it missing: the second one's "duplicate column" is fine
+    try { await DB.prepare(`ALTER TABLE kid_receipts ADD COLUMN ${c}`).run(); } catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
+  }
   _ready.add(DB);
 }
 
@@ -84,7 +92,7 @@ export async function readRecord(DB) {
     all(DB, 'SELECT * FROM kid_shelves'),
   ]);
   return {
-    receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at })),
+    receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null })),
     decisions: new Map(decisions.map((d) => [d.key, { ...parse(d.decision, {}), by: d.by_email, at: d.at }])),
     also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
     shelves: new Map(shelves.map((s) => [s.shelf, s.job_id])),
@@ -218,4 +226,40 @@ export async function typedIn(DB, input, { by = null, now = new Date().toISOStri
   await DB.prepare(`INSERT OR IGNORE INTO kid_also (key, job_id, name, cents, donated, typed, by_email, at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`)
     .bind(key, input.jobId, name, cents, input.donated ? 1 : 0, by, now).run();
   return receive(DB, { ...input, itemId: key, partKey: 'also', name, line: 'Also bought' }, { by, now });
+}
+
+/**
+ * Check out (load-out to the house): { tap, ref } for a scanned label (that check-in's units go), or
+ * { tap, jobId, itemId, partKey, units, name, line } for an item tapped on the list → { receipt, repeat }
+ * A label scanned twice counts once. When everything a kid has at the Office is out, their shelves come free.
+ */
+export async function checkOut(DB, input, { by = null, now = new Date().toISOString() } = {}) {
+  await ensureRecord(DB);
+  const { tap } = input || {};
+  if (!tapOk(tap)) throw bad('That check-out has no id. Reload the page.');
+  const before = await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first();
+  if (before) return { receipt: before, repeat: true };
+  let row = { jobId: input.jobId, itemId: input.itemId, partKey: input.partKey, units: count(input.units, MAX_UNITS), name: input.name, line: input.line, ref: null };
+  if (input.ref) {
+    const r = await DB.prepare("SELECT * FROM kid_receipts WHERE id = ? AND kind = 'receive'").bind(String(input.ref)).first();
+    if (!r) throw Object.assign(new Error('That label isn’t one of SOARD’s check-ins.'), { status: 404 });
+    if (r.undone_at) throw Object.assign(new Error('That check-in was taken back.'), { status: 409 });
+    const out = await DB.prepare("SELECT * FROM kid_receipts WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(r.id).first();
+    if (out) return { receipt: out, repeat: true };
+    row = { jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, units: r.units, name: r.name, line: r.line_name, ref: r.id };
+  }
+  if (!row.jobId || !row.itemId || !row.partKey) throw bad('Which item is it? Pick it from the list.');
+  await DB.prepare(`INSERT OR IGNORE INTO kid_receipts (id, kind, job_id, item_id, part_key, name, line_name, units, boxes, shelf, by_email, at, ref)
+      VALUES (?, 'out', ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?)`)
+    .bind(tap, row.jobId, row.itemId, row.partKey, String(row.name || '').slice(0, 250), String(row.line || '').slice(0, 250), row.units, by, now, row.ref).run();
+  await freeIfAllOut(DB, row.jobId);
+  return { receipt: await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first(), repeat: false };
+}
+
+/** Everything the kid has at the Office went out: their shelves come free for the next kid */
+export async function freeIfAllOut(DB, jobId) {
+  const rows = await all(DB, "SELECT item_id, part_key, kind, SUM(units) AS n FROM kid_receipts WHERE job_id = ? AND undone_at IS NULL AND kind IN ('receive', 'out') GROUP BY item_id, part_key, kind", jobId);
+  const left = new Map();
+  for (const r of rows) left.set(`${r.item_id}|${r.part_key}`, (left.get(`${r.item_id}|${r.part_key}`) || 0) + (r.kind === 'receive' ? r.n : -r.n));
+  if (left.size && [...left.values()].every((n) => n <= 0)) await DB.prepare('DELETE FROM kid_shelves WHERE job_id = ?').bind(jobId).run();
 }

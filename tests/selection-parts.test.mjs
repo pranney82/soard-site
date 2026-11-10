@@ -61,7 +61,7 @@ beforeEach(async () => {
     const { query } = JSON.parse(init.body);
     if (query.organization?.jobs) {
       calls.push({ kind: 'jobs' });
-      return Response.json({ organization: { jobs: { nextPage: null, nodes: jobs.map((j) => ({ id: j.id, name: j.name, customFieldValues: { nodes: [{ value: j.status }] } })) } } });
+      return Response.json({ organization: { jobs: { nextPage: null, nodes: jobs.map((j) => ({ id: j.id, name: j.name, customFieldValues: { nodes: [{ value: j.status, customField: { id: '22P52qfFub9b' } }, ...(j.pm ? [{ value: j.pm, customField: { id: '22NMZbwAM7X5' } }] : [])] } })) } } });
     }
     if (query.job?.costItems) {
       const id = query.job.$.id;

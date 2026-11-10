@@ -20,6 +20,7 @@
  */
 
 import { pave, SOARD_ORG_ID, FIELD_JOB_STATUS } from './_reveals.js';
+import { FIELD_PM } from './_reveal-nudges.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 
 const EVERY_MS = 30 * 60 * 1000;
@@ -214,12 +215,17 @@ async function openJobs(env, fetchImpl) {
         jobs: {
           $: { size: 25, where: ['closedOn', '=', null], ...(page ? { page } : {}) },
           nextPage: {},
-          nodes: { id: {}, name: {}, customFieldValues: { $: { size: 5, where: [['customField', 'id'], '=', FIELD_JOB_STATUS] }, nodes: { value: {} } } },
+          nodes: { id: {}, name: {}, customFieldValues: { $: { size: 5, where: [['customField', 'id'], 'in', [FIELD_JOB_STATUS, FIELD_PM]] }, nodes: { value: {}, customField: { id: {} } } } },
         },
       },
     }, fetchImpl);
     const conn = data?.organization?.jobs;
-    for (const j of conn?.nodes || []) out.push({ id: j.id, name: j.name, status: j.customFieldValues?.nodes?.[0]?.value || null });
+    for (const j of conn?.nodes || []) {
+      const v = (id) => j.customFieldValues?.nodes?.find((n) => n.customField?.id === id)?.value;
+      const pm = v(FIELD_PM);
+      // The Project Manager (an option, "Christian Nielsen"): their first name, for who loads out (./_kid-checkin.js)
+      out.push({ id: j.id, name: j.name, status: v(FIELD_JOB_STATUS) || null, pm: String(Array.isArray(pm) ? pm[0] || '' : pm || '').trim().split(/\s+/)[0] || null });
+    }
     page = conn?.nextPage;
     if (!page) break;
   }
@@ -284,7 +290,7 @@ const missTries = (by) => Number((/^none:(\d+)$/.exec(String(by || '')) || [])[1
 async function run(env, st, { fetchImpl, now }) {
   const started = Date.now();
   const jobs = await openJobs(env, fetchImpl);
-  st.jobs = jobs.map((j) => ({ id: j.id, name: j.name, status: j.status }));
+  st.jobs = jobs.map((j) => ({ id: j.id, name: j.name, status: j.status, pm: j.pm || null }));
   // A makeover no longer open (finished, closed, put on hold) leaves the list
   const open = new Set(jobs.map((j) => j.id));
   for (const r of (await env.DB.prepare('SELECT DISTINCT job_id FROM kid_parts').all()).results || []) {

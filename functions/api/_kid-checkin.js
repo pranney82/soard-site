@@ -57,15 +57,21 @@ export async function orderReads(DB, kinds = ORDER_KINDS, strict = false) {
 }
 
 /** Where an item stands from its receipts: not · ordered · partly · here · house (it went to the house) */
-function settle(it) {
+/**
+ * Where an item stands from its receipts: not · ordered · partly · here · out (all that came went to the house at
+ * load-out) · house (it went straight to the house). got: how many came; sent: how many went out to the house
+ */
+function settle(it, whoOf = () => null) {
   const live = it.receipts.filter((r) => !r.undoneAt);
   it.got = live.filter((r) => r.kind === 'receive').reduce((t, r) => t + (r.units || 0), 0);
+  it.sent = live.filter((r) => r.kind === 'out').reduce((t, r) => t + (r.units || 0), 0);
   it.shelf = [...live].reverse().find((r) => r.kind === 'receive' && r.shelf)?.shelf || null;
   if (live.some((r) => r.kind === 'house')) it.status = 'house';
+  else if (it.got > 0 && it.sent >= it.got && it.got >= it.qty) it.status = 'out';
   else if (it.got >= it.qty) it.status = 'here';
   else if (it.got > 0) it.status = 'partly';
   else it.status = it.order ? 'ordered' : 'not';
-  it.receipts = it.receipts.map(({ id, kind, units, boxes, shelf, at, undoneAt }) => ({ id, kind, units, boxes, shelf, at, undone: Boolean(undoneAt) }));
+  it.receipts = it.receipts.map(({ id, kind, units, boxes, shelf, at, undoneAt, by, ref }) => ({ id, kind, units, boxes, shelf, at, who: whoOf(by), ...(ref ? { ref } : {}), undone: Boolean(undoneAt) }));
   return it;
 }
 const OPEN = new Set(['not', 'ordered']);
@@ -91,6 +97,8 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const firstOf = new Map((dir.accounts || []).map((a) => [String(a.email || '').toLowerCase(), String(a.name || '').split(/\s+/)[0]]));
   const templates = templateLines(lines);
   const live = await readState(DB, 'live');
+  // Each makeover's Project Manager (the selection reader keeps it): they load out, so the page opens on Check out for them
+  const pmOf = new Map((parse((await rows(DB, "SELECT data FROM kid_parts_state WHERE key = 'state'"))[0]?.data, {}).jobs || []).map((j) => [j.id, j.pm || null]));
   const since = live.since || null;
 
   // Each kid's own page, for their photo (the same match the board's costs use: pinned job, else name and year)
@@ -98,7 +106,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const kids = jobs.map((j) => {
     const page = photos ? matchProject(j.name, pages, j.id) : null;
     const shelves = SHELVES.filter((s) => record.shelves.get(s) === j.id);
-    return { jobId: j.id, name: j.name, short: shortName(j.name), shelves, shelf: shelves[0] ? shelfName(shelves[0]) : null, photo: avatarOf(page?.photo), others: 0, allowances: [], items: [] };
+    return { jobId: j.id, name: j.name, short: shortName(j.name), pm: pmOf.get(j.id) || null, shelves, shelf: shelves[0] ? shelfName(shelves[0]) : null, photo: avatarOf(page?.photo), others: 0, allowances: [], items: [] };
   });
   const kidOf = new Map(kids.map((k) => [k.jobId, k]));
   const lineOf = new Map(lines.map((l) => [`${l.jobId}|${l.itemId}`, l]));
@@ -247,9 +255,9 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     k.items = k.items.filter((it) => !(it.whole && it.used && !it.receipts.length));
     for (const it of k.items) {
       if (it.qty === 0) it.qty = Math.max(1, it.receipts.filter((r) => !r.undoneAt).reduce((t, r) => t + (r.units || 0), 0));
-      settle(it);
+      settle(it, (email) => (email ? firstOf.get(String(email).toLowerCase()) || String(email).split('@')[0] : null));
     }
-    const rank = { partly: 0, ordered: 1, not: 2, here: 3, house: 4 };
+    const rank = { partly: 0, ordered: 1, not: 2, here: 3, out: 4, house: 5 };
     k.items.sort((a, b) => (rank[a.status] - rank[b.status]) || String(a.order?.at || '').localeCompare(String(b.order?.at || '')));
   }
   const shelves = SHELVES.map((s) => {

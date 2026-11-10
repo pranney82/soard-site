@@ -14,13 +14,14 @@
  *   ?decide=1  { orderKey, items: [{ itemName, decision }] }      Needs a look and Wrong kid answers
  *   ?other=1   { tap, jobId, name, cents, donated, units, boxes } something else that came, typed in
  *   ?shelf-labels=1 { shelves: ['1', …] }                          the shelves' own signs
+ *   ?out=1     { tap, ref } (a scanned label) or { tap, jobId, itemId, partKey, units, name, line }   checked out to the house
  * Every check-in is saved first, then its kid's lines are written to JobTread (./_kid-jt.js) and its labels printed.
  */
 import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
 import { checkinView, orderReads } from './_kid-checkin.js';
 import { readLabel, findBox } from './_kid-scan.js';
-import { receive, undo, moveShelf, decide, typedIn, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
+import { receive, undo, moveShelf, decide, typedIn, checkOut, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { receiptLabels, shelfLabel } from './_kid-labels.js';
 import { printLabels, printerStatus, printerSetup, PRINTER_URL, PRINTER_USER } from './_kid-print.js';
@@ -37,6 +38,18 @@ async function who(request, env) {
   try { return String((await verifyJwt(jwt, env.CF_ACCESS_TEAM_DOMAIN, env.CF_ACCESS_AUD))?.email || '').toLowerCase() || null; } catch { return null; }
 }
 
+/** Who's looking: their first name, and whether they're a makeover's Project Manager (the page opens on Check out for them) */
+async function meOf(request, env, view) {
+  const email = await who(request, env);
+  if (!email) return { first: null, pm: false };
+  const row = await env.DB.prepare("SELECT data FROM staff_state WHERE key = 'directory'").first().catch(() => null);
+  let accounts = [];
+  try { accounts = JSON.parse(row?.data || '{}').accounts || []; } catch { /* none */ }
+  const first = String(accounts.find((a) => String(a.email || '').toLowerCase() === email)?.name || '').split(/\s+/)[0] || email.split('@')[0];
+  const pm = view.kids.some((k) => k.pm && k.pm.toLowerCase() === first.toLowerCase());
+  return { first, pm };
+}
+
 async function pageView(env) {
   const [view, printer] = await Promise.all([checkinView(env), printerStatus(env)]);
   return { ...view, printer };
@@ -45,7 +58,10 @@ async function pageView(env) {
 export async function onRequestGet({ env, request }) {
   try {
     const q = new URL(request.url).searchParams;
-    if (q.get('checkin')) return Response.json({ success: true, ...(await pageView(env)), printerUrl: PRINTER_URL, printerUser: PRINTER_USER }, { headers });
+    if (q.get('checkin')) {
+      const view = await pageView(env);
+      return Response.json({ success: true, ...view, me: await meOf(request, env, view), printerUrl: PRINTER_URL, printerUser: PRINTER_USER }, { headers });
+    }
     if (q.get('printer-setup')) {
       return new Response(await printerSetup(env.DB), { headers: { ...headers, 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="soard-printer-setup.txt"' } });
     }
@@ -86,6 +102,10 @@ export async function onRequestPost(context) {
       Object.assign(out, { receipt: r.receipt.id, shelf: r.shelf, repeat: r.repeat });
       // A retry of the same tap doesn't print twice
       if (!r.repeat) print = r.receipt;
+    } else if (q.get('out')) {
+      const r = await checkOut(env.DB, body, { by });
+      jobId = r.receipt.job_id;
+      Object.assign(out, { receipt: r.receipt.id, repeat: r.repeat, item: { jobId: r.receipt.job_id, itemId: r.receipt.item_id, partKey: r.receipt.part_key, name: r.receipt.name } });
     } else if (q.get('house')) {
       const r = await receive(env.DB, { ...body, kind: 'house' }, { by });
       jobId = r.receipt.job_id;
