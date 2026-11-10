@@ -32,6 +32,7 @@ import { maybeRunWaitlist } from './_application-waitlist.js';
 import { maybeRunPress } from './_press.js';
 import { maybeSlackPreview } from './_slack-preview.js';
 import { maybeRunEventRecaps } from './_event-recap.js';
+import { maybeRunNewsletterDrafts } from './_newsletter-drafts.js';
 import { maybeRunCompanyCam } from './_companycam-sync.js';
 import { maybeCheckJobs } from './_companycam-jobs.js';
 import { maybeCapSelfTest } from './_application-cap.js';
@@ -112,6 +113,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunPress(env));
     // Event pages turn into their recap (photos, then sponsors) the morning after (see _event-recap.js)
     context.waitUntil(maybeRunEventRecaps(env));
+    // Event Recap and Monthly Impact drafts in Kit, hourly (./_newsletter-drafts.js)
+    context.waitUntil(maybeRunNewsletterDrafts(env));
     // CompanyCam for families in review: their project, home-visit photos to JobTread, the hand-over to the job (see _companycam-sync.js)
     context.waitUntil(maybeRunCompanyCam(env));
     // Every open job's CompanyCam photos against JobTread's copies, about hourly (see _companycam-jobs.js)

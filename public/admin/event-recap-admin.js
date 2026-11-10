@@ -15,8 +15,10 @@
  *                     named <folder>/<time>-<file> so the site knows which
  *                     year a gallery photo belongs to
  *   SponsorsList      an event's own sponsor list (kept once next year's is added)
+ *   RecapEmail        the "What a Night!" email in Kit: where it stands, and Draft in Kit
+ *                     (functions/api/_newsletter-drafts.js drafts it by itself, too)
  */
-import { h, htm, useState, useRef } from './vendor.js';
+import { h, htm, useState, useRef, useEffect, useCallback } from './vendor.js';
 import { ZeffyFormSelect } from './zeffy-forms.js';
 import {
   seriesOf, isOver, isLatest, eventPath, yearPath, yearOf, fmtDay, recapPhotos, recapSponsors,
@@ -60,6 +62,18 @@ const CSS = `
 .er-row > .er-wide { grid-column: 1 / -1; }
 .er-hl { display: grid; grid-template-columns: 7rem 1fr auto; gap: 0.5rem; margin-bottom: 0.45rem; }
 .er-add { justify-self: start; }
+.er-mail { display: grid; gap: 0.55rem; padding: 0.9rem 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-primary, #fff); }
+.er-mail.is-warn { border-color: rgba(180, 83, 9, 0.35); box-shadow: inset 3px 0 0 #E0B800; }
+.er-mail__top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 0.75rem; }
+.er-mail__top strong { font-size: var(--fs-sm); }
+.er-mail__word { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+.er-mail.is-done .er-mail__word { color: #2e7d32; }
+.er-mail.is-draft .er-mail__word { color: var(--text-primary, inherit); }
+.er-mail.is-warn .er-mail__word { color: #8a5a00; }
+.er-mail__note { margin: 0; font-size: var(--fs-xs); line-height: 1.55; color: var(--text-secondary); }
+.er-mail__acts { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.er-mail__acts .btn { display: inline-flex; align-items: center; gap: 0.3rem; }
+@media (pointer: coarse) { .er-mail__acts .btn { min-height: 44px; } }
 .er-sp { display: grid; gap: 0.9rem; }
 .er-sp__tier { display: grid; gap: 0.45rem; padding: 0.8rem; border: 1px solid var(--border); border-radius: 12px; }
 .er-sp__head { display: grid; grid-template-columns: 1fr 10rem auto; gap: 0.5rem; }
@@ -234,6 +248,8 @@ export function AfterEventPanel({ api, event, events = [], pageDoc = null, onEve
         </div>
       </div>
 
+      ${ev.slug ? html`<${RecapEmail} slug=${ev.slug} kind=${kind} when=${when} addToast=${addToast} />` : null}
+
       <section class="er-block">
         <h3>The photographer’s photos</h3>
         <p class="er-hint">${inGallery
@@ -282,6 +298,71 @@ export function AfterEventPanel({ api, event, events = [], pageDoc = null, onEve
         </div>
       </section>
     </div>`;
+}
+
+const kitWhen = (iso) => {
+  const t = Date.parse(iso || '');
+  return t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+};
+/**
+ * The recap email in Kit: where it stands, read from Kit, and Draft in Kit.
+ * A draft only, like every email the site puts in Kit. /api/newsletter-drafts-admin
+ */
+export function RecapEmail({ slug, kind = 'event', when = 'night', addToast = () => {} }) {
+  injectStyles();
+  const [d, setD] = useState(null);
+  const [problem, setProblem] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/newsletter-drafts-admin?event=${encodeURIComponent(slug)}`, { cache: 'no-store' });
+      const got = await res.json().catch(() => ({}));
+      if (!got.ok) throw new Error(got.error || `Couldn’t read Kit (${res.status})`);
+      setD(got); setProblem('');
+    } catch (e) { setProblem(e.message); }
+  }, [slug]);
+  useEffect(() => { load(); }, [load]);
+  const draft = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/newsletter-drafts-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: `recap:${slug}` }) });
+      const r = await res.json().catch(() => ({}));
+      if (!r.ok) throw new Error(r.error || r.reason || `Couldn’t draft it (${res.status})`);
+      addToast(r.made ? 'The recap email is drafted in Kit. Nothing is sent until someone sends it there' : 'The recap email is already in Kit', r.made ? 'success' : 'info');
+    } catch (e) { addToast(e.message, 'error'); }
+    setBusy(false);
+    load();
+  };
+  // What to say, and which button: the same states as the emails on a kid's profile
+  const row = (() => {
+    if (!d) return null;
+    if (d.state === 'sent') return { word: 'Sent', tone: 'done', note: `Sent from Kit${d.at ? ` ${kitWhen(d.at)}` : ''}.`, open: true };
+    if (d.state === 'scheduled') return { word: 'Scheduled', tone: 'done', note: `Scheduled in Kit${d.at ? ` for ${kitWhen(d.at)}` : ''}.`, open: true };
+    if (d.state === 'draft') return { word: 'Draft', tone: 'draft', open: true, note: d.edited ? 'Edited in Kit, so the site leaves it as it is. Waiting for someone to send it from Kit.'
+      : `${d.at && !d.unread ? `Drafted ${kitWhen(d.at)}. ` : ''}Waiting for someone to review it and send it from Kit. Until someone edits it there, new photos reach it by themselves.` };
+    if (d.state === 'drafting') return { word: 'Drafting', tone: 'draft', note: 'Being drafted right now.' };
+    const word = d.state === 'deleted' ? 'Deleted' : 'Not drafted';
+    if (d.block) return { word, tone: 'off', note: `${d.state === 'deleted' ? 'Deleted in Kit. ' : ''}${d.block}.` };
+    return { word, tone: d.error ? 'warn' : 'off', draft: d.state === 'deleted' ? 'Draft it again' : d.error ? 'Try again' : 'Draft in Kit',
+      note: d.state === 'deleted' ? 'Deleted in Kit. You can draft it again.' : d.error ? d.error
+        : d.state === 'skipped' ? `Won’t draft itself for this ${kind}: it was over before recap emails began, or long ago. You can still draft it.` : 'Drafts itself within the hour.' };
+  })();
+  return html`
+    <section class="er-block" aria-labelledby="er-mail-h" aria-busy=${d || problem ? 'false' : 'true'}>
+      <h3 id="er-mail-h">The recap email</h3>
+      <p class="er-hint">“What a ${when === 'night' ? 'Night' : 'Day'}!” in Kit for the newsletter list: the photos, the numbers and the sponsors. Drafts only. Nothing goes out until someone sends it from Kit.</p>
+      ${problem && !d ? html`<div class="er-mail is-warn" role="alert"><p class="er-mail__note">${problem}</p><div class="er-mail__acts"><button type="button" class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div></div>`
+        : !d ? html`<p class="er-hint"><span class="spinner spinner-12" /> Reading Kit…</p>`
+        : html`<div class=${`er-mail is-${row.tone}`}>
+            ${d.off ? html`<p class="er-mail__note">${d.off}.</p>` : null}
+            <div class="er-mail__top"><strong>Event Recap</strong><span class="er-mail__word">${row.word}</span></div>
+            <p class="er-mail__note">${row.note}</p>
+            ${row.open || (row.draft && !d.off) ? html`<div class="er-mail__acts">
+              ${row.open && d.url ? html`<a class="btn btn-ghost btn-sm" href=${d.url} target="_blank" rel="noopener">Open in Kit ↗</a>` : null}
+              ${row.draft && !d.off ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${draft}>${busy ? html`<span class="spinner spinner-12" /> Drafting…` : row.draft}</button>` : null}
+            </div>` : null}
+          </div>`}
+    </section>`;
 }
 
 /** An event's own sponsor list: tiers and names (logos stay as they are) */

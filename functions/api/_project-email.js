@@ -114,7 +114,7 @@ export const revealChecks = (kid) => [...beforeAfterUrls(kid), streamCheckUrl(ki
 export const beforeAfterUrls = (kid) => (kid?.beforeAfterPhotos || []).filter((p) => p?.before && p?.after)
   .flatMap((p) => [cfImg(p.before, PAIR_TRANSFORM), cfImg(p.after, PAIR_TRANSFORM)]);
 
-const gap = (px) => `<tr><td bgcolor="${CR}" style="background:${CR};height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</td></tr>`;
+export const gap = (px) => `<tr><td bgcolor="${CR}" style="background:${CR};height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</td></tr>`;
 
 /**
  * Facts in a ruled row, in the sans font: Georgia's old-style numerals turn "11" into two small strokes.
@@ -194,7 +194,7 @@ function roomList(counts) {
 }
 
 /** The one yellow band: what we're asking, and the button. fit: the headline's size, from headlineFit. */
-function askBand({ kicker, headline, words, action, url, fit = { size: 30, phone: 'h2b' } }) {
+export function askBand({ kicker, headline, words, action, url, fit = { size: 30, phone: 'h2b' } }) {
   return `<tr><td bgcolor="${Y}" style="background:${Y};padding:44px 0 48px;${SIDE}" class="pd">
     ${label(kicker, D)}
     <h2 class="${fit.phone}" style="margin:18px 0 12px;font-family:${SERIF};font-size:${fit.size}px;font-weight:700;line-height:1.22;color:${D};">${headline}</h2>
@@ -297,7 +297,8 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const slug = kid.slug || '';
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
   const rooms = roomsOf(kid);
-  const several = (Number(kid.roomCount) || rooms.length || 1) > 1;
+  // Two kinds of room are two rooms, whatever the count says (some older pages say 1)
+  const several = rooms.length > 1 || Number(kid.roomCount) > 1;
   // A ramp or a lift is named as itself, never a "Dream Room"
   // A ramp or a lift by name; rooms and a ramp together are the kid's "Makeover"
   const space = makeoverWord(rooms);

@@ -65,6 +65,9 @@ import { revealInviteEmail, TEAM_PICTURE } from './_reveal-invite-email.js';
 import { reviewNote, brokenLogos, KIT_INVITE_DEFAULTS } from './_reveal-invite-kit.js';
 import { projectKickoffEmail, projectRevealEmail, revealChecks } from './_project-email.js';
 import { projectNote } from './_project-emails.js';
+import { eventRecapEmail, monthlyImpactEmail, recapParts, recapImageUrls, monthlyImageUrls, monthName } from './_newsletter-email.js';
+import { monthlyFacts, monthBefore, newsletterNote } from './_newsletter-drafts.js';
+import { SERIES, seriesOf, isOver, dayIn } from '../../public/admin/events-shared.js';
 
 const { SITE_ORIGIN, EMAIL_FROM } = notify;
 const DAY = 864e5;
@@ -733,6 +736,33 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       const m = (done ? projectRevealEmail : projectKickoffEmail)({ kid, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) });
       return { channel: 'kit', from: KIT_FROM, to: 'The newsletter list, once staff send the draft', subject: m.subject, html: m.html, text: m.text, note: `${kid.name}’s page as it reads now. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };
     }
+    case 'kit-event-recap': {
+      // The newest event that's over and has its photos, as its page reads now
+      const safe = async (q) => { try { return (await q()).results || []; } catch { return []; } };
+      const evRows = await safe(() => env.DB.prepare('SELECT slug, data FROM events').all());
+      const events = evRows.map((r) => { try { return { ...JSON.parse(r.data), slug: r.slug }; } catch { return null; } }).filter(Boolean);
+      const docRows = await safe(() => env.DB.prepare(`SELECT key, data FROM site_config WHERE key IN (${SERIES.map(() => '?').join(', ')})`).bind(...SERIES.map((x) => x.doc)).all());
+      const docs = Object.fromEntries(docRows.map((r) => { try { return [r.key, JSON.parse(r.data)]; } catch { return [r.key, null]; } }));
+      const docOf = (ev) => (seriesOf(ev) ? docs[seriesOf(ev).doc] || null : null);
+      const today = dayIn();
+      const newest = (list) => list.sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+      // With no event's photos up yet, the newest event that's over (or any), as it would read
+      const ev = newest(events.filter((e) => isOver(e, today) && recapParts(e, events, docOf(e)).photos.length)) || newest(events.filter((e) => isOver(e, today))) || newest(events)
+        || { slug: 'evening-of-sunshine', title: 'Evening of Sunshine', date: today, location: 'You42 Studios' };
+      const broken = await brokenLogos({}, { extra: recapImageUrls(ev, events, docOf(ev)) });
+      const m = eventRecapEmail({ event: ev, events, pageDoc: docOf(ev), brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) });
+      return { channel: 'kit', from: KIT_FROM, to: 'The newsletter list, once staff send the draft', subject: m.subject, html: m.html, text: m.text, note: `${ev.title || 'The event'}, as its page reads now. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };
+    }
+    case 'kit-monthly': {
+      // The month just ended, from the site's own data as it is right now
+      const month = monthBefore(dayIn());
+      const facts = await monthlyFacts(env, month);
+      const broken = await brokenLogos({}, { extra: monthlyImageUrls(facts) });
+      const m = monthlyImpactEmail({ ...facts, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) });
+      return { channel: 'kit', from: KIT_FROM, to: 'The newsletter list, once staff send the draft', subject: m.subject, html: m.html, text: m.text, note: `${monthName(month, { year: true })}, from what the site knows right now. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };
+    }
+    case 'staff-newsletter-review':
+      return email(newsletterNote('ready', { kind: 'monthly', title: `${monthName(monthBefore(dayIn()), { year: true })} Monthly Impact`, id: '0', subject: 'Your Monthly Dose of Sunshine: Isla’s Big Reveal' }), { to: `${KIT_INVITE_DEFAULTS.reviewer} (the invite email’s reviewer)` });
     case 'staff-project-review':
       return email(projectNote('ready', { kind: 'kickoff', name: SAMPLE.childFirst, id: '0', subject: `Meet ${SAMPLE.childFirst}, Our Next Dream Room Project` }), { to: `${KIT_INVITE_DEFAULTS.reviewer} (the invite email’s reviewer)` });
     case 'staff-invite-problem':

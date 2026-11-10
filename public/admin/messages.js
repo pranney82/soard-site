@@ -423,6 +423,22 @@ const MAP = { t: 'Everything we send', children: [
           touches: ['Kit', 'JobTread', 'D1'], where: 'functions/api/_project-emails.js · _project-email.js',
           info: 'Every kid already Completed when this went live is marked done for good, so past kids never get one, even if a job reopens. Still waiting a week later, the reviewer gets one reminder. No family address.',
           live: first(needs('kit', NO_KIT), () => ON()) },
+        { t: 'Event Recap (Kit draft)', s: 'live', k: 'kit', by: 'auto', preview: 'kit-event-recap',
+          who: 'The newsletter list, once staff send the draft. Nobody before that.',
+          when: 'The morning after an event, once the photographer’s photos are on its page on the live site (saved photos wait for Publish). Once per event. Staff can draft it sooner: The recap email in the event’s After the event tab.',
+          subject: 'What a Night! See the Photos from our Evening of Sunshine',
+          does: 'The event’s photos, its numbers, the sponsors who made it possible and a way to give, filled in from the event’s page. Until someone edits it in Kit, new photos reach the draft by themselves. The site never sends it.',
+          touches: ['Kit', 'D1'], where: 'functions/api/_newsletter-drafts.js · _newsletter-email.js',
+          info: 'Every event already over when this went live is marked done, so old events never get one by themselves (the button still drafts one). No photos a week on: one reminder to the reviewer. Links to the event’s own year page, which never turns into next year’s tickets.',
+          live: first(needs('kit', NO_KIT), () => ON()) },
+        { t: 'Monthly Impact (Kit draft)', s: 'live', k: 'kit', by: 'auto', preview: 'kit-monthly', kitDraft: 'monthly',
+          who: 'The newsletter list, once staff send the draft. Nobody before that.',
+          when: 'The 1st of each month, for the month before, when the site has something from it. Staff can draft it any time after the month ends: Draft in Kit, here.',
+          subject: 'Your Monthly Dose of Sunshine: {kid}’s Big Reveal',
+          does: 'The month’s reveals, the rooms being built, what’s coming up, the event photos and the press, from the site’s own data, with the totals since 2012. Until someone edits it in Kit, what’s coming up stays current by itself. The site never sends it.',
+          touches: ['Kit', 'JobTread', 'D1'], where: 'functions/api/_newsletter-drafts.js · _newsletter-email.js',
+          info: 'No placeholder text: it says only what the site knows, so add a note of your own in Kit if you like. Reveal days come from JobTread; a hidden kid page is never in it. Tentative reveals show only as their part of the month.',
+          live: first(needs('kit', NO_KIT), () => ON()) },
         { t: 'Reveal drafts in Kit', s: 'live', k: 'kit', by: 'auto', preview: 'kit-drafts',
           who: 'Nobody, until staff send it from Kit.',
           when: 'A reveal is scheduled (Save the date) or moved (New date), and when its replay is ready (Watch the replay).',
@@ -626,6 +642,12 @@ const MAP = { t: 'Everything we send', children: [
           subject: 'Review {kid}’s kickoff email in Kit',
           does: 'The subject and who it goes to, with a button straight to the draft in Kit.',
           touches: ['Resend'], where: 'functions/api/_project-emails.js (projectNote)' },
+        { t: 'Review the newsletter email', s: 'live', k: 'email', by: 'auto', preview: 'staff-newsletter-review', change: CHANGE.invites,
+          who: 'Linzi (the invite email’s reviewer), by email only. When it can’t be drafted: the invite alert list too.',
+          when: 'An Event Recap or Monthly Impact is drafted in Kit, or an event’s recap is still waiting on its photos a week later. Not when the reviewer drafted it by hand.',
+          subject: 'Review the {month} email in Kit',
+          does: 'The subject and who it goes to, with a button straight to the draft in Kit.',
+          touches: ['Resend'], where: 'functions/api/_newsletter-drafts.js (newsletterNote)' },
         { t: 'Invite still out', s: 'live', k: 'email', by: 'auto', preview: 'staff-invite-held', change: CHANGE.invites,
           who: 'The invite alert list, the organizer, and Peter.',
           when: 'JobTread says a reveal may be off (job closed, denied, awaiting funding, no date) while its invite is out.',
@@ -990,6 +1012,17 @@ const CSS = `
 .mm-from p { margin: 0; }
 .mm-from p + p { margin-top: 0.35rem; }
 .mm-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 1rem; }
+.mm-kit { display: grid; gap: 0.5rem; margin-top: 1rem; padding: 0.85rem 0.95rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-card); }
+.mm-kit.is-warn { border-color: var(--tone-warn-line-strong); box-shadow: inset 3px 0 0 var(--tone-warn-dot); }
+.mm-kit-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 0.75rem; font-size: var(--fs-sm); }
+.mm-kit-word { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); }
+.mm-kit.is-done .mm-kit-word { color: var(--color-success); }
+.mm-kit.is-draft .mm-kit-word { color: var(--color-text); }
+.mm-kit.is-warn .mm-kit-word { color: var(--tone-warn-fg); }
+.mm-kit-note { margin: 0; font-size: var(--fs-xs); line-height: 1.55; color: var(--color-text-secondary); }
+.mm-kit-acts { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.mm-kit-acts .btn { display: inline-flex; align-items: center; gap: 0.3rem; }
+@media (pointer: coarse) { .mm-kit-acts .btn { min-height: 44px; } }
 .mm-subject { font-weight: 600; }
 .mm-subject small { display: block; margin-top: 0.15rem; font-weight: 400; color: var(--color-text-muted); }
 .mm-change { all: unset; cursor: pointer; color: var(--color-link, #2B6CB0); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
@@ -1109,6 +1142,66 @@ function EmailFrame({ doc, phone, title }) {
 }
 
 // ─── The preview sheet ────────────────────
+const kitWhen = (iso) => {
+  const t = Date.parse(iso || '');
+  return t ? new Date(t).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+};
+/**
+ * The month just ended's Monthly Impact in Kit: where it stands, and Draft in
+ * Kit. A draft only. /api/newsletter-drafts-admin
+ */
+function MonthlyDraft({ addToast = () => {} }) {
+  const [d, setD] = useState(null);
+  const [problem, setProblem] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    try {
+      const res = await fetch('/api/newsletter-drafts-admin?monthly=1', { cache: 'no-store' });
+      const got = await res.json().catch(() => ({}));
+      if (!got.ok) throw new Error(got.error || `Couldn’t read Kit (${res.status})`);
+      setD(got); setProblem('');
+    } catch (e) { setProblem(e.message); }
+  };
+  useEffect(() => { load(); }, []);
+  const month = d?.month ? new Date(`${d.month}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }) : '';
+  const draft = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/newsletter-drafts-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: d.key }) });
+      const r = await res.json().catch(() => ({}));
+      if (!r.ok) throw new Error(r.error || r.reason || `Couldn’t draft it (${res.status})`);
+      addToast(r.made ? `${month}’s Monthly Impact is drafted in Kit. Nothing is sent until someone sends it there` : `${month}’s Monthly Impact is already in Kit`, r.made ? 'success' : 'info');
+    } catch (e) { addToast(e.message, 'error'); }
+    setBusy(false);
+    load();
+  };
+  const row = (() => {
+    if (!d) return null;
+    if (d.state === 'sent') return { word: 'Sent', tone: 'done', note: `Sent from Kit${d.at ? ` ${kitWhen(d.at)}` : ''}.`, open: true };
+    if (d.state === 'scheduled') return { word: 'Scheduled', tone: 'done', note: `Scheduled in Kit${d.at ? ` for ${kitWhen(d.at)}` : ''}.`, open: true };
+    if (d.state === 'draft') return { word: 'Draft', tone: 'draft', open: true, note: d.edited ? 'Edited in Kit, so the site leaves it as it is. Waiting for someone to send it from Kit.'
+      : `${d.at && !d.unread ? `Drafted ${kitWhen(d.at)}. ` : ''}Waiting for someone to review it and send it from Kit. Until someone edits it there, what’s coming up stays current by itself.` };
+    if (d.state === 'drafting') return { word: 'Drafting', tone: 'draft', note: 'Being drafted right now.' };
+    const word = d.state === 'deleted' ? 'Deleted' : 'Not drafted';
+    if (d.block) return { word, tone: 'off', note: `${d.state === 'deleted' ? 'Deleted in Kit. ' : ''}${d.block}.` };
+    return { word, tone: d.error ? 'warn' : 'off', draft: d.state === 'deleted' ? 'Draft it again' : d.error ? 'Try again' : `Draft ${month}’s in Kit`,
+      note: d.state === 'deleted' ? 'Deleted in Kit. You can draft it again.' : d.error ? d.error
+        : d.state === 'skipped' ? `Won’t draft itself: ${month} was over before monthly emails began.` : 'Drafts itself within the hour.' };
+  })();
+  return html`<div class=${`mm-kit${row ? ` is-${row.tone}` : ''}`} aria-busy=${d || problem ? 'false' : 'true'}>
+    <div class="mm-kit-top"><strong>${month ? `${month}’s email` : 'This month’s email'}</strong>${row && html`<span class="mm-kit-word">${row.word}</span>`}</div>
+    ${problem && !d ? html`<p class="mm-kit-note" role="alert">${problem} <button type="button" class="mm-change" onClick=${load}>Try again</button></p>`
+      : !d ? html`<p class="mm-kit-note"><span class="spinner spinner-12" /> Reading Kit…</p>`
+      : html`
+        ${d.off && html`<p class="mm-kit-note">${d.off}.</p>`}
+        <p class="mm-kit-note">${row.note} Drafts only: nothing goes out until someone sends it from Kit.</p>
+        ${(row.open || (row.draft && !d.off)) && html`<div class="mm-kit-acts">
+          ${row.open && d.url && html`<a class="btn btn-ghost btn-sm" href=${d.url} target="_blank" rel="noopener">Open in Kit ↗</a>`}
+          ${row.draft && !d.off && html`<button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${draft}>${busy ? html`<span class="spinner spinner-12" /> Drafting…` : row.draft}</button>`}
+        </div>`}`}
+  </div>`;
+}
+
 function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
   const [lang, setLang] = useState('en');
   const [view, setView] = useState('email'); // reminders: email | text | push
@@ -1367,6 +1460,7 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
         ${sel.where && html`<div><dt>Where it lives</dt><dd class="am-mono">${sel.where}</dd></div>`}
         ${sel.info && html`<div><dt>Good to know</dt><dd>${sel.info}</dd></div>`}
       </dl>
+      ${sel.kitDraft === 'monthly' && html`<${MonthlyDraft} addToast=${addToast} />`}
       ${(sel.preview || logged) && html`<div class="mm-actions">
         ${sel.preview && html`<button type="button" class="btn btn-primary btn-sm" onClick=${see(sel)}>${SEE[sel.k] || 'See it'}</button>`}
         ${logged && html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => sentFor(sel)}>What went out</button>`}

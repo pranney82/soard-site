@@ -569,12 +569,14 @@ export function shownPartners(kid, brokenLogos = new Set()) {
   // One card per partner, even when a kid page lists a logo twice
   const seenLogo = new Set();
   return (kid?.partnerLogos || []).filter((l) => {
-    if (!l || !l.url) return false;
+    // nameOnly: a sponsor thanked by name, with no logo file (an event's sponsor list)
+    if (!l || (!l.url && !(l.nameOnly && String(l.name || '').trim()))) return false;
     const key = String(l.name || '').trim().toLowerCase() || cfImg(l.url, '');
     if (seenLogo.has(key)) return false;
     seenLogo.add(key);
     return true;
   }).map((l) => ({ ...l, label: tidy(partnerLabel(l.name)) })).flatMap((l) => {
+    if (!l.url) return l.label ? [{ ...l, text: true }] : [];
     if (!brokenLogos.has(cfImg(l.url, LOGO_TRANSFORM))) return [l];
     // Broken: the name in text, unless the "name" is only a file's (a screenshot upload)
     return l.label ? [{ ...l, text: true }] : [];
@@ -613,8 +615,8 @@ export function nameCard(label) {
   return { size: Math.max(9, best?.size || 13), lines: best?.lines || [String(label)] };
 }
 
-/** The partner logos on their dark band. '' with none to show. */
-export function partnerCards(kid, brokenLogos = new Set()) {
+/** The partner logos on their dark band. '' with none to show. noun: 'sponsor' for an event's thank-you. */
+export function partnerCards(kid, brokenLogos = new Set(), { noun = 'partner' } = {}) {
   const logos = shownPartners(kid, brokenLogos);
   // Every tile the same height, whatever the logo's shape; a short last row sits centered
   const tile = (inner) => `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="table-layout:fixed;"><tr><td align="center" valign="middle" height="66" bgcolor="#FFFFFF" class="lt" style="height:66px;background:#FFFFFF;border-radius:10px;padding:0 8px;text-align:center;">${inner}</td></tr></table>`;
@@ -634,13 +636,14 @@ export function partnerCards(kid, brokenLogos = new Set()) {
   }
   const one = logos.length === 1;
   // Two even lines on any phone ("Thank you to our / incredible partners."), one on a desktop
-  const heading = headlineFit(['Thank', 'you', 'to', 'our', `incredible ${one ? 'partner.' : 'partners.'}`], 22, { phones: [[20, 'h2m']] });
+  const word = one ? noun : `${noun}s`;
+  const heading = headlineFit(['Thank', 'you', 'to', 'our', `incredible ${word}.`], 22, { phones: [[20, 'h2m']] });
   return logoRows.length ? `
   <tr><td style="background:${CR};padding:36px 0 0;">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
       <td style="padding:40px 0 34px;${SIDE}" class="pd">
-        ${label(one ? 'Our partner' : 'Our partners', Y, '#C9CACC')}
-        <h2 class="${heading.phone}" style="margin:18px 0 20px;font-family:${SERIF};font-size:${heading.size}px;font-weight:700;line-height:1.3;color:#FFFFFF;">Thank you to our <em style="font-style:italic;color:${Y};">incredible</em>&nbsp;${one ? 'partner' : 'partners'}.</h2>
+        ${label(`Our ${word}`, Y, '#C9CACC')}
+        <h2 class="${heading.phone}" style="margin:18px 0 20px;font-family:${SERIF};font-size:${heading.size}px;font-weight:700;line-height:1.3;color:#FFFFFF;">Thank you to our <em style="font-style:italic;color:${Y};">incredible</em>&nbsp;${word}.</h2>
         ${logoRows.join('\n        ')}
       </td>
     </tr></table>

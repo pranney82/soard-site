@@ -493,12 +493,13 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
 
 /**
  * Rewrite a broadcast, but only while it is still an unsent draft. Never
- * touches one staff scheduled or sent. Never throws.
+ * touches one staff scheduled or sent. guard(broadcast): false leaves it alone
+ * ({ ok: false, edited: true }). Never throws.
  *
  * @returns {Promise<{ok: boolean, status?: string, error?: string}>} status is
  *   Kit's (draft | scheduled | sending | completed | aborted) when not a draft
  */
-export async function kitUpdateDraft(env, id, { subject, previewText, description, html, audience = null }) {
+export async function kitUpdateDraft(env, id, { subject, previewText, description, html, audience = null, guard = null }) {
   if (!kitConfigured(env) || !Number.isFinite(Number(id))) return { ok: false, error: 'no draft' };
   try {
     const cur = await kitFetch(env, `/broadcasts/${id}`);
@@ -506,6 +507,8 @@ export async function kitUpdateDraft(env, id, { subject, previewText, descriptio
     if (!cur.ok) return { ok: false, error: `HTTP ${cur.status}` };
     const b = got.broadcast || got;
     if ((b.status && b.status !== 'draft') || b.send_at || b.published_at) return { ok: false, status: b.status || 'sent' };
+    // The caller's last word on Kit's copy, read just now: a person's edit since its own check is never written over
+    if (guard && !(await guard(b))) return { ok: false, edited: true };
     // Kit's PUT fills in what's left out ("If nothing is provided, will default
     // to all of your subscribers"), so a draft with its own audience says it again:
     // the one asked for, else the one Kit has now (the newsletter's leave-out for

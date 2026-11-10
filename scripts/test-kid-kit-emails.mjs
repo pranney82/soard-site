@@ -162,10 +162,11 @@ try {
   jobsDelay = 1200;
   const page = await open(1440);
   await openKid(page, 'Colin');
-  // Before JobTread answers, the card waits: never "No job" for a kid who has one
+  // Before JobTread answers, the card waits: never "No job" for a kid who has one. (The list may have read
+  // JobTread already, in which case the card reads Kit at once; either way, never without the job.)
   const early = calls.filter((c) => c.startsWith('GET /api/kid-kit-emails'));
   const loading = await page.evaluate(() => ({ text: document.querySelector('.kd-card--kit')?.innerText || '', busy: document.querySelector('.kd-card--kit')?.getAttribute('aria-busy') }));
-  ok(early.length === 0 && /Reading Kit/.test(loading.text) && loading.busy === 'true', `while JobTread answers: no read of Kit yet, and it says it's reading (${early.join(', ')} ${JSON.stringify(loading)})`);
+  ok(early.every((c) => /jobId=22PCOLIN/.test(c)) && (early.length > 0 || (/Reading Kit/.test(loading.text) && loading.busy === 'true')), `Kit is never read without Colin’s job, and it says it's reading meanwhile (${early.join(', ')} ${JSON.stringify(loading).slice(0, 80)})`);
   await ready(page);
   jobsDelay = 0;
   const reads = calls.filter((c) => c.startsWith('GET /api/kid-kit-emails'));
