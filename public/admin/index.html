@@ -4778,6 +4778,47 @@
       }
     }
 
+    /**
+     * An SVG is saved as a PNG, 1600px on its long side. Gmail and Outlook show nothing for an SVG, and
+     * Cloudflare Images can't resize one into a picture they do, so a logo uploaded as an SVG would be a
+     * blank (or just a name) in every email. The PNG stays sharp on the site at any size it's shown.
+     */
+    const isSvgFile = (file) => !!file && (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name || ''));
+    async function svgToPngFile(file, longEdge = 1600) {
+      const doc = new DOMParser().parseFromString(await file.text(), 'image/svg+xml');
+      const svg = doc.documentElement;
+      if (!svg || svg.nodeName.toLowerCase() !== 'svg') throw new Error('That SVG can’t be read. Save it as a PNG and try again.');
+      // Its size from width and height, else its viewBox, so the drawing keeps its shape
+      const len = (v) => { const t = String(v || '').trim(); const n = parseFloat(t); return n > 0 && !/%$/.test(t) ? n : 0; };
+      const vb = String(svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+      const hasVb = vb.length === 4 && vb[2] > 0 && vb[3] > 0;
+      let w = len(svg.getAttribute('width'));
+      let h = len(svg.getAttribute('height'));
+      if (!w || !h) { if (hasVb) { w = vb[2]; h = vb[3]; } else { w = w || 300; h = h || 150; } }
+      if (!hasVb) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      const k = longEdge / Math.max(w, h);
+      const W = Math.max(1, Math.round(w * k));
+      const H = Math.max(1, Math.round(h * k));
+      svg.setAttribute('width', String(W));
+      svg.setAttribute('height', String(H));
+      const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(doc)], { type: 'image/svg+xml' }));
+      try {
+        const img = await new Promise((resolve, reject) => {
+          const im = new Image();
+          im.onload = () => resolve(im);
+          im.onerror = () => reject(new Error('That SVG can’t be drawn. Save it as a PNG and try again.'));
+          im.src = url;
+        });
+        const cv = document.createElement('canvas');
+        cv.width = W;
+        cv.height = H;
+        cv.getContext('2d').drawImage(img, 0, 0, W, H);
+        const png = await new Promise((resolve) => cv.toBlob(resolve, 'image/png'));
+        if (!png) throw new Error('That SVG can’t be drawn. Save it as a PNG and try again.');
+        return new File([png], `${String(file.name || 'logo').replace(/\.svg$/i, '')}.png`, { type: 'image/png' });
+      } finally { URL.revokeObjectURL(url); }
+    }
+
     const api = {
       async listContent(dir) {
         const r = await fetch(`/api/list-content?dir=${encodeURIComponent(dir)}`);
@@ -4823,6 +4864,8 @@
         return data;
       },
       async uploadImage(file, id, { signal } = {}) {
+        // Every logo and picture comes through here: an SVG goes up as a PNG (svgToPngFile)
+        if (isSvgFile(file)) file = await svgToPngFile(file);
         const form = new FormData();
         form.append('file', file);
         if (id) form.append('id', id);
@@ -14026,7 +14069,7 @@
           <figure><span class="pt-crop__box" style=${frame}>${after ? html`<img src=${after} alt="" />` : html`<span class="spinner spinner-14" />`}</span><figcaption>Cropped</figcaption></figure>
         </div>
         <button type="button" class="btn btn-primary btn-sm" onClick=${onCrop} disabled=${busy}>${busy ? html`<span class="spinner spinner-14" />` : kdIcon.sparkle} Crop the margins</button>
-        <p class="form-hint">A new file cropped from the original (an SVG stays an SVG). The old one is kept for the kid pages that show it.</p>
+        <p class="form-hint">A new file cropped from the original (an SVG is saved as a PNG, so emails can show it). The old one is kept for the kid pages that show it.</p>
       </div>`;
     }
     /** After an upload that cropped the margins: say so, and offer the file as it was */
@@ -14743,7 +14786,7 @@
           <button type="button" class="btn btn-primary" disabled=${!picked.length || !!run} onClick=${go}>
             ${run ? html`<span class="spinner spinner-14" /> Cropping ${run.done + 1} of ${run.total}` : `Crop ${kdPlural(picked.length, 'logo')}`}</button>`;
       return html`<${KdDialog} title="Crop logo margins" size="lg" onClose=${run && !run.finished ? () => {} : run?.finished ? onDone : onClose} busy=${!!run && !run.finished} footer=${footer}
-        sub="Empty space around these logos makes them show smaller than they could. Each is cropped from its original into a new file (an SVG stays an SVG); the old file is kept.">
+        sub="Empty space around these logos makes them show smaller than they could. Each is cropped from its original into a new file (an SVG is saved as a PNG, so emails can show it); the old file is kept.">
         ${run ? html`<div class="kd-tidy-run">
             <div class="kd-tidy-run__line">${run.finished ? html`<span class="kd-tidy-done">${kdIcon.check}</span> <strong>Done</strong>` : html`<span class="spinner spinner-14" /> <strong>Cropping ${run.done} of ${run.total}</strong>`}</div>
             <div class="kd-meter"><span style=${`width:${Math.round((run.done / Math.max(1, run.total)) * 100)}%`}></span></div>
