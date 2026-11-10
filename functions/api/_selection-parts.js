@@ -204,7 +204,23 @@ async function openJobs(env, fetchImpl) {
   return out.filter((j) => !SKIP_STATUSES.has(String(j.status || '').trim()) && !/\btest\b/i.test(j.name));
 }
 
-/** One job's chosen selection lines → [{ id, name, description, cost, quantity, group }] */
+// Labor and the job's own costs, never things to buy or receive
+const NOT_GOODS = /labor|subcontract|permit|fee|dumpster|disposal|haul|design|engineering|overhead|contingency|insurance/i;
+const isChoiceGroup = (g) => Boolean(g) && (g.maxSelectionsAllowed != null || g.minSelectionsRequired != null);
+
+/**
+ * Whether a budget line is something to buy or receive: a selection the family chose, or a line outside any
+ * selection group that isn't labor or a fee. Dylan's therapy table, TV and lights sit on plain budget lines, not in
+ * a selection (seen Nov 9 2026), while an option nobody chose sits in a selection group with isSelected false
+ */
+export function isGoodsLine(c) {
+  if (c.isSelected) return true;
+  const g = c.costGroup;
+  if (isChoiceGroup(g) || isChoiceGroup(g?.parentCostGroup)) return false;
+  return !NOT_GOODS.test(c.costType?.name || '');
+}
+
+/** One job's lines to buy or receive → [{ id, name, description, cost, quantity, group }] */
 async function chosenLines(env, jobId, fetchImpl) {
   const out = [];
   let page = null;
@@ -213,14 +229,17 @@ async function chosenLines(env, jobId, fetchImpl) {
       job: {
         $: { id: jobId },
         costItems: {
-          $: { size: LINES_A_PAGE, where: { and: [[['document', 'id'], '=', null], ['isSelected', '=', true]] }, ...(page ? { page } : {}) },
+          $: { size: LINES_A_PAGE, where: [['document', 'id'], '=', null], ...(page ? { page } : {}) },
           nextPage: {},
-          nodes: { id: {}, name: {}, description: {}, cost: {}, quantity: {}, costGroup: { name: {} } },
+          nodes: {
+            id: {}, name: {}, description: {}, cost: {}, quantity: {}, isSelected: {}, costType: { name: {} },
+            costGroup: { name: {}, maxSelectionsAllowed: {}, minSelectionsRequired: {}, parentCostGroup: { maxSelectionsAllowed: {}, minSelectionsRequired: {} } },
+          },
         },
       },
     }, fetchImpl);
     const conn = data?.job?.costItems;
-    for (const c of conn?.nodes || []) out.push({ id: c.id, name: c.name, description: c.description || '', cost: c.cost, quantity: c.quantity, group: c.costGroup?.name || '' });
+    for (const c of conn?.nodes || []) if (isGoodsLine(c)) out.push({ id: c.id, name: c.name, description: c.description || '', cost: c.cost, quantity: c.quantity, group: c.costGroup?.name || '' });
     page = conn?.nextPage;
     if (!page) break;
   }

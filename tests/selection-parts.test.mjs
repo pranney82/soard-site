@@ -66,7 +66,10 @@ beforeEach(async () => {
     if (query.job?.costItems) {
       const id = query.job.$.id;
       calls.push({ kind: 'lines', job: id, where: query.job.costItems.$.where });
-      return Response.json({ job: { costItems: { nextPage: null, nodes: (lines[id] || []).map((l) => ({ id: l.id, name: l.name, description: l.description, cost: l.cost, quantity: l.quantity, costGroup: { name: l.group } })) } } });
+      return Response.json({ job: { costItems: { nextPage: null, nodes: (lines[id] || []).map((l) => ({
+        id: l.id, name: l.name, description: l.description, cost: l.cost, quantity: l.quantity, isSelected: l.isSelected ?? true,
+        costType: { name: l.costType || 'Materials' }, costGroup: { name: l.group, maxSelectionsAllowed: l.choice ? 20 : null, minSelectionsRequired: l.choice ? 0 : null, parentCostGroup: null },
+      })) } } });
     }
     throw new Error(`unexpected query ${JSON.stringify(query).slice(0, 80)}`);
   };
@@ -101,7 +104,7 @@ test('a plain line needs no reading; one with several products does', () => {
 test('open makeovers’ chosen lines become parts; finished and TEST jobs stay out; nothing is written to JobTread', async () => {
   await maybeReadSelections(env, { now: T0, force: true });
   assert.deepEqual(calls.filter((c) => c.kind === 'lines').map((c) => c.job), ['job-rowan']);
-  assert.deepEqual(calls.find((c) => c.kind === 'lines').where, { and: [[['document', 'id'], '=', null], ['isSelected', '=', true]] }, 'budget lines the family chose');
+  assert.deepEqual(calls.find((c) => c.kind === 'lines').where, [['document', 'id'], '=', null], 'the budget’s lines (not documents’)');
   assert.deepEqual((await parts('ci-paint')).map((p) => p.source), ['others']);
   assert.deepEqual((await parts('ci-sink')).map((p) => p.source), ['donated']);
   const shower = await parts('ci-shower');
@@ -243,4 +246,17 @@ test('gate 2: "Provided by" or "Supplied by" anyone is someone else’s; the lin
   await maybeReadSelections(env, { now: T0 + 60 * MIN, force: true });
   assert.equal(calls.filter((c) => c.kind === 'ai').length, 0);
   assert.match((await env.DB.prepare("SELECT words FROM kid_parts WHERE item_id = 'ci-shower'").first()).words, /Raincan/);
+});
+
+test('the lines to buy or receive: chosen selections and plain product lines; never options nobody chose, labor or fees', async () => {
+  lines['job-rowan'] = [
+    { id: 'ci-chosen', name: 'Vanity Sink', cost: 0, quantity: 1, group: 'Selections', description: 'White sink Donated', choice: true, isSelected: true },
+    { id: 'ci-option', name: 'Furniture', cost: 0, quantity: 1, group: 'Selections', description: 'Therapy table, desk', choice: true, isSelected: false },
+    { id: 'ci-plain', name: 'Therapy Equipment', cost: 3595.6, quantity: 1, group: 'Room', description: 'Treatment Table AM500', isSelected: false },
+    { id: 'ci-labor', name: 'Demo', cost: 1200, quantity: 1, group: 'Scope of Work', description: 'Demo and haul off', isSelected: false, costType: 'Labor' },
+    { id: 'ci-sub', name: 'Plumbing', cost: 2400, quantity: 1, group: 'Scope of Work', description: 'Rough in', isSelected: false, costType: 'Subcontractor' },
+  ];
+  await maybeReadSelections(env, { now: T0, force: true });
+  const kept = ((await env.DB.prepare("SELECT item_id FROM kid_parts WHERE job_id = 'job-rowan' ORDER BY item_id").all()).results || []).map((r) => r.item_id);
+  assert.deepEqual(kept, ['ci-chosen', 'ci-plain']);
 });
