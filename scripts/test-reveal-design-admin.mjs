@@ -17,7 +17,8 @@
  *     JobTread source; before photos become pairs waiting for their after;
  *     items already added show as on the profile next time
  *   - the kind picker on a plan tile; Save writes it all
- *   - Preview the reveal screen: the real slate framed with ?design=preview,
+ *   - Preview the stream: the real slate framed with ?design=preview (codes and all), and
+ *     Preview the live page: the kid's real live page at Starting soon / Live / Replay;
  *     reading the editor's unsaved design; portrait toggle
  *   - phone: the dialog fits, nothing scrolls sideways, buttons reachable
  * Screenshots in test-results/reveal-design-admin/. Exits non-zero on a failure
@@ -327,19 +328,16 @@ async function desktop(browser, files) {
   // Preview the reveal screen, with what's here (unsaved)
   const slides = await page.evaluate(() => window.__soardRevealDesign?.().slides.map((s) => s.kind));
   ok(slides?.join() === 'before,before,before,before,before,before,as-built,proposed,board', `the editor hands the screen its design: ${slides?.join()}`);
-  ok(await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Preview the reveal screen'), 'Preview the reveal screen opens');
+  ok(await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Preview the stream'), 'Preview the stream opens');
   await page.waitForSelector('.rdp iframe', { timeout: 10000 });
   const frameSrc = await page.$eval('.rdp iframe', (f) => f.getAttribute('src'));
-  ok(frameSrc === `/live/${SLUG}/slate/?design=preview&o=portrait&embed=1`, `frames the kid's slate as the live page shows it (portrait, no codes to scan): ${frameSrc}`);
+  ok(frameSrc === `/live/${SLUG}/slate/?design=preview&o=portrait`, `frames the kid's slate as the stream shows it: ${frameSrc}`);
   // (main's dev server rebuilds the slate while it's being edited: give it time)
   await page.waitForFunction(() => !!document.querySelector('.rdp iframe')?.contentDocument?.getElementById('canvas'), { timeout: 30000 }).catch(() => {});
   await sleep(1500);
   const framed = await page.evaluate(() => { const d = document.querySelector('.rdp iframe')?.contentDocument; return { canvas: !!d?.getElementById('canvas'), text: d?.body?.innerText.slice(0, 120) || '' }; });
   ok(framed.canvas, `the slate loaded in the frame (${framed.text.replace(/\s+/g, ' ').slice(0, 60)})`);
-  await shot(page, 'preview-page-1440');
-  await clickText(page, '.rdp .seg [role="radio"]', 'On Facebook and YouTube');
-  await sleep(600);
-  ok(!/embed=1/.test(await page.$eval('.rdp iframe', (f) => f.getAttribute('src'))), 'the stream version carries the codes (no embed)');
+  await shot(page, 'preview-stream-1440');
   await clickText(page, '.rdp .seg [role="radio"]', 'Landscape');
   await sleep(600);
   ok(/o=landscape/.test(await page.$eval('.rdp iframe', (f) => f.getAttribute('src'))), 'landscape frames the wide shape');
@@ -349,6 +347,25 @@ async function desktop(browser, files) {
   ok(/o=portrait/.test(await page.$eval('.rdp iframe', (f) => f.getAttribute('src'))), 'portrait frames the phone shape');
   await shot(page, 'preview-portrait-1440');
   await clickText(page, '.rdp .kd-dialog__foot .btn', 'Done');
+  await sleep(300);
+  // Preview the live page: the kid's real page at each moment, answered from the admin (nothing reaches the site)
+  ok(await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Preview the live page'), 'Preview the live page opens');
+  await page.waitForSelector('.rlp iframe', { timeout: 20000 });
+  const liveAt = async (moment) => {
+    if (moment !== 'starting') { await clickText(page, '.rlp .seg [role="radio"]', moment === 'live' ? 'Live' : 'Replay'); await sleep(400); }
+    await page.waitForFunction((m) => { const f = document.querySelector('.rlp iframe'); return f && f.src.includes(`moment=${m}`) && f.contentDocument?.querySelector('.live-page')?.dataset.view; }, { timeout: 30000 }, moment).catch(() => {});
+    await page.waitForFunction(() => document.querySelector('.rlp iframe')?.contentDocument?.querySelector('[data-live-design]:not([hidden]) .ldz-item'), { timeout: 15000 }).catch(() => {});
+    return page.evaluate(() => { const d = document.querySelector('.rlp iframe').contentDocument; return { view: d.querySelector('.live-page')?.dataset.view, design: !d.querySelector('[data-live-design]')?.hidden, items: d.querySelectorAll('[data-live-design] .ldz-item').length, share: !!d.querySelector('[data-live="cta-share"]:not([hidden]):not([data-capped])') }; });
+  };
+  const savesBefore = api.st.saves.length;
+  const st = await liveAt('starting');
+  ok(st.view === 'starting' && st.design && st.items > 0 && st.share, `starting soon: the reveal screen in the frame, the design under it, Share (${JSON.stringify(st)})`);
+  await shot(page, 'preview-live-starting-1440');
+  const lv = await liveAt('live');
+  ok(lv.view === 'live' && lv.design && lv.share, `live: the camera's place, the design still under it, Share (${JSON.stringify(lv)})`);
+  await shot(page, 'preview-live-live-1440');
+  ok(api.st.saves.length === savesBefore, 'nothing from the preview reaches the site');
+  await clickText(page, '.rlp .kd-dialog__foot .btn', 'Done');
   await sleep(300);
 
   // Save: everything on the record
@@ -723,7 +740,7 @@ async function handAdded(browser) {
   let t = await tiles();
   ok(t.every((x) => x.needs && x.chip === 'Check for the address' && x.check), `a hand-added as-built or proposed drawing asks for a look: ${t.map((x) => x.chip).join(' | ')}`);
   // Preview: nothing plays yet, and it says why
-  await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Preview the reveal screen');
+  await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Preview the stream');
   await page.waitForSelector('.rdp', { timeout: 10000 });
   await sleep(500);
   const pv = await page.$eval('.rdp', (d) => d.textContent.replace(/\s+/g, ' '));
@@ -760,7 +777,7 @@ async function handAdded(browser) {
   const up = await inspect(page, 0);
   ok(up.red === 0 && /notitle/.test((await page.evaluate(() => window.__uploads[0].name))), `the covered copy went up with no red, named -notitle (${up.red})`);
   // Preview now has the drawings: steps, held slides, portrait keeps the slide and fits the screen
-  await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Preview the reveal screen');
+  await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Preview the stream');
   await page.waitForSelector('.rdp', { timeout: 10000 });
   await clickText(page, '.rdp .rdp-steps .btn', 'Floor plan today');
   await sleep(300);
@@ -768,7 +785,7 @@ async function handAdded(browser) {
   await clickText(page, '.rdp .seg [role="radio"]', 'Portrait');
   await sleep(400);
   const pf = await page.evaluate(() => { const f = document.querySelector('.rdp iframe'); const d = document.querySelector('.rdp').getBoundingClientRect(); return { src: f.getAttribute('src'), bottom: d.bottom, frameBottom: f.getBoundingClientRect().bottom }; });
-  ok(/o=portrait(&embed=1)?&slide=1/.test(pf.src), `portrait keeps the slide (${pf.src})`);
+  ok(/o=portrait&slide=1/.test(pf.src), `portrait keeps the slide (${pf.src})`);
   ok(pf.bottom <= 900 && pf.frameBottom <= 900, `the portrait screen fits at 1440×900 (dialog ends at ${Math.round(pf.bottom)})`);
   await shot(page, 'preview-portrait-steps-1440');
   await clickText(page, '.rdp .kd-dialog__foot .btn', 'Done');

@@ -114,6 +114,11 @@ const CSS = `
 .rdp-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .rdp-frame--landscape { aspect-ratio: 16 / 9; width: min(100%, calc((100vh - 380px) * 16 / 9)); min-width: 280px; }
 .rdp-frame--portrait { aspect-ratio: 9 / 16; width: auto; height: min(calc(100vh - 380px), 720px); min-height: 280px; }
+.rlp-when { color: var(--color-text-muted, #5A5B61); font-size: var(--fs-sm, 0.9rem); }
+.rlp-stage { overflow: hidden; }
+.rlp-device { position: relative; overflow: hidden; border-radius: 14px; background: #fff; box-shadow: var(--shadow-sm); }
+.rlp-device iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; }
+.rlp-wait { margin: 2rem 0; color: var(--color-text-muted, #5A5B61); }
 @media (max-width: 640px) {
   .rdi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
   /* A picked drawing takes the whole row: a bigger look at what goes up, and room for what it is */
@@ -828,32 +833,25 @@ const STEPS = [['before', 'The room today'], ['as-built', 'Floor plan today'], [
  */
 export function RevealPreview({ slug, name, published = true, kinds = [], waiting = 0, uploading = 0, Dialog, onClose }) {
   useStyles();
-  // Where it's seen: inside the live page (the default; no QR cards, nobody needs to scan the page they're on) or on the
-  // Facebook and YouTube stream (with the cards, for people watching on a TV or laptop)
-  const [where, setWhere] = useState('page');
-  const [o, setO] = useState(where === 'page' ? 'portrait' : 'landscape');
+  // The stream's picture, as Facebook and YouTube viewers see it (Preview the live page shows it inside our page)
+  const [o, setO] = useState('portrait');
   const [slide, setSlide] = useState(null); // null: plays through; N: holds slide N (0 is the kid's photo)
   const [fallback, setFallback] = useState(!published);
   const base = fallback || !slug ? '/live/slate/' : `/live/${encodeURIComponent(slug)}/slate/`;
-  const src = `${base}?design=preview&o=${o}${where === 'page' ? '&embed=1' : ''}${slide != null ? `&slide=${slide}` : ''}`;
+  const src = `${base}?design=preview&o=${o}${slide != null ? `&slide=${slide}` : ''}`;
   const onLoad = (e) => {
     // A profile with no page built yet gets the screen that follows whoever is next, showing this design
     try { if (!fallback && !e.currentTarget.contentDocument?.getElementById('canvas')) setFallback(true); } catch { /* not ours to read */ }
   };
   const steps = STEPS.map(([k, label]) => [k, label, kinds.indexOf(k)]).filter(([, , i]) => i >= 0);
   const shapes = ['landscape', 'portrait'];
-  const places = ['page', 'stream'];
   const who = possessive(name || 'this kid');
-  return html`<${Dialog} title="Preview the reveal screen" sub=${`The starting-soon screen with ${who} design as it is here, saved or not. It opens on the live page and the stream an hour before the reveal; on the stream it also carries codes to scan, for people watching on a TV or laptop.`}
+  return html`<${Dialog} title="Preview the stream" sub=${`What people watching on Facebook and YouTube see for the hour before ${who} reveal, with the design as it is here, saved or not. The cards with codes to scan are for people watching on a TV or laptop; the live page leaves them out (it has real Share and Give buttons).`}
     onClose=${onClose} size="lg" className="rdp" footer=${html`<button type="button" class="btn btn-secondary" onClick=${onClose}>Done</button>`}>
     ${!kinds.length ? html`<p class="notice notice--info">${icon.shield}<span class="notice__body">No design to show yet. Add plans or before photos, or bring them in from JobTread; until then the screen shows ${who} photo.</span></p>` : null}
     ${waiting ? html`<p class="notice notice--warn">${icon.alert}<span class="notice__body">${plural(waiting, 'drawing is', 'drawings are')} waiting for an address check, so ${waiting === 1 ? 'it doesn’t' : 'they don’t'} play yet.</span></p>` : null}
     ${uploading ? html`<p class="notice">${icon.alert}<span class="notice__body">${plural(uploading, 'picture')} still going up: ${uploading === 1 ? 'it shows' : 'they show'} here once ${uploading === 1 ? 'it’s' : 'they’re'} up.</span></p>` : null}
     <div class="rdp-bar">
-      <div class="seg" role="radiogroup" aria-label="Where it's seen">
-        ${places.map((s) => html`<button type="button" role="radio" aria-checked=${where === s} tabindex=${where === s ? 0 : -1}
-          onKeyDown=${(e) => radioKeys(e, places, where, setWhere)} onClick=${() => setWhere(s)}>${s === 'page' ? 'On the live page' : 'On Facebook and YouTube'}</button>`)}
-      </div>
       <div class="seg" role="radiogroup" aria-label="Screen shape">
         ${shapes.map((s) => html`<button type="button" role="radio" aria-checked=${o === s} tabindex=${o === s ? 0 : -1}
           onKeyDown=${(e) => radioKeys(e, shapes, o, setO)} onClick=${() => setO(s)}>${s === 'landscape' ? 'Landscape' : 'Portrait (phones)'}</button>`)}
@@ -867,6 +865,134 @@ export function RevealPreview({ slug, name, published = true, kinds = [], waitin
       <div class=${`rdp-frame rdp-frame--${o}`}>
         <iframe key=${src} src=${src} title=${`The reveal screen, ${o}`} onLoad=${onLoad} />
       </div>
+    </div>
+  <//>`;
+}
+
+// ═══════════════════════════════════════════
+// Preview the live page
+// ═══════════════════════════════════════════
+// The kid's real live page (/live/<slug>/) in a frame, at the moment staff pick: the hour before (the reveal screen in
+// the video box, Share and Give, the design under it), live (a past reveal's video standing in for the camera, the
+// messages beside it, the design under it) or the replay. BaseLayout hands the framed page to window.__soardPreview
+// before any of its own scripts run; this answers every request the page makes about the reveal from here, so nothing
+// reaches the real site: no sign-ups, no messages, no counts.
+const MOMENTS = [['starting', 'Starting soon'], ['live', 'Live'], ['replay', 'Replay']];
+const DEVICES = [['phone', 'Phone', 390, 844], ['laptop', 'Laptop', 1280, 800]];
+const STREAM_HOST_CODE = 'cuav5h47lgfe96ql';
+const SAMPLE_NOTES = [
+  ['A friend', 'Messages people leave for the family show here once they’re checked.'],
+  ['Another friend', 'We can’t wait to see it!'],
+];
+
+/** The newest live reveal on video, to stand in for the camera: the first live replay on /reveals/ */
+let standIn = null;
+function standInVideo() {
+  standIn ||= fetch('/reveals/', { cache: 'no-store' }).then((r) => r.text()).then((t) => {
+    const doc = new DOMParser().parseFromString(t, 'text/html');
+    const links = [...doc.querySelectorAll('#live-replays [data-rv-open], [data-rv-open]')];
+    for (const a of links) {
+      const m = String(a.getAttribute('data-embed') || '').match(/customer-([a-z0-9]+)\.cloudflarestream\.com\/([a-f0-9]{32})/i);
+      if (m) return { uid: m[2], customerCode: m[1], aspect: Number(a.getAttribute('data-aspect')) || 0.5625 };
+    }
+    return null;
+  }).catch(() => null);
+  return standIn;
+}
+
+function harness({ slug, name, photo, video }) {
+  return (doc, win) => {
+    const moment = new URLSearchParams(win.location.search).get('moment') || 'starting';
+    const now = Date.now();
+    const iso = (ms) => new Date(now + ms).toISOString();
+    const portrait = !video || video.aspect < 1;
+    const player = video ? { kind: moment === 'replay' ? 'replay' : 'live', uid: video.uid, customerCode: video.customerCode || STREAM_HOST_CODE } : null;
+    const base = {
+      id: `preview-${slug}`, kidSlug: slug, kidName: name, title: `${name}’s room reveal`, message: null,
+      image: photo || null, url: `${win.location.origin}/live/${slug}/`, liveUrl: `${win.location.origin}/live/${slug}/`,
+      facebookUrl: 'https://www.facebook.com/SunshineOnaRanneyDay', youtubeUrl: null, instagramUrl: null,
+      orientation: portrait ? 'portrait' : 'landscape', source: 'stream', updatedAt: iso(0),
+      live: false, upcoming: false, replay: false, liveAt: null, endedAt: null, replayUntil: null, player: null,
+    };
+    const state = moment === 'live'
+      ? { ...base, phase: 'live', live: true, scheduledAt: iso(-180e3), liveAt: iso(-120e3), player }
+      : moment === 'replay'
+        ? { ...base, phase: 'replay', replay: true, scheduledAt: iso(-3 * 3600e3), liveAt: iso(-3 * 3600e3), endedAt: iso(-2 * 3600e3), replayUntil: iso(48 * 3600e3), player }
+        : { ...base, phase: 'armed', upcoming: true, scheduledAt: iso(12 * 60e3) };
+    const notes = SAMPLE_NOTES.map(([n, b], i) => ({ id: `preview-${i}`, name: n, body: b, at: iso(-(3 - i) * 60e3) }));
+    const json = (body, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }));
+    const realFetch = win.fetch.bind(win);
+    win.fetch = (input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url, win.location.href);
+      const method = String(init.method || (typeof input !== 'string' && input.method) || 'GET').toUpperCase();
+      const path = url.pathname;
+      if (path === '/api/broadcast') return json({ state, reminders: { enabled: true, email: true, sms: false, push: false, pushKey: null, hours: [24, 1] }, messages: { enabled: true }, timezone: 'America/New_York', hub: false });
+      if (path === '/api/reveal-design') {
+        let d = null;
+        try { d = window.__soardRevealDesign?.(); } catch { /* the editor closed */ }
+        return json({ open: true, after: moment !== 'starting', name, slides: d?.slides || [] });
+      }
+      if (path === '/api/live-messages') {
+        if (method !== 'GET') return json({ ok: true, status: 'shown', message: { id: `preview-${now}`, name: 'You', body: 'A message here is only in this preview.', at: iso(0) } });
+        return json({ ok: true, open: true, enabled: true, broadcastId: state.id, messages: notes });
+      }
+      if (path === '/api/live-replay') return json({ ok: true, uid: moment === 'replay' ? video?.uid || null : null, revealAt: null, captions: false });
+      if (path === '/api/reminders' && method !== 'GET') return json({ ok: true, pending: true, channel: 'email' });
+      if (path === '/api/broadcast-event' || path === '/api/live-watch' || path === '/api/live-click') return json({ ok: true });
+      return realFetch(input, init);
+    };
+    // No live hub and no counts from a preview
+    win.WebSocket = class { constructor() { this.readyState = 3; setTimeout(() => { this.onclose?.({}); }, 0); } close() {} send() {} addEventListener() {} removeEventListener() {} };
+    try { win.navigator.sendBeacon = () => true; } catch { /* read-only: the fetch stand-ins catch the rest */ }
+  };
+}
+
+/** slug, name, photo (the kid's main photo), published, Dialog, onClose */
+export function LivePreview({ slug, name, photo = '', published = true, Dialog, onClose }) {
+  useStyles();
+  const [moment, setMoment] = useState('starting');
+  const [device, setDevice] = useState('phone');
+  const [video, setVideo] = useState(undefined);
+  const stage = useRef(null);
+  const [scale, setScale] = useState(0.6);
+  useEffect(() => { let on = true; standInVideo().then((v) => { if (on) setVideo(v); }); return () => { on = false; }; }, []);
+  // The page's own hook asks the admin for this as it loads; the editor's other previews put theirs back after
+  useEffect(() => {
+    if (video === undefined) return undefined;
+    const before = window.__soardPreview;
+    window.__soardPreview = harness({ slug, name: name || 'This kid', photo, video });
+    return () => { window.__soardPreview = before; };
+  }, [video, slug, name, photo]);
+  const [, , w, h] = DEVICES.find(([k]) => k === device);
+  // Fit the device's screen in the stage, at its real size scaled down
+  useEffect(() => {
+    const fit = () => { const el = stage.current; if (!el) return; const r = el.getBoundingClientRect(); setScale(Math.min(1, (r.width - 24) / w, (Math.max(320, window.innerHeight - 300)) / h)); };
+    fit();
+    addEventListener('resize', fit);
+    return () => removeEventListener('resize', fit);
+  }, [w, h]);
+  const who = possessive(name || 'this kid');
+  const src = `/live/${encodeURIComponent(slug)}/?admin-preview=live&moment=${moment}`;
+  const momentKeys = MOMENTS.map(([k]) => k);
+  const deviceKeys = DEVICES.map(([k]) => k);
+  return html`<${Dialog} title="Preview the live page" sub=${`${who} live page as people will see it, with the design as it is here, saved or not. Nothing you do in it reaches the real page: no sign-ups, no messages.${moment !== 'starting' ? ' A past reveal stands in for the camera.' : ''}`}
+    onClose=${onClose} size="lg" className="rdp rlp" footer=${html`<button type="button" class="btn btn-secondary" onClick=${onClose}>Done</button>`}>
+    ${!published ? html`<p class="notice notice--warn">${icon.alert}<span class="notice__body">This profile is hidden, so it has no live page yet. Show it on the site to preview it.</span></p>` : null}
+    <div class="rdp-bar">
+      <div class="seg" role="radiogroup" aria-label="Moment">
+        ${MOMENTS.map(([k, label]) => html`<button type="button" role="radio" aria-checked=${moment === k} tabindex=${moment === k ? 0 : -1}
+          onKeyDown=${(e) => radioKeys(e, momentKeys, moment, setMoment)} onClick=${() => setMoment(k)}>${label}</button>`)}
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Screen">
+        ${DEVICES.map(([k, label]) => html`<button type="button" role="radio" aria-checked=${device === k} tabindex=${device === k ? 0 : -1}
+          onKeyDown=${(e) => radioKeys(e, deviceKeys, device, setDevice)} onClick=${() => setDevice(k)}>${label}</button>`)}
+      </div>
+      <span class="rlp-when">${moment === 'starting' ? 'The hour before: the reveal screen plays in the video box' : moment === 'live' ? 'From the start time: the camera, live' : 'After: the replay'}</span>
+    </div>
+    <div class="rdp-stage rlp-stage" ref=${stage}>
+      ${published && video !== undefined ? html`<div class="rlp-device" style=${`width:${Math.round(w * scale)}px;height:${Math.round(h * scale)}px`}>
+        <iframe key=${src + device} src=${src} title=${`${who} live page, ${moment}`} style=${`width:${w}px;height:${h}px;transform:scale(${scale})`} />
+      </div>` : published ? html`<p class="rlp-wait">Getting the page ready…</p>` : null}
     </div>
   <//>`;
 }

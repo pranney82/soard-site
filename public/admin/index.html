@@ -11915,7 +11915,7 @@
       };
       useEffect(load, []);
       if (err) return html`<${KdDialogBox} title="Couldn’t open this" onClose=${props.onClose} size="sm"><${LoadErrorCard} error=${err} onRetry=${() => { setErr(null); load(); }} /><//>`;
-      const Comp = mod && { import: mod.RevealImport, preview: mod.RevealPreview, cover: mod.CoverDialog }[part];
+      const Comp = mod && { import: mod.RevealImport, preview: mod.RevealPreview, live: mod.LivePreview, cover: mod.CoverDialog }[part];
       return Comp ? html`<${Comp} ...${props} Dialog=${KdDialogBox} />` : null;
     }
     const kdPoss = (name) => (/s$/i.test(name || '') ? `${name}’` : `${name}’s`);
@@ -13286,6 +13286,7 @@
           startId=${historyOpen} onRestore=${restoreVersion} onClose=${() => setHistoryOpen(undefined)} />` : null}
         ${design ? html`<${KdRevealLazy} part=${design} kid=${{ slug: data.slug || slug, name: data.name, year: data.year }} jobId=${jobId || ''} revealed=${revealed}
           plans=${data.plans} pairs=${data.beforeAfterPhotos} slug=${data.slug || slug} name=${data.name} published=${!!slug && data.publishStatus !== 'draft'}
+          photo=${String(data.heroImage || '').replace(/^https:\/\/imagedelivery\.net\/[^/]+\//, '').replace(/\/(public|[^/]*=[^/]*)$/, '')}
           kinds=${RD.revealSlides(record).map((x) => x.kind)}
           waiting=${revealed ? 0 : data.plans.filter((x) => !kdLocal(x.url) && !RD.addressChecked(x)).length}
           uploading=${Object.keys(uploads).length}
@@ -13579,7 +13580,8 @@
 
         ${sec('plans', 'Design plans', data.plans.length ? `The first ${KS.PLANS_SHOWN} show on the page; the rest open from “View all designs”. The reveal screen plays the as-built plan, the proposed plan, then the boards.` : 'Floor plans and design boards, for the Design chapter and the reveal screen.',
           html`${slug ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('import')}>Bring in from JobTread</button>` : null}
-            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('preview')}>${kdIcon.play} Preview the reveal screen</button>
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('live')}>${kdIcon.play} Preview the live page</button>
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('preview')}>${kdIcon.play} Preview the stream</button>
             <button type="button" class="btn btn-ghost btn-sm" onClick=${() => planInput.current?.click()}>${kdIcon.upload} Add plans</button>
             <input type="file" accept="image/*" multiple hidden ref=${planInput} onChange=${(e) => { addPlans([...e.target.files]); e.target.value = ''; }} />`,
           html`
