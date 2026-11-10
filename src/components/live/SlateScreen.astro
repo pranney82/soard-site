@@ -191,6 +191,8 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     // The kid and the track ride on <body> (no inline script: the CSP allows those only by hash)
     const kidSlug = body.dataset.kid || '';
     if (params.get('still') === '1') body.classList.add('still');
+    // Inside the live page's own frame: no app header or comments to keep clear of
+    if (params.get('embed') === '1') body.classList.add('embed');
     const tv = params.get('tv') === '1';
     if (tv) body.classList.add('tv');
 
@@ -434,13 +436,18 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     /* Logo: the CF asset is a padded 600×600 square; crop to its 396×371 content box */
     .logo { position: absolute; left: 112px; top: 80px; width: 190px; height: calc(190px * 371 / 396); overflow: hidden; animation: up 0.9s var(--ease) both; }
     .logo img { display: block; width: calc(190px * 600 / 396); margin: calc(-190px * 98 / 396) 0 0 calc(-190px * 102 / 396); }
-    body[data-o='portrait'] .logo { left: 80px; top: 250px; width: 150px; height: calc(150px * 371 / 396); }
-    body[data-o='portrait'] .logo img { width: calc(150px * 600 / 396); margin: calc(-150px * 98 / 396) 0 0 calc(-150px * 102 / 396); }
+    /* Portrait (phones, and the live page's own frame): the picture is the star. The name and the countdown sit at the
+       top with the logo in the corner, the frame takes most of the screen, then the card and the partners. Inside the
+       live page (.embed) it uses the full height; on the stream it starts lower, clear of the app's own header. */
+    body[data-o='portrait'] { --pt: 140px; }
+    body[data-o='portrait'].embed { --pt: 56px; }
+    body[data-o='portrait'] .logo { left: auto; right: 60px; top: var(--pt); width: 132px; height: calc(132px * 371 / 396); }
+    body[data-o='portrait'] .logo img { width: calc(132px * 600 / 396); margin: calc(-132px * 98 / 396) 0 0 calc(-132px * 102 / 396); }
 
     /* ── Copy (left column / lower block) ── */
     .copy { position: absolute; left: 112px; top: 280px; bottom: 164px; width: 960px; display: flex; flex-direction: column; justify-content: center; }
     body[data-partners='no'] .copy { bottom: 60px; }
-    body[data-o='portrait'] .copy { left: 80px; top: 980px; bottom: 380px; width: 920px; }
+    body[data-o='portrait'] .copy { left: 60px; top: var(--pt); bottom: auto; width: 780px; justify-content: flex-start; }
 
     .eyebrow {
       display: flex; align-items: center; gap: 18px; margin-bottom: 34px;
@@ -452,7 +459,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--c-yellow); position: relative; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(55, 58, 54, 0.12); }
     .dot::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--c-yellow); opacity: 0; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
     @keyframes ping { 0% { transform: scale(0.6); opacity: 0.9; } 70%, 100% { transform: scale(1.6); opacity: 0; } }
-    body[data-o='portrait'] .eyebrow { font-size: 22px; margin-bottom: 26px; }
+    body[data-o='portrait'] .eyebrow { font-size: 20px; gap: 14px; margin-bottom: 18px; }
 
     .title {
       font-family: var(--font-display); font-weight: 700; color: var(--c-text);
@@ -462,10 +469,10 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     .title--l { font-size: 118px; }
     .title--m { font-size: 104px; }
     .title--s { font-size: 88px; }
-    body[data-o='portrait'] .title--l { font-size: 104px; }
-    body[data-o='portrait'] .title--m { font-size: 88px; }
-    body[data-o='portrait'] .title--s { font-size: 74px; }
-    body[data-o='portrait'] .title { margin-bottom: 24px; }
+    body[data-o='portrait'] .title--l { font-size: 92px; }
+    body[data-o='portrait'] .title--m { font-size: 80px; }
+    body[data-o='portrait'] .title--s { font-size: 66px; }
+    body[data-o='portrait'] .title { margin-bottom: 18px; }
     /* Same yellow-marker italic as the site hero, drawn in on load */
     .title em {
       font-family: var(--font-display); font-style: italic; font-weight: 400; white-space: nowrap;
@@ -479,7 +486,8 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       font-size: 31px; line-height: 1.5; color: var(--c-text-muted); max-width: 830px; margin-bottom: 44px;
       animation: up 0.9s var(--ease) 0.3s both;
     }
-    body[data-o='portrait'] .sub { max-width: none; font-size: 29px; margin-bottom: 32px; }
+    /* (In portrait the picture says it; the line about the family waits for landscape) */
+    body[data-o='portrait'] .sub { display: none; }
 
     /* Start time: the one thing a viewer needs */
     .when {
@@ -492,22 +500,24 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     .when-rel { font-size: 32px; font-weight: 500; color: var(--c-text-muted); }
     .when-rel[hidden] { display: none; }
     body[data-state='soon'] .when-time, body[data-state='now'] .when-time { font-size: 60px; }
-    body[data-o='portrait'] .when-time { font-size: 62px; }
-    body[data-o='portrait'][data-state='soon'] .when-time, body[data-o='portrait'][data-state='now'] .when-time { font-size: 54px; }
-    body[data-o='portrait'] .when-label { font-size: 20px; }
-    body[data-o='portrait'] .when-rel { font-size: 28px; }
+    body[data-o='portrait'] .when { padding-left: 24px; gap: 4px 18px; }
+    body[data-o='portrait'] .when-time { font-size: 56px; }
+    body[data-o='portrait'][data-state='soon'] .when-time, body[data-o='portrait'][data-state='now'] .when-time { font-size: 48px; }
+    body[data-o='portrait'] .when-label { font-size: 18px; }
+    body[data-o='portrait'] .when-rel { font-size: 26px; }
     /* Final-hour clock: Outfit's tabular digits (the serif has none), so it never jitters as it ticks */
     body[data-state='count'] .when-time {
       font-family: var(--font-body); font-weight: 600; font-variant-numeric: tabular-nums;
       font-size: 104px; line-height: 1; letter-spacing: -0.02em; margin-top: 4px;
     }
-    body[data-o='portrait'][data-state='count'] .when-time { font-size: 108px; }
-    body[data-o='portrait'][data-state='count'] .when-rel { flex-basis: 100%; margin-top: 8px; }
+    body[data-o='portrait'][data-state='count'] .when-time { font-size: 88px; }
 
     /* ── Photo frame: rounded, offset yellow block, slow drift ── */
     .frame { position: absolute; left: 1176px; top: 96px; width: 632px; height: 790px; animation: photoIn 1.1s var(--ease) both; }
     body[data-partners='no'] .frame { top: 145px; }
-    body[data-o='portrait'] .frame { left: 80px; top: 410px; width: 920px; height: 540px; }
+    /* As big as the screen allows: from under the name and countdown to above the card */
+    body[data-o='portrait'] .frame { left: 60px; top: calc(var(--pt) + 440px); width: 960px; height: calc(1920px - var(--pt) - 840px); }
+    body[data-o='portrait'][data-partners='no'] .frame { height: calc(1920px - var(--pt) - 740px); }
     .accent {
       position: absolute; right: -30px; bottom: -30px; width: 65%; height: 50%;
       background: var(--c-yellow); border-radius: 32px; opacity: 0; animation: accent 1.2s var(--ease) 0.7s forwards;
@@ -585,8 +595,8 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     /* Rotating info card, overlapping the photo's lower-left corner */
     .cards { position: absolute; left: 980px; top: 630px; width: 620px; height: 212px; animation: up 1s var(--ease) 1.1s both; }
     body[data-partners='no'] .cards { top: 679px; }
-    body[data-o='portrait'] .cards { left: 80px; top: 1570px; width: 920px; height: 196px; }
-    body[data-o='portrait'][data-partners='no'] .cards { top: 1620px; }
+    body[data-o='portrait'] .cards { left: 60px; top: 1560px; width: 960px; height: 196px; }
+    body[data-o='portrait'][data-partners='no'] .cards { top: 1660px; }
     .card {
       position: absolute; inset: 0; display: flex; align-items: center; gap: 26px;
       background: #fff; border: 1px solid var(--c-border); border-radius: 24px; padding: 22px 28px 22px 22px;
@@ -619,7 +629,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       border-top: 1px solid var(--c-border); background: rgba(255, 255, 255, 0.55);
       animation: fade 1.2s ease 1.3s both;
     }
-    body[data-o='portrait'] .partners { height: 124px; padding-left: 80px; gap: 28px; }
+    body[data-o='portrait'] .partners { height: 124px; padding-left: 60px; gap: 28px; }
     .partners-label { flex-shrink: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c-text-muted); width: 170px; line-height: 1.35; }
     .marquee {
       flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center;
