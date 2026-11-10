@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import { buildSync } from 'esbuild';
 
 const load = (entry) => import(`data:text/javascript,${encodeURIComponent(buildSync({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent', packages: 'external' }).outputFiles[0].text)}`);
-const { heroRowsHtml, rowsSignature, kidFeed } = await load('src/utils/upcoming-rows.ts');
-const { visitorZone, drawable } = await load('functions/live/[[path]].js');
+const { heroRowsHtml, rowsSignature, kidFeed, afterLine } = await load('src/utils/upcoming-rows.ts');
+const { visitorZone, drawable, addAfterLine } = await load('functions/live/[[path]].js');
 
 const max = { slug: 'max', name: 'Max', confirmed: true, date: '2026-11-20', time: '16:00', startsAt: '2026-11-20T21:00:00.000Z', image: null, kidUrl: '/kids/max/', liveUrl: '/live/max/', rooms: [] };
 const colin = { slug: 'colin', name: 'Colin', confirmed: false, window: { part: 'early', month: '2026-12', through: '2026-12-10', label: 'early December' }, image: null, kidUrl: '/kids/colin/', liveUrl: '/live/colin/', rooms: [] };
@@ -48,3 +48,20 @@ test('the edge draws only reveals a row can say something about', () => {
   assert.deepEqual(list.map((r) => r.slug), ['max', 'colin']);
   assert.deepEqual(drawable(null), []);
 });
+
+test('the line naming the reveals after this one: written the same by the page and the edge, in the visitor’s zone', async () => {
+  const dylan = { ...max, slug: 'dylan-2026', name: 'Dylan', date: '2026-11-18', startsAt: '2026-11-18T21:00:00.000Z' };
+  assert.equal(afterLine([dylan, max, colin], 'dylan-2026', '', 'America/New_York'), 'After Dylan: Max on Friday, November 20 and Colin in early December.');
+  assert.equal(afterLine([max, colin], 'dylan-2026', 'Dylan', 'America/New_York'), 'After Dylan: Max on Friday, November 20 and Colin in early December.', 'a name the schedule doesn’t have');
+  assert.equal(afterLine([dylan], 'dylan-2026', '', 'America/New_York'), '', 'nothing after it: no line');
+  assert.equal(afterLine([dylan, max], '', '', 'America/New_York'), '', 'no reveal on the page: no line');
+  // A late reveal in the east is the day before on the west coast
+  const late = { ...max, startsAt: '2026-11-21T03:30:00.000Z', date: '2026-11-20' };
+  assert.match(afterLine([dylan, late], 'dylan-2026', '', 'America/Los_Angeles'), /Max on Thursday, November 19|Max on Friday, November 20/);
+  // The edge writes it into the hero and shows the line
+  const page = new Response('<section id="live-hero"><p class="hero-next" data-live="next-line" hidden><span data-live="next-text"></span> <a href="#up-next">See every reveal</a></p></section>', { headers: { 'content-type': 'text/html' } });
+  if (typeof HTMLRewriter === 'undefined') return; // Node has no HTMLRewriter (the Workers runtime does)
+  const html = await addAfterLine(page, 'After Dylan: Max on Friday, November 20.').text();
+  assert.match(html, /<p class="hero-next" data-live="next-line"><span data-live="next-text">After Dylan: Max on Friday, November 20\.<\/span>/);
+});
+

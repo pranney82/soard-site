@@ -12,7 +12,7 @@
  * With no script, a row's Add is the child's calendar feed itself.
  */
 import { cfRaw } from './cf-image';
-import { windowTitle, windowShort, revealDateText, revealTime, inviteData, possessive, shownZone, otherYear, type UpcomingReveal } from './reveals-client';
+import { windowTitle, windowShort, revealDateText, revealTime, revealDay, inviteData, possessive, shownZone, otherYear, type UpcomingReveal } from './reveals-client';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 const attrs = (o: Record<string, string>) => Object.entries(o).map(([k, v]) => `${k}="${esc(v)}"`).join(' ');
@@ -32,6 +32,20 @@ export const rowsSignature = (list: UpcomingReveal[], tz = shownZone()) => `${tz
   r.confirmed ? `${r.date} ${r.time || ''}` : r.window.label].join(':')).join('|')}`;
 
 /** A child's own calendar feed, for a page with no script (the Add button opens a sheet that needs one) */
+/**
+ * The line under a reveal's status naming the two after it: "After Dylan: Max on Friday, November 20 and Colin in
+ * early December." ('' when none). The live page's script and the server (functions/live/[[path]].js, so the
+ * line is there from the first paint) both write it with this, so they always agree. name: the reveal's own child,
+ * when the schedule doesn't name them.
+ */
+export function afterLine(list: UpcomingReveal[], kidSlug: string, name = '', tz = shownZone()): string {
+  if (!kidSlug) return '';
+  const after = list.filter((r) => r.slug !== kidSlug).slice(0, 2);
+  const shown = list.find((r) => r.slug === kidSlug)?.name || name;
+  const words = after.map((r) => (r.confirmed ? `${r.name} on ${revealDay(r, 'long', tz)}` : `${r.name} in ${r.window.label}`)).join(' and ');
+  return words ? `${shown ? `After ${shown}` : 'Next up'}: ${words}.` : '';
+}
+
 export const kidFeed = (slug: string) => `webcal://sunshineonaranneyday.com/api/reveals.ics?kid=${encodeURIComponent(slug)}`;
 
 function whenHtml(r: UpcomingReveal, tz: string): string {

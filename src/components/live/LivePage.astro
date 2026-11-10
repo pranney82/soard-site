@@ -424,8 +424,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { createLiveDesign } from '../../utils/live-design';
   import { openShareSheet } from '../../utils/share-sheet';
   import { cfRaw } from '../../utils/cf-image';
-  import { readUpcoming, loadSignup, revealWhen, revealDay, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
-  import { heroRowsHtml, rowsSignature } from '../../utils/upcoming-rows';
+  import { readUpcoming, loadSignup, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
+  import { heroRowsHtml, rowsSignature, afterLine } from '../../utils/upcoming-rows';
 
   /** The starting-soon screen fills the frame for the last hour: it carries the room's design for people waiting (the crew may start streaming up to 30 minutes early, per the runbook) */
   const SLATE_LEAD_MS = 60 * 60 * 1000;
@@ -756,13 +756,11 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !((view === 'live' || view === 'replay') && !hasPlayer)); }
       capCtas();
 
-      // What comes after this reveal, while it's still ahead (on /live/ between reveals the frame lists them all)
+      // What comes after this reveal, while it's still ahead (on /live/ between reveals the frame lists them all). The
+      // server wrote it already (the same afterLine), so normally nothing changes here
       const nextLine = q<HTMLElement>('next-line');
       if (nextLine) {
-        const after = kidSlug ? upcoming.filter((r) => r.slug !== kidSlug).slice(0, 2) : [];
-        const shownName = (kidSlug && (upcoming.find((r) => r.slug === kidSlug)?.name || (s.kidSlug === kidSlug ? s.kidName : ''))) || '';
-        const words = after.map((r) => (r.confirmed ? `${r.name} on ${revealDay(r)}` : `${r.name} in ${r.window.label}`)).join(' and ');
-        const text = words ? `${shownName ? `After ${shownName}` : 'Next up'}: ${words}.` : '';
+        const text = afterLine(upcoming, kidSlug, s.kidSlug === kidSlug ? s.kidName || '' : '');
         const t = q<HTMLElement>('next-text');
         if (t && t.textContent !== text) t.textContent = text;
         setHidden(nextLine, !text || !(display === 'upcoming' || display === 'idle'));

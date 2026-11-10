@@ -41,7 +41,7 @@ import { revealSlides, designWindow } from '../../public/admin/reveal-design.js'
 import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
 import { barFor, addBar, PAGE_REUSE } from '../_apply-bar.js';
 import { upcomingReveals } from '../_kid-reveal.js';
-import { heroRowsHtml, rowsSignature } from '../../src/utils/upcoming-rows.ts';
+import { heroRowsHtml, rowsSignature, afterLine } from '../../src/utils/upcoming-rows.ts';
 
 const ACTIVE = new Set(['scheduled', 'armed', 'live', 'ending', 'replay']);
 const SITE = 'https://sunshineonaranneyday.com';
@@ -159,6 +159,21 @@ export function visitorZone(request) {
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch { return EASTERN; }
 }
 
+/** The hero's "After Dylan: Max on Friday, November 20…" line, written (it follows the schedule, so the page is reused briefly) */
+export function addAfterLine(res, text) {
+  if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
+  const out = new HTMLRewriter()
+    .on('#live-hero [data-live="next-text"]', { element(e) { e.setInnerContent(text); } })
+    .on('#live-hero [data-live="next-line"]', setAttrs({ hidden: null }))
+    .transform(res);
+  const headers = new Headers(out.headers);
+  if (!/no-store/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', PAGE_REUSE);
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
+  headers.delete('Content-Length');
+  return new Response(out.body, { status: out.status, headers });
+}
+
 const SLUG = /^[a-z0-9-]+$/;
 /** The reveals a row can be drawn for: a known child, with a day (confirmed) or a third of a month (tentative) */
 export const drawable = (list) => (list || []).filter((r) => r && SLUG.test(String(r.slug || '')) && (r.confirmed ? r.date : r.window?.label));
@@ -228,10 +243,14 @@ export async function onRequest(context) {
     // Between reveals the hero lists what's coming up: drawn from the schedule as it is now (null: not known in time,
     // and the page goes out as built)
     let rows = null;
-    if (isIndex && !party) {
+    // The reveal this page shows while it's still ahead (a child's page, or /live/ following one): the line naming the
+    // two after it goes out written, as the page script would write it (afterLine), so nothing moves after load
+    const lineKid = party ? '' : pageKid || (kid ? kid.slug : '');
+    if ((isIndex || lineKid) && !party) {
       try { rows = await upcomingReveals(context); } catch { rows = null; }
       rows = rows ? drawable(rows) : null;
     }
+    const line = rows && lineKid ? afterLine(rows, lineKid, kid?.name || '', visitorZone(request)) : '';
     const res = await next(kid || party || bar || rows ? fresh(request) : request);
     if (res.status === 404 && pageKid) return Response.redirect(`${url.origin}/live/${url.search}`, 302);
     if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar || rows)) return res;
@@ -242,7 +261,8 @@ export async function onRequest(context) {
       design = designFor(slug, data, broadcast.state);
     }
     let page = kid || party ? rewrite(res, { kid, party, messages: broadcast.config?.messages?.enabled !== false, design }) : res;
-    if (rows) page = addHeroRows(page, { list: rows, zone: visitorZone(request), between: !!broadcast && !kid && !ACTIVE.has(broadcast.state?.phase) });
+    if (rows && isIndex) page = addHeroRows(page, { list: rows, zone: visitorZone(request), between: !!broadcast && !kid && !ACTIVE.has(broadcast.state?.phase) });
+    if (line) page = addAfterLine(page, line);
     return addBar(page, bar);
   } catch {
     return next();
