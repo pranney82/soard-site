@@ -78,7 +78,7 @@ export function partLine(it) {
   const by = (r) => (r?.who ? ` (${r.who})` : '');
   if (it.status === 'house') bits.push('went to the house, not the Office');
   else if (it.status === 'here' || it.status === 'out') bits.push(`${it.qty > 1 ? `all ${it.qty} here` : 'here'} ${day(last?.at)}${by(last)}${it.shelf && it.status === 'here' && (it.sent || 0) < it.got ? `, ${shelfName(it.shelf)}` : ''}`);
-  else if (it.status === 'partly') bits.push(`${it.got} of ${it.qty} here ${day(last?.at)}${by(last)}${it.shelf ? `, ${shelfName(it.shelf)}` : ''}`);
+  else if (it.status === 'partly') bits.push(`${it.got} of ${it.qty} here ${day(last?.at)}${by(last)}${it.shelf && (it.sent || 0) < it.got ? `, ${shelfName(it.shelf)}` : ''}`);
   else if (!bits.length) bits.push('not ordered yet');
   if (it.sent) bits.push(`${it.sent >= it.got ? 'out to the house' : `${it.sent} of ${it.got} out to the house`} ${day(lastOut?.at)}${by(lastOut)}`);
   return `${it.qty > 1 ? `${it.name} (${it.qty})` : it.name}: ${bits.join('; ')}`;

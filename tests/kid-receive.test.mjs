@@ -486,3 +486,72 @@ test('check-out by the box: each label is one box; a sink in three boxes is out 
   assert.equal(itemOf(await view(), 'Rowan S.', 'Shower Valve').status, 'out');
   assert.equal((await checkOut(env.DB, { tap: tap(), ref: b, box: 9 })).repeat, true, 'a box number past the last is the whole check-in, already out');
 });
+
+test('review 2: box n carries the same share in any order; undo and rescan can’t over- or under-count', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const valve = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  await env.DB.prepare("UPDATE kid_parts SET parts = ? WHERE item_id = 'r-shower'").bind(JSON.stringify([part('Raincan Shower Head', { model: '52214-CZ' }), part('Shower Valve', { quantity: 7 })])).run();
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 7, boxes: 5 });
+  const outs = {};
+  for (const b of [1, 2, 3, 4]) outs[b] = (await checkOut(env.DB, { tap: tap(), ref: a, box: b })).receipt;
+  assert.deepEqual([1, 2, 3, 4].map((b) => outs[b].units), [1, 1, 2, 1], 'seven towels in five boxes: 1, 1, 2, 1, 2');
+  await undo(env.DB, outs[3].id);
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 3 });
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 5 });
+  const it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  assert.deepEqual([it.sent, it.got, it.status], [7, 7, 'out']);
+});
+
+test('review 3, 11: a stale tick is capped at what’s still here; the same box twice at once counts once', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 2 });
+  const [x, y] = await Promise.all([checkOut(env.DB, { tap: tap(), ref: a, box: 1 }), checkOut(env.DB, { tap: tap(), ref: a, box: 1 })]);
+  assert.equal([x, y].filter((r) => !r.repeat).length, 1, 'one of the two phones counts it');
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 2 });
+  const late = await checkOut(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, units: 4, name: head.name });
+  assert.equal(late.repeat, true, 'everything is out already: the old tick adds nothing');
+  const it = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  assert.deepEqual([it.sent, it.got], [1, 1]);
+});
+
+test('review 4, 5: a check-in taken back takes its check-outs with it; a check-out taken back gets the shelf back', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const lamp = itemOf(await view(), 'Rowan S.', 'Cloud Pendant Light');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: lamp.itemId, partKey: lamp.partKey, name: lamp.name, units: 1, boxes: 1 });
+  const out = (await checkOut(env.DB, { tap: tap(), ref: a, box: 1 })).receipt;
+  assert.deepEqual(kidOf(await view(), 'Rowan S.').shelves, [], 'all out: shelf free');
+  await undo(env.DB, out.id);
+  assert.deepEqual(kidOf(await view(), 'Rowan S.').shelves, ['1'], 'back from the truck, back on Shelf 1');
+  const rug = itemOf(await view(), 'Ava E.', 'Round Rainbow Rug');
+  assert.equal((await receive(env.DB, { tap: tap(), jobId: 'j-ava', itemId: rug.itemId, partKey: rug.partKey, name: rug.name, units: 1, boxes: 1 })).shelf, '2', 'Ava gets the next shelf, not Rowan’s');
+  // Out again, then the check-in itself is taken back: its check-out goes with it
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 1 });
+  await undo(env.DB, a);
+  let it = itemOf(await view(), 'Rowan S.', 'Cloud Pendant Light');
+  assert.deepEqual([it.got, it.sent, it.status], [0, 0, 'not']);
+  await receive(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: lamp.itemId, partKey: lamp.partKey, name: lamp.name, units: 1, boxes: 1 });
+  it = itemOf(await view(), 'Rowan S.', 'Cloud Pendant Light');
+  assert.equal(it.status, 'here', 'checked in again, it’s here, not out');
+});
+
+test('review 10: JobTread names a shelf only while something is still on it', () => {
+  const o = { store: 'Shop', orderNumber: 'A1', at: '2026-11-02T15:00:00Z' };
+  const it = { name: 'Towel', qty: 8, got: 2, sent: 2, status: 'partly', shelf: '1', order: o, receipts: [{ kind: 'receive', units: 2, at: '2026-11-09T15:00:00Z' }, { kind: 'out', units: 2, at: '2026-11-10T15:00:00Z' }] };
+  assert.doesNotMatch(partLine(it), /Shelf 1/);
+  assert.match(partLine(it), /2 of 8 here .*; out to the house/);
+});
+
+test('a whole load confirmed in one request: each goes on its own; one that can’t go doesn’t stop the rest', async () => {
+  const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 2 });
+  const res = await onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin?out=1', { method: 'POST', body: JSON.stringify({ items: [{ tap: tap(), ref: 'gone-label-0001', box: 1 }, { tap: tap(), ref: a, box: 1 }, { tap: tap(), ref: a, box: 2 }] }) }), waitUntil: () => {} });
+  const body = await res.json();
+  assert.equal(body.success, true);
+  assert.deepEqual(body.results.map((r) => r.status || 'ok'), [404, 'ok', 'ok']);
+  assert.equal(body.view.kids.find((k) => k.short === 'Rowan S.').items.find((i) => i.name === 'Raincan Shower Head').status, 'out');
+});

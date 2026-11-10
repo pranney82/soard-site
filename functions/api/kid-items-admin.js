@@ -14,7 +14,8 @@
  *   ?decide=1  { orderKey, items: [{ itemName, decision }] }      Needs a look and Wrong kid answers
  *   ?other=1   { tap, jobId, name, cents, donated, units, boxes } something else that came, typed in
  *   ?shelf-labels=1 { shelves: ['1', …] }                          the shelves' own signs
- *   ?out=1     { tap, ref } (a scanned label) or { tap, jobId, itemId, partKey, units, name, line }   checked out to the house
+ *   ?out=1     { tap, ref, box } (a scanned label) or { tap, jobId, itemId, partKey, units, name, line }   checked out to the house;
+ *              { items: [those] } a whole load at once (Confirm) → { results: [{ tap, repeat } | { tap, error, status }] }
  * Every check-in is saved first, then its kid's lines are written to JobTread (./_kid-jt.js) and its labels printed.
  */
 import { orderSweepStatus } from './_order-sweep.js';
@@ -102,6 +103,21 @@ export async function onRequestPost(context) {
       Object.assign(out, { receipt: r.receipt.id, shelf: r.shelf, repeat: r.repeat });
       // A retry of the same tap doesn't print twice
       if (!r.repeat) print = r.receipt;
+    } else if (q.get('out') && Array.isArray(body.items)) {
+      // A whole load in one go (Confirm): each box or item on its own, so one that can't go doesn't stop the rest
+      const results = [];
+      const jobs = new Set();
+      for (const it of body.items.slice(0, 80)) {
+        try {
+          const r = await checkOut(env.DB, it, { by });
+          if (r.receipt?.job_id) jobs.add(r.receipt.job_id);
+          results.push({ tap: it.tap, repeat: r.repeat });
+        } catch (err) {
+          results.push({ tap: it.tap, error: err.message, status: err.status || 500 });
+        }
+      }
+      out.results = results;
+      for (const j of jobs) out.jt = await writeKidNow(env, j);
     } else if (q.get('out')) {
       const r = await checkOut(env.DB, body, { by });
       jobId = r.receipt.job_id;
