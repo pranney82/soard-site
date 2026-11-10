@@ -227,9 +227,14 @@ const inspect = (page, src) => page.evaluate(async (src) => {
     if (r > 150 && g < 110 && b < 110) red++;
     if (b > 150 && r < 110 && g < 110) blue++;
   }
-  const draw = await import('/admin/reveal-design-draw.js');
-  const tb = draw.findTitleBlock(data, c.width, c.height);
-  return { red, blue, w: c.width, h: c.height, titleBlock: tb.bottom != null || tb.right != null };
+  // How much of the picture the drawing fills (cropped to it, not a whole sheet with its border and title block)
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    const i = (y * c.width + x) * 4;
+    if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 200) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  const fill = x1 < 0 ? 0 : ((x1 - x0 + 1) * (y1 - y0 + 1)) / (c.width * c.height);
+  return { red, blue, w: c.width, h: c.height, fill };
 }, src);
 
 async function desktop(browser, files) {
@@ -266,7 +271,7 @@ async function desktop(browser, files) {
     const px = await inspect(page, tiles[i].src);
     ok(px.red === 0, `${tiles[i].sheet}: no red (address) pixel left (${px.red})`);
     ok(px.blue > 50, `${tiles[i].sheet}: the room labels are still there (${px.blue} blue pixels)`);
-    ok(!px.titleBlock, `${tiles[i].sheet}: no title block rule left (${px.w}×${px.h})`);
+    ok(px.fill > 0.8, `${tiles[i].sheet}: cropped to the drawing, not the whole sheet (it fills ${Math.round(px.fill * 100)}% of ${px.w}×${px.h})`);
   }
   // Even the small unpicked pages have the address painted out
   const coverPx = await inspect(page, tiles[0].src);
@@ -472,8 +477,10 @@ async function rasters(browser, specs) {
         x.fillStyle = '#000'; x.fillRect(50, H - 230, W - 100, 6);
         x.fillStyle = '#f00'; x.font = `${Math.round(W / 70)}px Helvetica`; x.fillText('MARCHENA RESIDENCE    426 MOUNTAIN VIEW LN    MARIETTA, GA 30064', 110, H - 130);
       }
-      if (s.middle) { x.fillStyle = '#f00'; x.font = `${Math.round(W / 70)}px Helvetica`; x.fillText(s.middle, 300, 1250); }
-      if (s.rotated) { x.save(); x.translate(W - 140, H - 300); x.rotate(-Math.PI / 2); x.fillStyle = '#f00'; x.font = `${Math.round(W / 70)}px Helvetica`; x.fillText('426 MOUNTAIN VIEW LN, MARIETTA GA 30064', 0, 0); x.restore(); }
+      // (Right under the rooms: the crop to the drawing keeps it, so it has to be looked at and covered)
+      if (s.middle) { x.fillStyle = '#f00'; x.font = `${Math.round(W / 70)}px Helvetica`; x.fillText(s.middle, 300, 1150); }
+      // (Down the side of the plan, close enough that the crop to the drawing keeps it)
+      if (s.rotated) { x.save(); x.translate(1530, 1100); x.rotate(-Math.PI / 2); x.fillStyle = '#f00'; x.font = `${Math.round(W / 70)}px Helvetica`; x.fillText('426 MOUNTAIN VIEW LN, MARIETTA GA 30064', 0, 0); x.restore(); }
       const b = await new Promise((d) => c.toBlob(d, 'image/png'));
       const u = new Uint8Array(await b.arrayBuffer());
       let str = ''; for (let i = 0; i < u.length; i += 0x8000) str += String.fromCharCode(...u.subarray(i, i + 0x8000));

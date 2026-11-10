@@ -281,11 +281,97 @@ export function contentBox(data, w, h, box = { x: 0, y: 0, w, h }, padFrac = 0.0
   return { x: nx, y: ny, w: Math.min(box.x + box.w, x1 + pad + 1) - nx, h: Math.min(box.y + box.h, y1 + pad + 1) - ny };
 }
 
-/** The part of a sheet to keep: above and left of a real title block, trimmed to what's drawn. titleBlock: one was cut off */
+/**
+ * Inside the sheet's own border: a dark line most of the way across (or down)
+ * at the very edge of what's drawn is the frame around the drawing area, not
+ * the drawing. The box is taken in past it, on each side that has one.
+ */
+export function insideBorder(data, w, h, box) {
+  const dark = (x, y) => lum(data, (y * w + x) * 4) < 140;
+  const rowRun = (y) => { let n = 0; for (let x = box.x; x < box.x + box.w; x++) if (dark(x, y)) n++; return n; };
+  const colRun = (x) => { let n = 0; for (let y = box.y; y < box.y + box.h; y++) if (dark(x, y)) n++; return n; };
+  const reach = (len) => Math.max(3, Math.round(len * 0.04));
+  let { x, y, w: bw, h: bh } = box;
+  // From each edge inward: past a line that runs 60% of the side with open paper just inside it (a frame, not the
+  // edge of something solid drawn there), and its thickness
+  const step = (from, dir, len, run, span) => {
+    let at = from, found = -1;
+    for (let k = 0; k < reach(len); k++, at += dir) if (run(at) > span * 0.6) found = at;
+    if (found < 0) return from;
+    let inside = found + dir;
+    while (Math.abs(inside - from) < len * 0.5 && run(inside) > span * 0.6) inside += dir;
+    return run(inside + dir) < span * 0.25 ? inside + dir : from;
+  };
+  const top = step(y, 1, bh, rowRun, bw);
+  const bottom = step(y + bh - 1, -1, bh, rowRun, bw);
+  const left = step(x, 1, bw, colRun, bh);
+  const right = step(x + bw - 1, -1, bw, colRun, bh);
+  if (bottom - top < bh * 0.3 || right - left < bw * 0.3) return box;
+  return { x: left, y: top, w: right - left + 1, h: bottom - top + 1 };
+}
+
+/**
+ * The drawing itself: the biggest patch of ink on the sheet, with what sits
+ * close to it (dimensions, room labels, door swings), leaving out a legend
+ * box, a note or a stamp set apart from it. A sheet whose ink is spread over
+ * several patches of about the same size (a board of pictures) is kept whole.
+ */
+export function mainDrawing(data, w, h, box) {
+  const cell = Math.max(4, Math.round(Math.min(box.w, box.h) / 90));
+  const cols = Math.ceil(box.w / cell), rows = Math.ceil(box.h / cell);
+  const ink = new Uint16Array(cols * rows);
+  for (let y = box.y; y < box.y + box.h; y++) {
+    const r = Math.floor((y - box.y) / cell);
+    for (let x = box.x; x < box.x + box.w; x++) if (lum(data, (y * w + x) * 4) < 200) ink[r * cols + Math.floor((x - box.x) / cell)]++;
+  }
+  const inked = (i) => ink[i] > 0;
+  // Close gaps of about 3% of the sheet: a label beside a wall belongs to the plan, a legend in the corner doesn't
+  const gap = Math.max(1, Math.round(Math.min(cols, rows) * 0.03));
+  const seen = new Int32Array(cols * rows).fill(-1);
+  const comps = [];
+  for (let i = 0; i < ink.length; i++) {
+    if (!inked(i) || seen[i] >= 0) continue;
+    const id = comps.length;
+    const c = { n: 0, c0: Infinity, r0: Infinity, c1: -1, r1: -1 };
+    const stack = [i];
+    seen[i] = id;
+    while (stack.length) {
+      const j = stack.pop();
+      const cc = j % cols, rr = (j - cc) / cols;
+      c.n += ink[j];
+      c.c0 = Math.min(c.c0, cc); c.c1 = Math.max(c.c1, cc); c.r0 = Math.min(c.r0, rr); c.r1 = Math.max(c.r1, rr);
+      for (let dr = -gap; dr <= gap; dr++) for (let dc = -gap; dc <= gap; dc++) {
+        const r2 = rr + dr, c2 = cc + dc;
+        if (r2 < 0 || c2 < 0 || r2 >= rows || c2 >= cols) continue;
+        const k = r2 * cols + c2;
+        if (inked(k) && seen[k] < 0) { seen[k] = id; stack.push(k); }
+      }
+    }
+    comps.push(c);
+  }
+  if (!comps.length) return box;
+  const total = comps.reduce((a, c) => a + c.n, 0);
+  const best = comps.reduce((a, c) => (c.n > a.n ? c : a));
+  if (best.n < total * 0.55) return box;
+  const pad = Math.round(Math.max(best.c1 - best.c0 + 1, best.r1 - best.r0 + 1) * cell * 0.04);
+  const x0 = Math.max(box.x, box.x + best.c0 * cell - pad), y0 = Math.max(box.y, box.y + best.r0 * cell - pad);
+  const x1 = Math.min(box.x + box.w, box.x + (best.c1 + 1) * cell + pad), y1 = Math.min(box.y + box.h, box.y + (best.r1 + 1) * cell + pad);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/**
+ * The part of a sheet to keep: above and left of a real title block, inside
+ * the sheet's border, cropped to the drawing itself (so a floor plan fills
+ * the reveal screen's frame instead of sitting small on a white page).
+ * titleBlock: one was cut off.
+ */
 export function keepBox(data, w, h) {
   const { bottom, right } = findTitleBlock(data, w, h);
-  const box = { x: 0, y: 0, w: right != null ? Math.max(1, right - 2) : w, h: bottom != null ? Math.max(1, bottom - 2) : h };
-  return { ...contentBox(data, w, h, box), titleBlock: bottom != null || right != null };
+  const sheet = { x: 0, y: 0, w: right != null ? Math.max(1, right - 2) : w, h: bottom != null ? Math.max(1, bottom - 2) : h };
+  const drawn = contentBox(data, w, h, sheet);
+  const inner = insideBorder(data, w, h, drawn);
+  const main = mainDrawing(data, w, h, inner);
+  return { ...contentBox(data, w, h, main), titleBlock: bottom != null || right != null };
 }
 
 /** "PROPOSED FLOOR PLAN" → "Proposed floor plan"; "A1.2 - Existing Plan" and "A1.0 EXISTING FLOOR PLAN" lose their sheet numbers */

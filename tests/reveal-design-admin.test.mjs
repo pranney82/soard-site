@@ -281,3 +281,35 @@ test('covered areas: kept inside the picture, in pixels; a speck is dropped', ()
   assert.deepEqual(coverRects([{ x: 0.9, y: -0.1, w: 0.3, h: 0.3 }], 100, 100), [{ x: 90, y: 0, w: 10, h: 20 }]);
   assert.deepEqual(coverRects([{ x: 0.5, y: 0.5, w: 0.001, h: 0.2 }], 100, 100), []);
 });
+
+test('keep box: inside the sheet’s border, cropped to the drawing (a legend box and a note set apart are left out)', () => {
+  const w = 400, h = 300;
+  const d = sheet(w, h, (px) => {
+    // The sheet's border
+    for (let x = 10; x < w - 10; x++) { px(x, 10); px(x, 11); px(x, h - 11); px(x, h - 12); }
+    for (let y = 10; y < h - 10; y++) { px(10, y); px(11, y); px(w - 11, y); px(w - 12, y); }
+    // A legend box top left
+    for (let x = 20; x < 70; x++) { px(x, 20); px(x, 40); }
+    for (let y = 20; y < 41; y++) { px(20, y); px(69, y); }
+    // The floor plan: walls in the middle, with a label beside it
+    for (let x = 150; x < 260; x++) { px(x, 120); px(x, 200); }
+    for (let y = 120; y < 201; y++) { px(150, y); px(259, y); px(200, y); }
+    for (let x = 265; x < 280; x++) px(x, 160);
+    // A note bottom right
+    for (let x = 330; x < 380; x++) px(x, 270);
+  });
+  const k = keepBox(d, w, h);
+  assert.ok(k.x > 120 && k.x < 150, `left edge near the plan, not the border or legend: ${k.x}`);
+  assert.ok(k.y > 95 && k.y < 120, `top near the plan: ${k.y}`);
+  assert.ok(k.x + k.w > 280 && k.x + k.w < 320, `right takes the label beside it, not the note: ${k.x + k.w}`);
+  assert.ok(k.y + k.h > 200 && k.y + k.h < 240, `bottom near the plan: ${k.y + k.h}`);
+});
+
+test('keep box: a board of several pictures stays whole', () => {
+  const w = 400, h = 300;
+  const d = sheet(w, h, (px) => {
+    for (const [x0, y0] of [[30, 30], [220, 30], [30, 170], [220, 170]]) for (let x = x0; x < x0 + 140; x++) for (let y = y0; y < y0 + 100; y++) px(x, y, 90);
+  });
+  const k = keepBox(d, w, h);
+  assert.ok(k.x <= 30 && k.y <= 30 && k.x + k.w >= 360 && k.y + k.h >= 270, JSON.stringify(k));
+});
