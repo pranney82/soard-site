@@ -35,6 +35,7 @@ import { readState, readConfig as readBroadcastConfig, ensureSchema as ensureBro
 import { readScheduleRecord } from './_broadcast-schedule.js';
 import { kitConfigured } from './_kit.js';
 import { kitInviteStatus, kidPageReady } from './_reveal-invite-kit.js';
+import { readProjectRow, refreshProjectDraft } from './_project-emails.js';
 
 const ID = /^[A-Za-z0-9]{6,32}$/;
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
@@ -257,6 +258,23 @@ export async function onRequestPost(context) {
         await logAudit(env.DB, { userEmail: me, action: 'created', entityType: 'newsletter', entitySlug: String(result.id), entityName: `Kit reveal invite draft: ${result.name || jobId}`, gitStatus: 'ok' }).catch(() => {});
       }
       return Response.json({ ok: !['error', 'skip', 'off'].includes(result.kit), ...result, ...(result.id ? { url: `https://app.kit.com/campaigns/${result.id}` } : {}) });
+    }
+
+    // Rebuild a kid's Kickoff or Project Reveal draft in Kit in the current design, edited or not
+    // (the site does it by itself for one nobody touched): POST { projectDraft: slug, kind, rewrite: true }
+    if (body.projectDraft !== undefined) {
+      const slug = String(body.projectDraft);
+      const kind = body.kind === 'reveal' ? 'reveal' : body.kind === 'kickoff' ? 'kickoff' : null;
+      if (!/^[a-z0-9-]{1,80}$/.test(slug) || !kind) return fail('A kid slug and kind (kickoff or reveal) are required');
+      if (body.rewrite !== true) return fail('rewrite: true is required');
+      if (!me.includes('@')) return fail('Could not tell who you are from Access', 403);
+      const row = await readProjectRow(env.DB, slug, kind);
+      if (!row?.broadcast_id) return fail(`There’s no ${kind} draft for ${slug} in Kit`, 404);
+      const result = await refreshProjectDraft(env, { ...row, refresh: 'force' }, { config: await readConfig(env.DB) });
+      if (result.project === 'redesigned') {
+        await logAudit(env.DB, { userEmail: me, action: 'updated', entityType: 'newsletter', entitySlug: String(result.id), entityName: `Kit ${kind} draft rebuilt: ${slug}`, gitStatus: 'ok' }).catch(() => {});
+      }
+      return Response.json({ ok: result.project === 'redesigned', ...result, ...(result.id ? { url: `https://app.kit.com/campaigns/${result.id}` } : {}) });
     }
 
     // A board member's or advisor's private reveal email (People → Board, Advisory): open invites follow right away

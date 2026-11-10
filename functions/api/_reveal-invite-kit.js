@@ -29,7 +29,7 @@
 import { kitConfigured, kitCreateBroadcast, kitUpdateDraft, kitListAudiences, kitReadBroadcast, kitFindDraft } from './_kit.js';
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
-import { revealInviteEmail, revealWhen, partnerLogoUrls, kidPhotoUrls, cleanAddress, TEAM_PICTURE, TIME_LATER, SITE_URL } from './_reveal-invite-email.js';
+import { revealInviteEmail, revealWhen, partnerLogoUrls, kidPhotoUrls, cleanAddress, TEAM_PICTURE, TIME_LATER, SITE_URL, EMAIL_DESIGN } from './_reveal-invite-email.js';
 
 export const KIT_INVITE_DEFAULTS = Object.freeze({ enabled: true, reviewer: 'linzi@soardcharity.com', audience: 'Reveal Emails' });
 export const kitInviteSettings = (config) => ({ ...KIT_INVITE_DEFAULTS, ...(config?.kitInvite || {}) });
@@ -44,7 +44,8 @@ const SCHEMA = `CREATE TABLE IF NOT EXISTS reveal_invite_kit (
 // hash: the facts the site last put in Kit. content_hash: Kit's copy then, to tell when someone has edited it.
 // audience_ref: the group as Kit knows it (a name can change). told: the last note that really reached the
 // reviewer (see noteFor). alarmed: the problem staff really heard about. held: why JobTread says it may be off.
-const ADDED = ['content_hash', 'audience_ref', 'told', 'alarmed', 'held'];
+// design: the EMAIL_DESIGN the site last wrote, so a new design reaches an untouched draft by itself.
+const ADDED = ['content_hash', 'audience_ref', 'told', 'alarmed', 'held', 'design'];
 const _ready = new WeakSet();
 export async function ensureKitSchema(DB) {
   if (_ready.has(DB)) return;
@@ -66,11 +67,11 @@ export async function readKitRow(DB, jobId) {
 
 async function writeKitRow(DB, row) {
   await DB.prepare(`INSERT OR REPLACE INTO reveal_invite_kit
-    (job_id, broadcast_id, slug, reveal_date, hash, state, audience, reviewer, notified, error, updated_at, content_hash, audience_ref, told, alarmed, held)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    (job_id, broadcast_id, slug, reveal_date, hash, state, audience, reviewer, notified, error, updated_at, content_hash, audience_ref, told, alarmed, held, design)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(row.job_id, row.broadcast_id ?? null, row.slug ?? null, row.reveal_date ?? null, row.hash ?? null, row.state ?? null,
       row.audience ?? null, row.reviewer ?? null, row.notified ?? null, row.error ?? null, new Date().toISOString(), row.content_hash ?? null,
-      row.audience_ref ?? null, row.told ?? null, row.alarmed ?? null, row.held ?? null)
+      row.audience_ref ?? null, row.told ?? null, row.alarmed ?? null, row.held ?? null, row.design ?? null)
     .run();
 }
 
@@ -147,7 +148,7 @@ const jobMark = (jobId) => `· ${jobId} ·`;
 const describe = (name, jobId, hash) => `[auto] ${name} reveal invite ${jobMark(jobId)} ${short(hash)}`;
 const writtenFacts = (b) => /· ([0-9a-f]{12})$/.exec(String(b?.description || ''))?.[1] || null;
 /** What a person can change in Kit that a rewrite would lose. Who it goes to is checked on its own (draftIsSafe). */
-const copyHash = (b) => sha([b.subject ?? '', b.preview_text ?? '', b.content ?? '', (b.subscriber_filter || []).flatMap((g) => g?.none || [])]);
+export const copyHash = (b) => sha([b.subject ?? '', b.preview_text ?? '', b.content ?? '', (b.subscriber_filter || []).flatMap((g) => g?.none || [])]);
 const audienceRef = (a) => `${a.type}:${a.id}`;
 function audienceOf(row) {
   const m = /^(segment|tag):(\d+)$/.exec(row?.audience_ref || '');
@@ -416,7 +417,7 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
         if (!c.ok || !id) return await trouble(`Kit didn’t take the draft: ${c.error || `HTTP ${c.status}`}`);
         made = true;
       }
-      row = { ...base, broadcast_id: id, hash: made ? hash : null, state: 'draft', audience: group.name, audience_ref: audienceRef(group) };
+      row = { ...base, broadcast_id: id, hash: made ? hash : null, state: 'draft', audience: group.name, audience_ref: audienceRef(group), design: made ? EMAIL_DESIGN : null };
       await writeKitRow(DB, row); // kept first: a draft Kit has is never made twice
       seen = await kitReadBroadcast(env, id);
       if (!seen.ok) seen = await kitReadBroadcast(env, id); // a blip isn't an alarm
@@ -451,8 +452,10 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
     const changed = !hold && row.hash !== hash;
     // Asked for by hand on a draft from before the site kept its copy
     const forced = rewrite && row.content_hash === NO_BASELINE;
+    // A new design reaches a draft nobody has touched by itself, like a JobTread change does
+    const stale = row.design !== EMAIL_DESIGN;
     let wrote = false;
-    if (!hold && !went && (!edited || forced) && !made && (changed || rewrite)) {
+    if (!hold && !went && (!edited || forced) && !made && (changed || rewrite || stale)) {
       const r = await render();
       if (r.error) return await trouble(`${r.error} The draft in Kit still has the old details.`, { fix: PAGE_FIX });
       // Kit resets what an update leaves out, so the audience is sent every time
@@ -474,7 +477,7 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
           return { kit: 'check', id: row.broadcast_id, error: `Kit’s copy couldn’t be read yet (${after.error})` };
         }
         b = after.broadcast;
-        row = { ...row, hash, content_hash: await copyHash(b) };
+        row = { ...row, hash, content_hash: await copyHash(b), design: EMAIL_DESIGN };
         wrote = true;
         wrongAim = aimedWrong(b);
       }

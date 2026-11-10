@@ -1184,3 +1184,25 @@ test('a kid’s photo that won’t load gives way to the next, the hero too', as
   assert.match(html, /kids\/rowan-test\/c\.jpg\/w=500/);
   assert.match(html, /kids\/rowan-test\/d\.jpg\/w=500/);
 });
+
+// ─── A new design reaches an untouched draft by itself (Nov 9 2026) ───
+test('a new design: the next look rebuilds an untouched draft quietly, and an edited one is left alone', async () => {
+  const { EMAIL_DESIGN } = await import('../functions/api/_reveal-invite-email.js');
+  await sync();
+  assert.equal((await readKitRow(env.DB, '22PTestJob001')).design, EMAIL_DESIGN, 'a draft knows the design it was written in');
+  await env.DB.prepare('UPDATE reveal_invite_kit SET design = ? WHERE job_id = ?').bind('older', '22PTestJob001').run();
+  kit.calls = [];
+  assert.equal((await sync()).kit, 'redesigned', 'no button needed');
+  assert.ok(kit.calls.some((c) => c.startsWith('PUT /broadcasts/')));
+  assert.equal(emails.length, 1, 'Linzi isn’t told about a design change');
+  assert.equal((await readKitRow(env.DB, '22PTestJob001')).design, EMAIL_DESIGN);
+  kit.calls = [];
+  assert.equal((await sync()).kit, 'unchanged', 'and only once');
+  assert.ok(!kit.calls.some((c) => c.startsWith('PUT')));
+  // Linzi’s edit is never overwritten by a new design
+  [...kit.broadcasts.values()][0].content += '<p>Linzi’s own line</p>';
+  await env.DB.prepare('UPDATE reveal_invite_kit SET design = ? WHERE job_id = ?').bind('older', '22PTestJob001').run();
+  kit.calls = [];
+  await sync();
+  assert.ok(!kit.calls.some((c) => c.startsWith('PUT')), 'her edit stays');
+});

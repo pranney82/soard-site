@@ -15,17 +15,22 @@
  * a Completed kid with no row counts, so a missed moment is simply found on the
  * next look. A draft deleted in Kit stays deleted.
  *
+ * A draft nobody has touched is rebuilt by itself when the emails' design changes
+ * (EMAIL_DESIGN): Kit's copy is read first, and one a person edited, scheduled or
+ * sent is left alone. Staff can ask for a rebuild by hand, which also reaches a
+ * draft from before the site kept its copy.
+ *
  * Neither email says where the family lives, so both go to the newsletter list.
  * The site never sends them. The reviewer gets an email, never Slack; rehearsals
  * leave Kit alone. Off with the reveal invite email (site_config kitInvite).
  */
 
-import { kitConfigured, kitCreateBroadcast, kitFindDraft } from './_kit.js';
+import { kitConfigured, kitCreateBroadcast, kitFindDraft, kitReadBroadcast, kitUpdateDraft } from './_kit.js';
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
-import { SITE_URL, TEAM_PICTURE } from './_reveal-invite-email.js';
+import { SITE_URL, TEAM_PICTURE, EMAIL_DESIGN } from './_reveal-invite-email.js';
 import { projectKickoffEmail, projectRevealEmail, revealChecks } from './_project-email.js';
-import { brokenLogos, kidPageReady, kitInviteSettings, kitDraftUrl } from './_reveal-invite-kit.js';
+import { brokenLogos, kidPageReady, kitInviteSettings, kitDraftUrl, copyHash } from './_reveal-invite-kit.js';
 import { readConfig, alertList } from './_reveal-invites.js';
 
 const KINDS = {
@@ -47,10 +52,14 @@ const iso = (ms) => new Date(ms).toISOString();
 const SCHEMA = `CREATE TABLE IF NOT EXISTS project_emails (
   slug TEXT NOT NULL, kind TEXT NOT NULL, job_id TEXT, broadcast_id TEXT, state TEXT, told TEXT, reminded TEXT,
   error TEXT, alarmed TEXT, queued_at TEXT, claimed_at TEXT, updated_at TEXT, PRIMARY KEY (slug, kind))`;
+// content_hash: Kit's copy as the site last wrote it, to tell a person's edit. design: the EMAIL_DESIGN
+// it was written in. refresh: 'force' when staff ask for a rebuild by hand.
+const ADDED = ['content_hash', 'design', 'refresh'];
 const _ready = new WeakSet();
 export async function ensureProjectSchema(DB) {
   if (_ready.has(DB)) return;
   await DB.prepare(SCHEMA).run();
+  for (const col of ADDED) await DB.prepare(`ALTER TABLE project_emails ADD COLUMN ${col} TEXT`).run().catch(() => {});
   _ready.add(DB);
 }
 
@@ -60,8 +69,9 @@ export async function readProjectRow(DB, slug, kind) {
 }
 
 async function writeRow(DB, row) {
-  await DB.prepare('UPDATE project_emails SET broadcast_id = ?, state = ?, told = ?, reminded = ?, error = ?, alarmed = ?, updated_at = ? WHERE slug = ? AND kind = ?')
-    .bind(row.broadcast_id ?? null, row.state ?? null, row.told ?? null, row.reminded ?? null, row.error ?? null, row.alarmed ?? null, new Date().toISOString(), row.slug, row.kind)
+  await DB.prepare('UPDATE project_emails SET broadcast_id = ?, state = ?, told = ?, reminded = ?, error = ?, alarmed = ?, content_hash = ?, design = ?, refresh = ?, updated_at = ? WHERE slug = ? AND kind = ?')
+    .bind(row.broadcast_id ?? null, row.state ?? null, row.told ?? null, row.reminded ?? null, row.error ?? null, row.alarmed ?? null,
+      row.content_hash ?? null, row.design ?? null, row.refresh ?? null, new Date().toISOString(), row.slug, row.kind)
     .run();
 }
 
@@ -230,7 +240,9 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
       id = String(r.broadcast?.id || '');
       if (!r.ok || !id) return await trouble(`Kit didn’t take ${name}’s ${what}.`);
     }
-    const drafted = { ...row, broadcast_id: id, state: 'drafted', error: null, alarmed: null };
+    // Kit's copy as the site wrote it, so a later design can tell a person's edit from its own
+    const seen = await kitReadBroadcast(env, id);
+    const drafted = { ...row, broadcast_id: id, state: 'drafted', error: null, alarmed: null, design: EMAIL_DESIGN, content_hash: seen.ok ? await copyHash(seen.broadcast) : null };
     await writeRow(DB, drafted); // kept first: a draft Kit has is never made twice
     const heard = await tell(env, s, 'ready', { kind, name, id, subject: email.subject });
     if (heard) await writeRow(DB, { ...drafted, told: iso(now) });
@@ -238,6 +250,55 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
   } catch (err) {
     console.error('[project-emails]', err.message);
     try { return await trouble(`The site couldn’t draft ${name}’s ${KINDS[kind].what}.`); } catch { return { project: 'error', error: err.message }; }
+  }
+}
+
+/**
+ * A draft waiting in Kit, rebuilt in the current design when nobody has touched it (or when staff
+ * asked for it by hand: refresh = 'force'). One a person edited, scheduled or sent is left alone,
+ * and the site stops looking at it. Emails nobody. Never throws.
+ *
+ * @returns {Promise<{project: string, id?: string, reason?: string, error?: string}>}
+ */
+export async function refreshProjectDraft(env, row, { config = {}, fetchImpl = fetch } = {}) {
+  const { DB } = env;
+  const { kind, slug } = row;
+  const done = async (state, extra = {}) => { await writeRow(DB, { ...row, state, design: EMAIL_DESIGN, refresh: null, ...extra }); };
+  try {
+    if (!row.broadcast_id || row.state !== 'drafted') return { project: 'skip', reason: 'no draft waiting' };
+    if (!kitInviteSettings(config).enabled || config.enabled === false) return { project: 'off' };
+    if (!kitConfigured(env)) return { project: 'skip', reason: 'Kit is not connected' };
+    const forced = row.refresh === 'force';
+    if (row.design === EMAIL_DESIGN && !forced) return { project: 'unchanged', id: row.broadcast_id };
+    const seen = await kitReadBroadcast(env, row.broadcast_id);
+    if (!seen.ok) {
+      if (/HTTP 404/.test(seen.error || '')) { await done('deleted'); return { project: 'skip', reason: 'the draft was deleted in Kit' }; }
+      return { project: 'error', error: `Kit couldn’t be reached (${seen.error})` };
+    }
+    const b = seen.broadcast;
+    if ((b.status && b.status !== 'draft') || b.send_at || b.published_at) { await done(b.status === 'scheduled' || b.send_at ? 'scheduled' : 'sent'); return { project: 'skip', reason: 'it has left the site’s hands' }; }
+    const copy = await copyHash(b);
+    // No copy kept (a draft from before): nobody can say it wasn't edited, so only a rebuild by hand reaches it
+    const edited = row.content_hash ? copy !== row.content_hash : true;
+    if (edited && !forced) {
+      if (row.content_hash) { await done('edited'); return { project: 'edited', id: row.broadcast_id }; }
+      await writeRow(DB, { ...row, design: EMAIL_DESIGN });
+      return { project: 'unchanged', reason: 'a draft from before the site kept its copy', id: row.broadcast_id };
+    }
+    const kid = await readKid(DB, slug);
+    if (!kid) return { project: 'skip', reason: 'no kid page' };
+    const { render, what } = KINDS[kind];
+    const broken = await brokenLogos(kid, { fetchImpl, extra: kind === 'reveal' ? revealChecks(kid) : [] });
+    const email = render({ kid, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) });
+    const u = await kitUpdateDraft(env, row.broadcast_id, { subject: email.subject, previewText: email.preview, description: b.description || `[auto] ${kid.name} ${what} · ${slug} · ${kind}`, html: email.html });
+    if (u.status) { await done(u.status === 'scheduled' ? 'scheduled' : 'sent'); return { project: 'skip', reason: 'it has left the site’s hands' }; }
+    if (!u.ok) return { project: 'error', error: `Kit didn’t take the rebuild (${u.error || 'no answer'})` };
+    const after = await kitReadBroadcast(env, row.broadcast_id);
+    await writeRow(DB, { ...row, design: EMAIL_DESIGN, refresh: null, content_hash: after.ok ? await copyHash(after.broadcast) : null });
+    return { project: 'redesigned', id: row.broadcast_id };
+  } catch (err) {
+    console.error('[project-emails] refresh', err.message);
+    return { project: 'error', error: err.message };
   }
 }
 
@@ -260,9 +321,14 @@ export async function runProjectEmails(env, { now = Date.now(), fetchImpl = fetc
     const { results } = await DB.prepare(`SELECT * FROM project_emails
       WHERE (kind = 'reveal' AND state IN ('waiting', 'claimed') AND broadcast_id IS NULL) OR (broadcast_id IS NOT NULL AND told IS NULL)
       ORDER BY queued_at`).all();
-    if (!results?.length) return [];
+    // Drafts waiting in Kit from an older design, or asked to be rebuilt
+    const { results: stale } = await DB.prepare(`SELECT * FROM project_emails
+      WHERE broadcast_id IS NOT NULL AND state = 'drafted' AND (design IS NULL OR design != ? OR refresh = 'force')
+      ORDER BY queued_at LIMIT ?`).bind(EMAIL_DESIGN, DRAFTS_PER_LOOK).all();
+    if (!results?.length && !stale?.length) return [];
     const config = await readConfig(DB);
     const out = [];
+    for (const row of stale || []) out.push({ slug: row.slug, kind: row.kind, ...(await refreshProjectDraft(env, row, { config, fetchImpl })) });
     let drafted = 0;
     for (const row of results) {
       if (drafted >= DRAFTS_PER_LOOK) break;

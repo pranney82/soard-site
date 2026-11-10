@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { revealInviteEmail } from '../functions/api/_reveal-invite-email.js';
 import { projectKickoffEmail, projectRevealEmail } from '../functions/api/_project-email.js';
-import { queueProjectEmail, readProjectRow, syncProjectEmail, runProjectEmails, kickoffNow, revealMissing, projectNote } from '../functions/api/_project-emails.js';
+import { queueProjectEmail, readProjectRow, syncProjectEmail, runProjectEmails, kickoffNow, revealMissing, projectNote, refreshProjectDraft } from '../functions/api/_project-emails.js';
 import { writeConfig } from '../functions/api/_reveal-invites.js';
 
 const IMG = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
@@ -47,6 +47,19 @@ globalThis.fetch = async (input, init = {}) => {
       if (kit.loseAnswer) { kit.loseAnswer = false; return new Response('gateway', { status: 502 }); }
       return Response.json({ broadcast: { id } }, { status: 201 });
     }
+    const one = path.match(/^\/broadcasts\/(\d+)$/);
+    if (one && method === 'GET') {
+      const b = kit.broadcasts.get(one[1]);
+      return b ? Response.json({ broadcast: b }) : Response.json({ errors: ['Not found'] }, { status: 404 });
+    }
+    if (one && method === 'PUT') {
+      const b = kit.broadcasts.get(one[1]);
+      if (!b) return Response.json({ errors: ['Not found'] }, { status: 404 });
+      kit.puts.push({ id: one[1], ...body });
+      // Kit fills in what a PUT leaves out: no filter means everyone
+      kit.broadcasts.set(one[1], { ...b, ...body, subscriber_filter: body.subscriber_filter || [{ all: [{ type: 'all_subscribers' }], any: null, none: null }] });
+      return Response.json({ broadcast: kit.broadcasts.get(one[1]) });
+    }
     return Response.json({ errors: ['unexpected'] }, { status: 500 });
   }
   if (url.startsWith('https://imagedelivery.net/')) {
@@ -66,7 +79,7 @@ after(() => { globalThis.fetch = realFetch; });
 let env;
 const putKid = (kid) => env.DB.prepare('UPDATE kids SET data = ?, status = ? WHERE slug = ?').bind(JSON.stringify(kid), kid.status, SLUG).run();
 beforeEach(async () => {
-  kit = { broadcasts: new Map(), calls: [] };
+  kit = { broadcasts: new Map(), calls: [], puts: [] };
   emails = [];
   const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
   await DB.prepare('INSERT INTO kids (slug, name, year, status, data) VALUES (?, ?, ?, ?, ?)').bind(SLUG, KID.name, 2027, KID.status, JSON.stringify(KID)).run();
@@ -1015,4 +1028,78 @@ test('"&" stays with the name after it in the arrival line and the story link', 
   const inv = revealInviteEmail({ kid: { ...KID, name: 'Tyrece & Maddie' }, date: '2027-03-12', time: '16:00' }).html;
   assert.match(inv, /before Tyrece &amp;&nbsp;Maddie&nbsp;arrive\./);
   assert.match(inv, /Read Tyrece &amp;&nbsp;Maddie’s&nbsp;story&nbsp;→/);
+});
+
+// ─── A new design reaches drafts nobody has touched, by itself (Nov 9 2026) ───
+
+const drafted = async () => {
+  await queued('kickoff');
+  const r = await look('kickoff');
+  assert.equal(r.project, 'drafted');
+  return readProjectRow(env.DB, SLUG, 'kickoff');
+};
+const ageDesign = (design = 'older') => env.DB.prepare('UPDATE project_emails SET design = ? WHERE slug = ? AND kind = ?').bind(design, SLUG, 'kickoff').run();
+
+test('a draft keeps Kit’s copy and the design it was written in', async () => {
+  const { EMAIL_DESIGN } = await import('../functions/api/_reveal-invite-email.js');
+  const row = await drafted();
+  assert.equal(row.design, EMAIL_DESIGN);
+  assert.ok(row.content_hash, 'Kit’s copy, to tell a person’s edit later');
+  // Nothing to do while the design is current: Kit isn’t even asked
+  kit.calls = [];
+  assert.equal((await refreshProjectDraft(env, row, { config })).project, 'unchanged');
+  assert.deepEqual(kit.calls, []);
+});
+
+test('a new design rebuilds an untouched draft on the next look, keeping who it goes to, and emails nobody', async () => {
+  const row = await drafted();
+  const filter = [{ all: null, any: null, none: [{ type: 'tag', ids: [42] }] }];
+  kit.broadcasts.get(row.broadcast_id).subscriber_filter = filter;
+  // the copy the site wrote includes that leave-out
+  const { copyHash } = await import('../functions/api/_reveal-invite-kit.js');
+  await env.DB.prepare('UPDATE project_emails SET content_hash = ? WHERE slug = ?').bind(await copyHash(kit.broadcasts.get(row.broadcast_id)), SLUG).run();
+  await ageDesign();
+  await writeConfig(env.DB, config);
+  const sent = emails.length;
+  const out = await runProjectEmails(env, { now: NOW + DAY });
+  assert.ok(out.some((o) => o.project === 'redesigned'), JSON.stringify(out));
+  assert.equal(kit.puts.length, 1);
+  assert.deepEqual(kit.puts[0].subscriber_filter, filter, 'the newsletter leave-out is sent again, never reset to everyone');
+  assert.equal(emails.length, sent, 'a rebuild emails nobody');
+  const after = await readProjectRow(env.DB, SLUG, 'kickoff');
+  const { EMAIL_DESIGN } = await import('../functions/api/_reveal-invite-email.js');
+  assert.equal(after.design, EMAIL_DESIGN);
+  assert.equal(after.state, 'drafted');
+});
+
+test('a draft someone edited in Kit is left alone, and the site stops looking at it', async () => {
+  const row = await drafted();
+  kit.broadcasts.get(row.broadcast_id).subject = 'Linzi’s own subject';
+  await ageDesign();
+  const r = await refreshProjectDraft(env, await readProjectRow(env.DB, SLUG, 'kickoff'), { config });
+  assert.equal(r.project, 'edited');
+  assert.equal(kit.puts.length, 0);
+  assert.equal((await readProjectRow(env.DB, SLUG, 'kickoff')).state, 'edited');
+});
+
+test('a draft from before the site kept its copy is reached only by a rebuild asked for by hand', async () => {
+  const row = await drafted();
+  await env.DB.prepare('UPDATE project_emails SET content_hash = NULL, design = NULL WHERE slug = ?').bind(SLUG).run();
+  assert.equal((await refreshProjectDraft(env, await readProjectRow(env.DB, SLUG, 'kickoff'), { config })).project, 'unchanged');
+  assert.equal(kit.puts.length, 0);
+  const forced = await refreshProjectDraft(env, { ...(await readProjectRow(env.DB, SLUG, 'kickoff')), refresh: 'force' }, { config });
+  assert.equal(forced.project, 'redesigned');
+  assert.equal(kit.puts.length, 1);
+  assert.equal(kit.puts[0].description, kit.broadcasts.get(row.broadcast_id).description, 'its mark stays, so a lost answer is still found');
+  assert.ok((await readProjectRow(env.DB, SLUG, 'kickoff')).content_hash, 'and from now on the site knows its copy');
+});
+
+test('a draft staff scheduled or sent is never rebuilt', async () => {
+  const row = await drafted();
+  Object.assign(kit.broadcasts.get(row.broadcast_id), { status: 'scheduled', send_at: '2027-02-10T15:00:00Z' });
+  await ageDesign();
+  const r = await refreshProjectDraft(env, await readProjectRow(env.DB, SLUG, 'kickoff'), { config });
+  assert.equal(r.project, 'skip');
+  assert.equal(kit.puts.length, 0);
+  assert.equal((await readProjectRow(env.DB, SLUG, 'kickoff')).state, 'scheduled');
 });

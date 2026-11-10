@@ -507,8 +507,10 @@ export async function kitUpdateDraft(env, id, { subject, previewText, descriptio
     const b = got.broadcast || got;
     if ((b.status && b.status !== 'draft') || b.send_at || b.published_at) return { ok: false, status: b.status || 'sent' };
     // Kit's PUT fills in what's left out ("If nothing is provided, will default
-    // to all of your subscribers"), so a draft with its own audience says it again
-    const filter = kitSubscriberFilter(audience);
+    // to all of your subscribers"), so a draft with its own audience says it again:
+    // the one asked for, else the one Kit has now (the newsletter's leave-out for
+    // families who only asked about applications)
+    const filter = kitSubscriberFilter(audience) || (Array.isArray(b.subscriber_filter) && b.subscriber_filter.length ? b.subscriber_filter : null);
     const res = await kitFetch(env, `/broadcasts/${id}`, {
       method: 'PUT',
       body: JSON.stringify({

@@ -13,6 +13,13 @@
  */
 
 export const SITE_URL = 'https://sunshineonaranneyday.com';
+
+/**
+ * The emails' design. Change it whenever these builders change what an email looks like or says:
+ * every draft still waiting in Kit that nobody has edited is then rebuilt on the next look, by itself.
+ * tests/email-design.test.mjs fails if the emails change and this doesn't.
+ */
+export const EMAIL_DESIGN = '2026-11-09';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const Y = '#FFDA24';
