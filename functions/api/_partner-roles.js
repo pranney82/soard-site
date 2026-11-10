@@ -47,8 +47,10 @@ export const PARTNER_ROLES = [...LEVEL_ROLES, TRADE_ROLE];
 export const OLD_VENDOR_ROLE = 'Vendor';
 export const OLD_SPONSOR_ROLE = 'Monetary Sponsor';
 const OLD_ROLES = [OLD_VENDOR_ROLE, OLD_SPONSOR_ROLE, 'Sponsor'];
-// A new role can do what both old ones did, so nobody moved loses anything
-const FALLBACK_PERMISSIONS = ['readDailyLogs', 'readJobPlans', 'readJobTaskGroups', 'readJobTasks', 'updateJobToDoProgresses'];
+// A new role can do what both old ones did, so nobody moved loses anything, except daily logs:
+// they're for staff only (Peter, Nov 10 2026: "its for internal staff only, we will share specific things with them")
+const FALLBACK_PERMISSIONS = ['readJobPlans', 'readJobTaskGroups', 'readJobTasks', 'updateJobToDoProgresses'];
+export const staffOnlyPermission = (p) => /dailylog/i.test(String(p || ''));
 const MAX_CHANGES = 25;
 const PAGE = 100;
 
@@ -153,7 +155,7 @@ export async function ensurePartnerRoles(env, { fetchImpl = fetch } = {}) {
   const missing = PARTNER_ROLES.filter((n) => !ids.has(low(n)));
   if (missing.length) {
     const old = roles.filter((r) => [OLD_VENDOR_ROLE, OLD_SPONSOR_ROLE].map(low).includes(low(r.name)));
-    const permissions = [...new Set(old.flatMap((r) => r.permissions || []))].sort();
+    const permissions = [...new Set(old.flatMap((r) => r.permissions || []))].filter((p) => !staffOnlyPermission(p)).sort();
     for (const name of missing) {
       const body = await pave(key, { createRole: { $: { organizationId: SOARD_ORG_ID, name, type: 'vendor', permissions: permissions.length ? permissions : FALLBACK_PERMISSIONS }, createdRole: { id: {}, name: {} } } }, fetchImpl);
       const id = body?.createRole?.createdRole?.id;

@@ -87,7 +87,7 @@ const TUS = 'https://upload.videodelivery.net/tus/';
 // ── The fake API ──
 function makeApi() {
   const kids = structuredClone(KIDS0);
-  const st = { kids, calls: [], waiting: new Set(), uploads: 0, versions: {}, vid: 0, videos: 0, tus: {}, conflicts: 0, ids: [] };
+  const st = { kids, calls: [], waiting: new Set(), uploads: 0, versions: {}, vid: 0, videos: 0, tus: {}, conflicts: 0, ids: [], folders: [] };
   // The history the server keeps (functions/api/_content-history.js), in memory
   const version = (slug, data, by, action = 'save') => { (st.versions[slug] ||= []).push({ id: ++st.vid, at: new Date(Date.now() + st.vid).toISOString(), by, action, data: structuredClone(data) }); };
   const IGN = new Set(['order', 'sortOrder', 'photoCount']);
@@ -100,6 +100,18 @@ function makeApi() {
     if (!p.startsWith('/api/')) return false;
     const isPost = req.method() === 'POST';
     st.calls.push({ path: p, method: req.method(), body: isPost && !/upload-image/.test(p) ? body() : null, query: url.search });
+    // Dropbox folders to name (functions/api/kid-folders-admin.js)
+    if (p === '/api/kid-folders-admin') {
+      const kidsOut = Object.values(st.kids).map((k) => ({ slug: k.slug, name: k.name, year: k.year ?? null }));
+      if (!isPost) return json({ success: true, folders: st.folders, kids: kidsOut });
+      const b = body();
+      const f = st.folders.find((x) => x.folder === b.folder);
+      if (!f) return json({ success: false, error: 'That folder isn’t on the list any more. Reload.' }, 404);
+      if (b.decision === 'new' && !(b.newYear >= 2010 && b.newYear <= 2030)) return json({ success: false, error: 'The year of the makeover, 2010 to 2030.' }, 400);
+      Object.assign(f, { decision: b.decision ?? null, kidSlug: b.kidSlug || null, newName: b.newName || null, newYear: b.newYear || null, note: b.note || null,
+        decidedBy: b.decision ? 'linzi@example.org' : null, decidedAt: b.decision ? new Date().toISOString() : null });
+      return json({ success: true, folder: f });
+    }
     if (p === '/api/list-content') {
       const dir = url.searchParams.get('dir');
       const src = dir === 'src/content/kids' ? st.kids : dir === 'src/content/partners' ? PARTNERS : {};
@@ -459,6 +471,54 @@ try {
     ok(!(await page.$('.kd-card--status .kd-status-pick')) && /Follows JobTread, where the job is at Build/.test(await page.$eval('.kd-card--status', (e) => e.textContent)), 'in the editor the status is read-only, from JobTread');
     ok(await page.$eval('.kd-card--status a[href*="jobtread.com/jobs/22PCOLIN"]', (a) => !!a), 'with a link to change it in JobTread');
     ok(!errors.length, `no console errors (${errors.join(' | ').slice(0, 300)})`);
+    await page.close();
+  }
+
+  console.log('Desktop 1440: Dropbox folders to name');
+  {
+    const ellie = Object.values(KIDS0).find((k) => /^Ellie\b/.test(k.name || ''));
+    const folders = [
+      { folder: 'Zed Story 2014', photos: 49, videos: 0, decision: null, url: 'https://www.dropbox.com/home/SOARD-Main/Makeover%20Photos/Zed%20Story%202014', guesses: [] },
+      { folder: `${ellie?.name || 'Ellie'} Grant ${ellie?.year || 2023}`, photos: 181, videos: 4, decision: null, url: 'https://www.dropbox.com/home/x', guesses: ellie ? [{ slug: ellie.slug, name: ellie.name, year: ellie.year }] : [] },
+    ];
+    const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false, prep: (s) => { s.folders = structuredClone(folders); } });
+    await goKids(page, false);
+    const banner = await page.$eval('.kd-fold-banner', (e) => e.textContent.replace(/\s+/g, ' ')).catch(() => '');
+    ok(/Dropbox folders to name/.test(banner) && /2 folders of makeover photos/.test(banner), `the banner counts the folders to name (${banner.slice(0, 80)})`);
+    await clickText(page, '.kd-fold-banner button', 'Name them');
+    await page.waitForSelector('.kd-fold', { timeout: 5000 });
+    const rows = await page.$$eval('.kd-fold', (ls) => ls.map((l) => l.querySelector('.kd-fold__name').textContent));
+    ok(rows.length === 2, `the dialog lists both folders (${rows.join(', ')})`);
+    ok(await page.$eval('.kd-fold .kd-fold__open', (a) => a.target === '_blank' && /dropbox\.com/.test(a.href)), 'each opens in Dropbox in a new tab');
+    // A kid page, from the guess
+    if (ellie) {
+      const row = await page.evaluateHandle(() => [...document.querySelectorAll('.kd-fold')].find((l) => /Grant/.test(l.textContent)));
+      ok(await row.evaluate((l) => /Maybe /.test(l.textContent)), 'a likely kid page is suggested');
+      const sel = await row.$('select');
+      await sel.select(`kid:${ellie.slug}`);
+      await (await row.$('.btn-primary')).click();
+      await sleep(400);
+      ok(await page.evaluate(() => [...document.querySelectorAll('.kd-fold')].some((l) => /Grant/.test(l.textContent) && l.classList.contains('is-done') && /Linzi/.test(l.textContent))), 'saved: the answer shows with who named it');
+      const posted = api.st.calls.filter((c) => c.path === '/api/kid-folders-admin' && c.method === 'POST').at(-1)?.body;
+      ok(posted?.decision === 'kid' && posted?.kidSlug === ellie.slug, 'it sends the kid page picked');
+    }
+    // A kid with no page: name and year; Save waits for a name
+    const zedSel = () => page.evaluateHandle(() => [...document.querySelectorAll('.kd-fold')].find((l) => /Zed Story/.test(l.textContent)));
+    await (await (await zedSel()).$('select')).select('new');
+    await sleep(200);
+    const zed = await zedSel();
+    const inputs = await zed.$$('input.form-input');
+    ok(inputs.length === 2 && (await inputs[1].evaluate((i) => i.value)) === '2014', 'a kid with no page asks for name and year, the year filled from the folder');
+    ok(await zed.$eval('.btn-primary', (b) => b.disabled), 'Save waits for a name');
+    await inputs[0].type('Zed Story');
+    await (await zed.$('.btn-primary')).click();
+    await sleep(400);
+    ok(await page.evaluate(() => [...document.querySelectorAll('.kd-fold')].some((l) => /Zed Story \(2014\), no page yet/.test(l.textContent))), 'a kid with no page is saved with name and year');
+    await clickText(page, '.kd-dialog__foot .btn', 'Done');
+    await sleep(300);
+    ok(!(await page.$('.kd-fold-banner')), 'with every folder named, the banner goes');
+    await shot(page, 'desktop-kid-folders');
+    ok(errors.length === 0, `no console errors${errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''}`);
     await page.close();
   }
 

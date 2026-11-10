@@ -2747,6 +2747,23 @@
     .kd-tidy-banner__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
     .kd-tidy-banner__text strong { color: var(--color-text); }
     .kd-tidy-banner .btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.35rem; }
+    /* Kids → Dropbox folders to name */
+    .kd-fold-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+    .kd-fold { display: grid; gap: 0.45rem; padding: 0.75rem 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+    .kd-fold.is-done { background: var(--color-bg-subtle, var(--color-bg)); }
+    .kd-fold__top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+    .kd-fold__name { font-weight: 600; color: var(--color-text); }
+    .kd-fold__meta { font-size: var(--fs-sm); color: var(--color-text-muted); }
+    .kd-fold__open { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; font-size: var(--fs-sm); }
+    .kd-fold__hint { font-size: var(--fs-sm); color: var(--color-text-secondary); }
+    .kd-fold__form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .kd-fold__form .form-select { flex: 1 1 16rem; min-width: 0; }
+    .kd-fold__form .form-input { flex: 1 1 10rem; min-width: 0; }
+    .kd-fold__form .kd-fold__year { flex: 0 0 6.5rem; }
+    .kd-fold__done { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+    .kd-fold__done strong { color: var(--color-text); }
+    .kd-fold__err { font-size: var(--fs-sm); color: var(--tone-warn-text, var(--color-text)); }
+    @media (max-width: 640px) { .kd-fold__open { margin-left: 0; } .kd-fold__form .btn, .kd-fold__form .form-select, .kd-fold__form .form-input, .kd-fold__done .btn { min-height: 44px; } }
     .kd-toolbar { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 -0.5rem 0.75rem; padding: 0.5rem; background: var(--color-bg); }
     .kd-toolbar.is-stuck { box-shadow: 0 1px 0 var(--color-border), 0 8px 16px -12px rgba(26,27,31,0.25); }
     .kd-search { position: relative; }
@@ -10846,6 +10863,93 @@
       return oA - oB || (b.year || 0) - (a.year || 0) || String(a.name || '').localeCompare(String(b.name || ''));
     };
 
+    // ═══════════════════════════════════════════
+    // KIDS: DROPBOX FOLDERS TO NAME
+    // Dropbox's Makeover Photos folders that match no kid page, for a person to
+    // say whose each one is (functions/api/_kid-folders.js). Each answer saves
+    // as it's given; the past-makeover jobs and the photo copy go by them.
+    // ═══════════════════════════════════════════
+    const kdFoldersApi = async (body) => {
+      const res = await fetch('/api/kid-folders-admin', body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+      const r = await res.json().catch(() => ({ success: false, error: `Couldn’t reach the site (${res.status})` }));
+      if (!r.success) throw new Error(r.error || 'Something went wrong');
+      return r;
+    };
+    const kdFoldKidLabel = (k) => `${k.name}${k.year ? ` (${k.year})` : ''}`;
+    const kdFoldWhen = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } };
+    const kdFoldWho = (email) => { const n = String(email || '').split('@')[0]; return n ? n.charAt(0).toUpperCase() + n.slice(1) : 'Someone'; };
+
+    function KidFolderRow({ f, kids, onSaved }) {
+      const [editing, setEditing] = useState(!f.decision);
+      const [pick, setPick] = useState(f.decision === 'kid' ? `kid:${f.kidSlug}` : f.decision || '');
+      const [name, setName] = useState(f.newName || '');
+      const [year, setYear] = useState(f.newYear ? String(f.newYear) : (String(f.folder).match(/\b(20\d\d)\b/) || [])[1] || '');
+      const [note, setNote] = useState(f.note || '');
+      const [busy, setBusy] = useState(false);
+      const [err, setErr] = useState('');
+      const guessSlugs = new Set((f.guesses || []).map((g) => g.slug));
+      const others = kids.filter((k) => !guessSlugs.has(k.slug));
+      const ready = pick.startsWith('kid:') || (pick === 'new' && name.trim() && /^20\d\d$/.test(year.trim())) || pick === 'not';
+      const save = async (clear = false) => {
+        setBusy(true); setErr('');
+        try {
+          const body = clear ? { folder: f.folder, decision: null }
+            : pick.startsWith('kid:') ? { folder: f.folder, decision: 'kid', kidSlug: pick.slice(4) }
+            : pick === 'new' ? { folder: f.folder, decision: 'new', newName: name.trim(), newYear: Number(year.trim()) }
+            : { folder: f.folder, decision: 'not', note: note.trim() };
+          const r = await kdFoldersApi(body);
+          onSaved(r.folder);
+          setEditing(!r.folder.decision);
+        } catch (e) { setErr(e.message); }
+        setBusy(false);
+      };
+      const answer = f.decision === 'kid' ? kdFoldKidLabel(kids.find((k) => k.slug === f.kidSlug) || { name: f.kidSlug })
+        : f.decision === 'new' ? `${f.newName} (${f.newYear}), no page yet`
+        : f.decision === 'not' ? `Not a makeover${f.note ? `: ${f.note}` : ''}` : '';
+      const id = `kd-fold-${f.folder.replace(/[^a-z0-9]+/gi, '-')}`;
+      return html`<li class=${`kd-fold${f.decision && !editing ? ' is-done' : ''}`}>
+        <div class="kd-fold__top">
+          <span class="kd-fold__name">${f.folder}</span>
+          <span class="kd-fold__meta">${[kdPlural(f.photos, 'photo'), f.videos ? kdPlural(f.videos, 'video') : null].filter(Boolean).join(' · ')}</span>
+          <a class="kd-fold__open" href=${f.url} target="_blank" rel="noopener">Open in Dropbox ${kdIcon.external}</a>
+        </div>
+        ${f.decision && !editing ? html`<div class="kd-fold__done">
+          <span>${kdIcon.check} <strong>${answer}</strong></span>
+          <span>${kdFoldWho(f.decidedBy)}, ${kdFoldWhen(f.decidedAt)}</span>
+          <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setEditing(true)}>Change</button>
+        </div>` : html`
+          ${f.guesses?.length ? html`<p class="kd-fold__hint">Maybe ${f.guesses.map(kdFoldKidLabel).join(' or ')}.</p>` : null}
+          <div class="kd-fold__form">
+            <label class="sr-only" for=${id}>Whose photos are in ${f.folder}?</label>
+            <select class="form-select" id=${id} value=${pick} onChange=${(e) => setPick(e.target.value)} disabled=${busy}>
+              <option value="">Whose photos are these?</option>
+              ${f.guesses?.length ? html`<optgroup label="Likely">${f.guesses.map((g) => html`<option value=${`kid:${g.slug}`}>${kdFoldKidLabel(g)}</option>`)}</optgroup>` : null}
+              <optgroup label="Other choices">
+                <option value="new">A kid with no page yet</option>
+                <option value="not">Not a makeover</option>
+              </optgroup>
+              <optgroup label="Every kid page">${others.map((k) => html`<option value=${`kid:${k.slug}`}>${kdFoldKidLabel(k)}</option>`)}</optgroup>
+            </select>
+            ${pick === 'new' ? html`
+              <input class="form-input" type="text" placeholder="Kid’s name" aria-label="Kid’s name" value=${name} onInput=${(e) => setName(e.target.value)} disabled=${busy} />
+              <input class="form-input kd-fold__year" type="text" inputmode="numeric" placeholder="Year" aria-label="Year of the makeover" value=${year} onInput=${(e) => setYear(e.target.value)} disabled=${busy} />` : null}
+            ${pick === 'not' ? html`<input class="form-input" type="text" placeholder="What it is (optional)" aria-label="What it is" value=${note} onInput=${(e) => setNote(e.target.value)} disabled=${busy} />` : null}
+            <button type="button" class="btn btn-primary btn-sm" disabled=${!ready || busy} onClick=${() => save()}>${busy ? 'Saving…' : 'Save'}</button>
+            ${f.decision ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${() => { setEditing(false); setErr(''); }}>Cancel</button>` : null}
+          </div>`}
+        ${err ? html`<p class="kd-fold__err" role="alert">${err}</p>` : null}
+      </li>`;
+    }
+
+    function KidFoldersDialog({ folders, kids, onSaved, onClose }) {
+      const left = folders.filter((f) => !f.decision).length;
+      return html`<${KdDialog} title="Dropbox folders to name" size="lg" onClose=${onClose}
+        sub=${`Each is a makeover’s photos in Dropbox that matches no kid page. Open it, then say whose it is. ${left ? `${kdPlural(left, 'folder')} left.` : 'All named.'}`}
+        footer=${html`<button type="button" class="btn btn-primary" onClick=${onClose}>Done</button>`}>
+        <ul class="kd-fold-list">${folders.map((f) => html`<${KidFolderRow} key=${f.folder} f=${f} kids=${kids} onSaved=${onSaved} />`)}</ul>
+      </${KdDialog}>`;
+    }
+
     function KidsList({ kids, partners = [], dashboardFilter, onClearFilter, onEdit, onDelete, addToast, onReload, onDeploy }) {
       const [search, setSearch] = useState('');
       // Upload photos and videos (profiles themselves are made when a family is approved)
@@ -10862,6 +10966,16 @@
       const toolbarRef = useRef(null);
       const [stuck, setStuck] = useState(false);
       // Profiles deleted lately, to bring back
+      // Dropbox folders that match no kid page, for a person to name
+      const [folders, setFolders] = useState({ folders: [], kids: [] });
+      const [naming, setNaming] = useState(false);
+      useEffect(() => {
+        let on = true;
+        kdFoldersApi().then((r) => { if (on) setFolders({ folders: r.folders || [], kids: r.kids || [] }); }).catch(() => {});
+        return () => { on = false; };
+      }, []);
+      const foldersLeft = folders.folders.filter((f) => !f.decision).length;
+      const folderSaved = (row) => setFolders((x) => ({ ...x, folders: x.folders.map((f) => (f.folder === row.folder ? row : f)) }));
       const [deleted, setDeleted] = useState([]);
       const [showDeleted, setShowDeleted] = useState(false);
       useEffect(() => {
@@ -11094,6 +11208,7 @@
         ${tidy ? html`<${KidsTidyTool} kids=${kids} partners=${partners} repairs=${repairs} addToast=${addToast} onClose=${() => setTidy(false)} onReload=${onReload} onDeploy=${onDeploy} />` : null}
         ${uploading ? html`<${KidMediaUpload} kids=${kids} addToast=${addToast} onClose=${() => setUploading(false)} onReload=${onReload} onDeploy=${onDeploy}
           onOpen=${(slug) => { setUploading(false); onEdit(slug); }} />` : null}
+        ${naming ? html`<${KidFoldersDialog} folders=${folders.folders} kids=${folders.kids} onSaved=${folderSaved} onClose=${() => setNaming(false)} />` : null}
         ${showDeleted ? html`<${KidsDeletedDialog} kids=${kids} deleted=${deleted} addToast=${addToast} onClose=${() => setShowDeleted(false)}
           onRestored=${(slug) => { setShowDeleted(false); setDeleted((d) => d.filter((x) => x.slug !== slug)); onReload?.(); }} />` : null}
         <div class="page-header kd-head">
@@ -11113,6 +11228,14 @@
             <span>${[logoDebt && `${kdPlural(logoDebt, 'partner logo')} missing from pages`, roomDebt && `${kdPlural(roomDebt, 'room count')} to correct`, nameDebt && `${kdPlural(nameDebt, 'partner logo')} without a name`, altDebt && `${kdPlural(altDebt, 'photo')} without alt text`].filter(Boolean).join(' · ')}.</span>
           </div>
           <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setTidy(true)}>${kdIcon.sparkle} Fill them in…</button>
+        </div>` : null}
+
+        ${foldersLeft ? html`<div class="kd-tidy-banner kd-fold-banner" role="note">
+          <div class="kd-tidy-banner__text">
+            <strong>Dropbox folders to name</strong>
+            <span>${kdPlural(foldersLeft, 'folder')} of makeover photos in Dropbox ${foldersLeft === 1 ? 'matches' : 'match'} no kid page. Say whose each one is before the photos move to JobTread.</span>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setNaming(true)}>${kdIcon.check} Name them…</button>
         </div>` : null}
 
         ${!kids.length ? html`<div class="card kd-empty-all">

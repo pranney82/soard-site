@@ -188,7 +188,7 @@ test('always on: grants give the level roles, roles change and are logged, and t
   assert.deepEqual(made.map((m) => m.name), ['Signature', 'Champion', 'Builder', 'Friend', 'Trade Partner']);
   for (const m of made) {
     assert.equal(m.type, 'vendor');
-    assert.deepEqual(m.permissions, ['readDailyLogs', 'readJobPlans', 'readJobTaskGroups', 'readJobTasks', 'updateJobToDoProgresses'], 'nobody moved loses anything');
+    assert.deepEqual(m.permissions, ['readJobPlans', 'readJobTaskGroups', 'readJobTasks', 'updateJobToDoProgresses'], 'nobody moved loses anything, except daily logs: staff only (Peter, Nov 10 2026)');
   }
   const r = await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl, now: Date.parse('2026-10-30T12:00:00Z') });
   assert.deepEqual(r, { changed: 2, pending: 0, unplaced: 1 });
