@@ -1,11 +1,19 @@
 /**
  * Service Worker — Sunshine on a Ranney Day
- * Cache-first for static assets (fonts, images, CSS/JS).
- * Network-first for HTML pages (fresh content, offline fallback).
+ *
+ * Two jobs, and it stays out of the way of everything else:
+ * 1. Pages: straight from the network, with navigation preload (the request
+ *    starts while the worker wakes, so a sleeping worker never delays a page),
+ *    and a copy kept for when the visitor is offline. The copy is saved after
+ *    the page is handed over, never before.
+ * 2. Reveal reminders (Web Push), below.
+ *
+ * Fonts, scripts, styles and photos never come through here: the browser's own
+ * cache already keeps them a year (public/_headers). In Chrome they skip the
+ * worker entirely (static routing), so it doesn't even wake for them. It used
+ * to copy them into its own caches, which only added a wait to every request;
+ * activate clears those caches off visitors' devices.
  */
-const CACHE_NAME = 'soard-v2';
-const IMAGE_CACHE_NAME = 'soard-images-v1';
-const IMAGE_CACHE_MAX_ENTRIES = 300;
 // v2: v1 could hold private pages (admin, family links); bumping the name clears it
 const PAGE_CACHE_NAME = 'soard-pages-v2';
 const PAGE_CACHE_MAX_ENTRIES = 60;
@@ -17,132 +25,59 @@ const PRIVATE_PARAMS = ['t', 'token', 'confirm', 'unsubscribe', 'key', 'draft', 
 const isPrivate = (url) =>
   PRIVATE_PATHS.some((p) => url.pathname.startsWith(p)) || PRIVATE_PARAMS.some((k) => url.searchParams.has(k));
 
-const PRECACHE_URLS = [
-  '/fonts/outfit-latin-variable.woff2',
-  '/fonts/libre-baskerville-latin-700-normal.woff2',
-];
-
-// Install: precache critical fonts
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
-  );
+  // Chrome: only page loads reach this worker; every other request of this site goes straight to the network
+  if (event.addRoutes) {
+    event.waitUntil(event.addRoutes([
+      { condition: { requestMode: 'navigate' }, source: 'fetch-event' },
+      { condition: { urlPattern: '/*' }, source: 'network' },
+    ]).catch(() => {}));
+  }
   self.skipWaiting();
 });
 
-// Activate: clean up old caches
 self.addEventListener('activate', (event) => {
-  const keep = new Set([CACHE_NAME, IMAGE_CACHE_NAME, PAGE_CACHE_NAME]);
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)))
-    )
-  );
+  event.waitUntil((async () => {
+    if (self.registration.navigationPreload) await self.registration.navigationPreload.enable().catch(() => {});
+    // Only the offline pages are kept (the old asset and photo copies go)
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k !== PAGE_CACHE_NAME).map((k) => caches.delete(k)));
+  })());
   self.clients.claim();
 });
 
-// Fetch: strategy based on request type
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  // Pages only: everything else goes to the network (and the browser's cache) untouched
+  if (request.mode !== 'navigate' || request.method !== 'GET') return;
   const url = new URL(request.url);
-
-  // Skip non-GET and cross-origin requests (except CF Images + fonts)
-  if (request.method !== 'GET') return;
-
-  const isSameOrigin = url.origin === self.location.origin;
-  const isCFImage = url.hostname === 'imagedelivery.net';
-
-  if (!isSameOrigin && !isCFImage) return;
-  // The admin's Preview loads a fresh ?admin-preview URL per edit; don't cache those pages
-  if (url.searchParams.has('admin-preview')) return;
-  if (isSameOrigin && isPrivate(url)) return;
-
-  // CF Images: separate cache with eviction limit.
-  // The site serves these same-origin via /cdn-cgi/imagedelivery/ —
-  // that path has no file extension, so it must be matched explicitly.
-  if (isCFImage || url.pathname.startsWith('/cdn-cgi/imagedelivery/')) {
-    event.respondWith(cacheFirstWithLimit(request, IMAGE_CACHE_NAME, IMAGE_CACHE_MAX_ENTRIES));
-    return;
-  }
-
-  // Fonts & local images: cache-first (immutable assets)
-  if (
-    url.pathname.startsWith('/fonts/') ||
-    url.pathname.startsWith('/images/') ||
-    url.pathname.match(/\.(woff2|png|jpg|jpeg|webp|avif|svg|ico)$/)
-  ) {
-    event.respondWith(cacheFirst(request));
-    return;
-  }
-
-  // CSS/JS hashed assets: cache-first
-  if (url.pathname.match(/\/_astro\//)) {
-    event.respondWith(cacheFirst(request));
-    return;
-  }
-
-  // HTML pages: network-first with cache fallback
-  if (request.headers.get('accept')?.includes('text/html')) {
-    event.respondWith(networkFirst(request));
-    return;
-  }
+  if (url.origin !== self.location.origin) return;
+  // The admin's Preview (a fresh ?admin-preview URL per edit) and private pages are never kept
+  const keep = !url.searchParams.has('admin-preview') && !isPrivate(url);
+  event.respondWith(page(event, keep));
 });
 
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-
+async function page(event, keep) {
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    return new Response('', { status: 408 });
-  }
-}
-
-async function cacheFirstWithLimit(request, cacheName, maxEntries) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      cache.put(request, response.clone());
-      // Evict an entry when over limit to cap cache size
-      const keys = await cache.keys();
-      if (keys.length > maxEntries) {
-        await cache.delete(keys[0]); // first key — insertion-order in all browsers
-      }
-    }
-    return response;
-  } catch {
-    return new Response('', { status: 408 });
-  }
-}
-
-async function networkFirst(request) {
-  try {
-    const response = await fetch(request);
+    const response = (await event.preloadResponse) || (await fetch(event.request));
     const cacheControl = response.headers.get('Cache-Control') || '';
-    if (response.ok && !response.redirected && !/no-store|private/i.test(cacheControl)) {
-      const cache = await caches.open(PAGE_CACHE_NAME);
-      cache.put(request, response.clone());
-      // Bound the offline-page cache so it can't grow forever
-      const keys = await cache.keys();
-      if (keys.length > PAGE_CACHE_MAX_ENTRIES) {
-        await cache.delete(keys[0]);
-      }
+    if (keep && response.ok && !response.redirected && response.type === 'basic' && !/no-store|private/i.test(cacheControl)) {
+      const copy = response.clone();
+      event.waitUntil(keepPage(event.request, copy));
     }
     return response;
   } catch {
-    const cached = await caches.match(request);
+    const cached = keep ? await caches.match(event.request, { cacheName: PAGE_CACHE_NAME }) : null;
     return cached || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
   }
+}
+
+/** The offline copy, saved after the page is on screen; the oldest goes past 60 */
+async function keepPage(request, response) {
+  const cache = await caches.open(PAGE_CACHE_NAME);
+  await cache.put(request, response);
+  const keys = await cache.keys();
+  if (keys.length > PAGE_CACHE_MAX_ENTRIES) await cache.delete(keys[0]);
 }
 
 // ─── Web Push (reveal reminders) ─────────────────────────────────────

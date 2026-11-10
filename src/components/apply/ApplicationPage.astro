@@ -441,23 +441,20 @@ const breadcrumbs = [
     display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(32px, 5vw, 80px); align-items: center;
     min-height: clamp(440px, 62vh, 640px);
   }
-  .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 24px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.05s both; }
-  .hero-headline { font-size: clamp(42px, 6.2vw, 84px); line-height: 1.04; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 24px; animation: heroSlide 0.8s cubic-bezier(0.16,1,0.3,1) both; }
+  .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin-bottom: 24px; }
+  .hero-headline { font-size: clamp(42px, 6.2vw, 84px); line-height: 1.04; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 24px; }
   .hero-headline :global(em) { padding: 0 0.05em; }
-  .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 500px; margin-bottom: 32px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.15s both; }
-  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.25s both; }
+  .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 500px; margin-bottom: 32px; }
+  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
   .hero-note { max-width: 500px; margin: -8px 0 24px; }
   .hero-note[hidden] { display: none; }
-  .hero-photo-wrap { position: relative; max-width: 440px; justify-self: end; width: 100%; animation: heroPhotoIn 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+  .hero-photo-wrap { position: relative; max-width: 440px; justify-self: end; width: 100%; }
   .hero-frame { position: relative; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 5; box-shadow: 0 32px 80px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); background-size: cover; background-position: center; }
   .hero-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .hero-accent { position: absolute; z-index: -1; bottom: -16px; right: -16px; width: 55%; height: 55%; border-radius: 20px; background: var(--c-yellow); opacity: 0.35; }
-  .hero-stat { position: absolute; bottom: -24px; left: -24px; background: var(--c-dark); color: #fff; border-radius: 16px; padding: 20px 28px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,0.15); animation: heroUp 0.6s cubic-bezier(0.16,1,0.3,1) 0.4s both; }
+  .hero-stat { position: absolute; bottom: -24px; left: -24px; background: var(--c-dark); color: #fff; border-radius: 16px; padding: 20px 28px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,0.15); }
   .hero-stat-num { font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--c-yellow); line-height: 1; display: block; }
   .hero-stat-label { display: block; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.85); margin-top: 4px; line-height: 1.4; }
-  @keyframes heroUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes heroSlide { from { transform: translateY(20px); } to { transform: translateY(0); } }
-  @keyframes heroPhotoIn { from { opacity: 0; } to { opacity: 1; } }
 
   @media (max-width: 768px) {
     .hero { padding: var(--hero-space-top) 0 40px; }
@@ -1489,9 +1486,6 @@ const breadcrumbs = [
   html.af-focus .af-place[data-split] > .af-field--area { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
   /* The map's screen says the county ("…in Gwinnett County"), so the address's screen needn't */
   /* On its own screen the home drops onto the map once the screen has slid in, not while it moves */
-  html.af-focus .af-place[data-split] .af-map-pin-head { animation-delay: .16s; }
-  html.af-focus .af-place[data-split] .af-map-pin-label { animation-delay: .34s; }
-  html.af-focus .af-place[data-split] .af-map-pin::before { animation-delay: .4s; }
   html.af-focus .af-place[data-split] .af-county-note { display: none; }
   @container (min-width: 600px) {
     /* No row gaps: the map spans the card's rows, and empty ones (no question, no note) would add room for nothing */

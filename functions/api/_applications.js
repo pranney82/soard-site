@@ -34,6 +34,7 @@
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
+import { cleanYear } from './_application-year.js';
 import {
   cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, isVisible, indexById, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
@@ -248,12 +249,8 @@ export async function hashIp(ip, pepper = '') {
 /** Where applicants' photos and PDFs live: one place, so the bucket can change without a hunt */
 export const applicantFiles = (env) => env?.APPLICANT_FILES || env?.FILES || null;
 
-/** A season year the form may be filled for: this year through two years out */
-export function cleanYear(y, now = Date.now()) {
-  const n = Number(String(y || '').trim());
-  const thisYear = new Date(now).getUTCFullYear();
-  return Number.isInteger(n) && n >= thisYear - 1 && n <= thisYear + 2 ? String(n) : String(thisYear + 1);
-}
+/** A season year the form may be filled for: this year through two years out (./_application-year.js) */
+export { cleanYear };
 
 /** Admin settings for the application (D1 site_config "settings"), or {} */
 export async function applicationSettings(DB) {

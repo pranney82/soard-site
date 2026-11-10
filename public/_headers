@@ -27,6 +27,36 @@
   Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://imagedelivery.net https://i.ytimg.com https://videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com data: blob:; font-src 'self'; frame-src 'self' https://www.youtube-nocookie.com https://iframe.videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://www.zeffy.com https://challenges.cloudflare.com; connect-src 'self' wss://sunshineonaranneyday.com https://imagedelivery.net https://cloudflareinsights.com https://customer-cuav5h47lgfe96ql.cloudflarestream.com; media-src 'self' blob: https://videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://files.sunshineonaranneyday.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; worker-src 'self'; manifest-src 'self'
   Content-Security-Policy-Report-Only: default-src 'none'; script-src 'self' 'csp-hashes' https://static.cloudflareinsights.com https://challenges.cloudflare.com; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' https://imagedelivery.net https://i.ytimg.com https://videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com data: blob:; font-src 'self'; frame-src 'self' https://www.youtube-nocookie.com https://iframe.videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://www.zeffy.com https://challenges.cloudflare.com; connect-src 'self' wss://sunshineonaranneyday.com https://imagedelivery.net https://cloudflareinsights.com https://customer-cuav5h47lgfe96ql.cloudflarestream.com; media-src 'self' blob: https://videodelivery.net https://customer-cuav5h47lgfe96ql.cloudflarestream.com https://files.sunshineonaranneyday.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; worker-src 'self'; manifest-src 'self'; report-uri /api/csp-report; report-to csp
 
+## Pages: a browser may reuse one for 30 seconds, so the copy a link fetched on
+## hover is the one the click shows (Astro prefetch), with no second trip. Every
+## page address ends in / (trailingSlash 'always'); this used to say /*.html,
+## which no address matches, so pages were re-asked for on every click. The pages
+## the server fills in say the same (PAGE_REUSE in functions/_apply-bar.js).
+## Never at the Cloudflare edge (no s-maxage): edge-cached HTML survives deploys
+## for up to an hour, so content updates, video attaches, and admin publishes
+## looked broken while stale copies served.
+/
+  Cache-Control: public, max-age=30
+
+/*/
+  Cache-Control: public, max-age=30
+
+## Admin pages (behind Access) are asked for fresh every time, as before. These
+## come after the page rules so they replace them, and name the admin's pages
+## (at most two levels deep) rather than repeating the admin block below, which
+## would merge into it and come too early.
+/admin/
+  ! Cache-Control
+  Cache-Control: no-cache
+
+/admin/:page/
+  ! Cache-Control
+  Cache-Control: no-cache
+
+/admin/:page/:view/
+  ! Cache-Control
+  Cache-Control: no-cache
+
 ## The trade-partner pages (a vendor's W-9, insurance and payments): the public CSP
 ## plus a blob: worker. heic-to.js (libheif) decodes an iPhone photo in a worker it
 ## makes itself, only when a browser other than Safari is handed one.
@@ -107,13 +137,6 @@
 
 /*.webmanifest
   Cache-Control: public, max-age=86400
-
-## Cache HTML in browsers briefly, but NOT at the Cloudflare edge (no s-maxage):
-## edge-cached HTML survives deploys for up to an hour, so content updates,
-## video attaches, and admin publishes looked broken while stale copies served.
-## Pages' own asset delivery is already fast without the zone cache.
-/*.html
-  Cache-Control: public, max-age=300, must-revalidate
 
 ## LLM-friendly files
 /llms.txt

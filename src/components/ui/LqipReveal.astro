@@ -15,7 +15,9 @@
 <script>
   function initLqip() {
     document.querySelectorAll<HTMLImageElement>('.lqip-img:not(.loaded)').forEach(img => {
-      if (img.complete && img.naturalWidth > 0) {
+      // The page's main picture (fetchpriority="high", e.g. a kid's hero) is never
+      // hidden for the fade: it draws over its blur as it arrives
+      if ((img.complete && img.naturalWidth > 0) || img.getAttribute('fetchpriority') === 'high') {
         img.classList.add('loaded');
         return;
       }

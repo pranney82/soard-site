@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "astro dev",
     "prebuild": "node scripts/prebuild.js && node scripts/generate-lqip.js && node scripts/generate-dimensions.js && node scripts/generate-event-dimensions.js",
-    "build": "astro build && node scripts/csp-hash.mjs && node scripts/admin-version.mjs",
+    "build": "astro build && node scripts/csp-hash.mjs && node scripts/admin-version.mjs && node scripts/build-worker.mjs",
     "preview": "astro preview",
     "astro": "astro",
     "build:admin-vendor": "node scripts/build-admin-vendor.mjs",
@@ -20,6 +20,7 @@
     "@astrojs/sitemap": "^3.7.0",
     "@cloudflare/puppeteer": "^1.4.0",
     "astro": "^5.18.0",
+    "path-to-regexp": "6.3.0",
     "pdf-lib": "^1.17.1",
     "satori": "^0.25.0",
     "sharp": "^0.34.5"

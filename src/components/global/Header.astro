@@ -282,6 +282,60 @@ function isGroupActive(group: NavGroup) {
 </div>
 
 <script>
+import { prefetch } from 'astro:prefetch';
+
+/* Phones have no hover, so the page behind a link starts loading the moment a
+   finger lands on it (as hovering does on computers, astro.config prefetch).
+   The tap's own request then takes that copy (pages may be reused 30 s). Once
+   per page load: the document outlives View Transitions. */
+function pageLink(target) {
+  var a = target && target.closest ? target.closest('a[href]') : null;
+  if (!a || a.origin !== location.origin || a.target === '_blank' || a.hasAttribute('download')) return null;
+  if (a.dataset.astroPrefetch === 'false' || a.hasAttribute('data-astro-reload')) return null;
+  // Pages only (every page address ends in /), never this page or the admin
+  if (!/\/$/.test(a.pathname) || a.pathname === location.pathname || a.pathname.indexOf('/admin') === 0) return null;
+  return a;
+}
+
+/* The page's main photo too: every page names it in its <head> (a preload, with
+   the same sizes it shows at), so it starts now and is already there when the
+   page appears. The page itself comes from the same request the click reuses. */
+var warmed = new Set();
+function warmPage(href) {
+  if (warmed.has(href) || warmed.size > 40) return;
+  // Never on Data Saver or a 2G connection: the photo waits for the page there
+  var conn = navigator.connection;
+  if (conn && (conn.saveData || /2g/.test(conn.effectiveType || ''))) return;
+  warmed.add(href);
+  fetch(href, { credentials: 'same-origin' })
+    .then(function (r) { return r.ok && /text\/html/.test(r.headers.get('content-type') || '') ? r.text() : ''; })
+    .then(function (html) {
+      var head = html.slice(0, Math.max(0, html.indexOf('</head>')));
+      (head.match(/<link\b[^>]*\brel="preload"[^>]*\bas="image"[^>]*>/g) || []).forEach(function (tag) {
+        var t = document.createElement('template');
+        t.innerHTML = tag;
+        var link = t.content.firstElementChild;
+        if (link && link.tagName === 'LINK') document.head.appendChild(link);
+      });
+    })
+    .catch(function () {});
+}
+
+document.addEventListener('touchstart', function (e) {
+  var a = pageLink(e.target);
+  if (!a) return;
+  prefetch(a.href, { ignoreSlowConnection: true });
+  warmPage(a.href);
+}, { passive: true, capture: true });
+
+var hoverTimer = 0;
+document.addEventListener('mouseover', function (e) {
+  var a = pageLink(e.target);
+  clearTimeout(hoverTimer);
+  // A pointer that rests on a link, not one passing over it
+  if (a) hoverTimer = setTimeout(function () { warmPage(a.href); }, 80);
+}, { passive: true });
+
 document.addEventListener('astro:page-load', function () {
   /* Abort previous listeners to prevent stacking across View Transitions */
   if (window.__headerAC) window.__headerAC.abort();

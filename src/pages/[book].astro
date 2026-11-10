@@ -192,8 +192,6 @@ const bookSchema = {
     display: flex;
     align-items: center;
     gap: 12px;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
   .hero-eyebrow::before {
     content: '';
@@ -208,7 +206,6 @@ const bookSchema = {
     line-height: 1.04;
     color: var(--c-text);
     margin-bottom: 28px;
-    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-text h1 :global(em) {
     font-style: italic;
@@ -221,15 +218,11 @@ const bookSchema = {
     line-height: 1.7;
     margin-bottom: 40px;
     max-width: 480px;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
   .hero-ctas {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
   .btn-lg { font-size: 17px; padding: 18px 44px; }
   .bk-download { display: inline-flex; align-items: center; gap: 10px; }
@@ -241,7 +234,6 @@ const bookSchema = {
     display: flex;
     justify-content: center;
     perspective: 1600px;
-    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-accent {
     position: absolute;
@@ -252,8 +244,6 @@ const bookSchema = {
     background: var(--c-yellow);
     border-radius: 24px;
     z-index: 0;
-    opacity: 0;
-    animation: heroAccentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
   }
 
   /* The closed book: the cover, a crease along the spine, page edges at the fore-edge */

@@ -13,15 +13,20 @@
  * The words come from src/utils/reveals-client.ts, so they're the page's own.
  *
  * Never holds a page for the schedule: the edge copy of /api/reveals answers
- * at once; without one the page goes out as built after a short wait (and the
- * page script fills it in as before), while the schedule is fetched for the
- * next visitor. Anything that goes wrong serves the page as built.
+ * at once. Once those few minutes are up (most pages, on a site this size),
+ * the last schedule this edge read answers instead, while a fresh one is
+ * fetched for the next visitor. Only an edge that has never read one waits,
+ * briefly; then the page goes out as built and the page script fills it in as
+ * before. Anything that goes wrong serves the page as built.
  */
 
 import { revealShortDate, revealWhen, windowShort, inviteData, possessive } from '../src/utils/reveals-client.ts';
-import { fullPageRequest } from './_apply-bar.js';
+import { fullPageRequest, PAGE_REUSE } from './_apply-bar.js';
 
 const WAIT_MS = 350; // longest a page waits for a schedule the edge doesn't have yet
+const LAST_KNOWN_TTL = 86400; // seconds the edge keeps the last schedule it read, for pages after the 3-minute copy expires
+// The edge key that last schedule is kept under (the cache API only; no visitor request reads it)
+const lastKnownKey = (url) => new Request(`${url}?edge=last-known`, { method: 'GET' });
 const SLUG = /^[a-z0-9-]+$/;
 const CALENDAR = (size) => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>`;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -52,9 +57,20 @@ export async function upcomingReveals(context, waitMs = WAIT_MS) {
     const hit = await cache.match(new Request(url, { method: 'GET' })).catch(() => null);
     if (hit) { try { return read(await hit.json()); } catch { /* ask below */ } }
   }
-  // The endpoint reads JobTread and keeps the answer at the edge; this page waits only briefly for it
-  const ask = fetch(url, { headers: { Accept: 'application/json' } }).then((r) => (r.ok ? r.json() : null)).then(read).catch(() => null);
+  // The endpoint reads JobTread and keeps the answer at the edge; what it says is kept as the last known schedule too
+  const ask = fetch(url, { headers: { Accept: 'application/json' } }).then((r) => (r.ok ? r.json() : null)).then(async (body) => {
+    if (cache && body && body.source !== 'none' && read(body)) {
+      await cache.put(lastKnownKey(url), Response.json(body, { headers: { 'Cache-Control': `public, max-age=${LAST_KNOWN_TTL}` } })).catch(() => {});
+    }
+    return read(body);
+  }).catch(() => null);
   if (context.waitUntil) context.waitUntil(ask);
+  // The last schedule this edge read: the page goes out now, and the next one has the fresh answer
+  if (cache) {
+    const last = await cache.match(lastKnownKey(url)).catch(() => null);
+    if (last) { try { const known = read(await last.json()); if (known) return known; } catch { /* wait below */ } }
+  }
+  // An edge that has never read one waits only briefly
   return Promise.race([ask, new Promise((done) => setTimeout(() => done(null), waitMs))]);
 }
 
@@ -80,8 +96,9 @@ export function addReveals(res, { kid = null, cards = [] } = {}) {
   }
   const out = rw.transform(res);
   const headers = new Headers(out.headers);
-  // The words follow JobTread, not the build: never answered with the build's 304
-  if (!/no-store|private/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', 'no-cache');
+  // The words follow JobTread, not the build: never answered with the build's 304,
+  // and reused for half a minute at most
+  if (!/no-store|private/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', PAGE_REUSE);
   headers.delete('ETag');
   headers.delete('Last-Modified');
   headers.delete('Content-Length');

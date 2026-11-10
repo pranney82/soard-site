@@ -32,10 +32,12 @@ export default defineConfig({
     defaultStrategy: 'hover',
   },
   build: {
-    // 'auto' inlines only small sheets; big page styles (the ~120 KB kid
-    // template CSS) become cached external files instead of shipping
-    // inside every HTML response.
-    inlineStylesheets: 'auto',
+    // Every page's CSS goes in the page itself: the first paint never waits on
+    // a stylesheet request racing the fonts and photos. Measured Nov 9 2026 on a
+    // phone over slow 4G: first paint 1.12 s → 0.49 s on a kid's page, 0.83 s →
+    // 0.48 s on the home page, for ~17 KB more (compressed) per page. ('auto'
+    // kept big sheets, like the kid template's, as separate files.)
+    inlineStylesheets: 'always',
   },
   vite: {
     server: {

@@ -514,8 +514,6 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     text-transform: uppercase;
     color: var(--c-text-light);
     margin-bottom: 28px;
-    opacity: 0;
-    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.04s both;
   }
 
   .hero-headline {
@@ -539,16 +537,12 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     color: var(--c-text-muted);
     max-width: 480px;
     margin-bottom: 36px;
-    opacity: 0;
-    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
   }
 
   .hero-ctas {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
-    opacity: 0;
-    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both;
   }
   /* pulseGlow animation defined in global.css */
 
@@ -557,8 +551,6 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     position: relative;
     width: 100%;
     aspect-ratio: 4 / 5;
-    /* NO opacity:0 — hero image is LCP candidate, must paint on load */
-    animation: heroPhotoIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-photo {
@@ -611,25 +603,11 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     border-radius: 20px;
     background: var(--c-yellow);
     z-index: -1;
-    opacity: 0;
-    animation: accentIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
   }
 
 
 
   /* ── Animations ── */
-  @keyframes heroUp {
-    from { opacity: 0; transform: translateY(28px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes heroPhotoIn {
-    from { transform: translateY(12px) scale(0.98); }
-    to { transform: translateY(0) scale(1); }
-  }
-  @keyframes accentIn {
-    from { opacity: 0; transform: translate(12px, 12px); }
-    to { opacity: 1; transform: translate(0, 0); }
-  }
 
   /* ── Responsive ── */
   @media (max-width: 900px) {
@@ -783,7 +761,8 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   .kids-strip-all { font-size: 15px; font-weight: 600; color: var(--c-accent); transition: letter-spacing 0.3s ease; white-space: nowrap; }
   .kids-strip-all:hover { letter-spacing: 0.02em; }
   .kids-scroll-wrap { position: relative; }
-  .kids-scroll { display: flex; gap: 24px; padding: 0 var(--page-padding); overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; list-style: none; margin: 0; scroll-behavior: smooth; }
+  /* scroll-padding matches the padding: snapping starts at the first card where it sits, so the strip never scrolls itself on load (that hid the first card's inset and made Chrome stop measuring the page) */
+  .kids-scroll { display: flex; gap: 24px; padding: 0 var(--page-padding); scroll-padding-inline: var(--page-padding); overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; list-style: none; margin: 0; scroll-behavior: smooth; }
   .kids-scroll::-webkit-scrollbar { display: none; }
   .kid-thumb-item { flex-shrink: 0; width: 220px; scroll-snap-align: start; }
   .kid-thumb { display: block; text-align: center; text-decoration: none; color: inherit; }
@@ -918,6 +897,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
       -webkit-overflow-scrolling: touch; scrollbar-width: none;
       margin: 0 calc(var(--page-padding) * -1);
       padding: 0 var(--page-padding);
+      scroll-padding-inline: var(--page-padding); /* the first card starts snapped where it sits: no scroll on load */
     }
     .rm-trio::-webkit-scrollbar { display: none; }
     /* Right padding so last card doesn't hit the edge */

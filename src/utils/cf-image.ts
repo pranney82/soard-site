@@ -31,10 +31,21 @@ export function focusPosition(src: string): string | null {
   const [x, y] = f.split('x').map((n) => Math.round(Number(n) * 1000) / 10);
   return `${x}% ${y}%`;
 }
+/**
+ * One photo at one width has one URL. Without a height nothing is cropped, so
+ * fit=cover and gravity change nothing (Cloudflare returns the same bytes);
+ * left in, they made the same photo a different URL, and a kid's hero and the
+ * same photo in their gallery downloaded twice.
+ */
+export function resizeOnly(transforms: string): string {
+  if (/(?:^|,)h=\d/.test(transforms)) return transforms;
+  return transforms.split(',').filter((p) => p !== 'fit=cover' && !p.startsWith('gravity=')).join(',');
+}
+
 /** A transform string with face/auto gravity swapped for the photo's focal point (crops only: it has a height) */
 export function withFocus(src: string, transforms: string): string {
   const f = focusOf(src);
-  return f && /(?:^|,)h=\d/.test(transforms) ? transforms.replace(/gravity=(?:face|auto)\b/, `gravity=${f}`) : transforms;
+  return f && /(?:^|,)h=\d/.test(transforms) ? transforms.replace(/gravity=(?:face|auto)\b/, `gravity=${f}`) : resizeOnly(transforms);
 }
 const focusGravity = (id: string, gravity?: string, crops = true) => (crops && (gravity === 'face' || gravity === 'auto') && FOCUS[id] ? FOCUS[id] : gravity);
 const CF_ORIGIN = `https://imagedelivery.net/${CF_HASH}`;
@@ -99,8 +110,9 @@ function buildTransform(opts: TransformOpts): string {
   const parts: string[] = [];
   if (opts.w) parts.push(`w=${opts.w}`);
   if (opts.h) parts.push(`h=${opts.h}`);
-  if (opts.fit) parts.push(`fit=${opts.fit}`);
-  if (opts.gravity) parts.push(`gravity=${opts.gravity}`);
+  // Without a height nothing is cropped: fit=cover and gravity would only make a second URL for the same image (resizeOnly)
+  if (opts.fit && (opts.h || opts.fit !== 'cover')) parts.push(`fit=${opts.fit}`);
+  if (opts.gravity && opts.h) parts.push(`gravity=${opts.gravity}`);
   parts.push(`q=${opts.q ?? 85}`);
   if (opts.sharpen) parts.push(`sharpen=${opts.sharpen}`);
   // Strip EXIF/metadata from all transforms — prevents GPS, camera info, timestamps leaking

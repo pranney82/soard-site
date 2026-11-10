@@ -1399,6 +1399,8 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
         const frame = img.closest('.kid-card__frame');
         if (frame) requestAnimationFrame(() => frame.classList.add('lqip-done'));
       };
+      // The first row (fetchpriority="high") is never hidden: it draws over its blur as it arrives
+      if (img.getAttribute('fetchpriority') === 'high') img.classList.add('is-loaded');
       if (img.complete && img.naturalWidth > 0) {
         onLoaded();
       } else {
@@ -1588,8 +1590,6 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   }
 
   .kids-hero__eyebrow {
-    opacity: 0;
-    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
 
   .kids-hero__headline {
@@ -1600,7 +1600,6 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     letter-spacing: -0.025em;
     line-height: 1.12;
     margin: 0 0 var(--space-sm);
-    animation: heroSlide 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
   }
 
   .kids-hero__headline em {
@@ -1617,8 +1616,6 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     color: var(--c-text-muted);
     max-width: 460px;
     margin: 0;
-    opacity: 0;
-    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
 
   /* ── Dark stat panel — right column ── */
@@ -1627,8 +1624,6 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     background: var(--c-dark);
     border-radius: var(--border-radius-lg);
     padding: clamp(1.25rem, 2vw, 1.75rem) clamp(1.5rem, 2.5vw, 2.25rem);
-    opacity: 0;
-    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
     border-top: 3px solid var(--c-yellow);
   }
 
@@ -1644,21 +1639,14 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     align-items: center;
     gap: 6px;
     padding: 0 clamp(0.85rem, 1.8vw, 1.5rem);
-    opacity: 0;
-    animation: heroUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
-  .kids-hero__stat:nth-child(1) { animation-delay: 0.35s; }
-  .kids-hero__stat:nth-child(3) { animation-delay: 0.45s; }
-  .kids-hero__stat:nth-child(5) { animation-delay: 0.55s; }
 
   .kids-hero__stat-div {
     width: 1px;
     height: 32px;
     background: rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
-    opacity: 0;
-    animation: fadeIn 0.4s ease 0.5s both;
   }
 
   .kids-hero__stat-num {

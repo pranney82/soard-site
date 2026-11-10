@@ -238,10 +238,6 @@ const personLd = {
 
 <style>
   /* ══ HERO: the editorial split used across the site (apply.astro is the reference) ══ */
-  @keyframes heroUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes heroSlide { from { transform: translateY(12px); } to { transform: translateY(0); } }
-  @keyframes heroPhotoIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
-  @keyframes accentIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 0.35; transform: scale(1); } }
 
   .hero {
     background: var(--c-cream);
@@ -278,7 +274,6 @@ const personLd = {
     line-height: 1.04;
     color: var(--c-text);
     margin-bottom: 24px;
-    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-text h1 em {
     font-style: italic;
@@ -296,19 +291,15 @@ const personLd = {
     line-height: 1.5;
     margin-bottom: 36px;
     max-width: 480px;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
   .hero-role { font-weight: 600; color: var(--c-text); }
   .hero-ctas {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
   .hero-ctas .btn { display: inline-flex; align-items: center; gap: 8px; }
-  .hero-frame { position: relative; max-width: 440px; margin-left: auto; width: 100%; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .hero-frame { position: relative; max-width: 440px; margin-left: auto; width: 100%; }
   .hero-accent {
     position: absolute;
     bottom: -16px;
@@ -318,8 +309,7 @@ const personLd = {
     background: var(--c-yellow);
     border-radius: 24px;
     z-index: 0;
-    opacity: 0;
-    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+    opacity: 0.35;
   }
   .hero-photo {
     position: relative;

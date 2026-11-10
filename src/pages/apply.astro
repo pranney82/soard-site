@@ -657,22 +657,6 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   }
 
   /* Hero entrance keyframes */
-  @keyframes heroUp {
-    from { opacity: 0; transform: translateY(24px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes heroSlide {
-    from { transform: translateY(12px); }
-    to { transform: translateY(0); }
-  }
-  @keyframes heroPhotoIn {
-    from { opacity: 0; transform: scale(0.97); }
-    to { opacity: 1; transform: scale(1); }
-  }
-  @keyframes accentIn {
-    from { opacity: 0; transform: scale(0.85); }
-    to { opacity: 0.35; transform: scale(1); }
-  }
   @keyframes pulseGlow {
     0%, 100% { box-shadow: 0 8px 24px var(--c-yellow-glow); }
     50% { box-shadow: 0 8px 32px rgba(255, 218, 36, 0.55); }
@@ -718,8 +702,6 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   }
   /* Hero entrance stagger — matches homepage/community */
   .hero-text .section-label {
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
   .hero-text h1 {
     font-size: clamp(2.5rem, 6vw, 4.5rem);
@@ -727,8 +709,6 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     line-height: 1.04;
     color: var(--c-text);
     margin-bottom: 28px;
-    /* NO opacity:0 — LCP element */
-    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-text h1 em {
     font-style: italic;
@@ -743,20 +723,15 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     line-height: 1.7;
     margin-bottom: 40px;
     max-width: 480px;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
   .hero-ctas {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
 
   .hero-frame {
     position: relative;
-    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-accent {
     position: absolute;
@@ -767,8 +742,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     background: var(--c-yellow);
     border-radius: 24px;
     z-index: 0;
-    opacity: 0;
-    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+    opacity: 0.35;
   }
   .hero-photo {
     position: relative;

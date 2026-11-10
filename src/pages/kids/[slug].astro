@@ -154,7 +154,8 @@ const metaDesc = kid.metaDescription
 const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 
 // ── LCP preload for hero image ────────────
-const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 900, 1200, 1600, 2400], { fit: 'cover', gravity: 'face' }) : '';
+// Fine steps: each screen gets the nearest size at or above what it shows (a 2x phone 750 w, not 900; a Retina laptop 1280, not 1600)
+const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 750, 900, 1080, 1280, 1600, 2400], { fit: 'cover', gravity: 'face' }) : '';
 const heroSizes = '(max-width: 768px) 92vw, (max-width: 1100px) 55vw, 640px';
 
 // ── Bio paragraphs + pull quote ───────────
@@ -187,7 +188,8 @@ const heroAR = `${heroDims[0]} / ${heroDims[1]}`;
 const isHeroLandscape = heroDims[0] > heroDims[1];
 
 // ── Hero: art-directed mobile ─────────────
-const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 900, 1200], { fit: 'cover', gravity: 'face' }) : '';
+// The same steps as the gallery's lead photo (also 92vw on phones), so when the hero is that photo it's one download
+const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 750, 900, 1080, 1200], { fit: 'cover', gravity: 'face' }) : '';
 const heroMobileSizes = '(max-width: 480px) 92vw, 92vw';
 
 
@@ -370,7 +372,7 @@ const planOrientation = (() => {
           </div>
 
           {accentPhoto && kid.heroImage && (
-            <picture class={`hero__accent ${isHeroLandscape ? 'hero__accent--landscape' : ''}`} data-reveal="accent">
+            <picture class={`hero__accent ${isHeroLandscape ? 'hero__accent--landscape' : ''}`}>
               <source media="(max-width: 768px)" srcset={_cfSrcset(accentPhoto, [180, 280, 400], { fit: 'cover', gravity: 'face', aspectRatio: 1.15 })} sizes="(max-width: 480px) 32vw, 35vw" />
               <source media="(min-width: 769px)" srcset={_cfSrcset(accentPhoto, [280, 400, 560], { fit: 'cover', gravity: 'face', aspectRatio: 1.15 })} sizes="220px" />
               <img
@@ -387,15 +389,15 @@ const planOrientation = (() => {
 
         <!-- Content Column -->
         <div class="hero__content">
-          <h1 class="hero__name" itemprop="headline" transition:name="kid-name" data-reveal="name">
+          <h1 class="hero__name" itemprop="headline" transition:name="kid-name">
             {kid.name}
           </h1>
 
           {heroHook && (
-            <p class="hero__hook" data-reveal="hook">{heroHook}</p>
+            <p class="hero__hook">{heroHook}</p>
           )}
 
-          <div class="hero__meta" data-reveal="meta">
+          <div class="hero__meta">
             {kid.roomTypes && kid.roomTypes.length > 0 && (
               <span class="hero__meta-item">{kid.roomTypes.join(', ')}</span>
             )}
@@ -403,9 +405,9 @@ const planOrientation = (() => {
           </div>
 
           {(kid.fundraisingUrl || kid.revealVideoUrl) && (
-            <div class="hero__actions" data-reveal="actions">
+            <div class="hero__actions">
               {kid.fundraisingUrl && (
-                <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="hero__cta" data-reveal="actions">
+                <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="hero__cta">
                   Support {kid.name}
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </a>
@@ -418,7 +420,6 @@ const planOrientation = (() => {
                   class="hero__reveal-link"
                   id="reveal-link"
                   data-reveal-uid={kid.revealVideoUrl.split('/').filter(Boolean).pop()}
-                  data-reveal="actions"
                 >
                   <span class="hero__reveal-play" aria-hidden="true">
                     <svg viewBox="0 0 24 28" fill="currentColor"><path d="M2 1.5v25l20-12.5L2 1.5z"/></svg>
@@ -703,7 +704,7 @@ const planOrientation = (() => {
                 >
                   <img
                     src={cfUrl(photo.url, 'w=1200,q=85')}
-                    srcset={cfSrcset(photo.url, [600, 900, 1200, 1600])}
+                    srcset={cfSrcset(photo.url, [600, 750, 900, 1080, 1200, 1600])}
                     sizes={i === 0 ? '(max-width: 768px) 92vw, 60vw' : '(max-width: 768px) 92vw, 40vw'}
                     alt={altText}
                     class="gallery__img lqip-img"
@@ -988,46 +989,9 @@ const planOrientation = (() => {
     // Override global scroll-padding for accurate chapter nav positioning
     document.documentElement.classList.add('kid-page-active');
 
-    // ── Premium Hero Choreography ────────────────
-    const heroElements = {
-      eyebrow: document.querySelector('[data-reveal="eyebrow"]'),
-      name: document.querySelector('[data-reveal="name"]'),
-      diagnosis: document.querySelector('[data-reveal="diagnosis"]'),
-      transform: document.querySelector('[data-reveal="transform"]'),
-      hook: document.querySelector('[data-reveal="hook"]'),
-      actions: document.querySelector('[data-reveal="actions"]'),
-      meta: document.querySelector('[data-reveal="meta"]'),
-      accent: document.querySelector('[data-reveal="accent"]'),
-      connector: document.querySelector('.hero__connector'),
-    };
-
-    // Orchestrated timing sequence (in ms)
-    const heroTiming = {
-      eyebrow: 100,
-      name: 200,
-      diagnosis: 400,
-      transform: 550,
-      hook: 700,
-      actions: 850,
-      meta: 950,
-      accent: 500,
-      connector: 400,
-    };
-
-    if (!prefersReducedMotion) {
-      // Choreographed reveal sequence
-      Object.entries(heroTiming).forEach(([key, delay]) => {
-        const el = heroElements[key as keyof typeof heroElements];
-        if (el) {
-          setTimeout(() => el.classList.add('revealed'), delay);
-        }
-      });
-    } else {
-      // Instant reveal for reduced motion
-      Object.values(heroElements).forEach(el => {
-        if (el) el.classList.add('revealed');
-      });
-    }
+    // The hero (photo, name, words, buttons) is there from the first paint: it
+    // never waits on this script or on timers to fade in. Only sections further
+    // down fade in as they scroll into view.
 
     // Legacy stagger support for any remaining elements
     const heroStaggers = document.querySelectorAll('.hero .stagger');
@@ -2912,23 +2876,7 @@ const planOrientation = (() => {
       0 4px 8px rgba(0, 0, 0, 0.08),
       0 12px 32px rgba(0, 0, 0, 0.12),
       0 32px 64px rgba(0, 0, 0, 0.1);
-    transform: rotate(-4deg) translateY(20px);
-    opacity: 0;
-  }
-
-  .hero__accent.revealed {
-    animation: accent-reveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  @keyframes accent-reveal {
-    0% {
-      opacity: 0;
-      transform: rotate(-8deg) translateY(40px) scale(0.9);
-    }
-    100% {
-      opacity: 1;
-      transform: rotate(-4deg) translateY(0) scale(1);
-    }
+    transform: rotate(-4deg);
   }
 
   .hero__accent-img {
@@ -3017,17 +2965,6 @@ const planOrientation = (() => {
     letter-spacing: -0.045em;
     margin-bottom: 20px;
     text-wrap: balance;
-    opacity: 0;
-    transform: translateY(20px);
-  }
-
-  .hero__name.revealed {
-    animation: name-reveal 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  @keyframes name-reveal {
-    0% { opacity: 0; transform: translateY(30px); }
-    100% { opacity: 1; transform: translateY(0); }
   }
 
   /* Diagnosis — prominent, editorial */
@@ -3074,12 +3011,6 @@ const planOrientation = (() => {
     line-height: 1.7;
     margin: 0 0 28px;
     text-wrap: pretty;
-    opacity: 0;
-    transform: translateY(16px);
-  }
-
-  .hero__hook.revealed {
-    animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   /* Actions */
@@ -3089,12 +3020,6 @@ const planOrientation = (() => {
     align-items: center;
     gap: 16px;
     margin-bottom: 32px;
-    opacity: 0;
-    transform: translateY(16px);
-  }
-
-  .hero__actions.revealed {
-    animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .hero__cta-primary {
@@ -3217,12 +3142,6 @@ const planOrientation = (() => {
     flex-wrap: wrap;
     align-items: center;
     gap: 16px;
-    opacity: 0;
-    transform: translateY(12px);
-  }
-
-  .hero__meta.revealed {
-    animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .hero__tags {
@@ -3327,6 +3246,8 @@ const planOrientation = (() => {
     text-decoration: none;
     animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+  .hero[data-reveal-shown] :global(.hero__reveal),
+  .hero[data-reveal-shown] :global(.hero__reveal-day) { animation: none; }
   :global(.hero__reveal-day)::before {
     content: '';
     width: 8px;
@@ -3473,8 +3394,6 @@ const planOrientation = (() => {
     overflow: hidden;
     isolation: isolate;
     transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-    opacity: 0;
-    transform: translateY(16px);
   }
 
   .hero__cta::before {
@@ -3487,10 +3406,6 @@ const planOrientation = (() => {
     transform-origin: left center;
     transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: -1;
-  }
-
-  .hero__cta.revealed {
-    animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .hero__cta:hover {
@@ -4789,6 +4704,7 @@ const planOrientation = (() => {
     display: flex;
     gap: 24px;
     padding: 0 var(--page-padding, 24px);
+    scroll-padding-inline: var(--page-padding, 24px); /* snapping starts where the first card sits: no scroll on load */
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
@@ -5452,8 +5368,19 @@ const planOrientation = (() => {
       justify-content: center;
     }
 
+    /* The photo's box has its final size from the first paint, before the photo
+       arrives: as wide as the column, or narrower for a tall photo so it fits
+       the max height, in the photo's own shape (--hero-ar). Sized by the photo
+       instead, it was 0x0 until the photo loaded, then pushed the name and story
+       down 250-400px on phones. */
+    .hero__photo-wrapper {
+      width: 100%;
+    }
+
     .hero__portrait {
       max-height: 52vh;
+      width: min(100%, calc(52vh * (var(--hero-ar, 3 / 4))));
+      margin-inline: auto;
       border-radius: 20px;
     }
 
@@ -5465,16 +5392,7 @@ const planOrientation = (() => {
       bottom: -16px;
       border-radius: 14px;
       border-width: 3px;
-      transform: rotate(3deg) translateY(20px);
-    }
-
-    .hero__accent.revealed {
-      animation: accent-reveal-mobile 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    @keyframes accent-reveal-mobile {
-      0% { opacity: 0; transform: rotate(6deg) translateY(40px) scale(0.9); }
-      100% { opacity: 1; transform: rotate(3deg) translateY(0) scale(1); }
+      transform: rotate(3deg);
     }
 
     .hero__connector { display: none; }
@@ -5748,7 +5666,7 @@ const planOrientation = (() => {
 
     /* Hero small screen */
     .hero__name { font-size: clamp(2.2rem, 10vw, 2.8rem); }
-    .hero__portrait { max-height: 48vh; border-radius: 16px; }
+    .hero__portrait { max-height: 48vh; width: min(100%, calc(48vh * (var(--hero-ar, 3 / 4)))); border-radius: 16px; }
     .hero__accent {
       width: 28%;
       max-width: 110px;

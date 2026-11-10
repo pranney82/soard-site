@@ -634,17 +634,16 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
   .hero-eyebrow::before { content: ''; width: 28px; height: 2px; background: currentColor; }
   .hero-text h1 {
     font-size: clamp(2.5rem, 6vw, 4.5rem); letter-spacing: -0.035em; line-height: 1.04; color: var(--c-text); margin-bottom: 28px;
-    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-text h1 em {
     font-style: italic;
     background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
     background-repeat: no-repeat; background-size: 100% 100%; padding: 0 0.05em;
   }
-  .hero-lead { font-size: clamp(16px, 1.6vw, 18px); color: var(--c-text-muted); line-height: 1.7; margin-bottom: 36px; max-width: 520px; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
-  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both; }
-  .hero-frame { position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
-  .hero-accent { position: absolute; bottom: -16px; right: -16px; width: 65%; height: 50%; background: var(--c-yellow); border-radius: 24px; z-index: 0; opacity: 0; animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both; }
+  .hero-lead { font-size: clamp(16px, 1.6vw, 18px); color: var(--c-text-muted); line-height: 1.7; margin-bottom: 36px; max-width: 520px; }
+  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
+  .hero-frame { position: relative; }
+  .hero-accent { position: absolute; bottom: -16px; right: -16px; width: 65%; height: 50%; background: var(--c-yellow); border-radius: 24px; z-index: 0; }
   .hero-photo { position: relative; z-index: 1; aspect-ratio: 4 / 5; border-radius: 24px; overflow: hidden; box-shadow: 0 32px 80px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); }
   .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .hero-stat {
@@ -654,10 +653,6 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
   }
   .hero-stat-num { font-family: var(--font-display); font-size: clamp(28px, 3vw, 40px); font-weight: 700; color: var(--c-yellow); line-height: 1; }
   .hero-stat-label { font-size: 12px; font-weight: 600; line-height: 1.35; color: rgba(255,255,255,0.65); text-transform: uppercase; letter-spacing: 0.06em; }
-  @keyframes heroUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
-  @keyframes heroSlide { from { transform: translateY(16px); } to { transform: none; } }
-  @keyframes heroPhotoIn { from { transform: translateY(12px) scale(0.98); } to { transform: none; } }
-  @keyframes accentIn { from { opacity: 0; transform: translate(12px, 12px); } to { opacity: 1; transform: none; } }
 
   /* ══════ CASE FILE LAYOUT ══════ */
   .case {

@@ -53,6 +53,61 @@ test('the schedule comes from the cached answer, and a slow one never holds the 
   }
 });
 
+test('after the edge copy expires, the last schedule this edge read answers at once and a fresh one is fetched', async () => {
+  const realFetch = globalThis.fetch;
+  const realCaches = globalThis.caches;
+  const store = new Map();
+  globalThis.caches = { default: {
+    match: async (req) => store.get(req.url)?.clone() || undefined,
+    put: async (req, res) => { store.set(req.url, res.clone()); },
+  } };
+  const page = (waits) => ({ request: new Request('https://example.org/kids/max/'), waitUntil: (p) => waits.push(p) });
+  try {
+    // An edge that has never read the schedule: the page waits for the answer, and it's kept
+    let asked = 0;
+    globalThis.fetch = async () => { asked++; return Response.json({ upcoming: [max], source: 'jobtread' }); };
+    let waits = [];
+    assert.deepEqual(await upcomingReveals(page(waits)), [max]);
+    await Promise.all(waits);
+    assert.ok(store.has('https://example.org/api/reveals?edge=last-known'), 'kept as the last known schedule');
+    // The 3-minute copy has gone and JobTread is slow: the page doesn't wait at all
+    globalThis.fetch = () => { asked++; return new Promise(() => {}); };
+    const t0 = Date.now();
+    assert.deepEqual(await upcomingReveals(page([]), 5000), [max]);
+    assert.ok(Date.now() - t0 < 100, 'answered from the last known schedule, not after the wait');
+    assert.equal(asked, 2, 'and a fresh one was asked for, for the next visitor');
+    // A fresh answer replaces it
+    const colinOnly = { upcoming: [colin], source: 'jobtread' };
+    globalThis.fetch = async () => Response.json(colinOnly);
+    waits = [];
+    await upcomingReveals(page(waits));
+    await Promise.all(waits);
+    assert.deepEqual((await store.get('https://example.org/api/reveals?edge=last-known').clone().json()).upcoming, [colin]);
+    // An answer that knows nothing never replaces what the edge knew
+    globalThis.fetch = async () => Response.json({ upcoming: [], source: 'none' });
+    waits = [];
+    await upcomingReveals(page(waits));
+    await Promise.all(waits);
+    assert.deepEqual((await store.get('https://example.org/api/reveals?edge=last-known').clone().json()).upcoming, [colin]);
+    // The edge copy itself still answers first
+    store.set('https://example.org/api/reveals', Response.json({ upcoming: [max] }));
+    globalThis.fetch = () => { throw new Error('the edge copy answers; nothing is fetched'); };
+    assert.deepEqual(await upcomingReveals(page([])), [max]);
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.caches = realCaches;
+  }
+});
+
+test('a page the server filled in can be reused by the browser for half a minute, so a hover prefetch serves the click', () => {
+  const code = readFileSync('functions/_kid-reveal.js', 'utf8');
+  assert.match(code, /headers\.set\('Cache-Control', PAGE_REUSE\)/);
+  const bar = readFileSync('functions/_apply-bar.js', 'utf8');
+  assert.match(bar, /export const PAGE_REUSE = 'private, max-age=30';/);
+  assert.match(bar, /headers\.set\('Cache-Control', PAGE_REUSE\)/);
+  assert.doesNotMatch(bar + code, /'(private, )?no-cache'/, 'no-cache made every click fetch the page a second time');
+});
+
 test('the page script leaves what the server put in (only its time, for a visitor outside Eastern), and the kids folder runs both', () => {
   const page = readFileSync('src/pages/kids/[slug].astro', 'utf8');
   assert.match(page, /const drawn = hero\.hasAttribute\('data-reveal-shown'\);\n\s*if \(drawn && shownZone\(\) === 'America\/New_York'\) return;/);

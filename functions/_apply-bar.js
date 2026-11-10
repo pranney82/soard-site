@@ -24,11 +24,19 @@
  * streaming, so nothing can fail halfway through it.
  */
 
-import { cleanYear } from './api/_applications.js';
+import { cleanYear } from './api/_application-year.js';
 
 export const BAR_COOKIE = 'soard_apply_bar';
 export const BAR_STORAGE_KEY = 'soard-application-dismissed';
 const STATE_TTL = 30; // seconds the edge keeps the answer: a close reaches new pages this soon
+/**
+ * How a page this server filled in may be kept: by this visitor's browser only,
+ * for half a minute. That's what lets a click show the copy the link fetched on
+ * hover (Astro's prefetch) instead of asking the server again. With no-cache the
+ * prefetch was thrown away and every click waited on a second full request. The
+ * bar's own before-swap check still hides a bar closed since (ApplicationBar.astro).
+ */
+export const PAGE_REUSE = 'private, max-age=30';
 const ZONE = 'America/New_York';
 
 // Doing something, not reading about SOARD: never a bar here
@@ -122,9 +130,10 @@ export function addBar(res, w) {
     .on('script[data-apply-bar]', { element(el) { el.setAttribute('data-year', w.year); } })
     .transform(res);
   const headers = new Headers(out.headers);
-  // This copy is this visitor's: never stored for others, never answered with a 304
-  // (a page that already says never store it, like /live/ for a reveal, keeps saying so)
-  if (!/no-store/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', 'private, no-cache');
+  // This copy is this visitor's: never stored for others, never answered with a 304,
+  // reused for half a minute at most (a page that already says never store it, like
+  // /live/ for a reveal, keeps saying so)
+  if (!/no-store/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', PAGE_REUSE);
   headers.delete('ETag');
   headers.delete('Last-Modified');
   headers.delete('Content-Length');

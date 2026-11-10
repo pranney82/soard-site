@@ -396,22 +396,6 @@ const breadcrumbs = [
   /* ══════════════════════════════════════════
      HERO — Editorial Split (matches apply/donate/home)
      ══════════════════════════════════════════ */
-  @keyframes heroUp {
-    from { opacity: 0; transform: translateY(24px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes heroSlide {
-    from { transform: translateY(20px); }
-    to { transform: translateY(0); }
-  }
-  @keyframes heroPhotoIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes accentIn {
-    from { opacity: 0; transform: scale(0.85); }
-    to { opacity: 1; transform: scale(1); }
-  }
 
   .hero {
     background: var(--c-cream);
@@ -442,8 +426,6 @@ const breadcrumbs = [
     display: flex;
     align-items: center;
     gap: 12px;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
 
   .hero-eyebrow::before {
@@ -460,7 +442,6 @@ const breadcrumbs = [
     line-height: 1.04;
     color: var(--c-text);
     margin-bottom: 28px;
-    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-text h1 em {
@@ -477,21 +458,16 @@ const breadcrumbs = [
     line-height: 1.7;
     margin-bottom: 40px;
     max-width: 480px;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
 
   .hero-ctas {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
 
   .hero-frame {
     position: relative;
-    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-accent {
@@ -503,8 +479,6 @@ const breadcrumbs = [
     background: var(--c-yellow);
     border-radius: 24px;
     z-index: 0;
-    opacity: 0;
-    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
   }
 
   .hero-photo {

@@ -306,27 +306,24 @@ const breadcrumbs = [
   .hero { position: relative; background: var(--c-cream); contain: layout style; padding: var(--hero-space-top) 0 56px; overflow: hidden; }
   .hero-inner { max-width: var(--max-width-wide, 1400px); margin: 0 auto; padding: 0 var(--page-padding); display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(32px, 5vw, 80px); align-items: center; min-height: clamp(440px, 62vh, 640px); }
   .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
-  .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin: 0; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both; }
+  .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin: 0; }
   .tp-lang { font: 600 13px/1 var(--font-body); color: var(--c-dark); background: #fff; border: 1px solid var(--c-border); border-radius: 100px; padding: 10px 16px; min-height: 44px; cursor: pointer; }
   .tp-lang:hover { border-color: var(--c-dark); }
   .tp-lang:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 2px; }
-  .hero-headline { font-size: clamp(42px, 6.5vw, 88px); line-height: 1.04; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 28px; animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
-  .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 520px; margin-bottom: 36px; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
-  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both; }
-  .hero-trust { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 24px; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both; }
+  .hero-headline { font-size: clamp(42px, 6.5vw, 88px); line-height: 1.04; letter-spacing: -0.035em; color: var(--c-dark); margin-bottom: 28px; }
+  .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 520px; margin-bottom: 36px; }
+  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
+  .hero-trust { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 24px; }
   .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--c-text-muted); letter-spacing: 0.01em; }
   .hero-trust-icon { width: 16px; height: 16px; flex-shrink: 0; color: var(--c-text-muted); }
-  .hero-photo-wrap { position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .hero-photo-wrap { position: relative; }
   .hero-frame { display: block; position: relative; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 5; box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06); background-size: cover; background-position: center; }
   .hero-frame img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1); }
   .hero-frame:hover img { transform: scale(1.03); }
   .hero-accent { position: absolute; z-index: -1; bottom: -16px; right: -16px; width: 55%; height: 55%; border-radius: 20px; background: var(--c-yellow); opacity: 0.35; }
-  .hero-stat { position: absolute; bottom: -24px; left: -24px; background: var(--c-dark); color: #fff; border-radius: 16px; padding: 20px 28px; text-align: center; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15); opacity: 0; animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both; }
+  .hero-stat { position: absolute; bottom: -24px; left: -24px; background: var(--c-dark); color: #fff; border-radius: 16px; padding: 20px 28px; text-align: center; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15); }
   .hero-stat-num { font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--c-yellow); line-height: 1; display: block; }
   .hero-stat-label { display: block; font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.85); margin-top: 4px; line-height: 1.4; }
-  @keyframes heroUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes heroSlide { from { transform: translateY(20px); } to { transform: translateY(0); } }
-  @keyframes heroPhotoIn { from { opacity: 0; } to { opacity: 1; } }
 
   /* ══════ SET UP ══════ */
   .tp-start { background: var(--c-warm-gray); padding: 88px 0 56px; scroll-margin-top: calc(var(--header-height, 84px) + 16px); }

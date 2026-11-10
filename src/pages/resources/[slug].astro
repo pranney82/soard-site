@@ -325,8 +325,6 @@ const tagColors: Record<string, string> = {
     text-decoration: none;
     margin-bottom: 24px;
     transition: color var(--transition-fast);
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-back:hover { color: var(--c-dark); }
   .hero-inner h1 {
@@ -335,7 +333,6 @@ const tagColors: Record<string, string> = {
     letter-spacing: -0.025em;
     color: var(--c-dark);
     margin-bottom: 24px;
-    animation: heroSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
   .hero-lead {
     font-size: clamp(16px, 1.3vw, 19px);
@@ -343,15 +340,11 @@ const tagColors: Record<string, string> = {
     color: var(--c-text-muted);
     max-width: 520px;
     margin-bottom: 20px;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
   .hero-meta {
     display: flex;
     gap: 20px;
     flex-wrap: wrap;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
   .hero-meta-item {
     display: flex;
@@ -371,7 +364,6 @@ const tagColors: Record<string, string> = {
   .hero-photo-wrap {
     position: relative;
     width: 100%;
-    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-frame {
     border-radius: 24px;
@@ -396,8 +388,6 @@ const tagColors: Record<string, string> = {
     border-radius: 20px;
     background: var(--c-yellow);
     z-index: -1;
-    opacity: 0;
-    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
   }
   .hero-stat {
     position: absolute;
@@ -411,8 +401,6 @@ const tagColors: Record<string, string> = {
     display: flex;
     align-items: center;
     gap: 12px;
-    opacity: 0;
-    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.9s both;
   }
   .hero-stat-num {
     font-family: var(--font-display);
@@ -431,22 +419,6 @@ const tagColors: Record<string, string> = {
   }
 
   /* Animations */
-  @keyframes heroUp {
-    from { opacity: 0; transform: translateY(28px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes heroSlideUp {
-    from { transform: translateY(16px); }
-    to { transform: translateY(0); }
-  }
-  @keyframes heroPhotoIn {
-    from { transform: translateY(12px) scale(0.98); }
-    to { transform: translateY(0) scale(1); }
-  }
-  @keyframes accentIn {
-    from { opacity: 0; transform: translate(12px, 12px); }
-    to { opacity: 1; transform: translate(0, 0); }
-  }
 
   @media (max-width: 900px) {
     .hero { padding-top: var(--hero-space-top); }

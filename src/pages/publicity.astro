@@ -616,6 +616,7 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
   .celebs__scroll-wrap { position: relative; }
   .celebs__scroll {
     display: flex; gap: 24px; padding: 0 var(--page-padding);
+    scroll-padding-inline: var(--page-padding); /* snapping starts where the first card sits: no scroll on load */
     overflow-x: auto; scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch; scrollbar-width: none;
     list-style: none; margin: 0; scroll-behavior: smooth;
