@@ -85,16 +85,16 @@ function invitesData(phase) {
     upcoming: [
       { jobId: 'jobLiz0001', jobName: 'Lizzie Francis (2026)', name: 'Lizzie', slug: 'lizzie', space: 'Therapy Room', kidUrl: '/kids/lizzie/', jobUrl: 'https://app.jobtread.com/jobs/jobLiz0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobLiz0001/schedule', date: day(5), time: null, confirmed: true, constructionStarted: true, status: 'Finalization', details: '', preview: preview('Lizzie', 'confirmed'),
         invite: { state: 'tentative', lastAction: 'created', error: 'Google said: Calendar usage limits exceeded.', updatedAt: iso(-3 * D), guests: 6, log: [{ action: 'created', state: 'tentative', guests: 6, date: day(5), at: iso(-3 * D) }] },
-        kitInvite: null, pageReady: true,
+        kitInvite: null, kitWatch: null, pageReady: true,
         broadcast: null, reminderSignups: 12, checkComment: { at: iso(-D), message: 'Christian, Lizzie\'s reveal is confirmed for Thursday but has no time yet.' } },
       { jobId: 'jobMax0001', jobName: `${rehearsal ? 'TEST ' : ''}Max Sample (2026)`, name: 'Max', slug: 'max', ...(rehearsal ? { test: true } : {}), kidUrl: '/kids/max/', jobUrl: 'https://app.jobtread.com/jobs/jobMax0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobMax0001/schedule', date: day(10), time: '16:00', confirmed: true, constructionStarted: true, status: 'Build', details: 'Park on the street.', preview: preview('Max', 'confirmed'),
         invite: { state: 'confirmed', lastAction: 'updated', error: null, updatedAt: iso(-D), guests: 5, log: [{ action: 'created', state: 'tentative', guests: 5, date: day(10), at: iso(-6 * D) }, { action: 'updated', state: 'confirmed', guests: 5, date: day(10), at: iso(-D) }] },
-        kitInvite: { state: 'draft', id: '26802207' }, pageReady: true,
+        kitInvite: { state: 'draft', id: '26802207' }, kitWatch: { state: 'draft', id: '26900001' }, pageReady: true,
         broadcast: sched ? { id: 'live-1', phase: 'scheduled', scheduledAt: maxAt, createdAt: iso(-D), kitLiveEmail: null, kit: { scheduledDraft: true, live: null }, sends: [{ kind: 'scheduled', channel: 'email', recipients: 12, sent: 12, failed: 0, created_at: iso(-D) }, { kind: 'scheduled', channel: 'push', recipients: 3, sent: 3, failed: 0, created_at: iso(-D) }] } : null,
         reminderSignups: 15, checkComment: null },
       { jobId: 'jobCol0001', jobName: 'Colin Lindsay (2026)', name: 'Colin', slug: 'colin', kidUrl: '/kids/colin/', jobUrl: 'https://app.jobtread.com/jobs/jobCol0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobCol0001/schedule', date: day(25), time: null, confirmed: false, constructionStarted: false, status: 'Build', details: '',
         preview: { ...preview('Colin', 'tentative'), addsOnConfirm: [{ email: 'jacey@x.com', name: 'Jacey Verhoef', kind: 'vendor' }, { email: 'niki@x.com', name: 'Niki Murphy', kind: 'photographer' }] },
-        invite: null, kitInvite: null, pageReady: false, broadcast: null, reminderSignups: 12, checkComment: null },
+        invite: null, kitInvite: null, kitWatch: null, pageReady: false, broadcast: null, reminderSignups: 12, checkComment: null },
     ],
     board: [{ slug: 'scott-wierson', name: 'Scott Wierson', hasEmail: true }, { slug: 'mary-atchley', name: 'Mary Atchley', hasEmail: false }],
     advisory: [{ slug: 'ada-advisor', name: 'Ada Advisor', hasEmail: true }, { slug: 'al-advisor', name: 'Al Advisor', hasEmail: false }],
@@ -205,8 +205,17 @@ try {
   await page.screenshot({ path: `${OUT}invite-step.png` });
   await page.evaluate(`[...${rowOf('Lizzie')}.querySelectorAll('.rt-step')].find((s) => s.querySelector('.rt-label').textContent === 'Invite email in Kit').querySelector('button').click()`);
   await pause(300);
-  ok(posts.some((x) => x.path === '/api/reveal-invites-admin' && x.body?.kitDraft === 'jobLiz0001'), 'pressing it drafts for Lizzie, nobody else');
-  ok((await text(page, 'body')).includes("Lizzie's invite email is in Kit, and Linzi was emailed to review it"), 'and says what happened');
+  ok(posts.some((x) => x.path === '/api/reveal-invites-admin' && x.body?.kitDraft === 'jobLiz0001' && x.body?.kind === 'invite'), 'pressing it drafts for Lizzie, nobody else');
+  ok((await text(page, 'body')).includes("Lizzie's invite email is in Kit, and Linzi and Peter were emailed to review it"), 'and says what happened');
+
+  // The whole-list invite, right under it: the same email with no address
+  const labels = (await stepsOf(page, 'Lizzie')).map((s) => s.label);
+  ok(labels.indexOf('Whole-list invite in Kit') === labels.indexOf('Invite email in Kit') + 1, `the whole-list invite sits right under the invite email (${labels.join(' / ')})`);
+  ok(await page.evaluate(`[...${rowOf('Lizzie')}.querySelectorAll('.rt-step')].find((s) => s.querySelector('.rt-label').textContent === 'Whole-list invite in Kit')?.querySelector('button')?.textContent.trim() === 'Draft whole-list invite'`), 'Lizzie has a Draft whole-list invite button');
+  await page.evaluate(`[...${rowOf('Lizzie')}.querySelectorAll('.rt-step')].find((s) => s.querySelector('.rt-label').textContent === 'Whole-list invite in Kit').querySelector('button').click()`);
+  await pause(300);
+  ok(posts.some((x) => x.path === '/api/reveal-invites-admin' && x.body?.kitDraft === 'jobLiz0001' && x.body?.kind === 'watch'), 'pressing it drafts Lizzie’s whole-list invite');
+  ok((await text(page, 'body')).includes("Lizzie's whole-list invite is in Kit"), 'and says what happened, by name');
 
   await clickToggle(page, 'Max');
   await pause(150);
@@ -216,6 +225,8 @@ try {
   ok(step('Invite email in Kit').text?.startsWith('Drafted'), `a drafted kid says so: ${step('Invite email in Kit').text}`);
   ok(await page.evaluate(`[...${rowOf('Max')}.querySelectorAll('.rt-step a')].some((a) => a.href === 'https://app.kit.com/campaigns/26802207' && a.textContent.includes('Open in Kit'))`), 'with a link straight to that kid’s draft');
   ok(!(await page.evaluate(`[...${rowOf('Max')}.querySelectorAll('.rt-step')].find((s) => s.querySelector('.rt-label').textContent === 'Invite email in Kit').querySelector('button')`)), 'and no second Draft button');
+  ok(step('Whole-list invite in Kit').text?.startsWith('Drafted'), `the whole-list invite drafted too: ${step('Whole-list invite in Kit').text}`);
+  ok(await page.evaluate(`[...${rowOf('Max')}.querySelectorAll('.rt-step a')].some((a) => a.href === 'https://app.kit.com/campaigns/26900001' && a.textContent.includes('Open in Kit'))`), 'with its own link to Kit');
   ok(step('Tentative calendar invite').state === 'done' && step('Tentative calendar invite').text.startsWith('Sent ') && step('Tentative calendar invite').text.endsWith('to 5 people'), `tentative invite: ${step('Tentative calendar invite').text}`);
   ok(step('Confirmed calendar invite').state === 'done', `confirmed invite: ${step('Confirmed calendar invite').text}`);
   ok(step('Countdown and reminder signup on the site').text.startsWith('On the site since'), 'countdown: on the site');

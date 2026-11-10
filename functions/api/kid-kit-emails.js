@@ -3,9 +3,9 @@
  * =====================================================================
  * Behind Cloudflare Access (not in the middleware's public list).
  *
- * GET  ?slug=&jobId=           → { ok, off, invite, kickoff, reveal }: where each email stands, read from Kit
- * POST { slug, kind, jobId? }  → that email drafted in Kit now. kind 'invite' (needs the
- *                                JobTread job), 'kickoff' or 'reveal'.
+ * GET  ?slug=&jobId=           → { ok, off, invite, watch, kickoff, reveal }: where each email stands, read from Kit
+ * POST { slug, kind, jobId? }  → that email drafted in Kit now. kind 'invite' or 'watch' (the
+ *                                whole-list invite; both need the JobTread job), 'kickoff' or 'reveal'.
  *
  * Drafts only, like every Kit email the site makes: staff review and send them
  * from Kit. The reveal invite is the same draft as Draft invite email on
@@ -20,7 +20,7 @@ import { logAudit } from './_audit.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
 const ID = /^[A-Za-z0-9]{6,32}$/;
-const KIND_NAMES = { invite: 'reveal invite', kickoff: 'Project Kickoff', reveal: 'Project Reveal' };
+const KIND_NAMES = { invite: 'reveal invite', watch: 'whole-list invite', kickoff: 'Project Kickoff', reveal: 'Project Reveal' };
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status, headers: { 'Cache-Control': 'no-store' } });
 const kitUrl = (id) => `https://app.kit.com/campaigns/${encodeURIComponent(id)}`;
 
@@ -32,18 +32,22 @@ export async function onRequestGet({ env, request }) {
   if (!SLUG_RE.test(slug)) return fail('A kid is required');
   if (jobId && !ID.test(jobId)) return fail('Not a JobTread job');
   try {
-    const [project, invites] = await Promise.all([
+    const [project, invites, watches] = await Promise.all([
       projectEmailStatus(env, slug),
       jobId ? kitInviteStatus(env, [jobId]) : Promise.resolve({}),
+      jobId ? kitInviteStatus(env, [jobId], 'watch') : Promise.resolve({}),
     ]);
-    const invite = jobId ? invites[jobId] || { state: 'none' } : { state: 'nojob' };
-    // Nothing in Kit to open: say what would stop a draft, as Kickoff and Project Reveal do
-    if (['none', 'waiting', 'deleted'].includes(invite.state)) {
-      invite.block = !project.page.published ? 'Publish the page first: the email links to it'
-        : project.page.completed ? 'The reveal is over' : null;
-    }
+    const stand = (got) => {
+      const x = jobId ? got[jobId] || { state: 'none' } : { state: 'nojob' };
+      // Nothing in Kit to open: say what would stop a draft, as Kickoff and Project Reveal do
+      if (['none', 'waiting', 'deleted'].includes(x.state)) {
+        x.block = !project.page.published ? 'Publish the page first: the email links to it'
+          : project.page.completed ? 'The reveal is over' : null;
+      }
+      return x;
+    };
     const withUrl = (x) => (x?.id ? { ...x, url: kitUrl(x.id) } : x);
-    return Response.json({ ok: true, off: project.off, invite: withUrl(invite), kickoff: withUrl(project.kickoff), reveal: withUrl(project.reveal) }, { headers: { 'Cache-Control': 'no-store' } });
+    return Response.json({ ok: true, off: project.off, invite: withUrl(stand(invites)), watch: withUrl(stand(watches)), kickoff: withUrl(project.kickoff), reveal: withUrl(project.reveal) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     return fail(err.message, 500);
   }
@@ -63,10 +67,10 @@ export async function onRequestPost(context) {
 
   try {
     let result;
-    if (kind === 'invite') {
+    if (kind === 'invite' || kind === 'watch') {
       const jobId = String(body.jobId || '');
       if (!ID.test(jobId)) return fail('This kid has no JobTread job, so there’s no reveal to invite to');
-      const r = await draftInviteEmailNow(env, jobId);
+      const r = await draftInviteEmailNow(env, jobId, { kind });
       // Same answers as Draft invite email on Reveals → Now
       result = { ...r, made: ['drafted', 'redesigned', 'check'].includes(r.kit), ok: !['error', 'skip', 'off'].includes(r.kit) };
     } else {

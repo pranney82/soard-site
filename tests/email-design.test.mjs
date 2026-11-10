@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { revealInviteEmail, EMAIL_DESIGN } from '../functions/api/_reveal-invite-email.js';
 import { projectKickoffEmail, projectRevealEmail } from '../functions/api/_project-email.js';
 
-const RECORDED = { design: '2026-11-10a', hash: '4eb3e39ff53059ea' };
+const RECORDED = { design: '2026-11-10b', hash: '2d41d7b00ec0d542' };
 
 const CF = 'https://imagedelivery.net/abc123';
 const KID = {
@@ -44,6 +44,7 @@ const sha = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);
 test('a change to how the emails look changes EMAIL_DESIGN too, so drafts in Kit get the new look', () => {
   const html = [
     revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way, Atlanta, GA 30301', notes: 'Park on the street.' }).html,
+    revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', watch: true }).html,
     projectKickoffEmail({ kid: KID }).html,
     projectRevealEmail({ kid: KID }).html,
   ].join('\n');

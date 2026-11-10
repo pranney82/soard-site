@@ -370,26 +370,16 @@ test('a stuck confirmed reveal alerts once, and points at the kid filed under th
   assert.equal(slack.filter((t) => t.includes('No countdown yet')).length, 1, 'more than three weeks out: not yet worth an alert');
 });
 
-test('a new day rewrites the Kit save-the-date draft while it is a draft, or makes a new-date draft once sent', async () => {
+test('the countdown leaves Kit alone before the reveal: the whole-list invite is the list\'s email, and follows JobTread itself', async () => {
   env.KIT_API_KEY = 'kit_test';
   await sync();
   const st = await b.readState(env.DB);
-  assert.equal(st.kit.scheduledDraftId, 101, 'save-the-date draft made when the countdown went up');
+  assert.equal(st.phase, 'scheduled', 'the countdown went up');
+  assert.ok(!st.kit?.scheduledDraftId, 'no save-the-date draft of its own');
   jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(9) })];
   await sync();
-  const put = kit.calls.find((c) => c.method === 'PUT');
-  assert.ok(put && put.url.endsWith('/broadcasts/101'), 'the same draft is rewritten');
-  assert.match(put.body.content, new RegExp(new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: 'America/New_York' }).format(new Date(at(9)))));
-  assert.equal(kit.calls.filter((c) => c.method === 'POST').length, 1, 'no second draft');
-
-  kit.status = 'completed';
-  jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(12) })];
-  await sync();
-  const posts = kit.calls.filter((c) => c.method === 'POST');
-  assert.equal(posts.length, 2, 'the old one went out already: a new-date draft instead');
-  assert.match(posts[1].body.subject, /New date: Max’s room reveal/);
-  assert.equal(kit.calls.filter((c) => c.method === 'PUT').length, 1, 'a sent broadcast is never edited');
-  assert.equal((await b.readState(env.DB)).kit.scheduledDraftId, 102);
+  assert.equal(Date.parse((await b.readState(env.DB)).scheduledAt), Date.parse(at(9)), 'the countdown moved');
+  assert.deepEqual(kit.calls.filter((c) => ['POST', 'PUT'].includes(c.method)), [], 'no "Save the date" or "New date" draft, no rewrite');
 });
 
 test('a countdown that goes up on the day itself says today, not tomorrow', () => {

@@ -19,7 +19,7 @@ export const SITE_URL = 'https://sunshineonaranneyday.com';
  * every draft still waiting in Kit that nobody has edited is then rebuilt on the next look, by itself.
  * tests/email-design.test.mjs fails if the emails change and this doesn't.
  */
-export const EMAIL_DESIGN = '2026-11-10a';
+export const EMAIL_DESIGN = '2026-11-10b';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const Y = '#FFDA24';
@@ -513,7 +513,7 @@ export function noteHtml(text, color = '#FFFFFF') {
   }).join('')));
 }
 
-/** The invite's details on the dark cover, ruled like a ticket: rows of { label, lines, sub, keep, even }, then what to know before coming */
+/** The invite's details on the dark cover, ruled like a ticket: rows of { label, lines, sub, keep, even, link }, then what to know before coming */
 function ticket(rows, notes) {
   const line = 'border-top:1px solid #3A3B42;';
   const word = `font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#A5A6A9;`;
@@ -530,7 +530,11 @@ function ticket(rows, notes) {
         ${inner}
       </td></tr>`;
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="text-align:left;table-layout:fixed;">
-      ${rows.map((r) => block(r.label, `${r.lines.map((l) => `<div style="${main}">${r.keep ? listJoin(r.keep.map((k) => escapeHtml(k).replace(/ /g, '&nbsp;'))).replace(/ and /g, ' and&nbsp;') : r.even ? noWidow(escapeHtml(l)) : escapeHtml(l)}</div>`).join('')}
+      ${rows.map((r) => block(r.label, `${r.lines.map((l) => {
+        const words = r.keep ? listJoin(r.keep.map((k) => escapeHtml(k).replace(/ /g, '&nbsp;'))).replace(/ and /g, ' and&nbsp;') : r.even ? noWidow(escapeHtml(l)) : escapeHtml(l);
+        // link: the line is where to go ("Live on our website")
+        return `<div style="${main}">${r.link ? `<a href="${href(r.link)}" target="_blank" style="color:#FFFFFF;text-decoration:underline;text-underline-offset:3px;">${words}</a>` : words}</div>`;
+      }).join('')}
         ${r.sub ? `<div style="margin-top:2px;${quiet}">${escapeHtml(r.sub)}</div>` : ''}`)).join('')}
       ${notes.length ? block('Before you come', notes.map((n, i) => `<div style="margin-top:${i ? 6 : 0}px;${i ? quiet : `font-family:${SANS};font-size:15px;font-weight:600;line-height:1.5;color:#FFFFFF;${wrap}`}">${noteHtml(n)}</div>`).join('')) : ''}
     </table>`;
@@ -664,9 +668,14 @@ export function partnerCards(kid, brokenLogos = new Set(), { noun = 'partner' } 
  * @param {string} [p.notes]    JobTread "Reveal Invite Details" (parking, arrival)
  * @param {string} [p.room]     JobTread Makeover Type, when the kid page has no rooms
  * @param {string} [p.subjectPrefix]  "TEST · " for a rehearsal
+ * @param {boolean} [p.watch]  the whole-list copy: the same email, to watch live on the website. It never
+ *   carries the family's address or the guests' notes (whatever is passed), and its calendar buttons save
+ *   the watch entry (the live page, an alarm before it starts), not the guests' one.
  * @returns {{ subject: string, preview: string, html: string, text: string }}
  */
-export function revealInviteEmail({ kid = {}, date, time, address = '', notes = '', room = '', subjectPrefix = '', site = SITE_URL, brokenLogos = new Set(), teamPicture = true } = {}) {
+export function revealInviteEmail({ kid = {}, date, time, address = '', notes = '', room = '', subjectPrefix = '', site = SITE_URL, brokenLogos = new Set(), teamPicture = true, watch = false } = {}) {
+  // The whole list never sees where the family lives, or the notes for guests coming to the house
+  if (watch) { address = ''; notes = ''; }
   const name = kidName(kid, 'our next kid');
   const slug = kid.slug || '';
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
@@ -675,12 +684,14 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   const roomText = listJoin(roomLines);
   const several = roomLines.length > 1 || Number(kid.roomCount) > 1;
   const when = revealWhen(date, time);
-  const cal = calendarLinks(slug, site);
+  const cal = calendarLinks(slug, site, { watch });
 
-  const subject = `${subjectPrefix}You’re Invited to ${name}’s Reveal Day!`;
-  const preview = roomText
-    ? `Come celebrate ${name} as we reveal the brand-new ${roomText.toLowerCase()}!`
-    : `Come celebrate ${name} on reveal day!`;
+  const subject = watch ? `${subjectPrefix}Join Us Live for ${name}’s Reveal Day!` : `${subjectPrefix}You’re Invited to ${name}’s Reveal Day!`;
+  const preview = watch
+    ? (roomText ? `Watch live on our website as we reveal ${name}’s brand-new ${roomText.toLowerCase()}!` : `Watch ${name}’s reveal live on our website!`)
+    : roomText
+      ? `Come celebrate ${name} as we reveal the brand-new ${roomText.toLowerCase()}!`
+      : `Come celebrate ${name} on reveal day!`;
 
   // A picture that won't load is passed over, never shown broken
   const lead = leadPhoto(kid, brokenLogos);
@@ -691,9 +702,10 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     when && (/^\d{1,2}:\d{2}/.test(String(time || ''))
       ? { label: 'When', lines: [longDay(date), when.split(' · ')[1]] }
       : { label: 'When', lines: [longDay(date)], sub: TIME_LATER }),
-    // No address from JobTread yet: say so, rather than leave guests with only "Josué’s Home"
+    // Watching: the live page. A guest: no address from JobTread yet says so, rather than leave them with only "Josué’s Home"
     // "Amanda, Caleb & Isaac’s Home" never leaves "Home" alone (even)
-    { label: 'Where', lines: [`${name}’s Home`], even: true, sub: addressLines(tidy(cleanAddress(address))) || 'Address to be confirmed' },
+    watch ? { label: 'Where', lines: ['Live on our website'], link: liveUrl }
+      : { label: 'Where', lines: [`${name}’s Home`], even: true, sub: addressLines(tidy(cleanAddress(address))) || 'Address to be confirmed' },
     // One line ("Wheelchair-Accessible Bathroom and Dream Bedroom"), so a long name that wraps never reads as another room
     roomLines.length && { label: makeoverWord(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: [roomText], keep: roomLines },
   ].filter(Boolean);
@@ -705,7 +717,8 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   // to arrive early: ours would be a second time. A note that only mentions arriving ("Arrival parking…") keeps ours.
   const teamTime = /(\d{1,2}:\d{2}|\b\d{1,2}\s*(a\.?m\.?|p\.?m\.?)|\b\d+\s*(min|mins|minutes)\b)/i.test(notes)
     && /\b(arriv\w*|be (there|here)|by|gather\w*|no later|early|before)\b/i.test(notes);
-  const arrive = teamTime || /\barriv\w*\s+(\w+\s+){0,3}early\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
+  // Nobody watching from home arrives anywhere
+  const arrive = watch || teamTime || /\barriv\w*\s+(\w+\s+){0,3}early\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
 
   // No date or no confirmed time yet (an early draft): no calendar buttons, since there's nothing to save yet
   const timed = !!when && /^\d{1,2}:\d{2}/.test(String(time || ''));
@@ -717,7 +730,9 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
       <td width="33.33%" style="padding:0 2px;">${button('Apple', cal.apple, { block: true })}</td>
       <td width="33.33%" style="padding:0 0 0 4px;">${button('Outlook', cal.outlook, { block: true })}</td>
     </tr></table>
-    <p style="margin:18px 0 0;font-family:${SANS};font-size:14px;color:#C9CACC;line-height:1.6;">Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;">Watch it live</a> from&nbsp;anywhere.</p>` : '';
+    <p style="margin:18px 0 0;font-family:${SANS};font-size:14px;color:#C9CACC;line-height:1.6;">${watch
+    ? `The <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;">reveal page</a> turns into the live video the moment we&nbsp;start.`
+    : `Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;">Watch it live</a> from&nbsp;anywhere.`}</p>` : '';
 
   const summary = shortStory(kid);
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
@@ -726,13 +741,13 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   const space = makeoverWord(roomLines);
   // "Tyrece, Maddie, and the family", never "Tyrece & Maddie and the family" (or "Remi and Nico and the family")
   const who = twoKids(name) ? `${name.replace(/\s(&|and)\s/, ', ')}, and the family` : `${name} and the family`;
-  const opening = `After months of planning and building, the day is almost here. ${who} haven’t seen the finished ${space ? space.lower : several ? 'rooms' : 'room'} yet. Come be there for that first reaction.`;
+  const opening = `After months of planning and building, the day is almost here. ${who} haven’t seen the finished ${space ? space.lower : several ? 'rooms' : 'room'} yet. ${watch ? 'Watch live' : 'Come be there'} for that first reaction.`;
 
   const html = emailFrame(preview, `
   ${emailHeader(site, { mark: true })}
   ${cover({
     kicker: ['Reveal Day', shortDay(date)].filter(Boolean).join(' · '),
-    headline: `<span style="display:block;margin-bottom:8px;font-size:24px;font-weight:400;font-style:italic;line-height:1.3;color:#E4E4E5;">You’re Invited to</span>${fit.html} <em style="font-style:italic;color:${Y};">Reveal&nbsp;Day</em>.`,
+    headline: `<span style="display:block;margin-bottom:8px;font-size:24px;font-weight:400;font-style:italic;line-height:1.3;color:#E4E4E5;">${watch ? 'Join us live for' : 'You’re Invited to'}</span>${fit.html} <em style="font-style:italic;color:${Y};">Reveal&nbsp;Day</em>.`,
     size: fit.size,
     phone: fit.phone,
     lead,
@@ -750,26 +765,26 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     ${photoNotes(kid, textLink(`Read ${name}’s story →`, kidUrl), { photos: !!lead || photos.length >= 2 })}
   </td></tr>
   ${partnerCards(kid, brokenLogos) || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
-  ${signOff('Hope to see you there.', teamPicture)}
+  ${signOff(watch ? 'Hope you’ll watch with us.' : 'Hope to see you there.', teamPicture)}
   ${emailFooter(site, { mark: true })}`);
 
   const text = [
-    `You’re Invited to ${name}’s Reveal Day`,
+    `${watch ? 'Join us live for' : 'You’re Invited to'} ${name}’s Reveal Day`,
     '',
     opening,
     '',
     when && `When: ${when}`,
-    `Where: ${name}’s Home${address ? `, ${tidy(cleanAddress(address))}` : ' (address to be confirmed)'}`,
+    watch ? `Where: Live on our website, ${liveUrl}` : `Where: ${name}’s Home${address ? `, ${tidy(cleanAddress(address))}` : ' (address to be confirmed)'}`,
     roomText && `${makeoverWord(roomLines) ? 'Project' : several ? 'Rooms' : 'Room'}: ${roomText}`,
     '',
     arrive,
     ...noteLines.map(tidy),
     '',
     slug && timed && `Add to your calendar: ${cal.apple}`,
-    slug && timed && `Watch it live: ${liveUrl}`,
+    slug && timed && !watch && `Watch it live: ${liveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',
-    'Hope to see you there.',
+    watch ? 'Hope you’ll watch with us.' : 'Hope to see you there.',
     'The SOARD Team, Sunshine on a Ranney Day',
   ].filter((l) => l !== false && l !== null && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 

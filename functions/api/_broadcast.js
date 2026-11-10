@@ -44,7 +44,7 @@ import * as stream from './_stream-live.js';
 import * as notify from './_broadcast-notify.js';
 import * as fb from './_broadcast-fb.js';
 import { attachToKid, matchKids } from './_fb-archive.js';
-import { kitConfigured, kitCreateBroadcast, kitUpdateDraft } from './_kit.js';
+import { kitConfigured, kitCreateBroadcast } from './_kit.js';
 import * as reels from './_broadcast-reel.js';
 import * as monitor from './_broadcast-monitor.js';
 import * as preflight from './_broadcast-preflight.js';
@@ -928,6 +928,11 @@ async function dueReminderKinds(DB, state, config) {
 }
 
 // ─── Kit drafts ─────────────────────────────────────────────────────
+// Only the replay's. Before the reveal, the whole list's email is the whole-list
+// invite, drafted with the reveal invite when JobTread confirms the reveal and
+// following JobTread from then on (./_reveal-invite-kit.js, kind 'watch'), so the
+// countdown no longer drafts a "Save the date" or a "New date" of its own
+// (Peter, Nov 10 2026: two emails once a reveal is confirmed, the same but for the address).
 
 async function draftKit(env, state, kind) {
   if (!kitConfigured(env) || state.test) return null; // a rehearsal leaves Kit alone
@@ -938,23 +943,6 @@ async function draftKit(env, state, kind) {
   } catch {
     return null;
   }
-}
-
-/**
- * The reveal moved to another day: rewrite its save-the-date draft with the new
- * date while it is still a draft, so Kit never holds a draft with the old date.
- * If staff already sent it, make a "new date" draft instead. Returns the draft id to keep.
- */
-async function refreshKitDraft(env, state) {
-  if (!kitConfigured(env)) return null;
-  const id = state.kit?.scheduledDraftId;
-  if (Number.isFinite(Number(id)) && id !== true) {
-    const tpl = notify.reminderEmail({ ...reminderArgs(state, 'scheduled', await readConfig(env.DB)), unsubscribeUrl: '{{ unsubscribe_url }}', list: true });
-    const r = await kitUpdateDraft(env, id, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${state.kidName || 'Reveal'} scheduled`, html: tpl.html });
-    if (r.ok) return id;
-    if (!r.status) return id; // Kit unreachable: keep the draft we know about rather than make a duplicate
-  }
-  return (await draftKit(env, state, id ? 'moved' : 'scheduled')) || id || null;
 }
 
 export function kitLiveWanted(state, config) {
@@ -1572,8 +1560,6 @@ async function runAdminAction(env, action, body, userEmail) {
       const work = [];
       // A save-the-date only makes sense with some lead time; inside 26 h the day-before reminder covers it
       if (Date.parse(scheduledAt) - Date.now() > 26 * 3600e3) await sendReminders(env, config, state, 'scheduled', work);
-      const draft = await draftKit(env, state, 'scheduled');
-      if (draft) { state.kit = { ...(state.kit || {}), scheduledDraftId: draft }; await writeState(DB, state); }
       await recordEvent(DB, state.broadcastId, 'scheduled', { scheduledAt, kidSlug: state.kidSlug });
       await logAudit(DB, { userEmail, action: 'created', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title, changes: [{ field: 'scheduledAt', from: null, to: scheduledAt }], gitStatus: 'ok' });
       break;
@@ -1612,12 +1598,10 @@ async function runAdminAction(env, action, body, userEmail) {
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       if (movedFrom) {
         // Moved to another day: the day-before and hour-before reminders go out again for the new date,
-        // people who could have seen the old date hear about the new one, and Kit gets a fresh draft
+        // and people who could have seen the old date hear about the new one (Kit's whole-list invite follows JobTread by itself)
         await DB.prepare("DELETE FROM broadcast_sends WHERE broadcast_id = ? AND kind IN ('moved', 'day', 'hour')").bind(state.broadcastId).run();
         await recordEvent(DB, state.broadcastId, 'moved', { from: movedFrom, to: state.scheduledAt });
         if (Date.parse(state.scheduledAt) - Date.now() > 26 * 3600e3) await sendReminders(env, config, state, 'moved', []);
-        const draft = await refreshKitDraft(env, state);
-        if (draft && draft !== state.kit?.scheduledDraftId) { state.kit = { ...(state.kit || {}), scheduledDraftId: draft }; await writeState(DB, state); }
       }
       await logAudit(DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title, ...(movedFrom ? { changes: [{ field: 'scheduledAt', from: movedFrom, to: state.scheduledAt }] } : {}), gitStatus: 'ok' });
       break;

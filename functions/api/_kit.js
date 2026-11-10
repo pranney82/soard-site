@@ -499,7 +499,7 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
  * @returns {Promise<{ok: boolean, status?: string, error?: string}>} status is
  *   Kit's (draft | scheduled | sending | completed | aborted) when not a draft
  */
-export async function kitUpdateDraft(env, id, { subject, previewText, description, html, audience = null, guard = null }) {
+export async function kitUpdateDraft(env, id, { subject, previewText, description, html, audience = null, guard = null, keepPublic = false }) {
   if (!kitConfigured(env) || !Number.isFinite(Number(id))) return { ok: false, error: 'no draft' };
   try {
     const cur = await kitFetch(env, `/broadcasts/${id}`);
@@ -518,7 +518,7 @@ export async function kitUpdateDraft(env, id, { subject, previewText, descriptio
       method: 'PUT',
       body: JSON.stringify({
         subject, preview_text: previewText || '', description, content: html,
-        ...(filter ? { subscriber_filter: filter, public: false, send_at: null, ...(b.email_address ? { email_address: b.email_address } : {}), ...(b.email_template?.id ? { email_template_id: b.email_template.id } : {}) } : {}),
+        ...(filter ? { subscriber_filter: filter, public: keepPublic ? b.public === true : false, send_at: null, ...(b.email_address ? { email_address: b.email_address } : {}), ...(b.email_template?.id ? { email_template_id: b.email_template.id } : {}) } : {}),
       }),
     });
     return res.ok ? { ok: true } : { ok: false, error: `HTTP ${res.status}` };

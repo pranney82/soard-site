@@ -86,7 +86,7 @@ export async function addTracking(env, upcoming) {
     r.checkComment = n?.posted_at ? { at: new Date(Number(n.posted_at)).toISOString(), message: n.message } : null;
   }
   // Last, so trouble here can't cost a reveal the rest of its tracking
-  const invites = await kitInviteStatus(env, ids).catch(() => ({}));
+  const [invites, watches] = await Promise.all([kitInviteStatus(env, ids).catch(() => ({})), kitInviteStatus(env, ids, 'watch').catch(() => ({}))]);
   const slugs = upcoming.map((r) => r.slug).filter(Boolean);
   const pages = slugs.length
     ? await DB.prepare(`SELECT slug, data FROM kids WHERE slug IN (${slugs.map(() => '?').join(', ')})`).bind(...slugs).all().catch(() => ({ results: [] }))
@@ -97,6 +97,7 @@ export async function addTracking(env, upcoming) {
   }
   for (const r of upcoming) {
     r.kitInvite = invites[r.jobId] || null;
+    r.kitWatch = watches[r.jobId] || null;
     r.pageReady = !!ready[r.slug];
   }
 }
@@ -232,7 +233,8 @@ export async function onRequestGet(context) {
 }
 
 /**
- * POST { kitDraft: jobId, rewrite? } → that reveal's invite email drafted in Kit
+ * POST { kitDraft: jobId, rewrite?, kind? } → that reveal's invite email drafted in Kit
+ *   (kind 'watch': its whole-list invite, with no address)
  * POST { enabled?, organizer?, template?, updateExisting? } → settings
  * (A reveal's notes are edited only in JobTread, "Reveal Invite Details".)
  */
@@ -253,9 +255,10 @@ export async function onRequestPost(context) {
       const jobId = String(body.kitDraft);
       if (!ID.test(jobId)) return fail('A JobTread job id is required');
       if (!me.includes('@')) return fail('Could not tell who you are from Access', 403);
-      const result = await draftInviteEmailNow(env, jobId, { rewrite: body.rewrite === true });
+      const kind = body.kind === 'watch' ? 'watch' : 'invite';
+      const result = await draftInviteEmailNow(env, jobId, { rewrite: body.rewrite === true, kind });
       if (['drafted', 'redesigned', 'check'].includes(result.kit)) {
-        await logAudit(env.DB, { userEmail: me, action: 'created', entityType: 'newsletter', entitySlug: String(result.id), entityName: `Kit reveal invite draft: ${result.name || jobId}`, gitStatus: 'ok' }).catch(() => {});
+        await logAudit(env.DB, { userEmail: me, action: 'created', entityType: 'newsletter', entitySlug: String(result.id), entityName: `Kit ${kind === 'watch' ? 'whole-list invite' : 'reveal invite'} draft: ${result.name || jobId}`, gitStatus: 'ok' }).catch(() => {});
       }
       return Response.json({ ok: !['error', 'skip', 'off'].includes(result.kit), ...result, ...(result.id ? { url: `https://app.kit.com/campaigns/${result.id}` } : {}) });
     }

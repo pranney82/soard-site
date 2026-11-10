@@ -777,17 +777,19 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   // The invite email, drafted in Kit for staff to send, follows the same look
   // at JobTread: confirmed with a time drafts it, a change rewrites the draft,
   // and a reveal that may be off tells the reviewer (./_reveal-invite-kit.js).
-  // Its own problems never stop the calendar invite.
+  // The whole-list invite (no address, to watch live) goes with it, side by side.
+  // Their own problems never stop the calendar invite, or each other.
   if (later && !dryRun && config.enabled && (plan.action === 'upsert' || plan.action === 'hold' || plan.reason === NOT_STARTED)) {
     later.kit = async () => {
       const who = displayName(job, kids);
       const room = fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '';
       const after = await readRow(DB, jobId);
       const calledOff = after?.state === 'cancelled' && after.last_action === BY_HAND;
-      if (plan.action === 'hold' || calledOff) return holdKitInvite(env, { jobId, reason: calledOff ? 'its calendar invite was deleted' : plan.reason, name: who.name, config, sandbox, alertTo: alertList(env, config) });
+      const both = (run) => Promise.all(['invite', 'watch'].map((kind) => run(kind).catch((err) => ({ kit: 'error', error: err.message })))).then(([invite, watch]) => ({ ...invite, watch }));
+      if (plan.action === 'hold' || calledOff) return both((kind) => holdKitInvite(env, { jobId, reason: calledOff ? 'its calendar invite was deleted' : plan.reason, name: who.name, config, sandbox, alertTo: alertList(env, config), kind }));
       // A draft made early follows the date even before construction starts (nothing is drafted here on its own)
       const kitPlan = plan.action === 'upsert' ? plan : planInvite(job, staff, { kids, board, organizer: config.organizer, now, template: config.template, sent: true });
-      return syncKitInvite(env, { jobId, plan: kitPlan, who, room, config, sandbox, alertTo: alertList(env, config) });
+      return both((kind) => syncKitInvite(env, { jobId, plan: kitPlan, who, room, config, sandbox, alertTo: alertList(env, config), kind }));
     };
   }
   const live = !dryRun && (config.enabled || force || sandbox);
@@ -932,8 +934,9 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
  * Draft the invite email in Kit now, before JobTread confirms the reveal
  * (Reveals → Invites, for the next kid up). It has the date JobTread has now;
  * the time fills in by itself once the reveal is confirmed.
+ * kind: 'invite' (Reveal Emails, with the address) or 'watch' (the whole-list invite).
  */
-export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now = Date.now(), rewrite = false } = {}) {
+export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now = Date.now(), rewrite = false, kind = 'invite' } = {}) {
   const { DB } = env;
   await ensureSchema(DB);
   // One look at a job at a time, so this can't race JobTread's own wake-up into a second draft
@@ -954,7 +957,7 @@ export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now =
     const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, template: config.template, sent: true });
     const who = job ? displayName(job, kids) : null;
     const room = job ? fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '' : '';
-    const result = await syncKitInvite(env, { jobId, plan, who, room, config, sandbox: jobId === SANDBOX_JOB_ID || isTestJob(job), alertTo: alertList(env, config), early: true, rewrite });
+    const result = await syncKitInvite(env, { jobId, plan, who, room, config, sandbox: jobId === SANDBOX_JOB_ID || isTestJob(job), alertTo: alertList(env, config), early: true, rewrite, kind: kind === 'watch' ? 'watch' : 'invite' });
     return { jobId, name: who?.name || null, date: plan.date || null, ...result };
   } finally {
     await unlockJob(DB, jobId);

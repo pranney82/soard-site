@@ -1088,8 +1088,10 @@ async function withKit(fn, { kitDown = false } = {}) {
       if (kitDown) return new Response('down', { status: 500 });
       if (url.includes('/tags')) return Response.json({ tags: [] });
       if (url.includes('/segments')) return Response.json({ segments: [{ id: 587253, name: 'Reveal Emails' }] });
-      if (method === 'POST') { const b = JSON.parse(init.body); posts.push(b); drafts.set('501', { id: 501, status: 'draft', ...b }); return Response.json({ broadcast: { id: 501 } }, { status: 201 }); }
-      return Response.json({ broadcast: drafts.get('501') });
+      // Each draft its own id: the invite and the whole-list invite are two drafts
+      if (method === 'POST') { const b = JSON.parse(init.body); posts.push(b); const id = String(500 + posts.length); drafts.set(id, { id: Number(id), status: 'draft', ...b }); return Response.json({ broadcast: { id: Number(id) } }, { status: 201 }); }
+      const one = /\/broadcasts\/(\d+)/.exec(url);
+      return Response.json({ broadcast: one ? drafts.get(one[1]) : null });
     }
     if (url.startsWith('https://api.resend.com/')) { mail.push(...JSON.parse(init.body)); return Response.json({ data: [{ id: 're_1' }] }); }
     return fakeFetch(url, init);
@@ -1097,6 +1099,9 @@ async function withKit(fn, { kitDown = false } = {}) {
   try { await fn({ ...env, KIT_API_KEY: 'kit_test', RESEND_API_KEY: 're_test' }); } finally { globalThis.fetch = real; }
   return { posts, mail };
 }
+/** The invite's draft and the whole-list invite's, told apart by Kit's description */
+const inviteOf = (posts) => posts.filter((p) => /reveal invite · /.test(p.description));
+const wholeOf = (posts) => posts.filter((p) => /whole-list invite · /.test(p.description));
 
 test('JobTread confirms a reveal: the same look drafts the Kit email to Reveal Emails and asks Linzi to review it', async () => {
   await writeConfig(env.DB, { enabled: true, kitInvite: { reviewer: 'linzi@soardcharity.com' } });
@@ -1104,16 +1109,31 @@ test('JobTread confirms a reveal: the same look drafts the Kit email to Reveal E
   let r;
   const { posts, mail } = await withKit(async (e) => { r = await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
   assert.equal(r.action, 'created', 'the calendar invite goes out as ever');
-  assert.equal(posts.length, 1);
-  assert.equal(posts[0].subject, 'You’re Invited to Max’s Reveal Day!');
-  assert.equal(posts[0].public, false);
-  assert.equal(posts[0].send_at, null);
-  assert.deepEqual(posts[0].subscriber_filter, [{ all: [{ type: 'segment', ids: [587253] }], any: null, none: null }]);
-  assert.match(posts[0].content, /Tuesday, October 27<[\s\S]*4:00 PM/);
-  assert.match(posts[0].content, /100\u00A0Example\u00A0Way, Atlanta,\u00A0GA\u00A030301/);
-  assert.match(posts[0].content, /Park on the(?: |&nbsp;)street/);
-  assert.deepEqual(mail.map((m) => m.to[0]), ['linzi@soardcharity.com']);
-  assert.equal(mail[0].subject, 'Review Max’s reveal invite in Kit');
+  assert.equal(posts.length, 2, 'two drafts: the invite and the whole-list invite');
+  const [invite] = inviteOf(posts);
+  assert.equal(invite.subject, 'You’re Invited to Max’s Reveal Day!');
+  assert.equal(invite.public, false);
+  assert.equal(invite.send_at, null);
+  assert.deepEqual(invite.subscriber_filter, [{ all: [{ type: 'segment', ids: [587253] }], any: null, none: null }]);
+  assert.match(invite.content, /Tuesday, October 27<[\s\S]*4:00 PM/);
+  assert.match(invite.content, /100\u00A0Example\u00A0Way, Atlanta,\u00A0GA\u00A030301/);
+  assert.match(invite.content, /Park on the(?: |&nbsp;)street/);
+  // The same email for the whole list: Kit's default audience, and never the address or the guests' notes
+  const [whole] = wholeOf(posts);
+  assert.equal(whole.subject, 'Join Us Live for Max’s Reveal Day!');
+  assert.equal(whole.public, false);
+  assert.equal(whole.send_at, null);
+  assert.equal(whole.subscriber_filter, undefined, 'the whole list');
+  assert.match(whole.content, /Tuesday, October 27<[\s\S]*4:00 PM/);
+  assert.match(whole.content, /Live on our website/);
+  assert.match(whole.content, /calendar\.ics\?reveal=[^"]*&amp;watch=1&amp;app=google/);
+  for (const leak of [/Example/, /Atlanta/, /30301/, /Park on/, /street/, /arrive/i]) assert.doesNotMatch(whole.content + whole.subject + whole.preview_text, leak);
+  assert.ok(mail.every((m) => m.to[0] === 'linzi@soardcharity.com'));
+  assert.deepEqual(mail.map((m) => m.subject).sort(), ['Review Max’s reveal invite in Kit', 'Review Max’s whole-list invite in Kit']);
+  const note = mail.find((m) => /whole-list/.test(m.subject));
+  assert.match(note.html, /Live on our website/);
+  assert.match(note.html, /whole newsletter list/);
+  assert.doesNotMatch(note.html + note.text, /Example Way|Park on/, 'the reviewer’s note for it has no address or notes either');
 });
 
 test('a save-the-date (not confirmed) drafts nothing in Kit', async () => {
@@ -1134,8 +1154,8 @@ test('confirmed, drafted, then the job is closed: the same look tells Linzi to h
     await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
   });
   const toLinzi = mail.filter((m) => !/^\[SOARD\]/.test(m.subject)); // staff's own "still out" alert is separate
-  assert.deepEqual(toLinzi.map((m) => m.subject), ['Review Max’s reveal invite in Kit', 'Hold Max’s reveal invite']);
-  assert.match(toLinzi[1].html, /job closed/);
+  assert.deepEqual(toLinzi.map((m) => m.subject).sort(), ['Hold Max’s reveal invite', 'Hold Max’s whole-list invite', 'Review Max’s reveal invite in Kit', 'Review Max’s whole-list invite in Kit']);
+  for (const hold of toLinzi.filter((m) => /^Hold/.test(m.subject))) assert.match(hold.html, /job closed/);
 });
 
 test('the calendar invite deleted by hand: nothing new is drafted, and a waiting draft is held', async () => {
@@ -1146,9 +1166,10 @@ test('the calendar invite deleted by hand: nothing new is drafted, and a waiting
     events.delete(eventIdFor('soardreveal', jt.id));
     await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW, verify: true });
   });
-  assert.equal(posts.length, 1);
-  assert.equal(mail.at(-1).subject, 'Hold Max’s reveal invite');
-  assert.match(mail.at(-1).html, /calendar invite was deleted/);
+  assert.equal(posts.length, 2, 'the two drafts from before, nothing new');
+  const held = mail.filter((m) => /^Hold/.test(m.subject));
+  assert.deepEqual(held.map((m) => m.subject).sort(), ['Hold Max’s reveal invite', 'Hold Max’s whole-list invite']);
+  for (const m of held) assert.match(m.html, /calendar invite was deleted/);
 });
 
 test('Kit runs after the calendar, so a slow Kit can’t hold up the invite', async () => {
@@ -1163,7 +1184,7 @@ test('Kit runs after the calendar, so a slow Kit can’t hold up the invite', as
     };
     await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
   });
-  assert.equal(posts.length, 1);
+  assert.equal(posts.length, 2);
   assert.equal(eventFirst, true);
 });
 
@@ -1211,7 +1232,7 @@ test('the button won’t draft while invites are paused (nothing would follow Jo
   });
   assert.equal(r.kit, 'skip');
   assert.match(r.reason, /called off/);
-  assert.equal(gone.posts.length, 1, 'only the draft made before it was called off');
+  assert.equal(gone.posts.length, 2, 'only the two drafts made before it was called off');
 });
 
 test('the button goes through the admin’s POST: a job id, a known person, and the draft’s link back', async () => {

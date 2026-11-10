@@ -496,7 +496,7 @@ const SIGNATURE = `<img src="${esc(TEAM_PICTURE)}" width="536" alt="The SOARD te
 function whenPanel(day, time) {
   return panel(`<p class="ink" style="margin:0;font-family:${SERIF};font-size:19px;font-weight:700;line-height:1.35;color:${INK};">${esc(day)}</p>`
     + `<p class="ink" style="margin:3px 0 0;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.4;color:${INK};">${esc(time)}</p>`
-    + `<p class="muted" style="margin:5px 0 0;font-family:${SANS};font-size:13px;line-height:1.5;color:${MUTED};">Live on our website and Facebook</p>`, { accent: true });
+    + `<p class="muted" style="margin:5px 0 0;font-family:${SANS};font-size:13px;line-height:1.5;color:${MUTED};">Live on our website</p>`, { accent: true });
 }
 
 /**
@@ -598,7 +598,7 @@ export function reminderEmail({ kind, kidName, kidSlug = null, scheduledAt, live
   const text = [
     t.heading, '',
     t.intro, '',
-    t.showWhen && `${when}\nLive on our website and Facebook\n`,
+    t.showWhen && `${when}\nLive on our website\n`,
     cal && t.calendar && `${t.calendar}\nGoogle: ${cal.google}\nApple: ${cal.apple}\nOutlook: ${cal.outlook}\n`,
     `${t.cta}: ${t.ctaUrl}`,
     t.extra && `${t.extra.label}: ${t.extra.url}`,

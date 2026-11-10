@@ -8,7 +8,7 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { revealInviteEmail, revealWhen, calendarLinks } from '../functions/api/_reveal-invite-email.js';
-import { syncKitInvite, holdKitInvite, kitInviteStatus, noteFor, draftIsSafe, readKitRow, KIT_INVITE_DEFAULTS } from '../functions/api/_reveal-invite-kit.js';
+import { syncKitInvite, holdKitInvite, kitInviteStatus, noteFor, draftIsSafe, readKitRow, KIT_INVITE_DEFAULTS, reviewNote, jobMark, describe, toEveryone } from '../functions/api/_reveal-invite-kit.js';
 
 const KID = {
   name: 'Rowan', slug: 'rowan-test', publishStatus: 'published', roomTypes: ['Accessible Bathroom'],
@@ -1217,4 +1217,183 @@ test('the reviewers by default: Linzi and Peter each get the note (Peter, Nov 9 
   assert.deepEqual(reviewersOf({ reviewer: ['c@z.org'] }), ['c@z.org']);
   await sync(plan(), { config: { enabled: true } });
   assert.deepEqual(emails.map((e) => e.to[0]).sort(), ['linzi@soardcharity.com', 'peter@soardcharity.com']);
+});
+
+// ─── The whole-list invite: the same email with no address, to watch live (kind 'watch') ──
+const watch = (p = plan(), extra = {}) => sync(p, { kind: 'watch', ...extra });
+const LEAKS = [/Example/, /Atlanta/, /30301/, /Park on/, /street\./, /arrive/i, /Before you come/i];
+const noLeak = (text, what) => { for (const l of LEAKS) assert.doesNotMatch(text, l, `${what}: ${l}`); };
+
+test('the whole-list email: the invite’s design with no address, no guests’ notes, and the watch calendar entry', () => {
+  for (const time of ['16:00', '']) {
+    const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time, address: '100 Example Way, Atlanta, GA 30301', notes: 'Park on the street.\nArrive by 3:30.', watch: true });
+    noLeak(e.subject + e.preview + e.html + e.text, `watch email, time "${time}"`);
+    assert.equal(e.subject, 'Join Us Live for Rowan’s Reveal Day!');
+    assert.equal(e.preview, 'Watch live on our website as we reveal Rowan’s brand-new accessible bathroom!');
+    assert.match(e.html, /Join us live for<\/span>/);
+    assert.match(e.html, /<a href="https:\/\/sunshineonaranneyday\.com\/live\/rowan-test\/"[^>]*>Live on our website<\/a>/, 'where: the live page');
+    assert.match(e.text, /Where: Live on our website, https:\/\/sunshineonaranneyday\.com\/live\/rowan-test\//);
+    assert.match(e.html, /Hope you’ll watch with(?: |&nbsp;)us\./);
+    assert.ok(!/—/.test(e.html + e.text + e.subject), 'no em dashes');
+    // The same story, photos, partners and team as the invite
+    assert.match(e.html, /kids\/rowan-test\/hero\.jpg\/w=1200,h=880,fit=cover/);
+    assert.match(e.html, /partners\/cambria\//);
+    assert.match(e.html, /soard-team-plushie/);
+    if (time) {
+      const cal = calendarLinks('rowan-test', undefined, { watch: true });
+      for (const link of [cal.google, cal.apple, cal.outlook]) assert.ok(e.html.includes(link.replace(/&/g, '&amp;')), link);
+      assert.doesNotMatch(e.html, /calendar\.ics\?reveal=rowan-test&amp;app=/, 'never the guests’ entry');
+      assert.match(e.html, /turns into the live video the moment we&nbsp;start/);
+    } else {
+      assert.doesNotMatch(e.html, /calendar\.ics/, 'no calendar buttons before there’s a time');
+    }
+  }
+});
+
+test('the whole-list invite is drafted beside the invite: to the whole list, private, its own mark, and its own review note', async () => {
+  const a = await sync();
+  const w = await watch();
+  assert.equal(a.kit, 'drafted');
+  assert.equal(w.kit, 'drafted');
+  assert.notEqual(a.id, w.id, 'two drafts');
+  const b = kit.broadcasts.get(String(w.id));
+  assert.equal(b.subject, 'Join Us Live for Rowan’s Reveal Day!');
+  assert.equal(b.public, false);
+  assert.equal(b.send_at, null);
+  assert.ok(toEveryone(b), 'Kit’s default audience: the whole list');
+  noLeak(b.subject + b.preview_text + b.content, 'Kit’s copy');
+  assert.match(b.description, /^\[auto\] Rowan whole-list invite · 22PTestJob001 · [0-9a-f]{12}$/);
+  assert.equal((await readKitRow(env.DB, '22PTestJob001', 'watch')).broadcast_id, String(w.id));
+  assert.equal((await readKitRow(env.DB, '22PTestJob001')).broadcast_id, String(a.id), 'each in its own table');
+  const note = emails.find((m) => /whole-list/.test(m.subject));
+  assert.equal(note.subject, 'Review Rowan’s whole-list invite in Kit');
+  assert.match(note.html, /Live on our website/);
+  assert.match(note.html, /The whole newsletter list in Kit/);
+  assert.match(note.html, /no address, so it goes to your whole newsletter list/);
+  noLeak(note.html + note.text, 'the reviewer’s note');
+  assert.ok(!emails.some((m) => /^\[SOARD\]/.test(m.subject)), 'no alarm: who it goes to is fine');
+});
+
+test('the two marks never match each other, so a lost draft is only ever found by its own kind', async () => {
+  assert.ok(!describe('Rowan', 'J1', 'abc', 'watch').includes(jobMark('J1')), 'the invite never takes the whole-list draft');
+  assert.ok(!describe('Rowan', 'J1', 'abc').includes(jobMark('J1', 'watch')), 'and the other way round');
+  // The whole-list draft's answer is lost; the next look finds it, and the invite still makes its own
+  kit.loseAnswer = true;
+  const lost = await watch();
+  assert.equal(lost.kit, 'error');
+  const found = await watch();
+  assert.equal(found.kit, 'drafted');
+  assert.equal(kit.broadcasts.size, 1, 'found, not made twice');
+  const a = await sync();
+  assert.equal(a.kit, 'drafted');
+  assert.equal(kit.broadcasts.size, 2, 'the invite made its own draft');
+  assert.notEqual(String(a.id), String(found.id));
+  assert.deepEqual(kit.broadcasts.get(String(a.id)).subscriber_filter, [{ all: [{ type: 'segment', ids: [587253] }], any: null, none: null }]);
+});
+
+test('a new address or notes in JobTread leaves the whole-list invite alone; a new day rewrites it', async () => {
+  const w = await watch();
+  emails.length = 0;
+  const quiet = await watch(plan({ address: '9 Other Rd, Decatur, GA 30030', details: 'Use the side gate.' }));
+  assert.equal(quiet.kit, 'unchanged');
+  assert.equal(emails.length, 0, 'nobody told: the email doesn’t say either');
+  noLeak(kit.broadcasts.get(String(w.id)).content, 'after an address change');
+  assert.doesNotMatch(kit.broadcasts.get(String(w.id)).content, /Other Rd|Decatur|side gate/);
+  const moved = await watch(plan({ date: '2027-03-19', address: '9 Other Rd, Decatur, GA 30030' }));
+  assert.equal(moved.kit, 'updated');
+  const b = kit.broadcasts.get(String(w.id));
+  assert.match(b.content, /Friday, March 19/);
+  assert.doesNotMatch(b.content, /Other Rd|Decatur/);
+  assert.equal(emails.at(-1).subject, 'Rowan’s whole-list invite draft changed');
+});
+
+test('staff aim the whole-list invite at a group in Kit: no alarm, and a rewrite keeps their choice', async () => {
+  const w = await watch();
+  const b = kit.broadcasts.get(String(w.id));
+  b.subscriber_filter = [{ all: [{ type: 'tag', ids: [1] }], any: null, none: null }]; // Newsletter only
+  const moved = await watch(plan({ date: '2027-03-19' }));
+  assert.ok(['updated', 'edited'].includes(moved.kit), moved.kit);
+  assert.deepEqual(kit.broadcasts.get(String(w.id)).subscriber_filter, [{ all: [{ type: 'tag', ids: [1] }], any: null, none: null }], 'Kit’s audience kept');
+  assert.ok(!emails.some((m) => /^\[SOARD\]/.test(m.subject)), 'no "check who it goes to" alarm');
+  assert.notEqual((await readKitRow(env.DB, '22PTestJob001', 'watch')).state, 'check audience');
+});
+
+test('the whole-list invite follows the reveal being called off and back, sent, and deleted, in its own words', async () => {
+  const w = await watch();
+  emails.length = 0;
+  await holdKitInvite(env, { jobId: '22PTestJob001', reason: 'job closed', name: 'Rowan', config: ONE_REVIEWER, kind: 'watch' });
+  assert.equal(emails.at(-1).subject, 'Hold Rowan’s whole-list invite');
+  kit.broadcasts.get(String(w.id)).status = 'completed';
+  kit.broadcasts.get(String(w.id)).published_at = '2027-03-01T15:00:00Z';
+  await holdKitInvite(env, { jobId: '22PTestJob001', reason: 'job closed', name: 'Rowan', config: ONE_REVIEWER, kind: 'watch' });
+  // Back on, after it went out: then JobTread moves it
+  await watch(plan());
+  const back = emails.at(-1);
+  assert.equal(back.subject, 'Rowan’s whole-list invite is back on');
+  assert.match(back.html, /send the whole list a short update/);
+  await watch(plan({ start: '17:00' }));
+  const after = emails.at(-1);
+  assert.equal(after.subject, 'Rowan’s reveal changed after the whole-list invite went out');
+  assert.match(after.html, /send the whole list a short update/);
+  for (const m of [back, after]) assert.doesNotMatch(m.html, /Reveal Emails group/);
+  const st = await kitInviteStatus(env, ['22PTestJob001'], 'watch');
+  assert.equal(st['22PTestJob001'].state, 'sent');
+  assert.equal((await kitInviteStatus(env, ['22PTestJob001']))['22PTestJob001'], undefined, 'the invite has no draft of its own here');
+  kit.broadcasts.delete(String(w.id));
+  const gone = await watch(plan({ start: '18:00' }));
+  assert.equal(gone.kit, 'skip');
+  assert.match(gone.reason, /deleted in Kit/);
+});
+
+test('every reviewer note for the whole-list invite names it, and never mentions an address or the Reveal Emails group', () => {
+  const f = { date: '2027-03-12', start: '16:00', address: '', details: '', room: 'Bathroom' };
+  for (const kind of ['created', 'early', 'confirmed', 'updated', 'edited', 'scheduled', 'after-send', 'held', 'back-on']) {
+    for (const went of [null, 'scheduled', 'sent']) {
+      const n = reviewNote(kind, { name: 'Rowan', f, id: '9', reason: 'job closed', went, email: 'watch', wholeList: true });
+      assert.doesNotMatch(n.subject + n.html + n.text, /family’s address|Reveal Emails|reveal invite\b/i, `${kind}/${went}`);
+      assert.match(n.subject + n.html, /whole-list invite|whole list/i, `${kind}/${went} names it`);
+      assert.ok(!/—/.test(n.subject + n.html + n.text), 'no em dashes');
+    }
+  }
+  // The invite's own notes are unchanged by it
+  const inv = reviewNote('created', { name: 'Rowan', f: { ...f, address: '100 Example Way' }, id: '9', audienceName: 'Reveal Emails' });
+  assert.equal(inv.subject, 'Review Rowan’s reveal invite in Kit');
+  assert.match(inv.html, /It has the family’s address, so it only goes to the Reveal Emails group/);
+});
+
+test('kitWatch.enabled: false turns the whole-list invite alone off; the invite switch turns both off', async () => {
+  const off = await sync(plan(), { kind: 'watch', config: { ...ONE_REVIEWER, kitWatch: { enabled: false } } });
+  assert.equal(off.kit, 'off');
+  const both = await sync(plan(), { kind: 'watch', config: { kitInvite: { enabled: false } } });
+  assert.equal(both.kit, 'off');
+  assert.equal((await sync(plan(), { config: { ...ONE_REVIEWER, kitWatch: { enabled: false } } })).kit, 'drafted', 'the invite still drafts');
+  assert.equal((await watch(plan(), { sandbox: true })).kit, 'skip', 'a rehearsal leaves Kit alone');
+});
+
+test('the review note says the whole list however Kit writes its default audience; edited notes are told apart; a rewrite keeps it on the Newsletter site', async () => {
+  // Kit's default audience comes back as nothing or as all_subscribers: both are the whole list
+  assert.ok(toEveryone({ subscriber_filter: [{ all: [{ type: 'all_subscribers' }], any: null, none: null }] }));
+  assert.ok(toEveryone({ subscriber_filter: [] }));
+  assert.ok(toEveryone({ subscriber_filter: [{ all: null, any: null, none: [{ type: 'tag', ids: [9] }] }] }));
+  assert.ok(!toEveryone({ subscriber_filter: [{ all: [{ type: 'tag', ids: [1] }], any: null, none: null }] }));
+  const w = await watch();
+  const b = kit.broadcasts.get(String(w.id));
+  b.subscriber_filter = [{ all: [{ type: 'all_subscribers' }], any: null, none: null }];
+  b.public = true; // staff put it on the Newsletter site
+  emails.length = 0;
+  await watch(plan({ date: '2027-03-19' }));
+  assert.match(emails.at(-1).html, /The whole newsletter list in Kit/);
+  assert.equal(kit.broadcasts.get(String(w.id)).public, true, 'still on the Newsletter site after the rewrite');
+  // The invite never goes there: its rewrite always says public: false
+  const a = await sync();
+  kit.broadcasts.get(String(a.id)).public = true;
+  await sync(plan({ date: '2027-03-19' }));
+  assert.equal(kit.broadcasts.get(String(a.id)).public, false);
+  // Both drafts edited, then the day moves: two notes Linzi can tell apart
+  const f = { date: '2027-03-12', start: '16:00', address: '', details: '', room: 'Bathroom' };
+  const one = reviewNote('edited', { name: 'Rowan', f, id: '1', audienceName: 'Reveal Emails' });
+  const two = reviewNote('edited', { name: 'Rowan', f, id: '2', email: 'watch' });
+  assert.equal(one.subject, 'Rowan’s reveal changed: please update your draft');
+  assert.equal(two.subject, 'Rowan’s reveal changed: please update the whole-list invite');
+  assert.notEqual(one.subject, two.subject);
 });

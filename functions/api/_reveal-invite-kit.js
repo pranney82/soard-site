@@ -24,6 +24,15 @@
  * - Rehearsals (TEST jobs, the office sandbox) leave Kit alone.
  * - site_config 'reveal-invites' → kitInvite turns it off or names another
  *   reviewer (no admin control yet).
+ *
+ * The whole-list invite (kind 'watch') is drafted at the same moment by the
+ * same code (Peter, Nov 10 2026: two emails once a reveal is confirmed, the
+ * same but for the address, "just watch live on our website"): the same email
+ * to watch live on the website, with no address and no guests' notes, to the
+ * whole newsletter list. Its own table (reveal_watch_kit), its own mark in
+ * Kit's description, and its own words to the reviewer. With no address in it,
+ * who it goes to is left to staff in Kit: a rewrite keeps Kit's audience.
+ * kitWatch.enabled: false turns it alone off.
  */
 
 import { kitConfigured, kitCreateBroadcast, kitUpdateDraft, kitListAudiences, kitReadBroadcast, kitFindDraft } from './_kit.js';
@@ -34,14 +43,28 @@ import { revealInviteEmail, revealWhen, partnerLogoUrls, kidPhotoUrls, cleanAddr
 // reviewer: who's emailed to review every draft the site makes in Kit (Peter, Nov 9 2026: him too). One address or several, comma-separated.
 export const KIT_INVITE_DEFAULTS = Object.freeze({ enabled: true, reviewer: 'linzi@soardcharity.com, peter@soardcharity.com', audience: 'Reveal Emails' });
 export const kitInviteSettings = (config) => ({ ...KIT_INVITE_DEFAULTS, ...(config?.kitInvite || {}) });
+/** The whole-list invite follows the invite's switch and reviewers, and goes to the whole list */
+export const kitWatchSettings = (config) => ({ ...kitInviteSettings(config), audience: null, ...(config?.kitWatch?.enabled === false ? { enabled: false } : {}) });
 export const kitDraftUrl = (id) => `https://app.kit.com/campaigns/${encodeURIComponent(id)}`;
+
+/**
+ * The two emails a confirmed reveal drafts. mark: the words before the job in
+ * Kit's description, how a draft whose answer never arrived is found again. The
+ * whole-list mark must never contain the invite's ("reveal invite"), or the
+ * invite could take the whole-list draft for its own.
+ */
+export const INVITE_KINDS = Object.freeze({
+  invite: Object.freeze({ kind: 'invite', table: 'reveal_invite_kit', mark: 'reveal invite', it: 'reveal invite', email: 'invite email', eyebrow: 'Reveal invite', private: true }),
+  watch: Object.freeze({ kind: 'watch', table: 'reveal_watch_kit', mark: 'whole-list invite', it: 'whole-list invite', email: 'whole-list invite', eyebrow: 'Whole-list invite', private: false }),
+});
+const kindOf = (kind) => INVITE_KINDS[kind] || INVITE_KINDS.invite;
 const ADMIN_URL = `${SITE_URL}/admin/#broadcast/invites`;
 const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
 /** The reviewers, from the setting: one address, several separated by commas, or a list */
 export const reviewersOf = (settings) => [...new Set((Array.isArray(settings?.reviewer) ? settings.reviewer : String(settings?.reviewer || '').split(/[,;\s]+/))
   .map((e) => String(e).trim().toLowerCase()).filter(isEmail))];
 
-const SCHEMA = `CREATE TABLE IF NOT EXISTS reveal_invite_kit (
+const SCHEMA = (table) => `CREATE TABLE IF NOT EXISTS ${table} (
   job_id TEXT PRIMARY KEY, broadcast_id TEXT, slug TEXT, reveal_date TEXT, hash TEXT,
   state TEXT, audience TEXT, reviewer TEXT, notified TEXT, error TEXT, updated_at TEXT,
   content_hash TEXT, audience_ref TEXT, told TEXT, alarmed TEXT, held TEXT)`;
@@ -53,8 +76,10 @@ const ADDED = ['content_hash', 'audience_ref', 'told', 'alarmed', 'held', 'desig
 const _ready = new WeakSet();
 export async function ensureKitSchema(DB) {
   if (_ready.has(DB)) return;
-  await DB.prepare(SCHEMA).run();
-  for (const col of ADDED) await DB.prepare(`ALTER TABLE reveal_invite_kit ADD COLUMN ${col} TEXT`).run().catch(() => {});
+  for (const { table } of Object.values(INVITE_KINDS)) {
+    await DB.prepare(SCHEMA(table)).run();
+    for (const col of ADDED) await DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`).run().catch(() => {});
+  }
   _ready.add(DB);
 }
 
@@ -64,13 +89,13 @@ async function sha(value) {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
 }
 
-export async function readKitRow(DB, jobId) {
+export async function readKitRow(DB, jobId, kind = 'invite') {
   await ensureKitSchema(DB);
-  return DB.prepare('SELECT * FROM reveal_invite_kit WHERE job_id = ?').bind(jobId).first();
+  return DB.prepare(`SELECT * FROM ${kindOf(kind).table} WHERE job_id = ?`).bind(jobId).first();
 }
 
-async function writeKitRow(DB, row) {
-  await DB.prepare(`INSERT OR REPLACE INTO reveal_invite_kit
+async function writeKitRow(DB, row, kind = 'invite') {
+  await DB.prepare(`INSERT OR REPLACE INTO ${kindOf(kind).table}
     (job_id, broadcast_id, slug, reveal_date, hash, state, audience, reviewer, notified, error, updated_at, content_hash, audience_ref, told, alarmed, held, design)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(row.job_id, row.broadcast_id ?? null, row.slug ?? null, row.reveal_date ?? null, row.hash ?? null, row.state ?? null,
@@ -154,8 +179,9 @@ const NO_BASELINE = 'unknown';
 // The draft's description says which job it's for and which facts the site last
 // wrote, so a write whose answer never arrived can be told from someone's edit
 const short = (hash) => String(hash || '').slice(0, 12);
-const jobMark = (jobId) => `· ${jobId} ·`;
-const describe = (name, jobId, hash) => `[auto] ${name} reveal invite ${jobMark(jobId)} ${short(hash)}`;
+/** "reveal invite · 22PRvFGUC3WP ·": which email, for which job */
+export const jobMark = (jobId, kind = 'invite') => `${kindOf(kind).mark} · ${jobId} ·`;
+export const describe = (name, jobId, hash, kind = 'invite') => `[auto] ${name} ${jobMark(jobId, kind)} ${short(hash)}`;
 const writtenFacts = (b) => /· ([0-9a-f]{12})$/.exec(String(b?.description || ''))?.[1] || null;
 /** What a person can change in Kit that a rewrite would lose. Who it goes to is checked on its own (draftIsSafe). */
 export const copyHash = (b) => sha([b.subject ?? '', b.preview_text ?? '', b.content ?? '', (b.subscriber_filter || []).flatMap((g) => g?.none || [])]);
@@ -164,6 +190,11 @@ function audienceOf(row) {
   const m = /^(segment|tag):(\d+)$/.exec(row?.audience_ref || '');
   return m ? { type: m[1], id: Number(m[2]), name: row.audience } : null;
 }
+/** What the row says the whole-list invite goes to */
+const WHOLE_LIST = 'Everyone';
+/** Kit's copy goes to everyone on the list (a leave-out like the waitlist-only families aside), not a chosen group */
+// Kit writes its default audience as nothing, or as { type: 'all_subscribers' }: both are everyone
+export const toEveryone = (b) => !(b?.subscriber_filter || []).some((g) => [...(g?.all || []), ...(g?.any || [])].some((e) => e?.type !== 'all_subscribers'));
 /** Has it left the site's hands? → 'scheduled', 'sent' or null (a draft) */
 export function wentOut(b, now = Date.now()) {
   if (b.status === 'scheduled' || (!b.status && b.send_at && Date.parse(b.send_at) > now)) return 'scheduled';
@@ -201,69 +232,76 @@ export function noteFor(level, told, hash, behind = false) {
  */
 const factsHash = (f) => sha([f.date, f.start, f.address, f.details, f.room]);
 
-/** The reviewer's note, for each thing that can happen to a draft. An email only. */
-export function reviewNote(kind, { name, f = {}, id, audienceName, count, reason, went = null, firm = true, noTime = false, edited = false }) {
+/**
+ * The reviewer's note, for each thing that can happen to a draft. An email only.
+ * email: 'invite' (Reveal Emails, with the address) or 'watch' (the whole-list invite).
+ * wholeList: Kit's copy of the whole-list invite still goes to everyone, so it can say so.
+ */
+export function reviewNote(kind, { name, f = {}, id, audienceName, count, reason, went = null, firm = true, noTime = false, edited = false, email = 'invite', wholeList = false }) {
+  const v = kindOf(email);
   const when = revealWhen(f.date, f.start);
   const url = id ? kitDraftUrl(id) : null;
   const group = audienceName || 'Reveal Emails';
-  const goesTo = audienceName ? `${group}${count ? ` (${count.toLocaleString('en-US')} people)` : ''} in Kit` : null;
+  const toGroup = v.private ? `the ${group} group` : 'the whole list';
+  const goesTo = !v.private ? (wholeList ? 'The whole newsletter list in Kit' : null)
+    : audienceName ? `${group}${count ? ` (${count.toLocaleString('en-US')} people)` : ''} in Kit` : null;
   const keepHolding = noTime ? 'The time isn’t in JobTread yet, so please keep holding it.' : 'It isn’t confirmed yet, so please keep holding it until JobTread confirms.';
   const t = {
     created: {
-      subject: `Review ${name}’s reveal invite in Kit`,
-      heading: `${name}’s reveal invite is ready to review`,
-      intro: `JobTread confirmed ${name}’s reveal, so the invite email is drafted in Kit. Look it over, then send it from Kit. Nothing goes out until you do.`,
+      subject: `Review ${name}’s ${v.it} in Kit`,
+      heading: `${name}’s ${v.it} is ready to review`,
+      intro: `JobTread confirmed ${name}’s reveal, so the ${v.email} is drafted in Kit. Look it over, then send it from Kit. Nothing goes out until you do.`,
     },
     early: {
-      subject: `Review ${name}’s reveal invite in Kit`,
-      heading: `${name}’s reveal invite is ready to review`,
+      subject: `Review ${name}’s ${v.it} in Kit`,
+      heading: `${name}’s ${v.it} is ready to review`,
       intro: noTime
         ? `JobTread confirmed ${name}’s reveal, but the Reveal task has no time yet, so the draft in Kit says “Time to be confirmed”. Please hold it until the time is in JobTread: that fills it in, turns on the calendar buttons, and you’ll hear again. Nothing goes out until you send it.`
         : `It’s drafted in Kit ahead of JobTread’s confirmation, with the date JobTread has now. Please hold it until JobTread confirms: that fills in the time, turns on the calendar buttons, and you’ll hear again. Nothing goes out until you send it.`,
     },
     confirmed: {
-      subject: `Review ${name}’s reveal invite in Kit`,
-      heading: `${name}’s reveal is confirmed, and the invite is ready`,
+      subject: `Review ${name}’s ${v.it} in Kit`,
+      heading: `${name}’s reveal is confirmed, and the ${v.private ? 'invite' : v.it} is ready`,
       intro: `JobTread confirmed ${name}’s reveal. The draft in Kit now has the time and the calendar buttons. Look it over, then send it from Kit. Nothing goes out until you do.`,
     },
     updated: {
-      subject: `${name}’s reveal invite draft changed`,
+      subject: `${name}’s ${v.it} draft changed`,
       heading: `${name}’s reveal changed, so the draft did too`,
       intro: `JobTread changed ${name}’s reveal. The draft in Kit now says what JobTread says. ${firm ? 'Look it over before you send it.' : keepHolding}`,
     },
     edited: {
-      subject: `${name}’s reveal changed: please update your draft`,
-      heading: `${name}’s reveal changed, and the draft needs updating`,
+      subject: `${name}’s reveal changed: please update ${v.private ? 'your draft' : `the ${v.it}`}`,
+      heading: `${name}’s reveal changed, and the ${v.private ? 'draft' : v.it} needs updating`,
       intro: `JobTread changed ${name}’s reveal. The draft in Kit was edited after the site wrote it, so the site left it alone to keep those edits. Please make the change in the draft yourself. Here’s what JobTread says now.`,
     },
     scheduled: {
-      subject: `${name}’s reveal changed, and its invite is scheduled`,
-      heading: `${name}’s invite is scheduled, and the reveal changed`,
-      intro: `The invite email is scheduled in Kit, and JobTread has changed the reveal. Check it says what’s below. If it doesn’t, unschedule it in Kit, fix it, then schedule it again.`,
+      subject: `${name}’s reveal changed, and its ${v.private ? 'invite' : v.it} is scheduled`,
+      heading: `${name}’s ${v.private ? 'invite' : v.it} is scheduled, and the reveal changed`,
+      intro: `The ${v.email} is scheduled in Kit, and JobTread has changed the reveal. Check it says what’s below. If it doesn’t, unschedule it in Kit, fix it, then schedule it again.`,
     },
     'after-send': {
-      subject: `${name}’s reveal changed after the invite went out`,
-      heading: `${name}’s reveal changed after the invite email went out`,
-      intro: `The invite email already went out from Kit, and JobTread has changed the reveal. If what went out doesn’t match what’s below, send the ${group} group a short update from Kit.`,
+      subject: `${name}’s reveal changed after the ${v.private ? 'invite' : v.it} went out`,
+      heading: `${name}’s reveal changed after the ${v.email} went out`,
+      intro: `The ${v.email} already went out from Kit, and JobTread has changed the reveal. If what went out doesn’t match what’s below, send ${toGroup} a short update from Kit.`,
     },
     held: went === 'sent' ? {
-      subject: `${name}’s reveal may be off, after the invite went out`,
-      heading: `${name}’s reveal may be off, and the invite went out`,
-      intro: `JobTread says this reveal may be off, and the invite email already went out from Kit. If the reveal is off, send the ${group} group a short update from Kit.`,
+      subject: `${name}’s reveal may be off, after the ${v.private ? 'invite' : v.it} went out`,
+      heading: `${name}’s reveal may be off, and the ${v.private ? 'invite' : v.it} went out`,
+      intro: `JobTread says this reveal may be off, and the ${v.email} already went out from Kit. If the reveal is off, send ${toGroup} a short update from Kit.`,
     } : went === 'scheduled' ? {
-      subject: `Unschedule ${name}’s reveal invite`,
-      heading: `${name}’s reveal may be off, and its invite is scheduled`,
-      intro: `JobTread says this reveal may be off, and the invite email is scheduled in Kit. Please unschedule it until that’s sorted out.`,
+      subject: `Unschedule ${name}’s ${v.it}`,
+      heading: `${name}’s reveal may be off, and its ${v.private ? 'invite' : v.it} is scheduled`,
+      intro: `JobTread says this reveal may be off, and the ${v.email} is scheduled in Kit. Please unschedule it until that’s sorted out.`,
     } : {
-      subject: `Hold ${name}’s reveal invite`,
-      heading: `Please hold ${name}’s reveal invite`,
+      subject: `Hold ${name}’s ${v.it}`,
+      heading: `Please hold ${name}’s ${v.it}`,
       intro: `JobTread says this reveal may be off. Please don’t send the draft in Kit until that’s sorted out.`,
     },
     'back-on': {
-      subject: `${name}’s reveal invite is back on`,
-      heading: `${name}’s reveal invite is back on`,
-      intro: went === 'sent' ? `JobTread says this reveal is back on. The invite email already went out: if you told people it was off, or it doesn’t match what’s below, send the ${group} group a short update from Kit.`
-        : went === 'scheduled' ? `JobTread says this reveal is back on, and the invite email is still scheduled in Kit. Check it says what’s below.`
+      subject: `${name}’s ${v.it} is back on`,
+      heading: `${name}’s ${v.it} is back on`,
+      intro: went === 'sent' ? `JobTread says this reveal is back on. The ${v.email} already went out: if you told people it was off, or it doesn’t match what’s below, send ${toGroup} a short update from Kit.`
+        : went === 'scheduled' ? `JobTread says this reveal is back on, and the ${v.email} is still scheduled in Kit. Check it says what’s below.`
           : edited ? `JobTread says this reveal is back on. The draft in Kit was edited, so the site left it alone. Check it says what’s below before you send it.`
             : firm ? `JobTread says this reveal is back on. The draft in Kit is ready for you to look over and send.`
               : `JobTread says this reveal is back on. ${keepHolding}`,
@@ -271,20 +309,21 @@ export function reviewNote(kind, { name, f = {}, id, audienceName, count, reason
   }[kind];
   const facts = kind === 'held' ? [['JobTread says', reason || 'the reveal may be off']] : [
     ['When', when],
-    ['Where', cleanAddress(f.address) || 'No address in JobTread yet'],
+    // The whole-list invite has no address: the reviewer is told what it does say
+    ['Where', v.private ? cleanAddress(f.address) || 'No address in JobTread yet' : 'Live on our website'],
     ['Room', f.room],
-    ['Notes', f.details],
+    ['Notes', v.private ? f.details : null],
     ['Goes to', goesTo],
   ];
-  const rows = facts.map(([k, v]) => [k, v ? esc(v).replace(/\n/g, '<br>') : null]);
+  const rows = facts.map(([k, x]) => [k, x ? esc(x).replace(/\n/g, '<br>') : null]);
   const reminder = ['created', 'early', 'confirmed', 'updated', 'back-on'].includes(kind) && !went && !edited
-    ? `It has the family’s address, so it only goes to the ${group} group. Check the photo, the story and the partners. Make any changes right in the draft: edits to ${name}’s page don’t reach it.`
+    ? `${v.private ? `It has the family’s address, so it only goes to the ${group} group.` : 'It has no address, so it goes to your whole newsletter list.'} Check the photo, the story and the partners. Make any changes right in the draft: edits to ${name}’s page don’t reach it.`
     : '';
   const bodyHtml = factRows(rows)
     + (url ? `<div style="margin:18px 0 6px;">${button(kind === 'after-send' || went === 'sent' ? 'Open Kit' : 'Open the draft in Kit', url)}</div>` : '')
     + (reminder ? `<p class="muted" style="margin:14px 0 0;font-size:13px;line-height:1.55;">${esc(reminder)}</p>` : '');
-  const html = emailShell({ preheader: t.intro, eyebrow: 'Reveal invite', heading: t.heading, intro: esc(t.intro), bodyHtml, footerHtml: `Sent by the website when JobTread changes a reveal. <a href="${esc(ADMIN_URL)}" style="color:inherit;">Reveals in the admin</a>` });
-  const text = [t.heading, '', t.intro, '', ...facts.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`), '', url && `Kit: ${url}`, reminder].filter((l) => l !== null && l !== undefined).join('\n');
+  const html = emailShell({ preheader: t.intro, eyebrow: v.eyebrow, heading: t.heading, intro: esc(t.intro), bodyHtml, footerHtml: `Sent by the website when JobTread changes a reveal. <a href="${esc(ADMIN_URL)}" style="color:inherit;">Reveals in the admin</a>` });
+  const text = [t.heading, '', t.intro, '', ...facts.filter(([, x]) => x).map(([k, x]) => `${k}: ${x}`), '', url && `Kit: ${url}`, reminder].filter((l) => l !== null && l !== undefined).join('\n');
   return { subject: t.subject, html, text };
 }
 
@@ -298,11 +337,12 @@ async function notify(env, kind, settings, ctx) {
 }
 
 /** Tell staff of a problem, once. → did it really go? One that didn't is tried again on the next look. */
-async function problem(env, alertTo, row, { name, error, check = false, fix = null }) {
+async function problem(env, alertTo, row, { name, error, check = false, fix = null, email = 'invite' }) {
   if (row?.alarmed === error) return true;
+  const v = kindOf(email);
   const who = name ? `${name}’s` : 'A';
-  const title = check ? `Check who ${who} reveal invite goes to before sending it`
-    : row?.broadcast_id ? `${who} reveal invite draft needs a look` : `${who} reveal invite email wasn’t drafted`;
+  const title = check ? `Check who ${who} ${v.it} goes to before sending it`
+    : row?.broadcast_id ? `${who} ${v.it} draft needs a look` : `${who} ${v.private ? 'reveal invite email' : v.it} wasn’t drafted`;
   const how = fix || (check
     ? 'Open the draft in Kit and press Continue: it must say Reveal Emails, with "Add to your Newsletter site" off. Nothing has been sent.'
     : /group/i.test(error)
@@ -324,8 +364,8 @@ async function problem(env, alertTo, row, { name, error, check = false, fix = nu
  * already out, has the family's address, so the reviewer hears once, in words
  * that fit where it stands in Kit. Never throws.
  */
-export const holdKitInvite = (env, { jobId, reason, name, config = {}, sandbox = false, alertTo = [] }) =>
-  syncKitInvite(env, { jobId, hold: reason, who: { name }, config, sandbox, alertTo });
+export const holdKitInvite = (env, { jobId, reason, name, config = {}, sandbox = false, alertTo = [], kind = 'invite' }) =>
+  syncKitInvite(env, { jobId, hold: reason, who: { name }, config, sandbox, alertTo, kind });
 
 /**
  * Called on every look at a job (JobTread change, the 5-minute check, the
@@ -334,8 +374,9 @@ export const holdKitInvite = (env, { jobId, reason, name, config = {}, sandbox =
  *
  * @returns {Promise<{kit: string, reason?: string, id?: string, error?: string, told?: boolean}>}
  */
-export async function syncKitInvite(env, { jobId, plan = null, hold = null, who, room = '', config = {}, sandbox = false, alertTo = [], early = false, rewrite = false, fetchImpl = fetch }) {
-  const s = kitInviteSettings(config);
+export async function syncKitInvite(env, { jobId, plan = null, hold = null, who, room = '', config = {}, sandbox = false, alertTo = [], early = false, rewrite = false, fetchImpl = fetch, kind = 'invite' }) {
+  const v = kindOf(kind);
+  const s = v.private ? kitInviteSettings(config) : kitWatchSettings(config);
   if (!s.enabled) return { kit: 'off' };
   if (sandbox) return { kit: 'skip', reason: 'a rehearsal leaves Kit alone' };
   if (!hold && plan?.action !== 'upsert') return { kit: 'skip', reason: plan?.reason || 'no reveal to invite to' };
@@ -349,18 +390,19 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
   // Told or not, the next look tries again; once told, staff aren't told again
   const trouble = async (error, opts = {}) => {
     const text = wrongAim ? `${wrongAim} ${error}` : error;
-    const heard = await problem(env, everyone, row, { name, error: text, ...(wrongAim ? { check: true } : opts) });
+    const heard = await problem(env, everyone, row, { name, error: text, email: v.kind, ...(wrongAim ? { check: true } : opts) });
     const keep = row || { job_id: jobId, state: 'waiting' };
     row = { ...keep, ...(wrongAim ? { state: CHECK } : {}), error: text, alarmed: heard ? text : keep.alarmed ?? null };
-    await writeKitRow(DB, row);
+    await writeKitRow(DB, row, v.kind);
     return { kit: wrongAim ? 'check' : 'error', error: text, ...(row.broadcast_id ? { id: row.broadcast_id } : {}) };
   };
   try {
-    row = await readKitRow(DB, jobId);
+    row = await readKitRow(DB, jobId, v.kind);
     if (hold && !row?.broadcast_id) return { kit: 'skip', reason: 'no draft waiting' };
     if (row?.state === DELETED && !early) return { kit: 'skip', reason: 'the draft was deleted in Kit' };
     if (row?.broadcast_id) row = { ...row, held: hold };
-    const f = hold ? {} : inviteFacts(plan, who, room);
+    // The whole-list invite never has the address or the guests' notes, so a change to them is no change to it
+    const f = hold ? {} : v.private ? inviteFacts(plan, who, room) : { ...inviteFacts(plan, who, room), address: '', details: '' };
     const hash = hold ? row.hash : await factsHash(f);
     const firm = !hold && !!(plan.confirmed && f.start);
     const noTime = !hold && !!plan.confirmed && !f.start;
@@ -372,26 +414,26 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
 
     const base = { job_id: jobId, slug: who?.slug || row?.slug || null, reveal_date: f.date || row?.reveal_date || null, reviewer: s.reviewer };
     const render = async () => {
-      if (!who?.slug) return { error: `JobTread confirmed ${name}’s reveal, but no published kid page matches the job, so the invite email can’t be filled in.` };
+      if (!who?.slug) return { error: `JobTread confirmed ${name}’s reveal, but no published kid page matches the job, so the ${v.email} can’t be filled in.` };
       const kidRow = await DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(who.slug).first();
       let kid = null;
       try { kid = kidRow ? JSON.parse(kidRow.data) : null; } catch { /* unreadable */ }
-      if (!kidPageReady(kid)) return { error: `${name}’s kid page isn’t published, so the invite email can’t be filled in.` };
+      if (!kidPageReady(kid)) return { error: `${name}’s kid page isn’t published, so the ${v.email} can’t be filled in.` };
       const broken = await brokenLogos(kid, { fetchImpl });
-      return { email: revealInviteEmail({ kid: { ...kid, slug: who.slug }, date: f.date, time: f.start, address: f.address, notes: f.details, room: f.room, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) }) };
+      return { email: revealInviteEmail({ kid: { ...kid, slug: who.slug }, date: f.date, time: f.start, address: v.private ? f.address : '', notes: v.private ? f.details : '', room: f.room, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE), watch: !v.private }) };
     };
-    const body = (email) => ({ subject: email.subject, previewText: email.preview, description: describe(name, jobId, hash), html: email.html });
+    const body = (email) => ({ subject: email.subject, previewText: email.preview, description: describe(name, jobId, hash, v.kind), html: email.html });
 
     // Where it stands in Kit. A send cancelled there is as good as deleted.
     let seen = row?.broadcast_id && row.state !== DELETED ? await kitReadBroadcast(env, row.broadcast_id) : null;
     if (seen && (/HTTP 404/.test(seen.error || '') || seen.broadcast?.status === 'aborted')) {
       row = { ...row, state: DELETED, error: null, alarmed: null };
-      await writeKitRow(DB, row);
+      await writeKitRow(DB, row, v.kind);
       if (!early) return { kit: 'skip', reason: 'the draft was deleted in Kit' };
       seen = null;
     }
     if (early && row?.state === DELETED) {
-      await DB.prepare('DELETE FROM reveal_invite_kit WHERE job_id = ?').bind(jobId).run();
+      await DB.prepare(`DELETE FROM ${v.table} WHERE job_id = ?`).bind(jobId).run();
       row = null;
     }
     if (seen && !seen.ok) {
@@ -400,12 +442,12 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
       const waiting = hold ? !(heard.startsWith('held:') && heard.endsWith(`:${hold}`)) : !heard.endsWith(`:${hash}`);
       if (!waiting) return { kit: 'unchanged', id: row.broadcast_id };
       const text = hold
-        ? `JobTread says ${name}’s reveal may be off (${hold}), and Kit couldn’t be reached to check its invite email. Please check it in Kit.`
-        : `Kit couldn’t be reached (${seen.error}), so ${name}’s invite email may still have the old details.`;
+        ? `JobTread says ${name}’s reveal may be off (${hold}), and Kit couldn’t be reached to check its ${v.email}. Please check it in Kit.`
+        : `Kit couldn’t be reached (${seen.error}), so ${name}’s ${v.email} may still have the old details.`;
       // A blip isn't an alarm; still failing on the next look is
       if (row.error === text) return await trouble(text);
       row = { ...row, error: text };
-      await writeKitRow(DB, row);
+      await writeKitRow(DB, row, v.kind);
       return { kit: 'error', error: text, id: row.broadcast_id };
     }
 
@@ -413,10 +455,11 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
     let found = false;
     if (!row?.broadcast_id) {
       // Kit may have taken a draft whose answer never arrived: never a second one
-      const lost = await kitFindDraft(env, jobMark(jobId));
-      if (!lost.ok) return await trouble(`Kit couldn’t be reached (${lost.error}), so ${name}’s invite email wasn’t drafted.`);
-      const group = await findAudience(env, s.audience);
-      if (!group) return await trouble(`Kit has no group named “${s.audience}”, so there’s no draft: the email has the family’s address and Kit would send it to everyone.`);
+      const lost = await kitFindDraft(env, jobMark(jobId, v.kind));
+      if (!lost.ok) return await trouble(`Kit couldn’t be reached (${lost.error}), so ${name}’s ${v.email} wasn’t drafted.`);
+      // The whole-list invite goes to Kit's default audience: everyone on the list
+      const group = v.private ? await findAudience(env, s.audience) : null;
+      if (v.private && !group) return await trouble(`Kit has no group named “${s.audience}”, so there’s no draft: the email has the family’s address and Kit would send it to everyone.`);
       let id = String(lost.broadcast?.id || '');
       found = !!id;
       if (!id) {
@@ -427,8 +470,8 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
         if (!c.ok || !id) return await trouble(`Kit didn’t take the draft: ${c.error || `HTTP ${c.status}`}`);
         made = true;
       }
-      row = { ...base, broadcast_id: id, hash: made ? hash : null, state: 'draft', audience: group.name, audience_ref: audienceRef(group), design: made ? EMAIL_DESIGN : null };
-      await writeKitRow(DB, row); // kept first: a draft Kit has is never made twice
+      row = { ...base, broadcast_id: id, hash: made ? hash : null, state: 'draft', audience: group ? group.name : WHOLE_LIST, audience_ref: group ? audienceRef(group) : null, design: made ? EMAIL_DESIGN : null };
+      await writeKitRow(DB, row, v.kind); // kept first: a draft Kit has is never made twice
       seen = await kitReadBroadcast(env, id);
       if (!seen.ok) seen = await kitReadBroadcast(env, id); // a blip isn't an alarm
       // Nobody hears until Kit's copy has been read; the next look does it
@@ -438,8 +481,8 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
     let b = seen.broadcast;
     let went = wentOut(b);
     let audience = audienceOf(row);
-    if (!audience) audience = await findAudience(env, row.audience || s.audience).catch((err) => { if (went === 'sent') return null; throw err; });
-    if (!audience && went !== 'sent') return await trouble(`Kit has no group named “${row.audience || s.audience}” any more, so the site can’t check who ${name}’s invite goes to.`);
+    if (!audience && v.private) audience = await findAudience(env, row.audience || s.audience).catch((err) => { if (went === 'sent') return null; throw err; });
+    if (!audience && v.private && went !== 'sent') return await trouble(`Kit has no group named “${row.audience || s.audience}” any more, so the site can’t check who ${name}’s invite goes to.`);
     if (audience && !row.audience_ref) row = { ...row, audience: audience.name, audience_ref: audienceRef(audience) };
     // Who it's aimed at is checked on every look that has Kit's copy, whatever else happens
     const aimedWrong = (copy) => {
@@ -469,7 +512,8 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
       const r = await render();
       if (r.error) return await trouble(`${r.error} The draft in Kit still has the old details.`, { fix: PAGE_FIX });
       // Kit resets what an update leaves out, so the audience is sent every time
-      const u = await kitUpdateDraft(env, row.broadcast_id, { ...body(r.email), audience });
+      // The whole-list invite has no address, so staff may put it on the Newsletter site: a rewrite keeps that
+      const u = await kitUpdateDraft(env, row.broadcast_id, { ...body(r.email), audience, keepPublic: !v.private });
       if (u.status) {
         went = u.status === 'scheduled' ? 'scheduled' : 'sent';
         wrongAim = aimedWrong(b);
@@ -483,7 +527,7 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
         }
         if (!landed) {
           row = { ...row, ...base, hash, content_hash: null };
-          await writeKitRow(DB, row);
+          await writeKitRow(DB, row, v.kind);
           return { kit: 'check', id: row.broadcast_id, error: `Kit’s copy couldn’t be read yet (${after.error})` };
         }
         b = after.broadcast;
@@ -506,10 +550,10 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
     const kind = wrongAim && ready ? null : noteFor(level, told, hash, behind);
     let delivered = false;
     if (kind) {
-      const count = hold ? null : await findAudience(env, row.audience).then((a) => a?.count ?? null).catch(() => null);
-      delivered = await notify(env, kind, s, { name, f, id: row.broadcast_id, audienceName: audience && draftIsSafe(b, audience) ? row.audience : null, count, reason: hold, went, firm, noTime, edited: handEdited });
+      const count = hold || !v.private ? null : await findAudience(env, row.audience).then((a) => a?.count ?? null).catch(() => null);
+      delivered = await notify(env, kind, s, { name, f, id: row.broadcast_id, audienceName: audience && draftIsSafe(b, audience) ? row.audience : null, count, reason: hold, went, firm, noTime, edited: handEdited, email: v.kind, wholeList: !v.private && toEveryone(b) });
     }
-    const alarmed = wrongAim ? await problem(env, everyone, row, { name, error: wrongAim, check: true, ...(went === 'sent' ? { fix: 'It has already gone out, so check in Kit who received it.' } : {}) }) : false;
+    const alarmed = wrongAim ? await problem(env, everyone, row, { name, error: wrongAim, check: true, email: v.kind, ...(went === 'sent' ? { fix: 'It has already gone out, so check in Kit who received it.' } : {}) }) : false;
     const settled = kind ? delivered : !(wrongAim && ready);
     row = {
       ...row, ...base,
@@ -518,7 +562,7 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
       told: settled ? level : told,
       notified: delivered ? new Date().toISOString() : row.notified,
     };
-    await writeKitRow(DB, row);
+    await writeKitRow(DB, row, v.kind);
 
     const id = row.broadcast_id;
     if (wrongAim) return { kit: 'check', id, error: wrongAim };
@@ -541,11 +585,11 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
  *
  * @returns {Promise<Record<string, {state: 'waiting'|'draft'|'scheduled'|'sent'|'deleted'|'check', id?: string, at?: string, held?: string, edited?: boolean, error?: string}>>}
  */
-export async function kitInviteStatus(env, jobIds) {
+export async function kitInviteStatus(env, jobIds, kind = 'invite') {
   const { DB } = env;
   if (!jobIds.length) return {};
   await ensureKitSchema(DB);
-  const { results } = await DB.prepare(`SELECT * FROM reveal_invite_kit WHERE job_id IN (${jobIds.map(() => '?').join(', ')})`).bind(...jobIds).all();
+  const { results } = await DB.prepare(`SELECT * FROM ${kindOf(kind).table} WHERE job_id IN (${jobIds.map(() => '?').join(', ')})`).bind(...jobIds).all();
   const out = {};
   await Promise.all((results || []).map(async (row) => {
     const id = row.broadcast_id || null;

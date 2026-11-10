@@ -534,8 +534,8 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return { channel: 'kit', from: KIT_FROM, to: 'The whole newsletter list (not waitlist-only families)', subject: m.subject, html: m.html, text: m.text, send: 'email' };
     }
     case 'kit-drafts': {
-      const m = notify.reminderEmail({ ...REMINDER_SAMPLE(scheduledAt, live), kind: 'scheduled', list: true });
-      return { channel: 'kit', from: KIT_FROM, to: 'Nobody until staff send it from Kit', subject: m.subject, html: m.html, text: m.text, note: 'This is the “Save the date” draft. “New date” and “Watch the replay” drafts follow the same design.', send: 'email' };
+      const m = notify.reminderEmail({ ...REMINDER_SAMPLE(scheduledAt, live), kind: 'replay', list: true });
+      return { channel: 'kit', from: KIT_FROM, to: 'Nobody until staff send it from Kit', subject: m.subject, html: m.html, text: m.text, note: 'The “Watch the replay” draft. Before the reveal, the list’s email is the whole-list invite.', send: 'email' };
     }
     case 'staff-new-app': {
       const year = (await readAppSettings(env.DB, now)).year;
@@ -711,7 +711,9 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       };
     }
     case 'kit-invite':
-    case 'staff-invite-review': {
+    case 'kit-watch-invite':
+    case 'staff-invite-review':
+    case 'staff-watch-review': {
       // The next kid still being built, as their page reads now, at a sample day, time and address
       const row = await env.DB.prepare("SELECT data FROM kids WHERE status = 'in-progress' ORDER BY year DESC, name LIMIT 1").first().catch(() => null);
       let kid = null;
@@ -721,6 +723,14 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       const facts = { name: kid.name, slug: kid.slug, date: day, start: '16:00', address: SAMPLE.address, details: 'Park along the street. We’ll have signs out front.', room: (kid.roomTypes || []).join(' + ') };
       if (id === 'staff-invite-review') {
         return email(reviewNote('created', { name: kid.name, f: facts, id: '0', audienceName: KIT_INVITE_DEFAULTS.audience }), { to: `${KIT_INVITE_DEFAULTS.reviewer} (the reviewer in Reveals → Invites)` });
+      }
+      // The whole-list invite: the same email with no address, to watch live, and the reviewer's note for it
+      if (id === 'staff-watch-review') {
+        return email(reviewNote('created', { name: kid.name, f: { ...facts, address: '', details: '' }, id: '0', email: 'watch', wholeList: true }), { to: `${KIT_INVITE_DEFAULTS.reviewer} (the reviewer in Reveals → Invites)` });
+      }
+      if (id === 'kit-watch-invite') {
+        const w = revealInviteEmail({ kid, date: day, time: '16:00', watch: true });
+        return { channel: 'kit', from: KIT_FROM, to: 'The whole newsletter list (not waitlist-only families), once staff send the draft', subject: w.subject, html: w.html, text: w.text, note: `${kid.name}’s page as it reads now, with a sample day and time. The same email as the reveal invite, with no address and no notes for guests. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };
       }
       const m = revealInviteEmail({ kid, date: day, time: '16:00', address: SAMPLE.address, notes: facts.details });
       return { channel: 'kit', from: KIT_FROM, to: `Kit’s “${KIT_INVITE_DEFAULTS.audience}” group, once staff send the draft`, subject: m.subject, html: m.html, text: m.text, note: `${kid.name}’s page as it reads now, with a sample day, time and address. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };

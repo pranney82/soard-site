@@ -264,3 +264,28 @@ test('Text it to me: the reveal-day texts, in order, only to a number on the ale
   assert.equal((await post({ send: 'staff-reveal-texts', to: '+15555550100' })).status, 400, 'never a number typed in');
   assert.equal(texts.length, 5, 'nothing else went');
 });
+
+test('the whole-list invite and its review note preview without the address or the guests’ notes', async (t) => {
+  offline(t, async (url) => {
+    // The preview checks no pictures for the invites; anything else would be the internet
+    throw new Error(`offline: ${url}`);
+  });
+  const DB = await makeDb();
+  const get = async (id) => (await onRequestGet({ env: ENV(DB), data: { userEmail: 'me@example.com' }, request: new Request(`https://x/api/messages-admin?preview=${id}`) })).json();
+  const invite = await get('kit-invite');
+  const whole = await get('kit-watch-invite');
+  const note = await get('staff-watch-review');
+  assert.match(invite.html, /Park along the(?: |&nbsp;)street/, 'the invite has the notes (the sample address is in it too)');
+  assert.match(whole.subject, /^Join Us Live for .+’s Reveal Day!$/);
+  assert.match(whole.to, /whole newsletter list/);
+  assert.match(whole.html, /Live on our website/);
+  assert.doesNotMatch(whole.html + whole.text, /Park along|signs out front/);
+  assert.ok(!invite.html.includes('Live on our website'));
+  // The sample address the invite shows is nowhere in the whole-list invite or its note
+  const addr = (invite.text.match(/^Where: [^,]+, (.+)$/m) || [])[1];
+  assert.ok(addr, `the invite's sample address (${invite.text})`);
+  assert.ok(!whole.html.includes(addr.split(',')[0]) && !whole.text.includes(addr.split(',')[0]), 'no address in the whole-list invite');
+  assert.match(note.subject, /^Review .+’s whole-list invite in Kit$/);
+  assert.match(note.html, /Live on our website/);
+  assert.ok(!note.html.includes(addr.split(',')[0]), 'no address in its review note');
+});

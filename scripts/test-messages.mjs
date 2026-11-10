@@ -320,7 +320,7 @@ try {
   await page.select('.am-filters--pick select', 's:kit');
   await pause(400);
   const kitHits = await page.$$eval('.am-node.leaf.hit-on text:not(.am-tag text)', (t) => t.map((x) => x.textContent).filter((x) => x !== 'Kit'));
-  const KIT = ['Applications are open', 'We’re live (Kit)', 'Reveal drafts in Kit', 'Newsletter', 'Welcome to the newsletter'];
+  const KIT = ['Applications are open', 'Invite email (Kit draft)', 'Whole-list invite (Kit draft)', 'We’re live (Kit)', 'Project Kickoff (Kit draft)', 'Project Reveal (Kit draft)', 'Event Recap (Kit draft)', 'Monthly Impact (Kit draft)', 'Replay draft in Kit', 'Newsletter', 'Welcome to the newsletter'];
   ok(KIT.every((k) => kitHits.includes(k)) && kitHits.length === KIT.length, `Sent by Kit finds what Kit sends (${kitHits.join(', ')})`);
   await clickButton(page, '.am-tools', 'Reset');
   const resendCount = await page.evaluate(() => [...document.querySelectorAll('.am-lede button')].find((b) => b.textContent.includes('sent by Resend')).querySelector('b').textContent);
