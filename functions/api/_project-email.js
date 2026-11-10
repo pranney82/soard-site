@@ -14,7 +14,7 @@
 import {
   SITE_URL, HERO_TRANSFORM, PHOTO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
-  listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, makeoverWord, shortStory, tidy,
+  listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, makeoverWord, shortStory, tidy, kidName, shownPartners,
 } from './_reveal-invite-email.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
@@ -59,24 +59,32 @@ const storyOf = (kid) => shortStory(kid, STORY_MAX);
 const bareQuote = (q) => tidy(String(q || '').trim().replace(/^["“”'‘’]+|["“”'‘’]+$/g, ''));
 /**
  * A quote as HTML, curly and matched whatever shape it was typed in:
- *   "It’s perfect." — Mom        → “It’s perfect.” – Mom
+ *   "It’s perfect." — Mom        → “It’s perfect.” with "– Mom" on its own line under it
+ *   "…for" - Jade, his mother     → the same, a typed hyphen read as the dash
  *   "…door," Vicki said.         → “…door,” Vicki said.
  *   She said, "This is home now." → She said, “This is home now.”
  *   'We love it,' said Mom.      → “We love it,” said Mom.
  *   We cried happy tears.        → “We cried happy tears.”
- * A quote inside a whole quote takes single marks.
+ * A quote inside a whole quote takes single marks. Nothing ends on one word alone.
  */
 function quoteHtml(q) {
   const raw = String(q || '').trim();
   const part = (t) => escapeHtml(tidy(t));
+  // Who said it, signed with a dash: a line of its own in the sans, so "– Jade, / Dewone’s mother" never splits off the quote's last line
+  const byline = (who) => `<span style="display:block;margin-top:10px;font-family:${SANS};font-size:14px;font-style:normal;font-weight:600;line-height:1.45;color:${TM};">–&nbsp;${noWidow(part(who.trim()))}</span>`;
+  const dash = /^\s*[-–—]+\s*/;
   // Who said it sits before the quote ("She said, ") or after it ("— Mom", "Vicki said."), and is short;
   // marks in the middle of longer words are a quote inside the quote
   const dbl = raw.match(/^([\s\S]*?)["“]([^"“”]+)["”]([\s\S]*)$/);
   const lead = dbl ? dbl[1].trim() : '', tail = dbl ? dbl[3].trim() : '';
+  if (dbl && !lead && dash.test(tail) && tail.replace(dash, '').length <= 40) return `“${noWidow(part(dbl[2].trim()))}”${byline(tail.replace(dash, ''))}`;
   const said = dbl && ((!lead && tail && tail.length <= 40) || (!tail.replace(/[.!?]/g, '') && lead && lead.length <= 40 && /[,:]$/.test(lead)));
-  if (said) return `${part(dbl[1])}“${part(dbl[2])}”${noWidow(part(dbl[3]))}`;
+  if (said) return `${part(dbl[1])}“${tail ? part(dbl[2]) : noWidow(part(dbl[2]))}”${noWidow(part(dbl[3]))}`;
   const sgl = raw.match(/^['‘](.+?)([,.!?])['’]\s+([\s\S]+)$/);
   if (sgl) return `“${part(sgl[1] + sgl[2])}” ${noWidow(part(sgl[3]))}`;
+  // No marks, signed at the end: "We love it. - Mom" (a name, a few words at most)
+  const signed = !dbl && raw.match(/^([\s\S]+?)\s+[-–—]+\s*([A-Z][^-–—"“”]{0,39})$/);
+  if (signed && signed[2].trim().split(/\s+/).length <= 4) return `“${noWidow(escapeHtml(bareQuote(signed[1]).replace(/“/g, '‘').replace(/”/g, '’')))}”${byline(signed[2])}`;
   const inner = bareQuote(raw).replace(/“/g, '‘').replace(/”/g, '’');
   return `“${noWidow(escapeHtml(inner))}”`;
 }
@@ -107,11 +115,13 @@ const gap = (px) => `<tr><td bgcolor="${CR}" style="background:${CR};height:${px
  * so no word is ever squeezed in two.
  */
 function factsRow(facts) {
-  const longest = (t) => Math.max(...String(t).split(/\s+/).map((w) => w.length));
+  // "Autism &" never ends a line: "&" goes with the word after it, and "Non-Verbal" never splits at its hyphen
+  const glue = (t) => String(t).replace(/ & /g, ' &\u00A0');
+  const longest = (t) => Math.max(...glue(t).split(' ').map((w) => w.length));
   const stack = facts.length > 1 && facts[0].main.length + longest(facts[facts.length - 1].main) > 22;
   const cell = (f, i, last) => `<td valign="top" style="padding:16px ${last || stack ? 0 : 28}px 16px 0;border-top:1px solid ${BD};${stack && !last ? '' : `border-bottom:1px solid ${BD};`}${last || stack ? '' : 'width:1%;white-space:nowrap;'}">
         <div style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TM};">${escapeHtml(f.label)}</div>
-        <div style="margin-top:6px;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.35;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(f.main)}</div>
+        <div style="margin-top:6px;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.35;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(f.main).replace(/ &amp; /g, ' &amp;&nbsp;').replace(/(^|\s)([^\s&;]{1,18}-[^\s&;]{1,18})(?=[\s,]|$)/g, '$1<span style="white-space:nowrap;">$2</span>')}</div>
       </td>`;
   const rows = stack ? facts.map((f, i) => `<tr>${cell(f, i, i === facts.length - 1)}</tr>`).join('')
     : `<tr>${facts.map((f, i) => cell(f, i, i === facts.length - 1)).join('')}</tr>`;
@@ -142,16 +152,20 @@ function transformation(pair, name) {
   </td></tr>`;
 }
 
-/** The rooms, each with how many of it in a yellow circle ("2 Dream Bedrooms"), so the number reads as a count */
+const COUNT_WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+
+/**
+ * The rooms, each by a small yellow mark. How many is said in words ("Two Dream Bedrooms"): a number in a
+ * circle read as the list's own numbering ("1 Accessible Bathroom, 2 Dream Bedrooms").
+ */
 function roomList(counts) {
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
       ${counts.map(({ name: room, count }, i) => {
     const rule = i ? `border-top:1px solid ${BD};` : '';
+    const words = count > 1 ? `${COUNT_WORDS[count] || count} ${room}` : room;
     return `<tr>
-        <td width="46" valign="middle" style="width:46px;padding:14px 0;${rule}">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" valign="middle" width="30" height="30" bgcolor="${Y}" style="width:30px;height:30px;background:${Y};border-radius:50%;font-family:${SANS};font-size:14px;font-weight:700;line-height:30px;color:${D};text-align:center;">${count}</td></tr></table>
-        </td>
-        <td valign="middle" style="padding:14px 0;${rule}font-family:${SERIF};font-size:18px;font-weight:700;line-height:1.3;color:${D};">${escapeHtml(room)}</td>
+        <td width="24" valign="top" style="width:24px;padding:21px 0 14px;${rule}"><div style="width:10px;height:10px;background:${Y};border-radius:3px;font-size:0;line-height:0;">&nbsp;</div></td>
+        <td valign="top" style="padding:14px 0;${rule}font-family:${SERIF};font-size:18px;font-weight:700;line-height:1.3;color:${D};">${escapeHtml(words)}</td>
       </tr>`;
   }).join('')}
     </table>`;
@@ -172,7 +186,7 @@ function askBand({ kicker, headline, words, action, url, fit = { size: 30, phone
  * start. The giving button goes to the kid's own fundraiser when there is one.
  */
 export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = new Set(), teamPicture = true } = {}) {
-  const name = curly(kid.name || 'our next kid');
+  const name = kidName(kid, 'our next kid');
   const slug = kid.slug || '';
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
   // Only a kid's own fundraiser can promise the gift goes to their room
@@ -197,15 +211,6 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const fit = fitName({ name, after: '.', runs: ['Meet'], max: 54, min: 36, wrap: (h) => `<em style="font-style:italic;color:${Y};">${h}</em>` });
   const giveLabel = `Give to ${name}’s Room →`;
   const action = own && !space && giveLabel.length <= GIVE_MAX ? giveLabel : 'Give Now →';
-  // The plan's heading is the kid's room: "Dylan’s dream room", "Tyrece & Maddie’s dream rooms", "Ava’s wheelchair ramp"
-  const several = rooms.length > 1 || Number(kid.roomCount) > 1;
-  const planWhat = space ? space.lower : several ? 'dream rooms' : 'dream room';
-  const planWords = planWhat.split(' ');
-  const planRuns = planWords.length > 1 ? [...planWords.slice(0, -2), planWords.slice(-2).join(' ')] : planWords;
-  // One line when "Dylan’s dream room" fits at 21px or more, so the name never sits alone above it
-  const planWhole = fitName({ name, after: `’s ${planWhat}`, afterHtml: `’s ${escapeHtml(planWhat).replace(/ /g, '&nbsp;')}`, max: 26, min: 21, phones: [[26, 'h2b']] });
-  const planFit = planWhole.whole && planWhole.size >= 21 ? planWhole : fitName({ name, after: '’s', runs: planRuns, max: 26, min: 22, phones: [[26, 'h2b']] });
-  const planHtml = planFit === planWhole ? planWhole.html : `${planFit.html} ${noWidow(escapeHtml(planWhat))}`;
   // The ask names the kid while it can at 26px or larger ("Help us build Remi / & Nico’s dream."); a long single name can't, so it's "this dream"
   const askPhones = [[26, 'h2b']];
   // Without the kid's own fundraiser the gift goes to the next family too: "Help us build more dreams."
@@ -226,11 +231,11 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   ${facts.length ? factsRow(facts) : ''}
   ${photos.length >= 2 ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">${photoPair(photos, name, 0)}${photoNotes(kid)}</td></tr>` : ''}
   ${rooms.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
-    ${label('The plan')}
-    <h2 class="${planFit.phone}" style="margin:16px 0 10px;font-family:${SERIF};font-size:${planFit.size}px;font-weight:700;line-height:1.25;color:${D};">${planHtml}</h2>
+    ${label('What we’re building')}
+    <div style="height:6px;line-height:6px;font-size:0;">&nbsp;</div>
     ${roomList(roomCounts(kid))}
   </td></tr>` : ''}
-  ${gap(40)}
+  ${gap(rooms.length ? 26 : 40)}
   ${askBand({
     kicker: 'How you can help',
     headline: askHeadline,
@@ -265,7 +270,7 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
  * made it possible, then what comes next for the families still waiting.
  */
 export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = new Set(), teamPicture = true } = {}) {
-  const name = curly(kid.name || 'our kid');
+  const name = kidName(kid, 'our kid');
   const slug = kid.slug || '';
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
   const rooms = roomsOf(kid);
@@ -294,22 +299,29 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const subject = finished;
   // The preview names only what the email shows
   const partners = partnerCards(kid, brokenLogos);
+  const partnerWords = shownPartners(kid, brokenLogos).length === 1 ? 'the partner who made it possible' : 'the partners who made it possible';
   const loads = [lead, ...galleryPicks(kid).filter((ph) => !brokenLogos.has(cfImg(ph.url, PHOTO_TRANSFORM))).map((ph) => ph.url)].filter(Boolean);
   const pictures = new Set(loads).size;
   const shown = [pictures && (pictures > 1 ? 'the photos' : 'the photo'), video && 'the video'].filter(Boolean);
   const preview = shown.length
-    ? `See ${name}’s transformation: ${listJoin([...shown, partners && 'the partners who made it possible'].filter(Boolean))}.`
-    : `See ${name}’s transformation${partners ? ' and the partners who made it possible' : ''}.`;
+    ? `See ${name}’s transformation: ${listJoin([...shown, partners && partnerWords].filter(Boolean))}.`
+    : `See ${name}’s transformation${partners ? ` and ${partnerWords}` : ''}.`;
 
   const pair = pairOf(kid, brokenLogos);
   // With a before and after, one wide photo says enough; galleries also hold close-ups of floors and tile
   const photos = bodyPhotos(kid, lead, brokenLogos, 3, true).slice(0, pair ? 1 : 3);
-  // The kid page shows its first 30 photos (src/pages/kids/[slug].astro), so the email never promises more
-  const allPhotos = Math.min(kidPhotos(kid).length, PAGE_PHOTOS);
+  // The kid page shows its first 30 photos (src/pages/kids/[slug].astro), so the email never promises more;
+  // when none of the gallery loads, there are none to promise
+  const galleryLoads = galleryPicks(kid).some((ph) => !brokenLogos.has(cfImg(ph.url, PHOTO_TRANSFORM)));
+  const allPhotos = galleryLoads ? Math.min(kidPhotos(kid).length, PAGE_PHOTOS) : 0;
   const isComplete = `${are ? 'Are' : 'Is'} Complete.`;
-  // Each piece stays together ("Ramp and Lift" breaks only at "and")
-  const whatPieces = shortWhat.split(/ and /);
-  const fit = fitName({ name, after: '’s', runs: [...whatPieces, isComplete], max: 40, min: 28 });
+  // One word ("Ramp", "Makeover") stays on the name's line, never alone on its own: "Marcus Jr.’s Ramp / Is Complete."
+  // A short phrase stays whole ("Noah’s / Ramp and Lift / Are Complete."); a long one breaks only at "and"
+  const solo = !/\s/.test(shortWhat);
+  const whatPieces = solo ? [] : shortWhat.length <= 16 ? [shortWhat] : shortWhat.split(/ and /);
+  const fit = solo
+    ? fitName({ name, after: `’s ${shortWhat}`, afterHtml: `’s&nbsp;${escapeHtml(shortWhat)}`, runs: [isComplete], max: 40, min: 28 })
+    : fitName({ name, after: '’s', runs: [...whatPieces, isComplete], max: 40, min: 28 });
   const whatHtml = whatPieces.map((w) => escapeHtml(w).replace(/ /g, '&nbsp;')).join(' and ');
   // The page has a Gallery section once it has two photos
   const coverUrl = video ? `${kidUrl}#chapter-reveal` : allPhotos > 1 ? `${kidUrl}#chapter-gallery` : kidUrl;
@@ -319,7 +331,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   ${emailHeader(site)}
   ${cover({
     kicker: `Project complete · ${yearOf(kid)}`,
-    headline: `${fit.html} ${whatHtml}<br>${are ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
+    headline: `${fit.html}${whatHtml ? ` ${whatHtml}` : ''}<br>${are ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
     size: fit.size,
     phone: fit.phone,
     lead,

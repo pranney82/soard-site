@@ -99,17 +99,23 @@ export async function findAudience(env, name) {
 export async function brokenLogos(kid, { fetchImpl = fetch, timeoutMs = 5000, extra = [] } = {}) {
   const urls = [...new Set([...partnerLogoUrls(kid), ...kidPhotoUrls(kid), TEAM_PICTURE, ...extra])];
   const broken = new Set();
-  await Promise.all(urls.map(async (url) => {
+  // 'ok', 'broken', or 'unsure' (a timeout: the picture is likely just slow, so it isn't left out)
+  const look = async (url) => {
     try {
       const res = await fetchImpl(url, { method: 'GET', signal: AbortSignal.timeout(timeoutMs) });
       const type = res.headers.get('content-type') || '';
-      // A picture must come back as one; a Stream video's playlist (…/manifest/video.m3u8) as a playlist
-      const fits = /\.m3u8$/.test(url) ? /mpegurl/i.test(type) : /^image\//i.test(type);
-      if (!res.ok || !fits) broken.add(url);
       res.body?.cancel?.();
+      // A picture must come back as one; a Stream video's playlist (…/manifest/video.m3u8) as a playlist.
+      // An SVG counts as broken: Gmail and Outlook show nothing for one, and Cloudflare can't resize it to a picture they do.
+      const fits = /\.m3u8$/.test(url) ? /mpegurl/i.test(type) : /^image\//i.test(type) && !/svg/i.test(type);
+      return res.ok && fits ? 'ok' : 'broken';
     } catch (err) {
-      if (err?.name !== 'TimeoutError') broken.add(url);
+      return err?.name === 'TimeoutError' ? 'unsure' : 'broken';
     }
+  };
+  // Asked twice before it's left out, so one dropped connection never turns a logo into a name card
+  await Promise.all(urls.map(async (url) => {
+    if ((await look(url)) === 'broken' && (await look(url)) === 'broken') broken.add(url);
   }));
   return broken;
 }

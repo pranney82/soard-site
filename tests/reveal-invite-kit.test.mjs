@@ -280,7 +280,7 @@ test('a partner logo that doesn’t load shows the partner’s name instead; a b
   assert.equal((await sync()).kit, 'drafted');
   const html = [...kit.broadcasts.values()][0].content;
   assert.ok(!html.includes('partner-broken-Stilwell-Logo.jpg'), 'no broken picture');
-  assert.match(html, />Stilwell Casting</, 'the name in its card instead');
+  assert.match(html, />Stilwell(&nbsp;|<br>)Casting</, 'the name in its card instead');
   assert.ok(!/Screenshot 2026/.test(html), 'a file name isn’t a partner name');
   assert.match(html, /partners\/msi\//, 'logos that load still show');
 });
