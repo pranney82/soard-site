@@ -18,9 +18,9 @@
  */
 
 export const DOC_KEYS = ['settings', 'faq', 'our-story', 'media', 'financial-snapshot', 'financials', 'book'];
-// A page can also edit fields of other records (Zeffy: a kid's fundraising link), keyed '<collection>/<slug>'
+// A page can also edit fields of other records (Zeffy: an event's tickets link), keyed '<collection>/<slug>'
 export const docPath = (key) => (String(key).includes('/') ? `src/content/${key}.json` : `src/content/site/${key}.json`);
-/** The collection a record's key is in ('kids/peter' → 'kids'); a key with no slash is itself ('@advisory') */
+/** The collection a record's key is in ('events/golf' → 'events'); a key with no slash is itself ('@advisory') */
 export const recordOf = (key) => String(key).split('/')[0];
 export const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 
@@ -254,10 +254,10 @@ export const PAGES = [
   { key: 'social', title: 'Social links', url: '/', group: 'site', docs: ['settings'], blurb: 'Footer icons', fields: { settings: ['social'] } },
   { key: 'badges', title: 'Trust badges', url: '/about/financials/', group: 'site', docs: ['settings'], blurb: 'Rating seals in the footer', fields: { settings: ['trustBadges'] } },
   { key: 'newsletter', title: 'Newsletter', url: '/', group: 'site', docs: [], blurb: 'Where signups go', fields: {} },
-  // Every Zeffy link on the site in one place. records: the fields of other records it edits, by collection, beside
-  // its own documents ('@advisory' is the Advisory Board's campaign, saved through /api/advisory-admin)
-  { key: 'zeffy', title: 'Zeffy', url: null, group: 'site', docs: ['settings'], blurb: 'Every Zeffy link: Donate, kids, events, Advisory Board',
-    fields: { settings: ['zeffy'] }, records: { kids: ['fundraisingUrl'], events: ['ticketUrl'], '@advisory': ['campaignUrl', 'campaignId', 'hosted'] } },
+  // The site's Zeffy links in one place (a kid's is on their page in Kids). records: the fields of other records it
+  // edits, by collection, beside its own documents ('@advisory' is the Advisory Board's campaign, through /api/advisory-admin)
+  { key: 'zeffy', title: 'Zeffy', url: null, group: 'site', docs: ['settings'], blurb: 'Donate, live reveal, event tickets, Advisory Board',
+    fields: { settings: ['zeffy'] }, records: { events: ['ticketUrl'], '@advisory': ['campaignUrl', 'campaignId', 'hosted'] } },
 ];
 export const pageByKey = (key) => PAGES.find((p) => p.key === key) || null;
 /** Old Site Config tab names (command palette, links) → pages */

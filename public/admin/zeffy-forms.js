@@ -5,10 +5,11 @@
  * link fills in. The box stays, so the link is always in view and a link that isn't a Zeffy form (an event's sign-up
  * sheet, say) can still be pasted. The dropdown shows the form the link already goes to.
  *
- * Every Zeffy link on the site is in Site Config → Zeffy (./site-config.js). The same field is on a kid's Giving,
- * an event's and the gala's tickets (index.html), the golf tournament's registration (./event-recap-admin.js), and
- * the Advisory Board's campaign and a hosted fundraiser's page (./advisory-admin.js, which reads the list through
- * /api/advisory-admin: Mary runs the group from the advisors' page and can't reach the staff routes).
+ * Site Config → Zeffy (./site-config.js) has the site's donation forms, each event's tickets and the Advisory Board's
+ * campaign together. The same field is on a kid's Giving (a kid's link lives only there), an event's and the gala's
+ * tickets (index.html), the golf tournament's registration (./event-recap-admin.js), and the Advisory Board's
+ * campaign and a hosted fundraiser's page (./advisory-admin.js, which reads the list through /api/advisory-admin:
+ * Mary runs the group from the advisors' page and can't reach the staff routes).
  *
  * The list is Zeffy's (functions/api/_zeffy-forms.js), read once for every dropdown on the page and again when the tab
  * comes back after a minute away, so a form just made in Zeffy in another tab shows up.

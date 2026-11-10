@@ -39,17 +39,17 @@ test('an amount goes into the link’s query, beside whatever is there', () => {
   assert.equal(withParam('not a link', 'amount', 5), 'not a link');
 });
 
-test('Site Config’s Zeffy page: the settings’ forms, kids’ and events’ links and the Advisory Board’s, nothing else of them', () => {
+test('Site Config’s Zeffy page: the settings’ forms, events’ links and the Advisory Board’s; a kid’s link stays in Kids', () => {
   const page = S.pageByKey('zeffy');
   assert.equal(page.group, 'site');
   assert.equal(S.docPath('kids/peter'), 'src/content/kids/peter.json');
   assert.equal(S.docPath('events/2026-evening-of-sunshine'), 'src/content/events/2026-evening-of-sunshine.json');
   assert.equal(S.docPath('settings'), 'src/content/site/settings.json');
   assert.equal(S.pageOf('settings', 'zeffy.donateUrl').key, 'zeffy');
-  assert.equal(S.pageOf('kids/peter', 'fundraisingUrl').key, 'zeffy');
+  assert.equal(S.pageOf('kids/peter', 'fundraisingUrl'), null, 'a kid’s fundraising link is on their page in Kids, not here');
   assert.equal(S.pageOf('events/golf', 'ticketUrl').key, 'zeffy');
   assert.equal(S.pageOf('@advisory', 'hosted.h1.giveUrl').key, 'zeffy');
-  assert.equal(S.pageOf('kids/peter', 'bio'), null, 'a kid’s other fields are the Kids editor’s');
+  assert.equal(S.pageOf('events/golf', 'title'), null, 'an event’s other fields are its editor’s');
   const docs = {
     settings: { base: { name: 'SOARD' }, edit: { name: 'SOARD', zeffy: { donateUrl: 'https://www.zeffy.com/en-US/donation-form/x' } } },
     'kids/peter': { base: { name: 'Peter', fundraisingUrl: null, bio: 'a' }, edit: { name: 'Peter', fundraisingUrl: 'https://www.zeffy.com/en-US/donation-form/p', bio: 'b' } },
@@ -57,14 +57,14 @@ test('Site Config’s Zeffy page: the settings’ forms, kids’ and events’ l
     '@advisory': { base: { campaignUrl: '', campaignId: '' }, edit: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/a', campaignId: 'c1' } },
   };
   assert.deepEqual(S.pageChanges(page, docs), [
-    { doc: 'settings', path: 'zeffy' }, { doc: 'kids/peter', path: 'fundraisingUrl' }, { doc: '@advisory', path: 'campaignUrl' }, { doc: '@advisory', path: 'campaignId' },
+    { doc: 'settings', path: 'zeffy' }, { doc: '@advisory', path: 'campaignUrl' }, { doc: '@advisory', path: 'campaignId' },
   ]);
   assert.deepEqual(S.pageChanges(S.pageByKey('donate'), docs), [], 'the Donate page’s own photos and questions only');
-  // A kid's link laid over a fresh copy leaves everything else of theirs as it is now
-  const fresh = { name: 'Peter', fundraisingUrl: null, bio: 'someone else’s new bio', photos: [1, 2] };
-  const { next, conflicts } = S.mergeForSave({ name: 'Peter', fundraisingUrl: null }, { name: 'Peter', fundraisingUrl: 'https://www.zeffy.com/x' }, fresh);
+  // An event's link laid over a fresh copy leaves everything else of it as it is now
+  const fresh = { title: 'Gala', ticketUrl: '', description: 'someone else’s new words', photos: [1, 2] };
+  const { next, conflicts } = S.mergeForSave({ title: 'Gala', ticketUrl: '' }, { title: 'Gala', ticketUrl: 'https://www.zeffy.com/x' }, fresh);
   assert.deepEqual(conflicts, []);
-  assert.deepEqual(next, { ...fresh, fundraisingUrl: 'https://www.zeffy.com/x' });
+  assert.deepEqual(next, { ...fresh, ticketUrl: 'https://www.zeffy.com/x' });
 });
 
 test('no public page keeps a Zeffy form’s link of its own: they come from Site Config → Zeffy or the event', () => {

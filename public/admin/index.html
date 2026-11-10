@@ -24383,7 +24383,7 @@ ${sections || '<p>No one yet.</p>'}
             ['ways', 'Ways to Give page'], ['partners', 'Partners page'], ['community', 'Community Projects page'], ['resources', 'Resources page and its guides'],
             ['about', 'Our Story'], ['financials', 'Financials (numbers, 990s, reports)'], ['faq', 'FAQs'], ['advisory', 'Advisory Board page'],
             ['store', 'Sunny & Ranney page'], ['media', 'Media Kit'], ['org', 'Organization, phone, email, address'], ['social', 'Social links'],
-            ['badges', 'Trust badges'], ['newsletter', 'Newsletter'], ['zeffy', 'Zeffy links (Donate, kids, events, Advisory Board)']]
+            ['badges', 'Trust badges'], ['newsletter', 'Newsletter'], ['zeffy', 'Zeffy links (Donate, live reveal, event tickets, Advisory Board)']]
             .map(([k, label]) => ({ type: 'page', label, meta: 'Site Config', id: 'site-hub', subTab: k, section: 'Pages' })),
           { type: 'page', label: 'Reveal invites', meta: 'Reveals', id: 'broadcast', hash: '#broadcast/invites', section: 'Pages' },
           { type: 'page', label: 'What went out', meta: 'Emails & invites', id: 'messages', hash: '#messages/sent', section: 'Pages' },
@@ -25249,15 +25249,6 @@ ${sections || '<p>No one yet.</p>'}
       };
 
       useEffect(() => { loadData(); }, []);
-      // Site Config → Zeffy saved a kid's or an event's link: the lists follow without reloading everything
-      const recordsSaved = (list) => {
-        for (const { key, data } of list) {
-          const [coll, slug] = key.split('/');
-          const swap = (xs) => xs.map((x) => (x.slug === slug ? data : x));
-          if (coll === 'kids') setKids(swap);
-          else if (coll === 'events') setEvents(swap);
-        }
-      };
 
       // The site updates when someone uses "Publish to site" in the sidebar.
 
@@ -25716,7 +25707,7 @@ ${sections || '<p>No one yet.</p>'}
           case 'articles':
             return editSlug !== null
               ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('site-hub', null, 'resources'); loadData(); }} addToast=${addToast} existingSlugs=${articles.map(a => a.slug)} />`
-              : html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} onRecordsSaved=${recordsSaved} initialTab="resources" onPublish=${promptDeploy} guides=${guidesList} />`;
+              : html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} initialTab="resources" onPublish=${promptDeploy} guides=${guidesList} />`;
           case 'events': {
             // The newest gala or tournament opens its own editor (it lays out
             // /events/gala/ or /events/golf/); older years are plain events
@@ -25813,7 +25804,7 @@ ${sections || '<p>No one yet.</p>'}
 
           // ─── Site Config: ./site-config.js, by public page (#site/<page>) ───
           case 'site-hub':
-            return html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} onRecordsSaved=${recordsSaved} initialTab=${subTab} onPublish=${promptDeploy} guides=${guidesList} />`;
+            return html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} initialTab=${subTab} onPublish=${promptDeploy} guides=${guidesList} />`;
 
           default:
             return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} pendingData=${publishData} onDeploy=${promptDeploy} deploying=${deploying} />`;
