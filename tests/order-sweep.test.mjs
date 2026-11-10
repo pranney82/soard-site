@@ -48,7 +48,7 @@ beforeEach(async () => {
     DB: await createD1(), GOOGLE_CALENDAR_KEY: SERVICE_ACCOUNT,
     AI: { run: async (model, { messages }, opts) => {
       const subject = /Subject: (.*)/.exec(messages[1].content)?.[1] || '';
-      calls.push({ kind: 'ai', subject, feature: opts?.gateway?.metadata?.feature });
+      calls.push({ kind: 'ai', subject, feature: opts?.gateway?.metadata?.feature, input: messages[1].content });
       if (aiCap) throw new Error('2045: spend limit reached');
       return { response: aiAnswers[subject] || { kind: 'not_order', orderNumber: '', items: [], trackingNumbers: [], expected: '', shipTo: 'unknown', jobPo: '' } };
     } },
@@ -256,4 +256,32 @@ test('first live run: money tools, bounces, calendar notices and replies aren’
   const r = (await rows()).find((x) => x.id === 'm0001');
   assert.deepEqual([r.state, r.detail], ['skipped', 'from a money or staff tool, not a store']);
   assert.equal(calls.filter((c) => c.kind === 'ai').length, 0);
+});
+
+test('gate 1: a store that names its items only on the pictures (Wayfair, Best Buy) is read by the pictures’ names', async () => {
+  const html = '<table><tr><td><img src="https://img.example/logo.png" alt="Wayfair"></td></tr><tr><td><img src="https://img.example/p.jpg" alt="Ebern Designs 36 in. Wall Mounted Vanity"></td><td>Qty: 1</td></tr></table>' + '<p>Track your package</p>'.repeat(20);
+  mail({ box: PAT, at: T0 - DAY, from: 'Wayfair <shipment@wayfair.com>', subject: 'Track your package! Your order is on the way.', html });
+  aiAnswers['Track your package! Your order is on the way.'] = { kind: 'shipped', orderNumber: '', items: [{ name: 'Ebern Designs 36 in. Wall Mounted Vanity', sku: '', quantity: 1, price: '' }], trackingNumbers: [], expected: '', shipTo: 'unknown', jobPo: '' };
+  await run(T0);
+  const ai = calls.find((c) => c.kind === 'ai');
+  assert.match(ai.input, /Ebern Designs 36 in\. Wall Mounted Vanity/, 'the picture’s name reaches the reader');
+  assert.doesNotMatch(ai.input, /\bWayfair\n/, 'a one-word logo alt adds nothing');
+  const read = JSON.parse((await rows()).find((x) => x.state === 'read').read);
+  assert.equal(read.items[0].name, 'Ebern Designs 36 in. Wall Mounted Vanity');
+  assert.equal(read.v, 2);
+});
+
+test('gate 1: emails read before reading got better are read again, once', async () => {
+  mail({ box: PAT, at: T0 - DAY, from: 'Amazon.com <shipment-tracking@amazon.com>', subject: 'Shipped: "Oak Step Stool"', text: amazonText });
+  await run(T0);
+  // Pretend it was read by the first version
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st, readerV: 1 })).run();
+  await env.DB.prepare("UPDATE order_mail SET read = '{\"kind\":\"shipped\",\"items\":[]}' WHERE state = 'read'").run();
+  await run(T0 + 4 * MIN);
+  const r = (await rows()).find((x) => x.state === 'read');
+  assert.equal(JSON.parse(r.read).v, 2);
+  assert.equal(JSON.parse(r.read).items.length, 1, 'read again with today’s reader');
+  const after = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  assert.equal(after.readerV, 2);
 });

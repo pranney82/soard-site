@@ -375,9 +375,17 @@ export function withAi(read, ai) {
   };
 }
 
+/**
+ * An image's alt text as words in its place: Wayfair and Best Buy name their items only on the product pictures
+ * (seen in SOARD's mail, Nov 9 2026). Tracking pixels and logos have empty or one-word alts and add nothing
+ */
+export function withAltText(html) {
+  return String(html || '').replace(/<img\b[^>]*?\balt\s*=\s*(["'])([^"']*)\1[^>]*>/gi, (m, q, alt) => (alt.trim().split(/\s+/).length > 1 ? ` ${alt.trim()} \n` : ' '));
+}
+
 /** HTML to words for the rules, keeping each cell's text apart (the AI gets ./_mailbox.js htmlText) */
 function htmlTextLite(html) {
-  return String(html || '')
+  return withAltText(html)
     .replace(/<(style|script|head|title)[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<br\s*\/?>|<\/(p|div|tr|li|h[1-6]|table)>/gi, '\n')
     .replace(/<\/t[dh]>/gi, '  ')

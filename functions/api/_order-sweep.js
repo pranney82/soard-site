@@ -31,7 +31,7 @@ import { normEmail } from './_board-roles.js';
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
 import { mailboxes, orgDomains, gmail, header, partsOf, bytesOf, htmlText } from './_mailbox.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
-import { readOrderEmail, withAi, ORDER_SCHEMA, ORDER_PROMPT, storeOf } from './_order-read.js';
+import { readOrderEmail, withAi, withAltText, ORDER_SCHEMA, ORDER_PROMPT, storeOf } from './_order-read.js';
 
 const STAFF_DOMAIN = 'soardcharity.com';
 const EVERY_MS = 3 * 60 * 1000;
@@ -49,7 +49,9 @@ const FAILS_TO_REST = 5;
 const RETRY_MS = 10 * 60 * 1000;
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const AI_TIMEOUT_MS = 12 * 1000;
-const AI_CHARS = 6000;
+const AI_CHARS = 9000;
+// Bumped when reading changes: every email read under an older version is read again once
+export const READER_V = 2;
 const AT_ONCE = 6;
 const HEADERS = ['From', 'X-Original-From', 'X-Original-Sender', 'Reply-To', 'To', 'Cc', 'Delivered-To', 'Subject', 'Message-ID', 'List-Id'];
 // Order words in the subject: Gmail does the first sort, so a run lists only what could be an order email
@@ -235,12 +237,15 @@ async function readOne(env, ctx, row) {
     if (not) return settle(env, ctx, row, 'skipped', null, not);
     let read = readOrderEmail({ subject, from, snippet: msg.snippet || '', text, html, sentAt });
     if (read.needsAi) {
-      const words = text && text.length > 400 && !/view (this|our|the) email in (a|your) (web )?browser/i.test(text) ? text : htmlText(html) || text;
+      // The HTML with its pictures' names when there is HTML (stores' plain text is often only "view in browser"), else the plain words
+      const fromHtml = html ? htmlText(withAltText(html)) : '';
+      const words = fromHtml.length >= 200 ? fromHtml : text || fromHtml;
       const ai = await aiRead(env, { subject, from, sentAt, text: words });
       if (ai?.kind === 'not_order') return settle(env, ctx, row, 'skipped', null, 'not an order email, by its words');
       read = withAi(read, ai);
       if (!ai) read.aiMissed = true;
     }
+    read.v = READER_V;
     return settle(env, ctx, row, 'read', read, summary(read));
   } catch (err) {
     if (aiCapped(err)) {
@@ -287,6 +292,11 @@ async function sweep(env, st, { fetchImpl, now }) {
   };
   const errors = [];
   st.startedAt ||= now;
+  // Reading got better: everything read before is read again, once (the AI is asked only where the rules fall short)
+  if ((st.readerV || 1) < READER_V) {
+    await env.DB.prepare("UPDATE order_mail SET state = 'queued', tries = 0, detail = NULL WHERE state = 'read'").run();
+    st.readerV = READER_V;
+  }
   st.boxes ||= {};
   // Inboxes in turn, a few a run, starting where the last run stopped
   const at = (st.nextBox || 0) % boxes.length;

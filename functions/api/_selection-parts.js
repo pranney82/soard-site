@@ -38,11 +38,21 @@ const SCHEMA = [
     hash TEXT NOT NULL, parts TEXT NOT NULL, read_by TEXT, read_at TEXT, PRIMARY KEY (job_id, item_id))`,
   'CREATE TABLE IF NOT EXISTS kid_parts_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
 ];
+// Added Nov 9 2026: the line's own words, for matching an order to it, and those words made comparable across
+// makeovers (the same generic words on several is a template line, not a product yet)
+const COLUMNS = ['words TEXT', 'words_key TEXT'];
 const _ready = new WeakSet();
 async function ensure(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
+  const have = new Set(((await DB.prepare('PRAGMA table_info(kid_parts)').all()).results || []).map((c) => c.name));
+  for (const c of COLUMNS) if (!have.has(c.split(' ')[0])) await DB.prepare(`ALTER TABLE kid_parts ADD COLUMN ${c}`).run();
   _ready.add(DB);
+}
+
+/** A line's words made comparable: lower case, no links, prices or punctuation */
+export function wordsKey(text) {
+  return String(text || '').toLowerCase().replace(/https?:\/\/\S+/g, ' ').replace(/\$\s?[\d,.]+/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 300);
 }
 async function readState(DB) {
   const row = await DB.prepare("SELECT data FROM kid_parts_state WHERE key = 'state'").first();
@@ -62,7 +72,8 @@ export function lineHash(line) {
 
 const DONATED = /\bdonat(ed|ion)\b|\bdonor\b|\bin[- ]kind\b/i;
 const FAMILY = /\bsupplied by (the )?family\b|\bfamily (supplies|supplied|provides|provided|has|owns)\b|\bfrom the family\b|\bfamily['’]s own\b/i;
-const OTHERS = /\b(supplied|provided|installed) by (the )?(installer|contractor|painter|plumber|electrician|fabricator|tile setter|trade|vendor|sub)\b|\blabor\b/i;
+// "Provided by Echols", "Supplied by Cambria": a partner brings it (the family's own is caught first, above)
+const OTHERS = /\b(supplied|provided|installed|furnished|brought) by\b|\blabor\b/i;
 const URL_RE = /https?:\/\/[^\s)>\]]+/g;
 const cents = (n) => (Number.isFinite(Number(n)) ? Math.round(Number(n) * 100) : 0);
 const centsOf = (v) => {
@@ -245,12 +256,14 @@ async function run(env, st, { fetchImpl, now }) {
     const next = (jobs.findIndex((j) => j.id === job.id) + 1) % jobs.length;
     try {
       const lines = await chosenLines(env, job.id, fetchImpl);
-      const have = new Map(((await env.DB.prepare('SELECT item_id, hash, read_by, read_at FROM kid_parts WHERE job_id = ?').bind(job.id).all()).results || []).map((r) => [r.item_id, r]));
+      const have = new Map(((await env.DB.prepare('SELECT item_id, hash, read_by, read_at, words_key FROM kid_parts WHERE job_id = ?').bind(job.id).all()).results || []).map((r) => [r.item_id, r]));
       let finished = true;
       for (const line of lines) {
         const hash = lineHash(line);
         const prev = have.get(line.id);
         const missed = prev?.hash === hash ? missTries(prev.read_by) : 0;
+        // Read before the line's words were kept: they're added now, with no new reading
+        if (prev?.hash === hash && prev.words_key == null) await env.DB.prepare('UPDATE kid_parts SET words = ?, words_key = ? WHERE job_id = ? AND item_id = ?').bind(String(line.description || '').slice(0, 3000), wordsKey(line.description), job.id, line.id).run();
         if (prev?.hash === hash && (!missed || missed >= MISS_TRIES || now - Date.parse(prev.read_at || 0) < MISS_RETRY_MS)) continue;
         let parts = simpleParts(line);
         let by = 'rules';
@@ -262,9 +275,9 @@ async function run(env, st, { fetchImpl, now }) {
           by = 'ai';
           if (!parts) { parts = []; by = `none:${missed + 1}`; }
         }
-        await env.DB.prepare(`INSERT OR REPLACE INTO kid_parts (job_id, item_id, job_name, group_name, line_name, cents, hash, parts, read_by, read_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .bind(job.id, line.id, job.name, line.group, line.name, cents(line.cost), hash, JSON.stringify(parts), by, iso(now)).run();
+        await env.DB.prepare(`INSERT OR REPLACE INTO kid_parts (job_id, item_id, job_name, group_name, line_name, cents, hash, parts, read_by, read_at, words, words_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(job.id, line.id, job.name, line.group, line.name, cents(line.cost), hash, JSON.stringify(parts), by, iso(now), String(line.description || '').slice(0, 3000), wordsKey(line.description)).run();
       }
       // A line no longer chosen (or deleted) leaves the list
       const ids = new Set(lines.map((l) => l.id));

@@ -10,7 +10,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
-  maybeReadSelections, selectionPartsStatus, simpleParts, sourceOf, partKey, lineHash, PARTS_SCHEMA,
+  maybeReadSelections, selectionPartsStatus, simpleParts, sourceOf, partKey, lineHash, wordsKey, PARTS_SCHEMA,
 } from '../functions/api/_selection-parts.js';
 
 const T0 = Date.parse('2026-11-09T15:00:00Z');
@@ -226,4 +226,21 @@ test('second review: a pass over many makeovers spans runs, then rests', async (
   assert.equal((await selectionPartsStatus(env)).jobs.length, 10);
   const later = await maybeReadSelections(env, { now: T0 + 32 * MIN });
   assert.equal(later, null, 'and it rests until the next 30 minutes');
+});
+
+test('gate 2: "Provided by" or "Supplied by" anyone is someone else’s; the line’s words are kept for matching', async () => {
+  assert.equal(sourceOf('Mirror: Provided by a glass partner', 'Mirror', 15000), 'others');
+  assert.equal(sourceOf('Countertop: Supplied by a stone partner', 'Countertop', 0), 'others');
+  assert.equal(sourceOf('Records (supplied by family)', '', 40000), 'family', 'the family’s own is still the family’s');
+  assert.equal(wordsKey('Perfect Stripe, Beige https://shop.example/x *$352.00*'), 'perfect stripe beige');
+  await maybeReadSelections(env, { now: T0, force: true });
+  const row = await env.DB.prepare("SELECT words, words_key FROM kid_parts WHERE item_id = 'ci-shower'").first();
+  assert.match(row.words, /Raincan Shower Head/);
+  assert.match(row.words_key, /raincan shower head/);
+  // A row read before words were kept gets them with no new reading
+  await env.DB.prepare("UPDATE kid_parts SET words = NULL, words_key = NULL WHERE item_id = 'ci-shower'").run();
+  calls.length = 0;
+  await maybeReadSelections(env, { now: T0 + 60 * MIN, force: true });
+  assert.equal(calls.filter((c) => c.kind === 'ai').length, 0);
+  assert.match((await env.DB.prepare("SELECT words FROM kid_parts WHERE item_id = 'ci-shower'").first()).words, /Raincan/);
 });
