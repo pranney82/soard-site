@@ -9,7 +9,8 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { jurisdictionFrom, jurisdictionAt, plan, learnFromStaff, officeFor, fillPermitOffices, permitFacts, PERMIT_FIELD_NAME, VERIFIED } from '../functions/api/_permit-office.js';
+import { jurisdictionFrom, jurisdictionAt, plan, learnFromStaff, officeFor, fillPermitOffices, permitFacts, permitNote, nearLines, PERMIT_FIELD_NAME, VERIFIED } from '../functions/api/_permit-office.js';
+import { onRequestGet as jobHomeGet } from '../functions/api/job-home.js';
 import { maybeSyncApplicants } from '../functions/api/_applicants.js';
 
 // What the Census map answered for real Georgia points (Nov 9 2026), and one made-up town
@@ -72,11 +73,11 @@ test('the plan: blanks and due or moved homes get a lookup; known homes get rewr
   const now = Date.parse('2026-11-09T20:00:00Z');
   const fresh = '2026-11-01T00:00:00Z';
   const written = new Map([
-    ['moved', { lat: 34.0, lng: -84.0, office: 'Cobb County', jurisdiction: 'Cobb County', written_at: fresh }],
-    ['same', { lat: 34.0, lng: -84.0, office: 'Cobb County', jurisdiction: 'Cobb County', written_at: fresh }],
-    ['staff', { lat: 34.0, lng: -84.0, office: 'Cobb County', jurisdiction: 'Cobb County', written_at: fresh }],
-    ['nowhere', { lat: 10, lng: 10, office: null, jurisdiction: null, written_at: fresh }],
-    ['town', { lat: 32.75, lng: -84.87, office: 'City of Testville', jurisdiction: 'City of Testville', written_at: fresh }],
+    ['moved', { lat: 34.0, lng: -84.0, office: 'Cobb County', jurisdiction: 'Cobb County', near: '[]', written_at: fresh }],
+    ['same', { lat: 34.0, lng: -84.0, office: 'Cobb County', jurisdiction: 'Cobb County', near: '[]', written_at: fresh }],
+    ['staff', { lat: 34.0, lng: -84.0, office: 'Cobb County', jurisdiction: 'Cobb County', near: '[]', written_at: fresh }],
+    ['nowhere', { lat: 10, lng: 10, office: null, jurisdiction: null, near: '[]', written_at: fresh }],
+    ['town', { lat: 32.75, lng: -84.87, office: 'City of Testville', jurisdiction: 'City of Testville', near: '[]', written_at: fresh }],
   ]);
   const homes = [
     { id: 'blank', lat: 34, lng: -84, value: '' },
@@ -91,20 +92,24 @@ test('the plan: blanks and due or moved homes get a lookup; known homes get rewr
   // Once the checked list says the county issues Testville's permits, its homes are rewritten with no new lookup
   verify('City of Testville', 'Harris County');
   assert.deepEqual(plan(homes, written, new Map(), now).map(h => `${h.id}:${h.need}:${h.office || ''}`), ['blank:lookup:', 'moved:lookup:', 'town:write:Harris County']);
+  // A home looked up before the near-the-line check existed gets one more lookup for it
+  const older = new Map([...written].map(([k, w]) => [k, k === 'same' ? { ...w, near: null } : w]));
+  assert.ok(plan(homes, older, new Map(), now).some(h => h.id === 'same' && h.need === 'lookup'));
   // 90 days on, everything the site wrote is looked up again (cities annex land), blanks first; staff's words never
   assert.deepEqual(plan(homes, written, new Map(), now + 91 * 864e5).map(h => h.id), ['blank', 'nowhere', 'moved', 'same', 'town']);
 });
 
 // A small JobTread for this: the location fields, the homes, createCustomField and updateLocation
-function fakeJT({ fields = [{ id: '22PK2MzzJD93', name: 'County' }], homes = [] } = {}) {
+function fakeJT({ fields = [{ id: '22PK2MzzJD93', name: 'County' }], homes = [], at = null } = {}) {
   const world = { fields, homes, made: [], updates: [], census: 0, censusDown: false };
   const fetchImpl = async (url, init) => {
     if (String(url).startsWith('https://geocoding.geo.census.gov')) {
       world.census++;
       if (world.censusDown) return new Response('', { status: 502 });
       const u = new URL(url);
-      const key = `${Number(u.searchParams.get('y'))},${Number(u.searchParams.get('x'))}`;
-      return Response.json({ result: { geographies: CENSUS[key] || {} } });
+      const y = Number(u.searchParams.get('y'));
+      const x = Number(u.searchParams.get('x'));
+      return Response.json({ result: { geographies: CENSUS[`${y},${x}`] || at?.(y, x) || {} } });
     }
     const q = JSON.parse(init.body).query;
     if (q.createCustomField) {
@@ -236,7 +241,38 @@ test('rows the first version wrote (no jurisdiction kept) take their own office 
   verify('City of Testville', 'Harris County');
   await fillPermitOffices(env, { fetchImpl: jt.fetchImpl });
   assert.equal(jt.value('T1'), 'Harris County', 'the checked list reaches homes filled before it existed');
-  assert.equal(jt.world.census, 0);
+  assert.equal(jt.world.census, 5, 'looked up once more, for the near-the-line check (the home and four points around it)');
+  const census = jt.world.census;
+  await fillPermitOffices(env, { fetchImpl: jt.fetchImpl });
+  assert.equal(jt.world.census, census, 'and only once');
+});
+
+// Marietta's line runs just north of this home, along its street
+const ON_THE_LINE = (y) => (y > 33.9502 ? { 'Incorporated Places': [{ NAME: 'Marietta city', FUNCSTAT: 'A' }], Counties: [{ NAME: 'Cobb County' }] } : { Counties: [{ NAME: 'Cobb County' }] });
+
+test('a home right at a city line: the four points around it find the other side, once; the Home card hears about it', async () => {
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    return Response.json({ result: { geographies: ON_THE_LINE(Number(u.searchParams.get('y'))) } });
+  };
+  assert.deepEqual(await nearLines(33.95, -84.55, 'Cobb County', fetchImpl), ['City of Marietta']);
+  assert.deepEqual(await nearLines(33.90, -84.55, 'Cobb County', fetchImpl), [], 'well inside: nothing');
+  const jt = fakeJT({ homes: [{ id: 'N1', lat: 33.95, lng: -84.55 }, { id: 'N2', lat: 33.90, lng: -84.55 }], at: (y) => ON_THE_LINE(y) });
+  const r = await fillPermitOffices(env, { fetchImpl: jt.fetchImpl });
+  assert.equal(jt.value('N1'), 'Cobb County', 'the office is the side its point is on');
+  assert.deepEqual(r.nearLine, [{ jurisdiction: 'Cobb County', near: ['City of Marietta'], homes: 1 }]);
+  assert.equal(r.nearChecked, 2);
+  assert.deepEqual(await permitNote(env.DB, 'N1'), { jurisdiction: 'Cobb County', office: 'Cobb County', near: ['City of Marietta'], meters: 35 });
+  assert.deepEqual((await permitNote(env.DB, 'N2')).near, []);
+  assert.equal(await permitNote(env.DB, 'nobody'), null);
+  // /api/job-home hands the card the note with the home
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => Response.json({ job: { id: 'J1', name: 'Kid (2026)', organization: { id: '22NJw42j5GLg' }, location: { id: 'N1', street: '1 Line St', city: 'Marietta', state: 'GA', postalCode: '30060', customFieldValues: { nodes: [] } } }, organization: { customFields: { nodes: [] } } });
+  try {
+    const res = await jobHomeGet({ env: { ...env, JOBTREAD_GRANT_KEY: 'k' }, request: new Request('https://x/api/job-home?job=J1aaaaaa') });
+    const body = await res.json();
+    assert.deepEqual(body.home.permit.near, ['City of Marietta']);
+  } finally { globalThis.fetch = realFetch; }
 });
 
 test('the applicant sync gives it its own turn every 10 minutes, and its trouble never marks the sync as failing', async () => {

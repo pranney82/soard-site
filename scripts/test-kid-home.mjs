@@ -90,7 +90,7 @@ function answer(req) {
   if (p === '/api/job-home' && url.searchParams.get('job') === '22PALLY00') { req.abort('internetdisconnected'); return true; }
   if (p === '/api/job-home') {
     const job = url.searchParams.get('job');
-    if (job === '22PCOLIN') return json({ success: true, job: { id: job, name: 'Colin (2026)' }, home: home('22PLOCCOL', COLIN), fields: FIELDS });
+    if (job === '22PCOLIN') return json({ success: true, job: { id: job, name: 'Colin (2026)' }, home: { ...home('22PLOCCOL', COLIN), permit: { jurisdiction: 'Cherokee County', office: 'Cherokee County', near: ['City of Woodstock'], meters: 35 } }, fields: FIELDS });
     if (job === '22PAMARI') return json({ success: true, job: { id: job, name: 'Amari (2025)' }, home: null, fields: FIELDS });
     if (job === '22PABBY0') {
       abbyTries++;
@@ -161,10 +161,11 @@ try {
   const facts = await page.$$eval('.kd-home__facts div', (els) => els.map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent]));
   ok(JSON.stringify(facts) === JSON.stringify([
     ['Living Area', '1,435 sq ft'], ['Bed Bath', '3 bed, 2.5 bath'], ['County', 'Cherokee'], ['Sewer/Septic', 'Septic'], ['Power Company', LONG_POWER],
-    ['Water Source', 'Public'], ['Parcel Number', LONG_PARCEL], ['Latest Sale Price', '$128,700'], ['Latest Sale Date', 'Jan 23, 2001'], ['Year Built', '2000'],
-  ]), `every other field in JobTread's order, read the way a person reads it (${JSON.stringify(facts)})`);
+    ['Parcel Number', LONG_PARCEL], ['Latest Sale Price', '$128,700'], ['Latest Sale Date', 'Jan 23, 2001'], ['Year Built', '2000'],
+  ]), `every other field in JobTread's order (Water Source isn't used), read the way a person reads it (${JSON.stringify(facts)})`);
   ok(!/old\)|REQUIRED|2,000/.test(t), 'no retired field and no bookkeeping');
   ok(/Not filled in yet: Permit Number\./.test(t), 'the empty field is named, so staff know what to fill in');
+  ok(/This home sits within about 35 m of City of Woodstock\. The map puts it in Cherokee County, so confirm with the permit office before applying\./.test(t) && !!(await page.$('.kd-home__near[role="note"]')), 'a home right at a city line says so, and to confirm the permit office');
   const links = await page.$$eval('.kd-card--home a', (as) => as.map((a) => ({ text: a.textContent.trim(), href: a.href, target: a.target, rel: a.rel })));
   ok(links.length === 2 && links[0].text === 'Zillow' && links[0].href === ZILLOW && links[0].target === '_blank' && /noopener/.test(links[0].rel), `Zillow opens in a new tab (${JSON.stringify(links[0])})`);
   ok(links[1].text === 'Change it in JobTread' && links[1].href === 'https://app.jobtread.com/locations/22PLOCCOL' && links[1].target === '_blank', `and the home itself in JobTread, where it's changed (${JSON.stringify(links[1])})`);

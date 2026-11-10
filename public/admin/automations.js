@@ -1387,7 +1387,10 @@ const MAP = { t: 'SOARD', children: [
             if (unconfirmed.length) return ATTN(`Needs a look: no one has confirmed who issues building permits in ${names(unconfirmed)}. They say the jurisdiction for now. If the county issues them instead, change one home there in JobTread and the rest follow.`, p.lastFilledAt || run.at);
             const taught = (run.taught || []).length ? ` Taught by staff: ${run.taught.map((t) => `${t.jurisdiction} → ${t.office}`).join(', ')}.` : '';
             const left = run.waiting ? ` ${plural(run.waiting, 'more home')} next turn.` : '';
-            return ON(`${run.withOffice} of ${plural(run.homes, 'home')} have their permit office, across ${plural(towns.length, 'town and county', 'towns and counties')}, every one checked.${taught}${left}${run.unplaced ? ` ${plural(run.unplaced, 'home')} with no map point yet.` : ''}`, p.lastFilledAt || run.at);
+            const nearHomes = (run.nearLine || []).reduce((n, x) => n + x.homes, 0);
+            const near = nearHomes ? ` ${plural(nearHomes, 'home sits', 'homes sit')} within about 35 m of another city or county line (${(run.nearLine || []).map((x) => `${x.jurisdiction} by ${x.near.join(' and ')}`).join('; ')}); ${nearHomes === 1 ? 'its' : 'their'} Home card says to confirm the permit office.` : '';
+            const checking = run.nearChecked != null && run.nearChecked < run.homes - (run.unplaced || 0) ? ` Checking the rest for nearby lines (${run.nearChecked} done).` : '';
+            return ON(`${run.withOffice} of ${plural(run.homes, 'home')} have their permit office, across ${plural(towns.length, 'town and county', 'towns and counties')}, every one checked.${taught}${near}${checking}${left}${run.unplaced ? ` ${plural(run.unplaced, 'home')} with no map point yet.` : ''}`, p.lastFilledAt || run.at);
           } },
       ]},
     ]},

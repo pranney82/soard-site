@@ -25,6 +25,11 @@
  * the kid's Home card and Insights show it (public/admin/home-shared.js).
  *
  *  - The site only changes a value it wrote itself. What staff type stays.
+ *  - A home whose map point sits within about 35 meters of another
+ *    jurisdiction's line (JobTread's point can land on the street, and city
+ *    lines often run down streets) is marked: the kid's Home card says which
+ *    line and to confirm with the permit office (permitNote, /api/job-home),
+ *    and Site → Automations counts them. Four extra points are asked, once.
  *  - A home is looked up again when its map point moves and every 90 days
  *    (cities annex land; the Census redraws city limits once a year).
  *  - permit_offices (D1) remembers, per home, the jurisdiction, the office the
@@ -49,6 +54,8 @@ const PAGE = 100;
 const SAME_SPOT = 0.0005;
 // How long a looked-up answer stands before it's checked again (annexations; the Census's yearly redraw)
 export const RECHECK_MS = 90 * 24 * 60 * 60 * 1000;
+// How close another jurisdiction's line has to be to mention it (a rooftop sits about this far from the street)
+export const NEAR_M = 35;
 const iso = (t = Date.now()) => new Date(t).toISOString();
 
 const SCHEMA = [
@@ -62,6 +69,8 @@ async function ensureSchema(DB) {
   await DB.batch(SCHEMA.map((sql) => DB.prepare(sql)));
   // The jurisdiction (added with the verified list): rows from before it wrote the jurisdiction itself
   try { await DB.prepare('ALTER TABLE permit_offices ADD COLUMN jurisdiction TEXT').run(); } catch { /* already there */ }
+  // Other jurisdictions within NEAR_M (a JSON list; null until checked)
+  try { await DB.prepare('ALTER TABLE permit_offices ADD COLUMN near TEXT').run(); } catch { /* already there */ }
   await DB.prepare('UPDATE permit_offices SET jurisdiction = office WHERE jurisdiction IS NULL').run();
   _ready.add(DB);
 }
@@ -92,6 +101,18 @@ export async function jurisdictionAt(lat, lng, fetchImpl = fetch) {
   const data = await res.json().catch(() => null);
   if (!data?.result?.geographies) throw new Error('The Census map didn’t answer');
   return { jurisdiction: jurisdictionFrom(data.result.geographies) };
+}
+
+/**
+ * Other jurisdictions within NEAR_M of a point: the Census asked about four points that far north, south, east
+ * and west. [] when the home sits well inside its own.
+ */
+export async function nearLines(lat, lng, here, fetchImpl = fetch) {
+  const dLat = NEAR_M / 111320;
+  const dLng = NEAR_M / (111320 * Math.cos((lat * Math.PI) / 180));
+  const around = [[lat + dLat, lng], [lat - dLat, lng], [lat, lng + dLng], [lat, lng - dLng]];
+  const found = await Promise.all(around.map(([a, b]) => jurisdictionAt(a, b, fetchImpl).then((r) => r.jurisdiction)));
+  return [...new Set(found.filter((j) => j && j !== here))].sort();
 }
 
 /**
@@ -210,6 +231,8 @@ export function plan(homes, written, taught = new Map(), now = Date.now()) {
       continue;
     }
     if (!w.jurisdiction) continue;
+    // Looked up before the near-the-line check existed: once more, for it
+    if (w.near == null) { out.push({ ...h, need: 'lookup' }); continue; }
     const want = officeFor(w.jurisdiction, taught).office;
     if (want !== h.value) out.push({ ...h, need: 'write', jurisdiction: w.jurisdiction, office: want });
   }
@@ -227,28 +250,30 @@ export async function fillPermitOffices(env, { fetchImpl = fetch, now = Date.now
   try {
     const field = await ensurePermitField(env, { fetchImpl, now });
     const homes = await readHomes(env, field.id, fetchImpl);
-    const { results } = await DB.prepare('SELECT location_id, lat, lng, office, jurisdiction, written_at FROM permit_offices').all();
+    const { results } = await DB.prepare('SELECT location_id, lat, lng, office, jurisdiction, near, written_at FROM permit_offices').all();
     const written = new Map((results || []).map((r) => [r.location_id, r]));
     const taught = learnFromStaff(homes, written);
     const todo = plan(homes, written, taught, now);
     let filled = 0;
-    const save = (h, jurisdiction, office) => DB.prepare(`INSERT INTO permit_offices (location_id, lat, lng, office, jurisdiction, written_at) VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(location_id) DO UPDATE SET lat = excluded.lat, lng = excluded.lng, office = excluded.office, jurisdiction = excluded.jurisdiction, written_at = excluded.written_at`)
-      .bind(h.id, h.lat, h.lng, office, jurisdiction, iso(now)).run();
+    const save = (h, jurisdiction, office, near) => DB.prepare(`INSERT INTO permit_offices (location_id, lat, lng, office, jurisdiction, near, written_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(location_id) DO UPDATE SET lat = excluded.lat, lng = excluded.lng, office = excluded.office, jurisdiction = excluded.jurisdiction, near = excluded.near, written_at = excluded.written_at`)
+      .bind(h.id, h.lat, h.lng, office, jurisdiction, near, iso(now)).run();
     for (const h of todo.slice(0, limit)) {
       let { jurisdiction } = h;
       let office = h.office;
+      let near = written.get(h.id)?.near ?? null;
       if (h.need === 'lookup') {
         ({ jurisdiction } = await jurisdictionAt(h.lat, h.lng, fetchImpl));
         office = jurisdiction ? officeFor(jurisdiction, taught).office : null;
+        near = JSON.stringify(jurisdiction ? await nearLines(h.lat, h.lng, jurisdiction, fetchImpl) : []);
       }
       if (office && office !== h.value) {
         // updateLocation answers with nothing to select
         await pave(env.JOBTREAD_GRANT_KEY, { updateLocation: { $: { id: h.id, customFieldValues: { [field.id]: office } } } }, fetchImpl);
         filled++;
       }
-      await save(h, jurisdiction, office);
-      written.set(h.id, { location_id: h.id, lat: h.lat, lng: h.lng, office, jurisdiction, written_at: iso(now) });
+      await save(h, jurisdiction, office, near);
+      written.set(h.id, { location_id: h.id, lat: h.lat, lng: h.lng, office, jurisdiction, near, written_at: iso(now) });
     }
     // Each town and county with homes: how many, what they say, and why (counts and names of places only)
     const towns = new Map();
@@ -267,6 +292,9 @@ export async function fillPermitOffices(env, { fetchImpl = fetch, now = Date.now
       towns: [...towns.values()].sort((a, b) => b.homes - a.homes || a.jurisdiction.localeCompare(b.jurisdiction)),
       taught: [...taught].filter(([, t]) => !t.conflict).map(([jurisdiction, t]) => ({ jurisdiction, office: t.office, homes: t.homes })),
       conflicts: [...taught].filter(([, t]) => t.conflict).map(([jurisdiction, t]) => ({ jurisdiction, values: t.conflict })),
+      // Homes within NEAR_M of another jurisdiction's line, by place (no addresses)
+      nearLine: nearSummary(homes, written),
+      nearChecked: homes.filter((h) => written.get(h.id)?.near != null).length,
     };
     await setState(DB, 'last_run', JSON.stringify(summary), now);
     if (filled) await setState(DB, 'last_filled_at', iso(now), now);
@@ -276,6 +304,32 @@ export async function fillPermitOffices(env, { fetchImpl = fetch, now = Date.now
     await setState(DB, 'last_error', `${iso(now)} ${String(e.message || e).slice(0, 300)}`, now).catch(() => {});
     return { error: e.message };
   }
+}
+
+function nearSummary(homes, written) {
+  const by = new Map();
+  for (const h of homes) {
+    const w = written.get(h.id);
+    let near = [];
+    try { near = JSON.parse(w?.near || '[]') || []; } catch { /* unreadable: none */ }
+    if (!w?.jurisdiction || !near.length) continue;
+    const key = `${w.jurisdiction}|${near.join('|')}`;
+    const row = by.get(key) || { jurisdiction: w.jurisdiction, near, homes: 0 };
+    row.homes++;
+    by.set(key, row);
+  }
+  return [...by.values()].sort((a, b) => b.homes - a.homes || a.jurisdiction.localeCompare(b.jurisdiction));
+}
+
+/** For a kid's Home card: the home's jurisdiction and any line within NEAR_M, or null when the site hasn't looked it up */
+export async function permitNote(DB, locationId) {
+  if (!DB || !locationId) return null;
+  await ensureSchema(DB);
+  const r = await DB.prepare('SELECT jurisdiction, office, near FROM permit_offices WHERE location_id = ?').bind(locationId).first();
+  if (!r) return null;
+  let near = [];
+  try { near = JSON.parse(r.near || '[]') || []; } catch { /* unreadable: none */ }
+  return { jurisdiction: r.jurisdiction, office: r.office, near, meters: NEAR_M };
 }
 
 /** For Site → Automations: the last turn's summary, when a home was last filled, and any failure (place names and counts only) */

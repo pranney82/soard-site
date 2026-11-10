@@ -3327,6 +3327,9 @@
     .kd-facts.kd-home__facts div { grid-template-columns: minmax(92px, min(44%, 200px)) minmax(0, 1fr); }
     .kd-home__facts dd { font-variant-numeric: tabular-nums; }
     .kd-home__blank { margin-top: 0; }
+    /* Right at a city or county line: a caution, in the warning tone, never red */
+    .kd-home__near { display: flex; gap: 0.5rem; align-items: flex-start; margin: 0 0 0.85rem; padding: 0.6rem 0.7rem; border: 1px solid var(--tone-warn-line); border-radius: 10px; background: var(--tone-warn-surface); color: var(--tone-warn-fg); font-size: var(--fs-xs); line-height: 1.5; overflow-wrap: anywhere; }
+    .kd-home__near-icon { flex: none; display: inline-grid; margin-top: 0.1rem; }
     .kd-home__more { margin: 0 0 0.75rem; font-size: var(--fs-xs); line-height: 1.5; color: var(--color-text-secondary); }
     .kd-home__more summary { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 28px; cursor: pointer; text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; }
     .kd-home__more summary:hover { color: var(--color-text); }
@@ -12350,6 +12353,10 @@
             ${facts.rest.length ? html`<dl class="kd-facts kd-home__facts">
                 ${facts.rest.map((f) => html`<div key=${f.id}><dt>${f.name}</dt><dd>${f.text}</dd></div>`)}
               </dl>` : null}
+            ${place.permit?.near?.length ? html`<p class="kd-home__near" role="note">
+                <span class="kd-home__near-icon" aria-hidden="true">${kdIcon.alert}</span>
+                <span>This home sits within about ${place.permit.meters || 35} m of ${place.permit.near.join(' and ')}. The map puts it in ${place.permit.jurisdiction}, so confirm with the permit office before applying.</span>
+              </p>` : null}
             ${!facts.filled ? html`<p class="kd-card__note kd-home__blank">JobTread has no details on this home yet.</p>`
               : facts.blank.length > 4 ? html`<details class="kd-home__more">
                   <summary>${facts.blank.length} fields not filled in yet</summary>
