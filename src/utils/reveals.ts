@@ -63,6 +63,8 @@ export interface Reveal {
   image: string | null;
   /** "Axel's room reveal", "Remi & Nico's room reveal", "2018 reveals" */
   title: string;
+  /** What the card says: the kids' names ("Remi & Nico"), or for a group the title ("2023 reveals") */
+  heading: string;
   /** Every kid name, in prose: "Ben, Caleb and Kyle" */
   names: string;
 }
@@ -341,6 +343,7 @@ async function buildReveals(): Promise<Reveal[]> {
       rooms,
       image: withPhoto?.heroImage ? cfId(withPhoto.heroImage) : null,
       title,
+      heading: names.length > 3 ? title : joinShort(names),
       names: joinNames(names),
     };
   });

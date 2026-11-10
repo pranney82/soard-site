@@ -10,8 +10,8 @@
  * Hero: the same editorial split as apply/donate/home (text left, framed
  * photo right with the yellow accent block). The frame shows what's next:
  * the next child to be revealed, just their photo (a link to their live
- * page; the day and time are in "Coming up" right under the hero, never on
- * the photo: Peter, Nov 9 2026); with nothing coming up, the latest reveal
+ * page), with who and when beside it in the text, above the buttons, never
+ * written on the photo (Peter, Nov 9 2026); with nothing coming up, the latest reveal
  * video, its photo with a play button, playing in the page's player ("if we
  * didnt, it should show the last reveal video there"). No stat badge.
  * Drawn from the schedule the build had (src/data/upcoming-reveals.json) and
@@ -31,6 +31,7 @@ import { getReveals } from '../utils/reveals';
 import { cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
 import siteSettings from '../content/site/settings.json';
 import { upcomingAtBuild } from '../utils/reveals-copy';
+import { revealWhen } from '../utils/reveals-client';
 import { getPublishedKids } from '../utils/collections';
 
 const reveals = await getReveals();
@@ -41,12 +42,12 @@ const videos = reveals.filter((r) => r.kind === 'video');
 const next = upcomingAtBuild()[0] || null;
 const nextKid = next ? (await getPublishedKids()).find((k) => k.data.slug === next.slug)?.data : null;
 const nextPhoto = (nextKid?.heroImage as string | undefined) || next?.image || null;
+// "Wednesday, November 18 at 4:00 PM EST" once it's confirmed, "Mid November" before
+const nextWhen = next ? (next.confirmed ? revealWhen(next as any, 'long', 'America/New_York') : next.window?.label || '') : '';
 // The newest reveal on video: the latest live replay, else the newest recorded reveal
 const latest = live[0] || videos[0] || null;
 const latestMeta = latest ? [latest.yearLabel, latest.rooms.join(', ')].filter(Boolean).join(' · ') : '';
 const heroMode = next && nextPhoto ? 'next' : latest?.image ? 'latest' : 'photo';
-const allYears = reveals.flatMap((r) => r.years);
-const firstYear = allYears.length ? Math.min(...allYears) : null;
 
 /* ── Hero photos: the two newest reveals with a kid photo ── */
 const withPhoto = reveals.filter((r) => r.image);
@@ -78,12 +79,14 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
       <div class="hero-text">
         <p class="hero-eyebrow">Reveal Videos</p>
         <h1>The moment they see it for the <em>first time</em>.</h1>
-        <p class="hero-lead">
-          Each room we build ends with a reveal: the door opens and a child sees their new space for the first time.
-          Here are {reveals.length} of those moments on video{firstYear ? `, from ${firstYear} to today` : ''}.
-        </p>
+        <p class="hero-lead">Every room we build ends with a door opening. Watch past reveals any time, and the next one live, right here.</p>
+        <!-- The next live reveal: who and when, beside the photo rather than on it; a link to their live page -->
+        <a class="rh-when" href={next?.liveUrl || '/live/'} data-rh-when hidden={!next}>
+          <span class="rh-when__kicker"><span class="rh-when__dot" aria-hidden="true"></span>Next live reveal</span>
+          <span class="rh-when__line"><strong class="rh-when__name" data-rh-when-name>{next?.name || ''}</strong><span class="rh-when__time" data-rh-when-time>{nextWhen}</span></span>
+        </a>
         <div class="hero-ctas">
-          <a href={live.length ? '#live-replays' : '#all-reveals'} class="btn btn-primary btn-lg">Watch all {reveals.length} reveal videos</a>
+          <a href={live.length ? '#live-replays' : '#all-reveals'} class="btn btn-primary btn-lg">Watch the reveals</a>
           <!-- The every-reveal email sign-up, right under the hero (the next child's live page is the frame's own link) -->
           <a href="#up-next-mail" class="btn btn-outline-dark" data-rh-signup>Get every reveal by email</a>
         </div>
@@ -163,9 +166,9 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
         <header class="rv-head">
           <p class="section-label section-label--yellow">Live stream replays</p>
           <h2 id="live-replays-title" class="rv-head__title">Missed the live reveal? <em>Watch it back.</em></h2>
-          <p class="rv-head__lead">We stream reveal day live on this site now. These are the full replays, so you can be there for the whole moment, even if you missed it.</p>
+          <p class="rv-head__lead">The whole live stream, start to finish.</p>
         </header>
-        <RevealGrid reveals={live} columns={3} headingLevel="h3" eager={3} label="Live stream replays" />
+        <RevealGrid reveals={live} columns={3} phoneColumns={1} headingLevel="h3" eager={3} label="Live stream replays" />
       </div>
     </section>
   )}
@@ -177,7 +180,7 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
         <header class="rv-head">
           <p class="section-label section-label--yellow">Reveal videos</p>
           <h2 id="all-reveals-title" class="rv-head__title">Every reveal on video</h2>
-          <p class="rv-head__lead">Pick a year and press play. Each video links to that child's full story and the room we built for them.</p>
+          <p class="rv-head__lead">Pick a year and press play.</p>
         </header>
         <RevealGrid
           reveals={videos}
@@ -196,13 +199,13 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
   <section class="rv-cta" aria-labelledby="rv-cta-title">
     <div class="rv-cta__inner">
       <div class="rv-cta__text">
-        <p class="section-label section-label--light">The next reveal</p>
-        <h2 id="rv-cta-title" class="rv-cta__title">Be there when the next door <em>opens</em>.</h2>
-        <p class="rv-cta__lead">Reveals stream live right here on our site. Leave your email and we'll tell you about every one: when it gets a date, when it's about to start, and when the replay is up.</p>
+        <p class="section-label section-label--light">The next room</p>
+        <h2 id="rv-cta-title" class="rv-cta__title">Help open the next <em>door</em>.</h2>
+        <p class="rv-cta__lead">Every room on this page was built with gifts. Yours builds the next one.</p>
       </div>
       <div class="rv-cta__actions">
-        <a href="#up-next-mail" class="btn btn-primary btn-lg rv-cta__btn" data-rh-signup>Get every reveal by email</a>
-        <a href="/donate/" class="btn btn-ghost-light rv-cta__btn">Help build the next room</a>
+        <a href="/donate/?src=reveals" class="btn btn-primary btn-lg rv-cta__btn">Help build the next room</a>
+        <a href="#up-next-mail" class="btn btn-ghost-light rv-cta__btn" data-rh-signup>Get every reveal by email</a>
       </div>
     </div>
   </section>
@@ -271,6 +274,24 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
     margin-bottom: 40px;
     max-width: 500px;
   }
+  /* The next live reveal, in the text beside its photo */
+  .hero-lead:has(+ .rh-when:not([hidden])) { margin-bottom: 22px; }
+  .rh-when {
+    display: grid; gap: 4px; width: fit-content; max-width: 100%; margin: 0 0 30px; padding: 2px 0 2px 16px;
+    border-left: 3px solid var(--c-yellow); color: var(--c-text); text-decoration: none;
+  }
+  .rh-when[hidden] { display: none; }
+  .rh-when__kicker {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--c-text-muted);
+  }
+  .rh-when__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); flex-shrink: 0; }
+  .rh-when__line { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 2px; }
+  .rh-when__name { font-family: var(--font-display); font-size: clamp(19px, 1.7vw, 22px); font-weight: 700; letter-spacing: -0.01em; }
+  .rh-when__time { font-size: 16px; color: var(--c-text-muted); }
+  .rh-when__time:empty { display: none; }
+  .rh-when:hover .rh-when__name { text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  .rh-when:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 4px; border-radius: 4px; }
   .hero-ctas {
     display: flex;
     gap: 14px;
@@ -419,6 +440,9 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
     .hero-eyebrow { justify-content: center; }
     .hero-lead { margin-inline: auto; }
     .hero-ctas { justify-content: center; }
+    /* Centred with the text: the yellow mark sits under it instead of beside it */
+    .rh-when { margin-inline: auto; padding: 0 0 10px; border-left: 0; border-bottom: 3px solid var(--c-yellow); justify-items: center; }
+    .rh-when__line { justify-content: center; }
     .hero-frame { max-width: 380px; margin: 0 auto; }
 
     .rv-cta__inner { grid-template-columns: 1fr; }
@@ -461,7 +485,7 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
    * may since have been set, moved or passed. /api/reveals (JobTread's schedule) decides: the next live reveal if
    * there is one, else the latest reveal video. A read that fails keeps what the build drew.
    */
-  import { readUpcoming, loadSignup } from '../utils/reveals-client';
+  import { readUpcoming, loadSignup, revealWhen } from '../utils/reveals-client';
   import { cfRaw, cfSrcset } from '../utils/cf-image';
 
   function initRevealsHero() {
@@ -476,6 +500,18 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
     void readUpcoming().then((list) => {
       if (!list || !frame.isConnected) return;
       const n = list[0];
+      // Who and when, beside the photo: the schedule as it is now
+      const when = document.querySelector<HTMLAnchorElement>('[data-rh-when]');
+      if (when) {
+        when.hidden = !n;
+        if (n) {
+          when.href = n.liveUrl;
+          const nm = when.querySelector<HTMLElement>('[data-rh-when-name]');
+          const tm = when.querySelector<HTMLElement>('[data-rh-when-time]');
+          if (nm) nm.textContent = n.name;
+          if (tm) tm.textContent = n.confirmed ? revealWhen(n) : n.window.label;
+        }
+      }
       if (!n) {
         if (frame.querySelector('.rh-latest')) frame.dataset.mode = 'latest';
         return;
