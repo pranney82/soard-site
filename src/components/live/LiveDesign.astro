@@ -10,7 +10,13 @@
  * open, so nothing of the design is in the page before then.
  *
  * Any picture opens large in the viewer (a native <dialog>): drawings need
- * room to be read. Arrows, swipe and Escape work there.
+ * room to be read. Arrows, swipe and Escape work there. During the watch
+ * party it is not modal, so the reveal stays in sight: on a laptop it opens
+ * beside the video, over the messages (ldv--side, as the give form does);
+ * on a phone it fills the screen with the video held small in its top left
+ * corner (ldv--pinned: the bar leaves that corner, --ldp-*, and LiveStage
+ * pins the video there). The design strip beside the video is
+ * LiveDesignRail.astro; live-design.ts drives both.
  */
 ---
 
@@ -111,6 +117,34 @@
   }
   .ldv:not([open]) { display: none; }
   .ldv::backdrop { background: rgba(22, 23, 27, 0.6); }
+
+  /* Where the video sits, small, while the viewer covers a phone (LiveStage's 'design' pin reads these) */
+  :root { --ldp-top: calc(max(10px, env(safe-area-inset-top, 0px)) + 30px); --ldp-h: 148px; --ldp-hw: 88px; }
+
+  /* Beside the video on a laptop: down the left, over the messages; the video and the strip stay as they are */
+  .ldv.ldv--side {
+    position: fixed; z-index: 1200; inset: calc(var(--header-height) + 12px) auto 12px 12px;
+    width: var(--ldv-w, 640px); height: auto; border-radius: 20px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32), 0 8px 24px rgba(0, 0, 0, 0.14);
+    animation: ldv-side 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes ldv-side { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+  .ldv--side .ldv__bar { padding-top: 16px; }
+
+  /* A phone: the whole screen, the video small in the top left corner and the caption beside it */
+  .ldv.ldv--pinned { position: fixed; z-index: 1200; inset: 0; animation: ldv-pinned 0.24s ease-out; }
+  @keyframes ldv-pinned { from { opacity: 0; } to { opacity: 1; } }
+  .ldv--pinned .ldv__bar {
+    --pin-w: calc(var(--ldp-h) * 0.5625);
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; column-gap: 12px; row-gap: 8px;
+    min-height: calc(var(--ldp-top) + var(--ldp-h) + 12px); padding: var(--ldp-top) 12px 0 calc(12px + var(--pin-w) + 16px);
+  }
+  .ldv--pinned.ldv--wide .ldv__bar { --pin-w: calc(var(--ldp-hw) * 1.7778); min-height: calc(var(--ldp-top) + var(--ldp-hw) + 12px); }
+  .ldv--pinned .ldv__caption { display: block; grid-column: 1; grid-row: 1; font-size: 15.5px; -webkit-line-clamp: unset; }
+  .ldv--pinned .ldv__kicker { display: block; margin: 0 0 6px; }
+  .ldv--pinned .ldv__count { grid-column: 1; grid-row: 2; font-size: 13.5px; }
+  .ldv--pinned .ldv__bar > form { grid-column: 2; grid-row: 1; margin-top: -4px; }
+  @media (prefers-reduced-motion: reduce) { .ldv.ldv--side, .ldv.ldv--pinned { animation: none; } }
   .ldv__bar { display: flex; align-items: center; gap: 16px; padding: max(14px, env(safe-area-inset-top)) clamp(14px, 3vw, 28px) 10px; }
   .ldv__caption { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   .ldv__kicker { margin-right: 10px; }

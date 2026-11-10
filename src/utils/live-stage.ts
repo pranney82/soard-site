@@ -30,8 +30,11 @@ export interface StageView {
 export interface Stage {
   update(view: StageView): void;
   readonly party: boolean;
-  /** Hold the video in a small player at the top of the screen (while the give sheet covers the page on a phone) */
-  pin(on: boolean): void;
+  /**
+   * Hold the video in a small player at the top of the screen while something covers the page on a phone:
+   * 'give', the give sheet (top right, over the page above the sheet); 'design', the design viewer (its top left corner)
+   */
+  pin(on: boolean, where?: 'give' | 'design'): void;
   /** Stop everything: the page is being swapped out by a client-side navigation */
   destroy(): void;
 }
@@ -506,7 +509,11 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   return {
     update,
     get party() { return party; },
-    pin(on: boolean) { pinned = on; updateDock(); },
+    pin(on: boolean, where: 'give' | 'design' = 'give') {
+      pinned = on;
+      if (on) root.dataset.pin = where; else delete root.dataset.pin;
+      updateDock();
+    },
     destroy() {
       unmount();
       mounted = '';

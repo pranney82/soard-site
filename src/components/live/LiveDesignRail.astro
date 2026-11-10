@@ -1,0 +1,112 @@
+---
+/**
+ * LiveDesignRail.astro — the room's design beside the video, during the reveal
+ * =============================================================================
+ * Peter, Nov 9 2026: "so you cant see the design files during reveal???" The
+ * design has to be on screen with the video, not further down the page. So
+ * during the watch party (starting soon, live, replay) its pictures run as a
+ * filmstrip in the frame with the video, where the space already is:
+ *
+ *   portrait video (the crew's)   down the side of the video, as tall as it.
+ *                                 A 9:16 picture never fills a screen's width,
+ *                                 so the video gives up little or nothing
+ *   landscape video               along the bottom, under it
+ *
+ * Grouped as the design section is: Before (the photos), The plan (as-built,
+ * "Today" / "Before", and proposed, "New"), The look (boards). Any picture
+ * opens in the design viewer while the reveal keeps playing (live-design.ts):
+ * beside the video on a laptop, and on a phone with the video kept in a small
+ * player in its corner. The one being looked at is marked here.
+ *
+ * Shown only while the hero has data-party and data-design (set by
+ * live-design.ts once /api/reveal-design is open with pictures, and by the
+ * server at first paint, so the strip's place is there before the pictures).
+ * Nothing is ever drawn on the video. Styles are global: the cards are drawn
+ * by live-design.ts. Every class is hds-.
+ */
+---
+
+<section class="hds" data-design-rail aria-labelledby="hds-name">
+  <div class="hds-in">
+    <p class="hds-head">
+      <span class="hds-name" id="hds-name" data-hds="name">The design</span>
+      <span class="hds-hint hds-hint--touch">Tap to see it big</span>
+      <span class="hds-hint hds-hint--mouse">Click to see it big</span>
+    </p>
+    <div class="hds-scroll" data-hds="scroll"></div>
+  </div>
+</section>
+
+<style is:global>
+  /* The strip's size: LivePage reads --hds-w (beside a portrait video) and --hds-h (under a landscape one) */
+  .hero { --hds-w: 148px; --hds-h: 104px; --hds-gap: 14px; }
+  .hds { display: none; }
+  .hero[data-party][data-design] .hds { display: block; position: relative; flex: none; min-width: 0; text-align: left; }
+  /* Beside a portrait video: as tall as the stage, and its own height never sets the row's (the list scrolls inside) */
+  .hero[data-party][data-design][data-orientation='portrait'] .hds { width: var(--hds-w); }
+  .hero[data-party][data-design][data-orientation='landscape'] .hds { width: 100%; height: var(--hds-h); }
+  .hds-in { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; }
+  .hero[data-orientation='landscape'] .hds-in { flex-direction: row; gap: 14px; }
+
+  .hds-head { margin: 0; display: grid; gap: 2px; line-height: 1.25; flex: none; }
+  .hero[data-orientation='landscape'] .hds-head { width: 96px; align-content: start; padding-top: 2px; }
+  .hds-name { font-family: var(--font-display); font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--c-text); overflow-wrap: anywhere; }
+  .hds-hint { font-size: 12.5px; color: var(--c-text-muted); }
+  .hds-hint--mouse { display: none; }
+  @media (hover: hover) and (pointer: fine) {
+    .hds-hint--touch { display: none; }
+    .hds-hint--mouse { display: inline; }
+  }
+
+  .hds-scroll {
+    flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+    display: flex; flex-direction: column; gap: 14px; padding: 0 2px 2px 0;
+    scrollbar-width: thin; scrollbar-color: rgba(55, 58, 54, 0.28) transparent;
+  }
+  .hero[data-orientation='landscape'] .hds-scroll { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 0 0 4px; }
+
+  .hds-group { display: flex; flex-direction: column; gap: 6px; flex: none; }
+  .hds-label { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-muted); white-space: nowrap; }
+  .hds-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .hero[data-orientation='landscape'] .hds-list { display: flex; gap: 8px; height: calc(var(--hds-h) - 23px); }
+  .hero[data-orientation='landscape'] .hds-list > li { height: 100%; }
+
+  .hds-item {
+    position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; padding: 0; border: 0; border-radius: 10px;
+    overflow: hidden; background: var(--c-border); cursor: zoom-in; color: inherit; font: inherit;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hero[data-orientation='landscape'] .hds-item { width: auto; height: 100%; }
+  .hds-item img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hds-item img:not([src]) { visibility: hidden; }
+  /* Drawings and boards: whole, on paper */
+  .hds-paper { background: #fff; box-shadow: inset 0 0 0 1px var(--c-border); }
+  .hds-paper img { inset: 5px; width: calc(100% - 10px); height: calc(100% - 10px); object-fit: contain; }
+  /* Rings drawn inside the card, so the strip's own scrolling edge never clips them */
+  .hds-item::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+  .hds-item:hover { transform: translateY(-1px); }
+  .hds-item:focus-visible { outline: none; }
+  .hds-item:focus-visible::after { box-shadow: inset 0 0 0 3px var(--c-dark), inset 0 0 0 5px var(--c-yellow); }
+  /* The one open in the viewer */
+  .hds-item[aria-current='true']::after { box-shadow: inset 0 0 0 3px var(--c-yellow), inset 0 0 0 4px var(--c-dark); }
+  .hds-tag {
+    position: absolute; left: 5px; bottom: 5px; z-index: 1; padding: 3px 7px; border-radius: 999px;
+    background: var(--c-dark); color: #fff; font-size: 10.5px; font-weight: 700; line-height: 1.2; letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 960px) {
+    .hero { --hds-w: clamp(76px, 23vw, 92px); --hds-h: 88px; --hds-gap: 10px; }
+    .hds-in { gap: 8px; }
+    .hds-name { font-size: 13px; }
+    .hds-hint { font-size: 11.5px; }
+    .hds-scroll { gap: 12px; }
+    .hds-item { border-radius: 8px; }
+    .hds-label { font-size: 10px; letter-spacing: 0.1em; }
+    .hds-list { gap: 6px; }
+    .hero[data-orientation='landscape'] .hds-head { width: 72px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hds-item { transition: none; }
+    .hds-item:hover { transform: none; }
+  }
+</style>

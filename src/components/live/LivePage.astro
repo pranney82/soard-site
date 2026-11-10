@@ -26,7 +26,10 @@
  * broadcast with no video here. The pieces: LiveStage.astro + utils/live-stage.ts (the frame),
  * LiveMessages.astro + utils/live-messages.ts (the messages),
  * LiveGive.astro + utils/live-give.ts (giving without leaving the reveal)
- * and utils/live-player.ts (the video).
+ * and utils/live-player.ts (the video). The room's design goes with the
+ * video once it's out, an hour before (LiveDesignRail.astro: down the side
+ * of a portrait video, under a landscape one), and in full under the hero
+ * (LiveDesign.astro); utils/live-design.ts fills both.
  */
 import { storyLead } from '../../utils/story-lead';
 import { cfRaw } from '../../utils/cf-image';
@@ -38,6 +41,7 @@ import UpcomingReveals from './UpcomingReveals.astro';
 import HeroUpcoming from './HeroUpcoming.astro';
 import RevealInvite from './RevealInvite.astro';
 import LiveDesign from './LiveDesign.astro';
+import LiveDesignRail from './LiveDesignRail.astro';
 import ShareSheet from '../ui/ShareSheet.astro';
 import { upcomingAtBuild } from '../../utils/reveals-copy';
 
@@ -87,6 +91,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
     <div class="hero-frame" id="player">
       <LiveStage photo={photo} alt={name || 'A child in a newly built room'} />
+      <!-- The room's design with the video during the watch party (hidden until the hero has data-design) -->
+      <LiveDesignRail />
       {!kid && <HeroUpcoming />}
     </div>
   </div>
@@ -259,8 +265,16 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .hero-frame {
     position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards; scroll-margin-top: 100px;
     /* The height the stage (video + bar) may take */
-    --fh: clamp(420px, calc(100svh - var(--header-height) - var(--apply-bar-h, 0px) - 44px), 900px);
+    --fh: clamp(420px, calc(100svh - var(--header-height) - var(--apply-bar-h, 0px) - 44px - var(--fh-cut, 0px)), 900px);
   }
+
+  /* ── The room's design with the video (LiveDesignRail): down the side of a portrait video, which never fills the
+     width, so the video keeps its height; under a landscape one, which gives up the strip's height ── */
+  .hero[data-party][data-design][data-orientation='portrait'] .hero-frame { display: flex; align-items: stretch; justify-content: center; gap: var(--hds-gap); }
+  .hero[data-party][data-design][data-orientation='portrait'] .hero-frame > :global([data-stage]) { flex: none; margin-inline: 0; }
+  .hero[data-party][data-design][data-orientation='landscape'] .hero-frame { display: flex; flex-direction: column; gap: var(--hds-gap); --fh-cut: calc(var(--hds-h) + var(--hds-gap)); }
+  /* The yellow card behind the video would show between it and the strip */
+  .hero[data-party][data-design] .hero-frame :global(.stage__accent) { display: none; }
 
   /* ── Watch party: video beside the messages ── */
   .hero[data-party] { padding: clamp(20px, 2.4vw, 32px) 0 clamp(48px, 5vw, 72px); min-height: 0; }
@@ -378,7 +392,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       order: 1; font-size: 1.4rem; line-height: 1.25; letter-spacing: -0.015em; margin: 0 0 10px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .hero[data-party] .hero-frame { order: 2; max-width: none; --fh: calc(100svh - var(--header-height) - 12px - 2.2rem - 18px); }
+    .hero[data-party] .hero-frame { order: 2; max-width: none; --fh: calc(100svh - var(--header-height) - 12px - 2.2rem - 18px - var(--fh-cut, 0px)); }
+    /* The strip takes its width from beside the video: the video is at most what's left */
+    .hero[data-party][data-design][data-orientation='portrait'] .hero-frame > :global([data-stage]) { --stage-max: calc(100% - var(--hds-w) - var(--hds-gap)); }
     .hero[data-party] .hero-status { order: 3; margin: 20px auto 0; }
     .hero[data-party] .hero-party { order: 4; margin: 24px 0 0; }
     .hero[data-party] .hero-ctas { order: 5; margin-top: 24px; }
@@ -499,7 +515,12 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
     // ── The room's design, from an hour before the reveal (it asks for whichever kid render() is showing) ──
     const designEl = document.querySelector<HTMLElement>('[data-live-design]');
-    const design = designEl ? createLiveDesign(designEl) : null;
+    const design = designEl ? createLiveDesign(designEl, {
+      hero,
+      rail: hero.querySelector<HTMLElement>('[data-design-rail]'),
+      frame: hero.querySelector<HTMLElement>('.hero-frame'),
+      stage,
+    }) : null;
 
     // ── Giving without leaving the reveal ───────────────────────────
     const giveEl = document.querySelector<HTMLElement>('[data-give]');

@@ -307,6 +307,12 @@ const ICON = {
   .stage[data-party] .stage__picture.is-docked.is-pinned {
     inset: calc(var(--header-height) + 44px) 16px auto auto; --mini-h: 140px; z-index: 1250;
   }
+  /* Pinned in the design viewer's top left corner, beside the picture's caption (the viewer, LiveDesign.astro,
+     leaves this space: --ldp-top and --ldp-h are set there) */
+  .stage[data-party][data-pin='design'] .stage__picture.is-docked.is-pinned {
+    inset: var(--ldp-top, 44px) auto auto 12px; --mini-h: var(--ldp-h, 148px);
+  }
+  .stage[data-party][data-pin='design'][data-orientation='landscape'] .stage__picture.is-docked.is-pinned { --mini-h: var(--ldp-hw, 88px); }
   .stage__picture.is-docked .stage__note-text { display: none; }
   .stage__picture.is-docked .stage__note-title { font-size: 14px; }
   .stage__dockbar {

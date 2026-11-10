@@ -30,9 +30,10 @@ test('replay with a video', () => {
   assert.deepEqual(r, { mode: 'replay', orientation: 'landscape', eyebrow: 'Replay' });
 });
 
-test('starting soon only in the last 30 minutes, and only for a published kid', () => {
+test('starting soon only in the last hour (as the page has it), and only for a published kid', () => {
   assert.equal(watchParty(pub({ phase: 'armed', scheduledAt: at(10) }), { kidPublished: true, now }).mode, 'starting');
-  assert.equal(watchParty(pub({ phase: 'scheduled', scheduledAt: at(45) }), { kidPublished: true, now }), null);
+  assert.equal(watchParty(pub({ phase: 'scheduled', scheduledAt: at(45) }), { kidPublished: true, now }).mode, 'starting', 'the page shows the starting-soon screen from an hour out');
+  assert.equal(watchParty(pub({ phase: 'scheduled', scheduledAt: at(75) }), { kidPublished: true, now }), null);
   assert.equal(watchParty(pub({ phase: 'armed', scheduledAt: at(10) }), { kidPublished: false, now }), null, 'no starting-soon screen without a built kid page');
   assert.equal(watchParty(pub({ phase: 'armed', scheduledAt: at(10), kidSlug: null }), { kidPublished: true, now }), null);
 });

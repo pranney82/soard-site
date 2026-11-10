@@ -13,6 +13,9 @@
  *     current kid's own page are laid out for the video before they leave
  *     the server (_watch-party.js), so nothing on screen shifts when the
  *     page script takes over. That is when most viewers arrive at once.
+ *     When the room's design is out (public/admin/reveal-design.js), the
+ *     hero is marked data-design and the design strip beside the video
+ *     already has its place and its name: the pictures fill it, nothing moves.
  *   - A kid link that doesn't exist (kid not published yet, a typo, an old
  *     slug) redirects to /live/, which shows whatever reveal is current
  *     instead of a "page not found".
@@ -27,6 +30,7 @@
 
 import { readState, readConfig, publicState, visibleState } from '../api/_broadcast.js';
 import { watchParty } from './_watch-party.js';
+import { revealSlides, designWindow } from '../../public/admin/reveal-design.js';
 import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
 import { barFor, addBar } from '../_apply-bar.js';
 
@@ -35,15 +39,19 @@ const SITE = 'https://sunshineonaranneyday.com';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
+/** A kid's saved profile ({} when unknown or unreadable) */
+async function kidData(env, slug) {
+  try {
+    const row = await env.DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(slug).first();
+    if (row?.data) return { data: JSON.parse(row.data), found: true };
+  } catch { /* unreadable reads as unknown */ }
+  return { data: {}, found: false };
+}
+
 /** The kid the current reveal is for, or null. */
 async function currentKid(env, state) {
   if (!ACTIVE.has(state.phase) || !state.kidSlug) return null;
-  let data = {};
-  let found = false;
-  try {
-    const row = await env.DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(state.kidSlug).first();
-    if (row?.data) { data = JSON.parse(row.data); found = true; }
-  } catch { /* fall back to what the broadcast knows */ }
+  const { data, found } = await kidData(env, state.kidSlug);
   const name = data.name || state.kidName;
   if (!name) return null;
   return {
@@ -52,14 +60,27 @@ async function currentKid(env, state) {
     summary: data.heroSummary || data.shortDescription || null,
     image: state.image || data.heroImage || null,
     published: found && data.publishStatus !== 'draft',
+    data,
   };
+}
+
+/**
+ * The design strip's place during the watch party: { slug, name } when the
+ * room's design is out for the kid being watched and has a picture, else null.
+ * The same rules as /api/reveal-design, which fills it.
+ */
+function designFor(slug, data, state) {
+  if (!slug || !data || data.publishStatus === 'draft') return null;
+  const kid = { ...data, slug: data.slug || slug };
+  const { open, after } = designWindow({ kid, broadcast: state });
+  return open && revealSlides(kid, { after }).length ? { slug, name: String(data.name || '').trim() } : null;
 }
 
 const setAttrs = (attrs) => ({
   element(e) { for (const [k, v] of Object.entries(attrs)) { if (v === null) e.removeAttribute(k); else e.setAttribute(k, v); } },
 });
 
-function rewrite(res, { kid, party, messages }) {
+function rewrite(res, { kid, party, messages, design }) {
   let rw = new HTMLRewriter();
   if (kid) {
     const title = `${kid.name}'s Reveal, Live | Sunshine on a Ranney Day`;
@@ -103,6 +124,13 @@ function rewrite(res, { kid, party, messages }) {
       .on('#live-hero [data-live="eyebrow"]', { element(e) { e.setInnerContent(party.eyebrow); } });
     if (messages) rw = rw.on('#live-hero [data-slot="hero"]', setAttrs({ hidden: null }));
     if (!kid && party.mode === 'live' && party.generic) rw = rw.on('#live-hero h1', { element(e) { e.setInnerContent("Today's <em>room reveal</em>", { html: true }); } });
+    if (design) {
+      rw = rw.on('#live-hero', setAttrs({ 'data-design': design.slug }));
+      if (design.name) {
+        const whose = /s$/i.test(design.name) ? `${design.name}'` : `${design.name}'s`;
+        rw = rw.on('#live-hero [data-hds="name"]', { element(e) { e.setInnerContent(`${whose} design`); } });
+      }
+    }
   }
   const out = rw.transform(res);
   const headers = new Headers(out.headers);
@@ -158,7 +186,13 @@ export async function onRequest(context) {
     const res = await next(kid || party || bar ? fresh(request) : request);
     if (res.status === 404 && pageKid) return Response.redirect(`${url.origin}/live/${url.search}`, 302);
     if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar)) return res;
-    const page = kid || party ? rewrite(res, { kid, party, messages: broadcast.config?.messages?.enabled !== false }) : res;
+    let design = null;
+    if (party) {
+      const slug = pageKid || broadcast.state.kidSlug || '';
+      const data = kid && kid.slug === slug ? kid.data : slug ? (await kidData(env, slug)).data : null;
+      design = designFor(slug, data, broadcast.state);
+    }
+    const page = kid || party ? rewrite(res, { kid, party, messages: broadcast.config?.messages?.enabled !== false, design }) : res;
     return addBar(page, bar);
   } catch {
     return next();

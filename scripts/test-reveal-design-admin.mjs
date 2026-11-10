@@ -355,14 +355,47 @@ async function desktop(browser, files) {
     if (moment !== 'starting') { await clickText(page, '.rlp .seg [role="radio"]', moment === 'live' ? 'Live' : 'Replay'); await sleep(400); }
     await page.waitForFunction((m) => { const f = document.querySelector('.rlp iframe'); return f && f.src.includes(`moment=${m}`) && f.contentDocument?.querySelector('.live-page')?.dataset.view; }, { timeout: 30000 }, moment).catch(() => {});
     await page.waitForFunction(() => document.querySelector('.rlp iframe')?.contentDocument?.querySelector('[data-live-design]:not([hidden]) .ldz-item'), { timeout: 15000 }).catch(() => {});
-    return page.evaluate(() => { const d = document.querySelector('.rlp iframe').contentDocument; return { view: d.querySelector('.live-page')?.dataset.view, design: !d.querySelector('[data-live-design]')?.hidden, items: d.querySelectorAll('[data-live-design] .ldz-item').length, share: !!d.querySelector('[data-live="cta-share"]:not([hidden]):not([data-capped])') }; });
+    await page.waitForFunction(() => document.querySelector('.rlp iframe')?.contentDocument?.querySelector('.hds-item img[src]'), { timeout: 15000 }).catch(() => {});
+    return page.evaluate(() => {
+      const d = document.querySelector('.rlp iframe').contentDocument;
+      // The strip beside the video: on screen with it, never on it
+      const rail = d.querySelector('[data-design-rail]')?.getBoundingClientRect();
+      const screen = d.querySelector('.stage__screen')?.getBoundingClientRect();
+      const beside = !!rail && !!screen && rail.width > 0 && rail.left >= screen.right && rail.top < screen.bottom;
+      return { view: d.querySelector('.live-page')?.dataset.view, design: !d.querySelector('[data-live-design]')?.hidden, items: d.querySelectorAll('[data-live-design] .ldz-item').length, rail: d.querySelectorAll('.hds-item').length, beside, share: !!d.querySelector('[data-live="cta-share"]:not([hidden]):not([data-capped])') };
+    });
   };
   const savesBefore = api.st.saves.length;
   const st = await liveAt('starting');
   ok(st.view === 'starting' && st.design && st.items > 0 && st.share, `starting soon: the reveal screen in the frame, the design under it, Share (${JSON.stringify(st)})`);
+  ok(st.rail > 0 && st.beside, `starting soon: the design runs down the side of the reveal screen (${st.rail} pictures)`);
   await shot(page, 'preview-live-starting-1440');
   const lv = await liveAt('live');
   ok(lv.view === 'live' && lv.design && lv.share, `live: the camera's place, the design still under it, Share (${JSON.stringify(lv)})`);
+  ok(lv.rail > 0 && lv.beside, `live: the design beside the video, on screen with it (${lv.rail} pictures)`);
+  // A picture from the strip opens while the reveal stays in sight: on the phone (the preview's first) over the screen
+  // with the video held small in its corner; on a laptop beside the video, not over it. The strip marks it.
+  const openFromStrip = () => page.evaluate(async () => {
+    const d = document.querySelector('.rlp iframe').contentDocument;
+    d.querySelector('.hds-paper, .hds-item')?.click();
+    await new Promise((r) => setTimeout(r, 700));
+    const v = d.querySelector('[data-ldz-viewer]');
+    const box = v.getBoundingClientRect();
+    const screen = d.querySelector('.stage__screen').getBoundingClientRect();
+    const out = { open: v.open, side: v.classList.contains('ldv--side'), pinned: v.classList.contains('ldv--pinned') && d.querySelector('[data-s="picture"]').classList.contains('is-pinned'), clear: box.right <= screen.left, marked: !!d.querySelector('.hds-item[aria-current="true"]'), width: d.defaultView.innerWidth };
+    v.close();
+    return out;
+  });
+  const onPhone = await openFromStrip();
+  ok(onPhone.open && onPhone.pinned && onPhone.marked, `live, phone: a picture fills the screen with the video kept small in its corner (${JSON.stringify(onPhone)})`);
+  await clickText(page, '.rlp .seg [role="radio"]', 'Laptop');
+  await sleep(400);
+  await page.waitForFunction(() => { const f = document.querySelector('.rlp iframe'); return f?.contentDocument?.defaultView?.innerWidth > 1000 && f.contentDocument.querySelector('.hds-item img[src]'); }, { timeout: 30000 }).catch(() => {});
+  const side = await openFromStrip();
+  ok(side.open && side.side && side.clear && side.marked, `live, laptop: a picture opens beside the video, not over it, and the strip marks it (${JSON.stringify(side)})`);
+  await shot(page, 'preview-live-laptop-1440');
+  await clickText(page, '.rlp .seg [role="radio"]', 'Phone');
+  await sleep(300);
   await shot(page, 'preview-live-live-1440');
   ok(api.st.saves.length === savesBefore, 'nothing from the preview reaches the site');
   await clickText(page, '.rlp .kd-dialog__foot .btn', 'Done');

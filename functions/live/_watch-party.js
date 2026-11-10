@@ -10,8 +10,8 @@
  * Mirrors render() in src/components/live/LivePage.astro: keep them in step.
  */
 
-/** Starting-soon screen fills the frame for the last 30 minutes (SLATE_LEAD_MS in LivePage) */
-export const SLATE_LEAD_MS = 30 * 60 * 1000;
+/** Starting-soon screen fills the frame for the last hour (SLATE_LEAD_MS in LivePage) */
+export const SLATE_LEAD_MS = 60 * 60 * 1000;
 
 /**
  * How the page should look at first paint, or null when it is the plain hero.
