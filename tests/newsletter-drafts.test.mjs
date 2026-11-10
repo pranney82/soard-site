@@ -573,9 +573,9 @@ test('the recap wears its event’s colors, the same as its page: the gala’s, 
   assert.match(gala.html, /#0d2f3f/);
   assert.match(gala.html, /#f0c35a/);
   assert.ok(!/#1E1F25|#FFDA24|#FEFCF5/i.test(gala.html), 'no SOARD dark, yellow or cream left in it');
-  assert.match(gala.html, /Havana Nights · Evening of Sunshine/, 'the year’s theme on top');
+  assert.match(gala.html, /Havana Nights · Evening\u00A0of\u00A0Sunshine\u00A0·\u00A02026/, 'the year’s theme on top, the name in one piece');
   const own = eventRecapEmail({ event: { ...GALA, theme: 'Moulin Rouge' }, events: [GALA], pageDoc: GALA_DOC });
-  assert.match(own.html, /Moulin Rouge · Evening of Sunshine/);
+  assert.match(own.html, /Moulin Rouge · Evening\u00A0of\u00A0Sunshine/);
   const golf = eventRecapEmail({ event: { ...GOLF, photos: [{ id: 'events/golf/a.jpg' }, { id: 'events/golf/b.jpg' }] }, events: [GOLF] });
   assert.match(golf.html, /#1a472a/);
   assert.ok(!/#1E1F25/i.test(golf.html));
@@ -597,4 +597,17 @@ test('a draft written in an older design is rebuilt on the next hourly look, not
   assert.equal(kit.puts[0].id, id);
   const { NEWSLETTER_DESIGN } = await import('../functions/api/_newsletter-email.js');
   assert.equal((await readNewsletterRow(env.DB, recapKey(GALA.slug))).design, NEWSLETTER_DESIGN);
+});
+
+
+test('each series’ mark from its event page: golf’s wave under the cover, the gala’s palms; any other event none', () => {
+  const golf = eventRecapEmail({ event: { ...GOLF, photos: [{ id: 'events/golf/a.jpg' }, { id: 'events/golf/b.jpg' }] }, events: [GOLF] });
+  assert.match(golf.html, /emails\/recap-golf-wave\/w=1200,q=90/);
+  assert.ok(!/recap-gala-palms/.test(golf.html));
+  // Straight after the cover, before the opening words
+  assert.ok(golf.html.indexOf('recap-golf-wave') < golf.html.indexOf('Thank you to everyone'));
+  const gala = eventRecapEmail({ event: GALA, events: [GALA], pageDoc: GALA_DOC });
+  assert.match(gala.html, /emails\/recap-gala-palms/);
+  const fest = eventRecapEmail({ event: { slug: 'kids-fest-2027', title: 'Kids Fest', date: '2027-04-06', photos: [{ id: 'events/kf/a.jpg' }, { id: 'events/kf/b.jpg' }] }, events: [] });
+  assert.ok(!/recap-golf-wave|recap-gala-palms/.test(fest.html));
 });

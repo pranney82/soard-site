@@ -38,7 +38,22 @@ const WIDE_TRANSFORM = 'w=1200,h=720,fit=cover,gravity=auto,q=82';
  * read: drafts waiting in Kit that nobody has touched are then rebuilt on the
  * next hourly look (./_newsletter-drafts.js), not hours later.
  */
-export const NEWSLETTER_DESIGN = '2026-11-09c';
+export const NEWSLETTER_DESIGN = '2026-11-09d';
+
+/**
+ * Each series' mark from its own event page, as a picture since email can't draw
+ * one (Cloudflare Images, drawn from the pages' shapes in the series' colors):
+ * golf's wave where the green meets the page (golf.astro .ev-hero__wave), the
+ * gala's palms rising from the cover's corners (gala.astro .gv-hero__palms).
+ * below: what's under the picture, so a pixel of rounding never shows a seam.
+ */
+const RECAP_MARKS = Object.freeze({
+  golf: { id: 'emails/recap-golf-wave', h: 40, below: 'paper' },
+  gala: { id: 'emails/recap-gala-palms', h: 75, below: 'dark' },
+});
+const markRow = (mark) => `<tr><td bgcolor="${mark.below === 'paper' ? CR : DD}" style="background:${mark.below === 'paper' ? CR : DD};padding:0;line-height:0;font-size:0;">
+    <img src="${escapeHtml(cfImg(mark.id, 'w=1200,q=90'))}" width="600" height="${mark.h}" alt="" style="display:block;width:100%;max-width:100%;height:auto;border:0;" />
+  </td></tr>`;
 
 /**
  * The recap in its event's colors: SOARD's brand colors swapped for the series'
@@ -201,7 +216,8 @@ export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site 
   const html = (colors ? (h) => inColors(h, colors) : (h) => h)(emailFrame(preview, `
   ${emailHeader(site)}
   ${cover({
-    kicker: [theme, [name, year].filter(Boolean).join('\u00A0· ')].filter(Boolean).join(' · ').replace(/ ([^ ]+)$/, '\u00A0$1'),
+    // With a theme, the event's name stays one piece, so a phone breaks after "Havana Nights ·", never inside the name
+    kicker: [theme, [theme ? name.replace(/ /g, '\u00A0') : name, year].filter(Boolean).join('\u00A0· ')].filter(Boolean).join(' · ').replace(/ ([^ ]+)$/, '\u00A0$1'),
     headline: `What a <em style="font-style:italic;color:${Y};">${when}</em>!`,
     size: fit.size,
     phone: fit.phone,
@@ -210,6 +226,7 @@ export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site 
     url,
     action: photos.length > 1 ? button(`See All ${photos.length} Photos`, url, { center: true }) : '',
   })}
+  ${RECAP_MARKS[series?.key] ? markRow(RECAP_MARKS[series.key]) : ''}
   ${lede(opening)}
   ${highlights.length ? highlightsBlock(highlights) : ''}
   ${body.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">
