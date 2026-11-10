@@ -58,11 +58,10 @@ name = "LIVE_HUB"
 class_name = "LiveHub"
 script_name = "soard-live-hub"
 
-# The Office label printer's socket (Zebra Cloud Connect) lives in the same Worker
-# (workers/live-hub/src/print-hub.js). Its binding goes here once that Worker is
-# deployed with the PrintHub class; until then the check-in page says the printer
-# isn't set up:
-# [[durable_objects.bindings]]
-# name = "PRINT_HUB"
-# class_name = "PrintHub"
-# script_name = "soard-live-hub"
+# The Office label printer's socket (Zebra Cloud Connect), in the same Worker
+# (workers/live-hub/src/print-hub.js, deployed with it Nov 10 2026): /api/printer-ws/
+# hands the printer to it, /api/kid-items-admin prints through it
+[[durable_objects.bindings]]
+name = "PRINT_HUB"
+class_name = "PrintHub"
+script_name = "soard-live-hub"
