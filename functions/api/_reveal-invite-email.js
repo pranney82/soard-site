@@ -19,7 +19,7 @@ export const SITE_URL = 'https://sunshineonaranneyday.com';
  * every draft still waiting in Kit that nobody has edited is then rebuilt on the next look, by itself.
  * tests/email-design.test.mjs fails if the emails change and this doesn't.
  */
-export const EMAIL_DESIGN = '2026-11-09d';
+export const EMAIL_DESIGN = '2026-11-09e';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const Y = '#FFDA24';
@@ -79,7 +79,8 @@ export function roomNames(kid = {}, fallback = '') {
 /** Each room with how many of it the page counts: [{ name: "Dream Bedrooms", count: 2 }, { name: "Accessible Bathroom", count: 1 }] */
 export function roomCounts(kid = {}, fallback = '') {
   const types = Array.isArray(kid.roomTypes) ? kid.roomTypes.filter(Boolean) : [];
-  if (!types.length) return [String(fallback || '').trim()].filter(Boolean).map((name) => ({ name, count: 1 }));
+  // JobTread's Makeover Type is multi-choice: it can come as an array or as "Bedroom,Bathroom"
+  if (!types.length) return (Array.isArray(fallback) ? fallback : String(fallback || '').split(/\s*,\s*/)).map((n) => String(n || '').trim()).filter(Boolean).map((name) => ({ name, count: 1 }));
   const total = Number(kid.roomCount) || 0;
   return types.map((t) => {
     const own = /bath/i.test(t) ? Number(kid.bathroomCount) : /bed/i.test(t) ? Number(kid.bedroomCount) : /therapy/i.test(t) ? Number(kid.therapyRoomCount) : 0;
@@ -447,7 +448,7 @@ export function textLink(text, url, color = D) {
 export function cover({ kicker, headline, size, phone, lead, alt, url, action = '' }) {
   return `<tr><td bgcolor="${DD}" align="center" style="background:${DD};padding:14px 0 44px;${SIDE}text-align:center;" class="pd">
     <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${Y};">${escapeHtml(kicker)}</p>
-    <h1 class="${phone}" style="margin:0 0 30px;font-family:${SERIF};font-size:${size}px;font-weight:700;line-height:1.14;letter-spacing:-0.01em;color:#FFFFFF;">${headline}</h1>
+    <h1 class="${phone}" style="margin:0 0 ${lead ? 30 : 0}px;font-family:${SERIF};font-size:${size}px;font-weight:700;line-height:1.14;letter-spacing:-0.01em;color:#FFFFFF;">${headline}</h1>
     ${lead ? `<a href="${href(url)}" target="_blank" style="display:block;text-decoration:none;"><img src="${escapeHtml(cfImg(lead, COVER_TRANSFORM))}" width="504" alt="${escapeHtml(alt)}" class="fl" style="width:100%;height:auto;display:block;border-radius:20px;" /></a>` : ''}
     ${action ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>${action}` : ''}
   </td></tr>`;
@@ -494,10 +495,13 @@ export function photoNotes(kid, link = '', { photos = true } = {}) {
  * A typed note as HTML: a pasted link becomes a short name to tap ("Google Maps", "zeffy.com") rather
  * than a run of characters across five lines, and the note never ends on one word alone.
  */
+/** A note that ends on a link ("…details: zeffy.com") keeps the word before it on the link's line */
+const lastLink = (h) => h.replace(/ ([^\s<>]+) (<a [^>]*>[^<]*<\/a>[^\s<]*)$/, (m, w, a) => ` ${w}&nbsp;${a}`);
+
 export function noteHtml(text, color = '#FFFFFF') {
   const parts = String(text || '').split(/(https?:\/\/[^\s<>"]+)/g);
-  const mail = (t) => escapeHtml(t).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, (m) => `<a href="mailto:${m}" style="color:${color};font-weight:600;text-decoration:underline;text-underline-offset:2px;">${m}</a>`);
-  return noWidow(parts.map((part, i) => {
+  const mail = (t) => escapeHtml(t).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, (m) => `<a href="mailto:${m}" style="color:${color};font-weight:600;text-decoration:underline;text-underline-offset:2px;">${m.replace('@', '@&#8203;')}</a>`);
+  return lastLink(noWidow(parts.map((part, i) => {
     if (i % 2 === 0) return mail(tidy(part));
     const url = part.replace(/[.,;:!?)\]]+$/, '');
     const trail = part.slice(url.length);
@@ -506,7 +510,7 @@ export function noteHtml(text, color = '#FFFFFF') {
     const name = (/^google\.[a-z.]+$/.test(host) && /\/maps\b/.test(url)) || /^maps\.google\.|^maps\.app\.goo\.gl$|^goo\.gl$/.test(host) ? 'Google Maps'
       : /(^|\.)maps\.apple\.com$/.test(host) ? 'Apple Maps' : host;
     return `<a href="${href(url)}" target="_blank" style="color:${color};font-weight:600;text-decoration:underline;text-underline-offset:2px;">${escapeHtml(name).replace(/ /g, '&nbsp;')}</a>${escapeHtml(trail)}`;
-  }).join(''));
+  }).join('')));
 }
 
 /** The invite's details on the dark cover, ruled like a ticket: rows of { label, lines, sub, keep, even }, then what to know before coming */
@@ -712,7 +716,8 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
 
   const summary = shortStory(kid);
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
-  const fit = fitName({ name, after: '’s', runs: ['Reveal Day.'], max: 42, min: 30 });
+  // "Remi & Nico’s" stays whole down to 28px, the same floor as the Project Reveal's headline
+  const fit = fitName({ name, after: '’s', runs: ['Reveal Day.'], max: 42, min: 28 });
   const space = makeoverWord(roomLines);
   // "Tyrece, Maddie, and the family", never "Tyrece & Maddie and the family" (or "Remi and Nico and the family")
   const who = twoKids(name) ? `${name.replace(/\s(&|and)\s/, ', ')}, and the family` : `${name} and the family`;
@@ -735,7 +740,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     ${label(`${name}’s story`)}
     <p style="margin:14px 0 0;font-family:${SERIF};font-size:17px;line-height:1.7;color:${D};">${noWidow(escapeHtml(summary))}</p>
   </td></tr>` : ''}
-  <tr><td bgcolor="${CR}" style="background:${CR};padding:28px 0 0;${SIDE}" class="pd">
+  <tr><td bgcolor="${CR}" style="background:${CR};padding:${photos.length >= 2 ? 28 : 0}px 0 0;${SIDE}" class="pd">
     ${photos.length >= 2 ? photoPair(photos, name, 0) : ''}
     ${photoNotes(kid, textLink(`Read ${name}’s story →`, kidUrl), { photos: !!lead || photos.length >= 2 })}
   </td></tr>

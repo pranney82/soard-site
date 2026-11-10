@@ -231,7 +231,9 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
 
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
   // Two kids' names stay whole ("Meet / Remi & Nico.") while they fit at 30px, as the invite's do
-  const fit = fitName({ name, after: '.', runs: ['Meet'], max: 54, min: 30, wrap: (h) => `<em style="font-style:italic;color:${Y};">${h}</em>` });
+  const meet = (max) => fitName({ name, after: '.', runs: ['Meet'], max, min: 30, wrap: (h) => `<em style="font-style:italic;color:${Y};">${h}</em>` });
+  // A name that has to break between names is set at 40px at most, so three kids aren't five lines of 50px type
+  const fit = ((f) => (f.whole ? f : meet(40)))(meet(54));
   const giveLabel = `Give to ${name}’s Room →`;
   const action = own && !space && giveLabel.length <= GIVE_MAX ? giveLabel : 'Give Now →';
   // The ask names the kid while it can at 26px or larger ("Help us build Remi / & Nico’s dream."); a long single name can't, so it's "this dream"
@@ -327,8 +329,11 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const loads = [lead, ...galleryPicks(kid).filter((ph) => !brokenLogos.has(cfImg(ph.url, PHOTO_TRANSFORM))).map((ph) => ph.url)].filter(Boolean);
   const pictures = new Set(loads).size;
   const shown = [pictures && (pictures > 1 ? 'the photos' : 'the photo'), video && 'the video'].filter(Boolean);
-  const preview = shown.length
-    ? `See ${name}’s transformation: ${listJoin([...shown, partners && partnerWords].filter(Boolean))}.`
+  const offered = [...shown, partners && partnerWords].filter(Boolean);
+  const preview = offered.length === 1 && shown.length === 1
+    ? `See ${name}’s transformation in ${shown[0]}.`
+    : shown.length
+    ? `See ${name}’s transformation: ${listJoin(offered)}.`
     : `See ${name}’s transformation${partners ? ` and ${partnerWords}` : ''}.`;
 
   const pair = pairOf(kid, brokenLogos);
@@ -341,11 +346,11 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const isComplete = `${are ? 'Are' : 'Is'} Complete.`;
   // One word ("Ramp", "Makeover") stays on the name's line, never alone on its own: "Marcus Jr.’s Ramp / Is Complete."
   // A short phrase stays whole ("Noah’s / Ramp and Lift / Are Complete."); a long one breaks only at "and"
-  const solo = !/\s/.test(shortWhat);
+  // ...but only while that keeps the headline at 28px or more, like every other Reveal ("Jordan’s / Makeover / Is Complete.", never 22px)
+  const glued = !/\s/.test(shortWhat) && fitName({ name, after: `’s ${shortWhat}`, afterHtml: `’s&nbsp;${escapeHtml(shortWhat)}`, runs: [isComplete], max: 40, min: 28 });
+  const solo = !!glued && glued.size >= 28;
   const whatPieces = solo ? [] : shortWhat.length <= 16 ? [shortWhat] : shortWhat.split(/ and /);
-  const fit = solo
-    ? fitName({ name, after: `’s ${shortWhat}`, afterHtml: `’s&nbsp;${escapeHtml(shortWhat)}`, runs: [isComplete], max: 40, min: 28 })
-    : fitName({ name, after: '’s', runs: [...whatPieces, isComplete], max: 40, min: 28 });
+  const fit = solo ? glued : fitName({ name, after: '’s', runs: [...whatPieces, isComplete], max: 40, min: 28 });
   const whatHtml = whatPieces.map((w) => escapeHtml(w).replace(/ /g, '&nbsp;')).join(' and ');
   // The page has a Gallery section once it has two photos
   const coverUrl = video ? `${kidUrl}#chapter-reveal` : allPhotos > 1 ? `${kidUrl}#chapter-gallery` : kidUrl;

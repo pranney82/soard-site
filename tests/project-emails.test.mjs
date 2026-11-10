@@ -286,7 +286,9 @@ test('a long name never runs off a phone: the headline fits its widest word in 2
   const { fitName } = await import('../functions/api/_reveal-invite-email.js');
   for (const name of ['Max', 'Lizzie', 'Alexander', 'Mackenzie', 'Evangeline', 'Christopher', 'Bartholomew', 'Maximilian', 'Tyrece & Maddie', 'Jean-Baptiste']) {
     const kick = h1Of(projectKickoffEmail({ kid: { ...KID, name } }).html);
-    const k = fitName({ name, after: '.', runs: ['Meet'], max: 54, min: 36 });
+    // A name that breaks between names is set at 40px at most
+    const k0 = fitName({ name, after: '.', runs: ['Meet'], max: 54, min: 30 });
+    const k = k0.whole ? k0 : fitName({ name, after: '.', runs: ['Meet'], max: 40, min: 30 });
     assert.deepEqual(kick, { phone: k.phone, size: k.size }, name);
     const inv = h1Of(revealInviteEmail({ kid: { ...KID, name }, date: '2027-03-12', time: '16:00' }).html);
     const v = fitName({ name, after: '’s', runs: ['Reveal Day.'], max: 42, min: 30 });
@@ -897,7 +899,7 @@ test('ramps and lifts are never called rooms', () => {
 test('typed notes: a pasted link is a short name to tap, no em dash, curly quotes, and no word alone', () => {
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: "1234 O'Malley's Crossing, Roswell, GA 30076",
     notes: "Park on Holcomb Bridge Rd — it's tight. Map: https://maps.app.goo.gl/AbC123" });
-  assert.match(e.html, /Park on Holcomb Bridge Rd \u2013 it’s tight\. Map: <a href="https:\/\/maps\.app\.goo\.gl\/AbC123"[^>]*>Google&nbsp;Maps<\/a>/);
+  assert.match(e.html, /Park on Holcomb Bridge Rd \u2013 it’s tight\. Map:&nbsp;<a href="https:\/\/maps\.app\.goo\.gl\/AbC123"[^>]*>Google&nbsp;Maps<\/a>/, 'the word before a closing link stays on its line');
   assert.match(e.html, /1234 O’Malley’s Crossing/);
   assert.ok(!/—/.test(e.html + e.text));
   const noAddress = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00' }).html;
@@ -1039,7 +1041,9 @@ test('therapy rooms are counted like the others; "Marcus Jr." never gets a secon
 test('a ramp headline keeps its words together: "Ava’s Ramp Is Complete."', () => {
   const e = projectRevealEmail({ kid: { ...DONE, name: 'Mohammed', roomTypes: ['Wheelchair Ramp'], roomCount: 1 } });
   assert.equal(e.subject, 'Mohammed’s Wheelchair Ramp Is Complete');
-  assert.match(e.html, /Mohammed’s&nbsp;Ramp<\/span><br>Is&nbsp;<em/);
+  // "Mohammed’s Ramp" as one run would shrink the headline under 28px, so "Ramp" takes its own line at full size
+  assert.match(e.html, /Mohammed’s<\/span> Ramp<br>Is&nbsp;<em/);
+  assert.ok(Number(e.html.match(/<h1 class="[^"]*" style="[^"]*font-size:(\d+)px/)[1]) >= 28);
   assert.match(projectRevealEmail({ kid: { ...DONE, roomTypes: ['Wheelchair Ramp', 'Chair Lift'], roomCount: 2 } }).html, /Rowan’s<\/span> Ramp&nbsp;and&nbsp;Lift<br>Are&nbsp;<em/);
   assert.match(projectRevealEmail({ kid: { ...DONE, name: 'Bartholomew' } }).html, /Bartholomew’s<\/span> Dream&nbsp;Room<br>/);
 });
@@ -1376,7 +1380,7 @@ test('the header logo has as much room above it as below, and a Kickoff with no 
 test('iPhone Mail’s detected dates and addresses keep the email’s own look, and a typed email address is a link in the note’s colors', () => {
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', notes: 'Questions? Email events@soardcharity.com.' }).html;
   assert.match(e, /a\[x-apple-data-detectors\]\{color:inherit!important;text-decoration:none!important;/);
-  assert.match(e, /<a href="mailto:events@soardcharity\.com" style="color:#FFFFFF;[^"]*">events@soardcharity\.com<\/a>/);
+  assert.match(e, /<a href="mailto:events@soardcharity\.com" style="color:#FFFFFF;[^"]*">events@&#8203;soardcharity\.com<\/a>/, 'it may break after its @, never mid-letter');
 });
 
 test('an address breaks only after a comma, and the city stays with its state and ZIP', async () => {
@@ -1408,4 +1412,29 @@ test('the cover is only ever a picture that was checked, and "Photos by" only sh
   assert.equal(leadPhoto(kid, broken), '', 'the fourth was never checked, so it isn’t used');
   const inv = revealInviteEmail({ kid: { ...KID, photographer: 'Niki Murphy', heroImage: '', photos: [] }, date: '2027-03-12', time: '16:00' }).html;
   assert.ok(!/Photos by/.test(inv));
+});
+
+// ─── Found by the eleventh independent review (Nov 9 2026) ───
+
+test('a mixed or ramp Reveal headline is the same size as a room’s; two names stay whole; a three-kid Kickoff isn’t 50px', () => {
+  const size = (html) => Number(html.match(/<h1 class="[^"]*" style="[^"]*font-size:(\d+)px/)[1]);
+  const room = size(projectRevealEmail({ kid: { ...DONE, name: 'Jordan' } }).html);
+  const mixed = projectRevealEmail({ kid: { ...DONE, name: 'Jordan', roomTypes: ['Dream Bedroom', 'Wheelchair Ramp'], roomCount: 2 } }).html;
+  assert.equal(size(mixed), room);
+  assert.match(mixed, /Jordan’s<\/span> Makeover<br>Is&nbsp;/);
+  const remi = revealInviteEmail({ kid: { ...KID, name: 'Remi & Nico' }, date: '2027-03-12', time: '16:00' }).html;
+  assert.match(remi, /<span style="white-space:nowrap;">Remi &amp; Nico’s<\/span>/);
+  assert.ok(size(projectKickoffEmail({ kid: { ...KID, name: 'Amanda, Caleb & Isaac' } }).html) <= 40);
+});
+
+test('JobTread’s multi-choice rooms read as a list; the preview with only photos reads whole; spacing with few photos', () => {
+  const inv = revealInviteEmail({ kid: { ...KID, roomTypes: [] }, room: 'Bedroom,Bathroom', date: '2027-03-12', time: '16:00' });
+  assert.match(inv.html, />Bedroom and&nbsp;Bathroom<\/div>/);
+  assert.match(inv.html, />Rooms<\/div>/);
+  assert.match(inv.preview, /brand-new bedroom and bathroom!/);
+  assert.equal(projectRevealEmail({ kid: { ...DONE, videoUrl: '', partnerLogos: [] } }).preview, 'See Rowan’s transformation in the photos.');
+  const few = revealInviteEmail({ kid: { ...KID, photos: [] }, date: '2027-03-12', time: '16:00' }).html;
+  assert.match(few, /padding:0px 0 0;[^"]*" class="pd">\s*<div style="padding-top:16px;"><a /, 'the story link 16px under the story');
+  const bare = projectKickoffEmail({ kid: { ...KID, heroImage: '', photos: [] } }).html;
+  assert.match(bare, /<h1 class="[^"]*" style="margin:0 0 0px;/, 'no picture: no gap under the headline');
 });
