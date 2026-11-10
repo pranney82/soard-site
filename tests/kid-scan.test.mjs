@@ -57,12 +57,13 @@ test('a box found by its tracking number, its order number, its PO, or its packi
 });
 
 test('POST: the photo is read on its own AI feature and matched', async () => {
-  aiAnswer = { trackingNumbers: ['7712 3456 7890'], orderNumbers: [], po: '', store: 'FedEx', items: [] };
+  aiAnswer = { trackingNumbers: ['7712 3456 7890'], orderNumbers: [], po: '', store: 'FedEx', items: [], boxTotal: 3 };
   const res = await post({ image: JPEG });
   const body = await res.json();
   assert.equal(body.success, true);
   assert.equal(body.found.short, 'Rowan S.');
-  assert.match(body.found.how, /tracking number/);
+  assert.equal(body.found.how, 'Tracking …567890');
+  assert.equal(body.label.boxTotal, 3, '"1 of 3" on the label: three labels');
   assert.deepEqual([aiCalls[0].feature, aiCalls[0].image], ['checkin-scan', 'image_url']);
 });
 

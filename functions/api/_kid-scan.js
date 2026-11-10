@@ -32,8 +32,9 @@ export const LABEL_SCHEMA = {
     po: { type: 'string' },
     store: { type: 'string' },
     items: { type: 'array', items: { type: 'string' } },
+    boxTotal: { type: 'number' },
   },
-  required: ['trackingNumbers', 'orderNumbers', 'po', 'store', 'items'],
+  required: ['trackingNumbers', 'orderNumbers', 'po', 'store', 'items', 'boxTotal'],
 };
 const LABEL_PROMPT = [
   'You read the photo of a shipping label or packing slip on a box delivered to an office. Answer in JSON only.',
@@ -42,6 +43,7 @@ const LABEL_PROMPT = [
   'po: what is printed as PO, P.O., Job, Job Name or Reference, else "".',
   'store: the store or sender, else "".',
   'items: the products a packing slip lists, as written, else an empty list.',
+  'boxTotal: when the label says which box of how many ("1 of 3", "PKG 2/3", "Box 1 of 2"), the how many (3); else 0.',
   'Never guess: leave a field empty when it isn\'t printed.',
 ].join('\n');
 
@@ -78,6 +80,7 @@ export async function readLabel(env, bytes) {
           po: String(a.po || '').trim().slice(0, 60),
           store: String(a.store || '').trim().slice(0, 60),
           items: (a.items || []).map((n) => String(n).trim()).filter(Boolean).slice(0, 20),
+          boxTotal: Number.isInteger(Number(a.boxTotal)) && Number(a.boxTotal) > 1 && Number(a.boxTotal) <= 20 ? Number(a.boxTotal) : 0,
         };
       }
     } catch (err) {
@@ -116,19 +119,19 @@ export function findBox(view, reads, label) {
   };
   for (const t of label.trackingNumbers || []) {
     const r = reads.find((x) => (x.read.tracking || []).some((tr) => sameTracking(tr.number, t)));
-    const found = r && fromOrder(groupKey(r), `its tracking number ending ${t.slice(-6)}`);
+    const found = r && fromOrder(groupKey(r), `Tracking …${t.slice(-6)}`);
     if (found) return found;
   }
   for (const o of label.orderNumbers || []) {
     const r = reads.find((x) => sameOrder(x.read.orderNumber, o));
-    const found = r && fromOrder(groupKey(r), `its order number ${o}`);
+    const found = r && fromOrder(groupKey(r), `Order ${o}`);
     if (found) return found;
   }
   if (label.po) {
     const jobs = view.kids.map((k) => ({ id: k.jobId, name: k.name }));
     const po = kidFromPo(label.po, jobs);
     const kid = po?.kid && view.kids.find((k) => k.jobId === po.kid);
-    if (kid) return { kid: kid.jobId, short: kid.short, items: kid.items.filter((i) => i.status === 'ordered').map((i) => i.id), how: `the PO, “${label.po}”` };
+    if (kid) return { kid: kid.jobId, short: kid.short, items: kid.items.filter((i) => i.status === 'ordered').map((i) => i.id), how: `PO “${label.po}”` };
   }
   // A packing slip's items against what's been ordered: the kid whose ordered items share the most words
   if ((label.items || []).length) {
@@ -141,7 +144,7 @@ export function findBox(view, reads, label) {
     const kids = new Set(scored.map((s) => s.kid.jobId));
     if (kids.size === 1) {
       const kid = scored[0].kid;
-      return { kid: kid.jobId, short: kid.short, items: scored.sort((a, b) => b.best - a.best).map((s) => s.item.id), how: 'the items on its packing slip' };
+      return { kid: kid.jobId, short: kid.short, items: scored.sort((a, b) => b.best - a.best).map((s) => s.item.id), how: 'Packing slip' };
     }
   }
   return null;
