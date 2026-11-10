@@ -204,9 +204,9 @@ const LETTER_SCHEMA = {
 
 const LETTER_PROMPT = `You read one page that came with a check given to a charity, Sunshine on a Ranney Day (SOARD). Report only what is written on it, as JSON.
 aboutGift: true when it's a letter or note about a gift to the charity: a cover letter, a donor-advised fund or foundation grant letter, a matching-gift letter, or a note saying who the gift is from or where to send its receipt. false for anything else, such as an invoice, a bill, a form, a deposit slip, or a picture of the check or an envelope.
-recordAs: the person, couple, company or foundation the page says to record or acknowledge the gift as. When it doesn't say, the donor it names as giving or recommending the gift. Never the charity, and never someone who only signed for a bank, fund or company. "" if it doesn't name one.
-email: the email the page says to send the receipt or acknowledgment to, else the donor's email it gives. "" if none.
-street, city, state, zip: the mailing address the page says to send the receipt or acknowledgment to, else the donor's own address it gives, in its parts (the street line with any apartment or suite, the city, the two-letter state, the ZIP code). Never the charity's address, which is usually in the "To" lines at the top. "" for any part that isn't there.
+recordAs: the name the page says to record, credit or acknowledge the gift under. When it doesn't say, the person, couple, company or foundation the page says the gift is from. Never the charity, never someone who only signed the page for a bank, fund, foundation or company, and never someone named only as recommending or advising the gift or as who to contact (a foundation's director who recommended its grant: the gift is still the foundation's). "" if it doesn't name one.
+email: the email the page says to send the receipt, acknowledgment or correspondence to, else the donor's email it gives. "" if none.
+street, city, state, zip: the mailing address the page says to send the receipt, acknowledgment or correspondence to, else the donor's own address it gives, in its parts (the street line with any apartment or suite, the city, the two-letter state, the ZIP code). Never the charity's address, which is usually in the "To" lines at the top. "" for any part that isn't there.
 amount: the gift's amount in dollars as the page gives it, or 0.
 Never copy an account, grant, routing or phone number. If you can't read a field, leave it empty. Don't guess.`;
 
