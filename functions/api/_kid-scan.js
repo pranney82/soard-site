@@ -110,7 +110,8 @@ const sameOrder = (a, b) => { const x = orderDigits(a), y = orderDigits(b); retu
  * view: checkinView(); reads: the order emails read ({ id, store, read })
  */
 export function findBox(view, reads, label) {
-  const ordered = view.kids.flatMap((k) => k.items.filter((i) => i.status === 'ordered').map((i) => ({ kid: k, item: i })));
+  const coming = (i) => i.status === 'ordered' || i.status === 'partly';
+  const ordered = view.kids.flatMap((k) => k.items.filter(coming).map((i) => ({ kid: k, item: i })));
   const fromOrder = (key, how) => {
     const hits = ordered.filter((x) => x.item.order?.key === key);
     if (!hits.length) return null;
@@ -131,7 +132,7 @@ export function findBox(view, reads, label) {
     const jobs = view.kids.map((k) => ({ id: k.jobId, name: k.name }));
     const po = kidFromPo(label.po, jobs);
     const kid = po?.kid && view.kids.find((k) => k.jobId === po.kid);
-    if (kid) return { kid: kid.jobId, short: kid.short, items: kid.items.filter((i) => i.status === 'ordered').map((i) => i.id), how: `PO “${label.po}”` };
+    if (kid) return { kid: kid.jobId, short: kid.short, items: kid.items.filter(coming).map((i) => i.id), how: `PO “${label.po}”` };
   }
   // A packing slip's items against what's been ordered: the kid whose ordered items share the most words
   if ((label.items || []).length) {

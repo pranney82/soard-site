@@ -72,6 +72,7 @@ import { staffStatus } from './_staff-access.js';
 import { mailSweepStatus } from './_mail-sweep.js';
 import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
+import { kidJtStatus } from './_kid-jt.js';
 import { asksFacts } from './_board-asks.js';
 import { signingFacts } from './_board-sign.js';
 import { backfillStatus } from './_coi-backfill.js';
@@ -517,7 +518,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     // Staff inboxes swept: receipts to the receipt inbox, family emails onto JobTread (_mail-sweep.js)
     mailSweep: await settle(() => mailSweepStatus(env)),
     // Kid items, read only: store order emails by store (counts), and open makeovers' selections as parts (counts) (_order-sweep.js, _selection-parts.js)
-    kidItems: await settle(async () => ({ orders: await orderSweepStatus(env), parts: await selectionPartsStatus(env) })),
+    kidItems: await settle(async () => ({ orders: await orderSweepStatus(env), parts: await selectionPartsStatus(env), jobtread: await kidJtStatus(env) })),
     // The certificates and W-9s SOARD already had, found and filed: counts and times only (_coi-backfill.js)
     coiBackfill: await settle(() => backfillStatus(env)),
     // The process Docs Process follows: their names, last read and any problem (_process-docs.js)

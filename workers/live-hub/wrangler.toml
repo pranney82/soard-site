@@ -19,3 +19,12 @@ class_name = "LiveHub"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["LiveHub"]
+
+# The Office label printer (Zebra Cloud Connect): ./src/print-hub.js
+[[durable_objects.bindings]]
+name = "PRINT_HUB"
+class_name = "PrintHub"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["PrintHub"]

@@ -394,3 +394,6 @@ export default {
     return new Response('Not found', { status: 404 });
   },
 };
+
+// The Office label printer's socket (Zebra Cloud Connect), bound to the site as PRINT_HUB
+export { PrintHub } from './print-hub.js';

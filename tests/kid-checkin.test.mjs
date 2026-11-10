@@ -37,7 +37,7 @@ test('each kid’s things to receive: ordered ones marked, someone else’s coun
   await order('m1', 'Shop', '2026-10-30T15:00:00Z', { kind: 'order', orderNumber: 'A1', jobPo: 'ROWAN', items: [{ name: 'Raincan Shower Head 52214-CZ' }, { name: 'Bean Bag Chair' }] });
   await order('m2', 'Good Fun Co', '2026-10-28T15:00:00Z', { kind: 'shipped', orderNumber: 'B2', items: [{ name: 'Perfect Stripe, Beige' }] });
   const v = await checkinView(env);
-  assert.equal(v.practice, true);
+  assert.equal(v.practice, true, 'JobTread isn’t written until the writer says so');
   const rowan = v.kids.find((k) => k.short === 'Rowan S.');
   const by = (name) => rowan.items.find((i) => i.name === name);
   assert.equal(by('Raincan Shower Head').status, 'ordered');
@@ -50,7 +50,7 @@ test('each kid’s things to receive: ordered ones marked, someone else’s coun
   assert.equal(rowan.items[0].status, 'ordered', 'ordered first');
   const ava = v.kids.find((k) => k.short === 'Ava E.');
   assert.equal(ava.items[0].source, 'donated');
-  assert.notEqual(rowan.shelf, ava.shelf);
+  assert.deepEqual([rowan.shelf, ava.shelf], [null, null], 'a kid gets a shelf at their first check-in');
 });
 
 test('orders a person needs to look at, and ones that aren’t a kid’s', async () => {

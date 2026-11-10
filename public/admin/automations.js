@@ -69,7 +69,7 @@ const kidOrdersLive = (f) => {
   if (o.error) return ATTN(o.error, o.lastSweptAt);
   const read = o.states?.read || 0;
   const top = (o.stores || []).slice(0, 4).map((x) => `${x.store} ${x.emails}${x.itemsPct === null ? '' : ` (items on ${x.itemsPct}%${x.deliveredEmailPct === null ? '' : `, a delivered email for ${x.deliveredEmailPct}% of what shipped`})`}`).join(', ');
-  return ON(`Reading only: ${plural(read, 'order email')} read${o.backfilling ? ', still bringing in the last 60 days' : ''}${top ? `. ${top}` : ''}. Nothing goes to JobTread yet.`, o.lastSweptAt);
+  return ON(`${plural(read, 'order email')} read${o.backfilling ? ', still bringing in the last 60 days' : ''}${top ? `. ${top}` : ''}.`, o.lastSweptAt);
 };
 const kidPartsLive = (f) => {
   const p = f.kidItems?.parts;
@@ -79,7 +79,19 @@ const kidPartsLive = (f) => {
   if (stale(p.lastRunAt, 2 * HOUR)) return ATTN(`Hasn’t read the selections since ${stamp(p.lastRunAt)}. Check the Heartbeat entry.`, p.lastRunAt);
   if (p.error) return ATTN(p.error, p.lastRunAt);
   const parts = (p.jobs || []).reduce((n, j) => n + j.parts, 0);
-  return ON(`Reading only: ${plural(parts, 'part')} on ${plural((p.jobs || []).length, 'makeover')}${p.firstPassDone ? '' : ', still on its first pass'}. Nothing goes to JobTread yet.`, p.lastRunAt);
+  return ON(`${plural(parts, 'part')} on ${plural((p.jobs || []).length, 'makeover')}${p.firstPassDone ? '' : ', still on its first pass'}.`, p.lastRunAt);
+};
+const kidJtLive = (f) => {
+  const j = f.kidItems?.jobtread;
+  if (!j || !('mode' in j)) return null;
+  if (!j.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so nothing can be written.');
+  if (!j.lastRunAt) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+  if (stale(j.lastRunAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(j.lastRunAt)}. Check the Heartbeat entry.`, j.lastRunAt);
+  if (j.rehearsal && !j.rehearsal.ok) return ATTN(`The rehearsal on the office test job didn’t pass, so no makeover is written: ${j.rehearsal.error || 'see its steps'}`, j.lastRunAt);
+  if (j.error) return ATTN(j.error, j.lastRunAt);
+  const l = j.last || {};
+  if (j.mode !== 'on') return ON(`Rehearsal passed. Listing what it would write (${plural(l.planned || 0, 'line')}), writing nothing to the makeovers yet.`, j.lastRunAt);
+  return ON(`Writing: ${plural(l.wrote || 0, 'line')} written and ${plural(l.made || 0, 'Also bought line')} added on its last run${l.left ? `, ${l.left} left for the next` : ''}.`, j.lastRunAt);
 };
 // Staff inboxes swept (_mail-sweep.js): one look at every inbox serves both of its entries
 const sweepLive = (kind) => (f) => {
@@ -1318,15 +1330,21 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Kid items', children: [
         { t: 'Order emails read', s: 'live', k: 'schedule',
           when: 'Every 3 minutes on the heartbeat (every minute while there’s a backlog), a few SOARD inboxes a run in turn. When it began it read each inbox’s last 60 days once.',
-          does: 'Finds the stores’ own emails about what SOARD ordered (order confirmations, shipped, out for delivery, delivered, ready for pickup, delays, cancellations, refunds and returns) in every SOARD inbox and the orders@ group’s copies, and reads each one for its store, order number, items, tracking numbers, expected day, whether it’s going to the Office, and what was typed in a Job or PO box. The store’s own order markup and Amazon’s plain words are read first; Workers AI reads the items only when they don’t give them. For now it only reads, so the matching to each kid’s selections can be checked first: nothing goes to JobTread and nobody is emailed.',
+          does: 'Finds the stores’ own emails about what SOARD ordered (order confirmations, shipped, out for delivery, delivered, ready for pickup, delays, cancellations, refunds and returns) in every SOARD inbox and the orders@ group’s copies, and reads each one for its store, order number, items, tracking numbers, expected day, whether it’s going to the Office, and what was typed in a Job or PO box. The store’s own order markup and Amazon’s plain words are read first; Workers AI reads the items only when they don’t give them. Gmail is only read and nobody is emailed; what it finds goes to each kid’s check-in list and JobTread lines (the next entries).',
           touches: ['Gmail', 'Workers AI', 'D1'], where: 'functions/api/_order-sweep.js (reads with _order-read.js, broadcast-hooks.js)',
           info: 'Gmail is only read. Staff’s own mail and forwards, sent mail, spam and the store’s (Sunny & Ranney) buying are left out. The same email in two inboxes is read once. Its AI has its own spending cap, apart from the receipt sweep’s.',
           live: kidOrdersLive },
         { t: 'Selections as parts', s: 'live', k: 'schedule',
           when: 'Every 30 minutes on the heartbeat (every minute until every open makeover has been read once). A line is read again only when its words, cost or quantity change; one the AI couldn’t split is tried again three times, six hours apart.',
-          does: 'Reads each open makeover’s chosen selection lines in JobTread and splits each one into the parts to buy or receive (a Shower System line with seven Delta parts becomes seven parts), each with its model number, link, quantity, price and where it comes from: bought by SOARD, donated, the family’s, or someone else’s (a $0 line is someone else’s unless it says donated). For now it only reads.',
+          does: 'Reads each open makeover’s chosen selection lines in JobTread and splits each one into the parts to buy or receive (a Shower System line with seven Delta parts becomes seven parts), each with its model number, link, quantity, price and where it comes from: bought by SOARD, donated, the family’s, or someone else’s (a $0 line is someone else’s unless it says donated). Its parts are what the check-in page lists and what each line’s Order details describe.',
           touches: ['JobTread', 'Workers AI', 'D1'], where: 'functions/api/_selection-parts.js (broadcast-hooks.js)',
           live: kidPartsLive },
+        { t: 'Ordered and received → JobTread', s: 'live', k: 'schedule',
+          when: 'Every 2 minutes on the heartbeat, and right after each check-in on /admin/checkin/ for that kid.',
+          does: 'Writes each open makeover’s budget lines that SOARD buys or receives: Order status (Not ordered, Partly ordered, Ordered, Partly received, Received), Order details (each part’s store, order number, date and price; how many came, when, and the shelf) and Shelf. Anything bought for a kid on top of the selections is added to their budget at what was paid, in an Also bought group, with Also bought ticked. A line is written only when what it should say changed. A status someone sets by hand in JobTread stays until that line has news, and words typed into Order details stay at the bottom as a note. Before any makeover, a rehearsal runs every step on the office test job; makeovers wait until it passes. A kid’s shelf frees up when their makeover is finished in JobTread.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_kid-jt.js (from _kid-checkin.js, broadcast-hooks.js, kid-items-admin.js)',
+          info: 'The fields are hidden from families (not on specifications).',
+          live: kidJtLive },
       ] },
       { t: 'Workflows', children: [
         { t: 'Scope approved → Mobilization', s: 'live', k: 'event',

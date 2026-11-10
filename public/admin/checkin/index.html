@@ -20,10 +20,11 @@
   <link rel="stylesheet" href="./checkin.css" />
 </head>
 <body>
-  <!-- Kid items check-in: scan a box (or tap the item), print its labels, put it on the kid's shelf (see ./checkin.js, /api/kid-items-admin) -->
+  <!-- Kid items check-in: scan a box (or tap the item), print its labels, put it on the kid's shelf, JobTread updated (see ./checkin.js, /api/kid-items-admin) -->
   <div class="wrap">
     <header class="top">
-      <div class="title-row"><div class="brand"><img class="logo" src="/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="SOARD" width="42" height="42" /><h1>Check-in</h1></div><span class="chip-mode" id="mode" hidden>Practice</span></div>
+      <div class="title-row"><div class="brand"><img class="logo" src="/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="SOARD" width="42" height="42" /><h1>Check-in</h1></div>
+        <div class="top-side"><span class="chip-mode" id="mode" hidden>Practice</span><span class="chip-wait" id="queue" role="status" hidden></span><button class="printer-pill off" id="printer" type="button" aria-label="Printer and shelves"></button></div></div>
       <label class="search" for="q">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="q" type="search" placeholder="Find an item, a kid or a store" autocomplete="off" enterkeyhint="search" />
@@ -42,6 +43,7 @@
   </nav>
   <input id="camera" type="file" accept="image/*" capture="environment" hidden />
   <div id="sheet-root"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script type="module" src="./checkin.js"></script>
 </body>
 </html>

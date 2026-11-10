@@ -34,7 +34,9 @@ test('the PO box: a kid’s name, a not-a-kid word, or something a person looks 
   assert.deepEqual(kidFromPo('SUNNY & RANNEY', jobs, staff), { notKid: true });
   assert.deepEqual(kidFromPo('s&r', jobs, staff), { notKid: true });
   assert.deepEqual(kidFromPo('ROWEN', jobs, staff), { unclear: 'ROWEN' }, 'a misspelling is looked at, never guessed');
-  assert.deepEqual(kidFromPo('Rowan bed', jobs, staff), { unclear: 'Rowan bed' });
+  assert.deepEqual(kidFromPo('Rowan bed', jobs, staff), { kid: 'j-rowan' }, 'the kid’s name first, then what it’s for');
+  assert.deepEqual(kidFromPo('#Rowan replacement for broken door.', jobs, staff), { kid: 'j-rowan' });
+  assert.deepEqual(kidFromPo('bed for Rowan', jobs, staff), { unclear: 'bed for Rowan' }, 'a name further in is looked at');
   assert.deepEqual(kidFromPo('#Home', jobs, staff), { unclear: '#Home' });
   assert.deepEqual(kidFromPo('Pat', jobs, staff), { unclear: 'Pat' }, 'a staff member’s name never names a kid');
   assert.equal(kidFromPo('', jobs, staff), null);

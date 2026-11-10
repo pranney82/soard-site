@@ -8,9 +8,9 @@
  *
  * Which kid, first answer wins, any disagreement means a person looks:
  *   1. The PO / Job box: a kid's first or last name that fits exactly one open
- *      makeover and no staff member ("COLIN", "#DYLAN"). OFFICE, SOARD, SUNNY &
- *      RANNEY, S&R and STORE say it isn't a kid's: nothing happens. Any other
- *      word ("LIZZY", "Dylan bed", "#Home") needs a look.
+ *      makeover and no staff member ("COLIN", "#DYLAN"), alone or first ("#Dylan
+ *      replacement door"). OFFICE, SOARD, SUNNY & RANNEY, S&R and STORE say it
+ *      isn't a kid's: nothing happens. Any other word ("LIZZY", "#Home") needs a look.
  *   2. No PO name: the items matching parts on exactly one open makeover.
  *   3. Anything else needs a look.
  * Which line: each item against that kid's chosen lines, by the part's model
@@ -58,11 +58,12 @@ export function kidFromPo(po, jobs, staff = new Set()) {
       if ((w === n.first && !staff.has(n.first)) || (w === n.last && !staff.has(n.last))) hits.add(j.id);
     }
   }
-  // Exactly the name (or names) of one kid and nothing else typed: that kid. "Dylan bed" or a second word: a person looks
+  // The name (or names) of one kid and nothing else, or one kid's name first and then what it's for ("#Dylan replacement
+  // for broken door", seen Nov 9 2026): that kid. A name further in, or two kids' names: a person looks
   if (hits.size === 1) {
     const id = [...hits][0];
     const n = namesOf(jobs.find((j) => j.id === id).name);
-    if (words.every((w) => w === n.first || w === n.last)) return { kid: id };
+    if (words.every((w) => w === n.first || w === n.last) || words[0] === n.first) return { kid: id };
   }
   return { unclear: String(po).trim() };
 }

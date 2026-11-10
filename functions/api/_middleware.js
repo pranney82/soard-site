@@ -192,6 +192,10 @@ PUBLIC_ROUTES.push('/api/live-watch');
 // no cookie, address or id kept (_book-stats.js); always 204; rate limited below
 PUBLIC_ROUTES.push('/api/book-stats');
 
+// The Office label printer's socket (Zebra Cloud Connect): the printer can't use
+// Access, so it signs in with its own password (_kid-print.js, printer-ws/index.js)
+PUBLIC_GET_ROUTES.push('/api/printer-ws', '/api/printer-ws/');
+
 // Where Intuit sends a Board admin back after "Connect QuickBooks" in Board →
 // Settings: the one-time state Settings made is checked inside (_quickbooks.js),
 // and the code is useless without SOARD's keys; rate limited below

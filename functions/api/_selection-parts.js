@@ -220,6 +220,9 @@ export function isGoodsLine(c) {
   return !NOT_GOODS.test(c.costType?.name || '');
 }
 
+/** A line the website made itself: an Also bought line (its globalId, or its group) */
+export const isSiteLine = (c) => /^soard-/.test(String(c.globalId || '')) || String(c.costGroup?.name || '').trim() === 'Also bought';
+
 /** One job's lines to buy or receive → [{ id, name, description, cost, quantity, group }] */
 async function chosenLines(env, jobId, fetchImpl) {
   const out = [];
@@ -232,14 +235,15 @@ async function chosenLines(env, jobId, fetchImpl) {
           $: { size: LINES_A_PAGE, where: [['document', 'id'], '=', null], ...(page ? { page } : {}) },
           nextPage: {},
           nodes: {
-            id: {}, name: {}, description: {}, cost: {}, quantity: {}, isSelected: {}, costType: { name: {} },
+            id: {}, name: {}, description: {}, cost: {}, quantity: {}, isSelected: {}, globalId: {}, costType: { name: {} },
             costGroup: { name: {}, maxSelectionsAllowed: {}, minSelectionsRequired: {}, parentCostGroup: { maxSelectionsAllowed: {}, minSelectionsRequired: {} } },
           },
         },
       },
     }, fetchImpl);
     const conn = data?.job?.costItems;
-    for (const c of conn?.nodes || []) if (isGoodsLine(c)) out.push({ id: c.id, name: c.name, description: c.description || '', cost: c.cost, quantity: c.quantity, group: c.costGroup?.name || '' });
+    // The site's own Also bought lines (./_kid-jt.js) are what was bought, not selections to buy
+    for (const c of conn?.nodes || []) if (isGoodsLine(c) && !isSiteLine(c)) out.push({ id: c.id, name: c.name, description: c.description || '', cost: c.cost, quantity: c.quantity, group: c.costGroup?.name || '' });
     page = conn?.nextPage;
     if (!page) break;
   }
