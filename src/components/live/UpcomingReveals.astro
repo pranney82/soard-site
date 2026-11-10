@@ -71,7 +71,8 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
     <div class="upn-ways">
       <!-- Email for every reveal: there from the first paint, taken out if Reveals → Settings has reminders off, and left
            out on /live/ while that page's own reminder form is already the every-reveal one (data-remind-here) -->
-      <div class="upn-cal upn-mail" data-upn-mail>
+      <!-- id: a page's "Get every reveal by email" button comes here (/reveals/) -->
+      <div class="upn-cal upn-mail" id={`${id}-mail`} data-upn-mail>
         <div class="upn-cal__head">
           <span class="upn-cal__icon" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>

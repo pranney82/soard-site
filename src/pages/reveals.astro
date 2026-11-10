@@ -15,9 +15,17 @@
  * Nov 9 2026: "if we didnt, it should show the last reveal video there").
  * Drawn from the schedule the build had (src/data/upcoming-reveals.json) and
  * brought up to date from /api/reveals when the page opens.
+ *
+ * Under the hero, "Coming up" (UpcomingReveals, as on /live/ and the events
+ * page): the next reveals, and the every-reveal sign-up by email (no
+ * address, ever: the emails say when and link to the live page) or in a
+ * calendar. Peter, Nov 9 2026: the page has to let people subscribe right
+ * here, so the hero's second button and the closing one go to that card.
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import RevealGrid from '../components/reveals/RevealGrid.astro';
+import UpcomingReveals from '../components/live/UpcomingReveals.astro';
+import RevealInvite from '../components/live/RevealInvite.astro';
 import { getReveals } from '../utils/reveals';
 import { cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
 import siteSettings from '../content/site/settings.json';
@@ -78,8 +86,8 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
         </p>
         <div class="hero-ctas">
           <a href={live.length ? '#live-replays' : '#all-reveals'} class="btn btn-primary btn-lg">Watch all {reveals.length} reveal videos</a>
-          <!-- With a reveal coming up: that child's live page; with none: the every-reveal email sign-up -->
-          <a href={next ? next.liveUrl : '/live/#remind'} class="btn btn-outline-dark" data-rh-cta>{next ? `${next.name}'s live reveal` : 'Get every reveal by email'}</a>
+          <!-- The every-reveal email sign-up, right under the hero (the next child's live page is the frame's own link) -->
+          <a href="#up-next-mail" class="btn btn-outline-dark" data-rh-signup>Get every reveal by email</a>
         </div>
       </div>
       <div class="hero-frame" data-rh data-mode={heroMode}>
@@ -155,6 +163,14 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
     </div>
   </section>
 
+  <!-- ══════ COMING UP: the next reveals, and every reveal by email or in a calendar (the same band as /live/ and
+       the events page; with nothing scheduled it stays, for the two ways to hear about the next one) ══════ -->
+  <UpcomingReveals
+    id="up-next"
+    where="reveals"
+    emptyLead="The next reveal isn't on the schedule yet. Get it by email or in your calendar, and watch it live right here."
+  />
+
   <!-- ══════ LIVE STREAM REPLAYS ══════ -->
   {live.length > 0 && (
     <section class="section rv-section rv-section--live" id="live-replays" aria-labelledby="live-replays-title">
@@ -197,15 +213,16 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
       <div class="rv-cta__text">
         <p class="section-label section-label--light">The next reveal</p>
         <h2 id="rv-cta-title" class="rv-cta__title">Be there when the next door <em>opens</em>.</h2>
-        <p class="rv-cta__lead">Reveals stream live right here on our site. Leave your email on the live page and we'll remind you before the next one starts.</p>
+        <p class="rv-cta__lead">Reveals stream live right here on our site. Leave your email and we'll tell you about every one: when it gets a date, when it's about to start, and when the replay is up.</p>
       </div>
       <div class="rv-cta__actions">
-        <a href="/live/" class="btn btn-primary btn-lg rv-cta__btn">Get a reminder for the next live reveal</a>
+        <a href="#up-next-mail" class="btn btn-primary btn-lg rv-cta__btn" data-rh-signup>Get every reveal by email</a>
         <a href="/donate/" class="btn btn-ghost-light rv-cta__btn">Help build the next room</a>
       </div>
     </div>
   </section>
 
+  <RevealInvite />
 </BaseLayout>
 
 <style>
@@ -514,19 +531,23 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
    * may since have been set, moved or passed. /api/reveals (JobTread's schedule) decides: the next live reveal if
    * there is one, else the latest reveal video. A read that fails keeps what the build drew.
    */
-  import { readUpcoming, revealWhen } from '../utils/reveals-client';
+  import { readUpcoming, loadSignup, revealWhen } from '../utils/reveals-client';
   import { cfRaw, cfSrcset } from '../utils/cf-image';
 
   function initRevealsHero() {
     const frame = document.querySelector<HTMLElement>('[data-rh]');
     if (!frame) return;
+    // "Get every reveal by email" goes to the band's sign-up under the hero; when that card isn't offered here
+    // (sign-ups off, or not known to be on), to the live page's own
+    void loadSignup().then((s) => {
+      if (s?.email) return;
+      for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-rh-signup]')) a.href = '/live/#remind';
+    });
     void readUpcoming().then((list) => {
       if (!list || !frame.isConnected) return;
-      const cta = document.querySelector<HTMLAnchorElement>('[data-rh-cta]');
       const n = list[0];
       if (!n) {
         if (frame.querySelector('.rh-latest')) frame.dataset.mode = 'latest';
-        if (cta) { cta.textContent = 'Get every reveal by email'; cta.href = '/live/#remind'; }
         return;
       }
       const link = frame.querySelector<HTMLAnchorElement>('[data-rh-next]');
@@ -548,7 +569,6 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
         img.dataset.slug = n.slug;
       }
       frame.dataset.mode = 'next';
-      if (cta) { cta.textContent = `${n.name}'s live reveal`; cta.href = n.liveUrl; }
     });
   }
   document.addEventListener('astro:page-load', initRevealsHero);
