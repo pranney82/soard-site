@@ -198,9 +198,11 @@ const structuredData = buildSchemaGraph(...graphSchemas);
        page has finished loading: the beacon Pages injects is a script on a
        second connection that loads beside the page's own photo and fonts. Same
        site token, same data (it reads the page's timings when it starts). Skipped
-       if a beacon is already on the page, so turning off the Pages project's
-       automatic one never counts a visit twice. */}
-  <script is:inline>addEventListener('load',function(){setTimeout(function(){if(window.__cfBeacon||document.querySelector('script[src*="cloudflareinsights.com/beacon"]'))return;window.__cfBeacon=1;var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token": "43b83df2d48941e496276682ee4bf0a4"}');document.head.appendChild(s)},0)},{once:true})</script>
+       if a beacon is already on the page, so a visit is never counted twice.
+       Nothing is set on window: the beacon keeps its own settings in
+       window.__cfBeacon. Cloudflare's automatic copies are off (the Pages
+       project's Web Analytics and the zone's automatic setup, Nov 10 2026). */}
+  <script is:inline>addEventListener('load',function(){setTimeout(function(){if(document.querySelector('script[src*="cloudflareinsights.com/beacon"]'))return;var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token": "43b83df2d48941e496276682ee4bf0a4"}');document.head.appendChild(s)},0)},{once:true})</script>
 
   {/* Preload critical fonts */}
   <link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
