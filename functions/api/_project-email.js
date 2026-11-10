@@ -56,7 +56,11 @@ const PAIR_TRANSFORM = 'w=600,h=640,fit=cover,gravity=auto,q=80';
 const storyOf = (kid) => shortStory(kid, STORY_MAX);
 
 /** A quote as the page has it, without the quote marks it was typed with */
-const bareQuote = (q) => tidy(String(q || '').trim().replace(/^["“”'‘’]+|["“”'‘’]+$/g, ''));
+/** A quote without the marks around the whole of it (only a pair that opens and closes it: "He said "wow"" keeps its own) */
+const bareQuote = (q) => {
+  const t = String(q || '').trim();
+  return tidy(/^["“'‘][\s\S]*["”'’]$/.test(t) && t.length > 2 ? t.slice(1, -1).trim() : t);
+};
 /**
  * A quote as HTML, curly and matched whatever shape it was typed in:
  *   "It’s perfect." — Mom        → “It’s perfect.” with "– Mom" on its own line under it
@@ -71,20 +75,23 @@ function quoteHtml(q) {
   const raw = String(q || '').trim();
   const part = (t) => escapeHtml(tidy(t));
   // Who said it, signed with a dash: a line of its own in the sans, so "– Jade, / Dewone’s mother" never splits off the quote's last line
-  const byline = (who) => `<span style="display:block;margin-top:10px;font-family:${SANS};font-size:14px;font-style:normal;font-weight:600;line-height:1.45;color:${TM};">–&nbsp;${noWidow(part(who.trim()))}</span>`;
+  const byline = (who) => `<span style="display:block;margin-top:10px;font-family:${SANS};font-size:14px;font-style:normal;font-weight:600;line-height:1.45;color:${TM};">–&nbsp;${noWidow(part(who.trim())).replace(/ and /g, ' and&nbsp;')}</span>`;
   const dash = /^\s*[-–—]+\s*/;
+  const plain = (t) => !/["“”]/.test(t);
   // Who said it sits before the quote ("She said, ") or after it ("— Mom", "Vicki said."), and is short;
   // marks in the middle of longer words are a quote inside the quote
   const dbl = raw.match(/^([\s\S]*?)["“]([^"“”]+)["”]([\s\S]*)$/);
   const lead = dbl ? dbl[1].trim() : '', tail = dbl ? dbl[3].trim() : '';
-  if (dbl && !lead && dash.test(tail) && tail.replace(dash, '').length <= 40) return `“${noWidow(part(dbl[2].trim()))}”${byline(tail.replace(dash, ''))}`;
-  const said = dbl && ((!lead && tail && tail.length <= 40) || (!tail.replace(/[.!?]/g, '') && lead && lead.length <= 40 && /[,:]$/.test(lead)));
+  if (dbl && !lead && dash.test(tail) && plain(tail) && tail.replace(dash, '').length <= 90) return `“${noWidow(part(dbl[2].trim()))}”${byline(tail.replace(dash, ''))}`;
+  // (a lead or tail with marks of its own means the marks matched inside the quote: "He said "wow" and cried.")
+  const said = dbl && plain(lead) && plain(tail) && ((!lead && tail && tail.length <= 40) || (!tail.replace(/[.!?]/g, '') && lead && lead.length <= 40 && /[,:]$/.test(lead)));
   if (said) return `${part(dbl[1])}“${tail ? part(dbl[2]) : noWidow(part(dbl[2]))}”${noWidow(part(dbl[3]))}`;
   const sgl = raw.match(/^['‘](.+?)([,.!?])['’]\s+([\s\S]+)$/);
   if (sgl) return `“${part(sgl[1] + sgl[2])}” ${noWidow(part(sgl[3]))}`;
-  // No marks, signed at the end: "We love it. - Mom" (a name, a few words at most)
-  const signed = !dbl && raw.match(/^([\s\S]+?)\s+[-–—]+\s*([A-Z][^-–—"“”]{0,39})$/);
-  if (signed && signed[2].trim().split(/\s+/).length <= 4) return `“${noWidow(escapeHtml(bareQuote(signed[1]).replace(/“/g, '‘').replace(/”/g, '’')))}”${byline(signed[2])}`;
+  // No marks, signed at the end: "We love it. - Mom", "… - Monique and Darnell, Jaylen’s parents" (a name, never a sentence)
+  const signed = !dbl && raw.match(/^([\s\S]+?)\s+[-–—]+\s*([A-Z][^-–—"“”]{0,89})$/);
+  const signer = signed ? signed[2].trim() : '';
+  if (signed && signer.split(/\s+/).length <= 12 && (!/[.!?]$/.test(signer) || signer.split(/\s+/).length <= 2)) return `“${noWidow(escapeHtml(bareQuote(signed[1]).replace(/“/g, '‘').replace(/”/g, '’')))}”${byline(signed[2])}`;
   const inner = bareQuote(raw).replace(/“/g, '‘').replace(/”/g, '’');
   return `“${noWidow(escapeHtml(inner))}”`;
 }
@@ -115,13 +122,13 @@ const gap = (px) => `<tr><td bgcolor="${CR}" style="background:${CR};height:${px
  * so no word is ever squeezed in two.
  */
 function factsRow(facts) {
-  // "Autism &" never ends a line: "&" goes with the word after it, and "Non-Verbal" never splits at its hyphen
-  const glue = (t) => String(t).replace(/ & /g, ' &\u00A0');
+  // "Autism &" or "Bowel and" never ends a line: "&" and "and" go with the word after them, and "Non-Verbal" never splits at its hyphen
+  const glue = (t) => String(t).replace(/ (&|and) /g, ' $1\u00A0');
   const longest = (t) => Math.max(...glue(t).split(' ').map((w) => w.length));
   const stack = facts.length > 1 && facts[0].main.length + longest(facts[facts.length - 1].main) > 22;
   const cell = (f, i, last) => `<td valign="top" style="padding:16px ${last || stack ? 0 : 28}px 16px 0;border-top:1px solid ${BD};${stack && !last ? '' : `border-bottom:1px solid ${BD};`}${last || stack ? '' : 'width:1%;white-space:nowrap;'}">
         <div style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TM};">${escapeHtml(f.label)}</div>
-        <div style="margin-top:6px;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.35;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(f.main).replace(/ &amp; /g, ' &amp;&nbsp;').replace(/(^|\s)([^\s&;]{1,18}-[^\s&;]{1,18})(?=[\s,]|$)/g, '$1<span style="white-space:nowrap;">$2</span>')}</div>
+        <div style="margin-top:6px;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.35;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(f.main).replace(/ (&amp;|and) /g, ' $1&nbsp;').replace(/(^|\s)([^\s&;]{1,18}-[^\s&;]{1,18})(?=[\s,]|$)/g, '$1<span style="white-space:nowrap;">$2</span>')}</div>
       </td>`;
   const rows = stack ? facts.map((f, i) => `<tr>${cell(f, i, i === facts.length - 1)}</tr>`).join('')
     : `<tr>${facts.map((f, i) => cell(f, i, i === facts.length - 1)).join('')}</tr>`;
@@ -208,7 +215,8 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   ].filter(Boolean);
 
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
-  const fit = fitName({ name, after: '.', runs: ['Meet'], max: 54, min: 36, wrap: (h) => `<em style="font-style:italic;color:${Y};">${h}</em>` });
+  // Two kids' names stay whole ("Meet / Remi & Nico.") while they fit at 30px, as the invite's do
+  const fit = fitName({ name, after: '.', runs: ['Meet'], max: 54, min: 30, wrap: (h) => `<em style="font-style:italic;color:${Y};">${h}</em>` });
   const giveLabel = `Give to ${name}’s Room →`;
   const action = own && !space && giveLabel.length <= GIVE_MAX ? giveLabel : 'Give Now →';
   // The ask names the kid while it can at 26px or larger ("Help us build Remi / & Nico’s dream."); a long single name can't, so it's "this dream"
@@ -225,9 +233,9 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const askWords = own ? (named ? `Help us build ${name}’s dream.` : 'Help us build this dream.') : (named ? `Help us build dreams like ${name}’s.` : 'Help us build more dreams.');
 
   const html = emailFrame(preview, `
-  ${emailHeader(site)}
+  ${emailHeader(site, { mark: true })}
   ${cover({ kicker: `Our next project · ${yearOf(kid)}`, headline: `Meet ${fit.html}`, size: fit.size, phone: fit.phone, lead, alt: name, url: kidUrl })}
-  ${story ? lede(story, `<p style="margin:16px 0 0;">${textLink(`Read ${name}’s story →`, kidUrl)}</p>`) : ''}
+  ${story ? lede(story, `<p style="margin:16px 0 0;">${textLink(`Read ${name}’s story →`, kidUrl)}</p>`) : `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 0;${SIDE}" class="pd">${textLink(`Read ${name}’s story →`, kidUrl)}</td></tr>`}
   ${facts.length ? factsRow(facts) : ''}
   ${photos.length >= 2 ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">${photoPair(photos, name, 0)}${photoNotes(kid)}</td></tr>` : ''}
   ${rooms.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
@@ -245,7 +253,7 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
     url: giveUrl,
   })}
   ${signOff('Thank you for being part of this.', teamPicture)}
-  ${emailFooter(site)}`);
+  ${emailFooter(site, { mark: true })}`);
 
   const text = [
     `Meet ${name}`,
@@ -328,7 +336,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const watch = video ? null : allPhotos > 1 ? 'See the Photos' : 'Read the Story';
 
   const html = emailFrame(preview, `
-  ${emailHeader(site)}
+  ${emailHeader(site, { mark: true })}
   ${cover({
     kicker: `Project complete · ${yearOf(kid)}`,
     headline: `${fit.html}${whatHtml ? ` ${whatHtml}` : ''}<br>${are ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
@@ -360,7 +368,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
     url: `${site}/donate/`,
   })}
   ${signOff('Thank you for making this possible.', teamPicture)}
-  ${emailFooter(site)}`);
+  ${emailFooter(site, { mark: true })}`);
 
   const text = [
     finished,

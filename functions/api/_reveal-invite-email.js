@@ -19,7 +19,7 @@ export const SITE_URL = 'https://sunshineonaranneyday.com';
  * every draft still waiting in Kit that nobody has edited is then rebuilt on the next look, by itself.
  * tests/email-design.test.mjs fails if the emails change and this doesn't.
  */
-export const EMAIL_DESIGN = '2026-11-09b';
+export const EMAIL_DESIGN = '2026-11-09c';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const Y = '#FFDA24';
@@ -33,6 +33,8 @@ const BD = '#E5E4E0';
 const SERIF = "'Libre Baskerville',Georgia,'Times New Roman',serif";
 const SANS = "'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 export const LOGO = `${CF}/brand-logo-dark-bg-tagline-display/w=400,q=85`;
+/** The same logo with the empty margins its 600px file carries trimmed to an even 6px, so the space around it is what the email sets */
+export const LOGO_MARK = `${CF}/brand-logo-dark-bg-tagline-display/trim=92;94;123;96,w=400,q=85`;
 /** Side padding in step with the width, so a phone that drops the style block still fits; Outlook takes the alt */
 export const SIDE = 'padding-left:8%;padding-right:8%;mso-padding-left-alt:48px;mso-padding-right-alt:48px;';
 /** The team as plushies, in the signature (Cloudflare Images) */
@@ -55,6 +57,8 @@ export function partnerLabel(name) {
   if (!s) return '';
   if (/^(screen ?shot|chatgpt image|dall.?e)\b|^(image|img|dsc|pxl|photo|untitled)[\s-]*[\d(]|^(untitled|logo|file|download|image)$/i.test(s)) return '';
   if (/\b\d{1,2}[ .:]\d{2}[ .:]\d{2}\b|\b\d{4}-\d{2}-\d{2}\b|^\d+$/.test(s)) return '';
+  // A camera or design tool's name: a long number ("27576835 1529…"), an ID ("F38FA186-88E1-…"), a print color space ("MAW Georgia CMYK C 76633")
+  if (/\d{5,}|\b[0-9a-f]{8}-[0-9a-f]{4}\b|\b(cmyk|rgb|pms)\b/i.test(s)) return '';
   return s.replace(/[\s-]*logo$/i, '').trim();
 }
 /** A partner name a person would write, not an uploaded file's */
@@ -192,7 +196,7 @@ export function shortStory(kid = {}, max = 320) {
 
 export function notARoom(names) {
   const list = (names || []).filter(Boolean);
-  return list.length && list.every((n) => /\b(ramp|lift|elevator|porch|deck|walkway|driveway|entrance|entry)\b/i.test(n) && !/\broom\b/i.test(n))
+  return list.length && list.every((n) => /\b(ramps?|lifts?|elevators?|porch(es)?|decks?|walkways?|driveways?|entrances?|entry|entries)\b/i.test(n) && !/\broom\b/i.test(n))
     ? { title: listJoin(list), lower: listJoin(list).toLowerCase() } : null;
 }
 
@@ -365,15 +369,18 @@ ${rows}
 </center>`);
 }
 
-export function emailHeader(site = SITE_URL, { rounded = false, logoWidth = 124, pad = 20 } = {}) {
-  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:${pad}px 0;${SIDE}text-align:center;${rounded ? 'border-radius:16px 16px 0 0;' : ''}" class="pd${rounded ? ' band' : ''}">
-    <a href="${href(site)}" target="_blank" style="display:inline-block;color:#FFFFFF;text-decoration:none;"><img src="${escapeHtml(LOGO)}" width="${logoWidth}" alt="Sunshine on a Ranney Day" style="display:block;width:${logoWidth}px;height:auto;font-family:${SANS};font-size:13px;line-height:18px;color:#FFFFFF;" /></a>
+export function emailHeader(site = SITE_URL, { rounded = false, logoWidth = 124, pad = 20, mark = false } = {}) {
+  // mark: the trimmed logo, as much space above it as below it before the cover's first line
+  const width = mark ? 96 : logoWidth;
+  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:${mark ? '28px 0 14px' : `${pad}px 0`};${SIDE}text-align:center;${rounded ? 'border-radius:16px 16px 0 0;' : ''}" class="pd${rounded ? ' band' : ''}">
+    <a href="${href(site)}" target="_blank" style="display:inline-block;color:#FFFFFF;text-decoration:none;"><img src="${escapeHtml(mark ? LOGO_MARK : LOGO)}" width="${width}" alt="Sunshine on a Ranney Day" style="display:block;width:${width}px;height:auto;font-family:${SANS};font-size:13px;line-height:18px;color:#FFFFFF;" /></a>
   </td></tr>`;
 }
 
-export function emailFooter(site = SITE_URL) {
-  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:36px 0;${SIDE}text-align:center;" class="pd">
-    <a href="${href(site)}" target="_blank" style="display:inline-block;margin-bottom:16px;"><img src="${escapeHtml(LOGO)}" width="120" alt="Sunshine on a Ranney Day" style="display:block;width:120px;height:auto;" /></a>
+export function emailFooter(site = SITE_URL, { mark = false } = {}) {
+  // mark: the trimmed logo (LOGO_MARK), the same size on the page as the untrimmed one at 120px
+  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:${mark ? '40px 0 36px' : '36px 0'};${SIDE}text-align:center;" class="pd">
+    <a href="${href(site)}" target="_blank" style="display:inline-block;margin-bottom:${mark ? 22 : 16}px;"><img src="${escapeHtml(mark ? LOGO_MARK : LOGO)}" width="${mark ? 84 : 120}" alt="Sunshine on a Ranney Day" style="display:block;width:${mark ? 84 : 120}px;height:auto;" /></a>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;color:#8E8F93;">501(c)(3) Nonprofit &middot; EIN 45-4773997</p>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;">
       ${[['Facebook', 'https://www.facebook.com/sunshineonaranneyday'], ['Instagram', 'https://www.instagram.com/sunshineonaranneyday'], ['YouTube', 'https://www.youtube.com/@sunshineonaranneyday'], ['TikTok', 'https://www.tiktok.com/@sunshineonaranneyday']]
@@ -456,7 +463,7 @@ export function photoPair(photos, name, top = 8) {
 
 /** The small line that thanks whoever took the pictures, and the way to the rest of them */
 export function photoNotes(kid, link = '') {
-  const credit = kid.photographer ? `<p style="margin:${link ? 10 : 0}px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Photos by ${escapeHtml(tidy(kid.photographer))}</p>` : '';
+  const credit = kid.photographer ? `<p style="margin:${link ? 10 : 0}px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Photos by ${noWidow(escapeHtml(tidy(kid.photographer)))}</p>` : '';
   return link || credit ? `<div style="padding-top:16px;">${link}${credit}</div>` : '';
 }
 
@@ -495,7 +502,7 @@ function ticket(rows, notes) {
         ${inner}
       </td></tr>`;
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="text-align:left;table-layout:fixed;">
-      ${rows.map((r) => block(r.label, `${r.lines.map((l) => `<div style="${main}">${r.keep ? listJoin(r.keep.map((k) => escapeHtml(k).replace(/ /g, '&nbsp;'))) : r.even ? noWidow(escapeHtml(l)) : escapeHtml(l)}</div>`).join('')}
+      ${rows.map((r) => block(r.label, `${r.lines.map((l) => `<div style="${main}">${r.keep ? listJoin(r.keep.map((k) => escapeHtml(k).replace(/ /g, '&nbsp;'))).replace(/ and /g, ' and&nbsp;') : r.even ? noWidow(escapeHtml(l)) : escapeHtml(l)}</div>`).join('')}
         ${r.sub ? `<div style="margin-top:2px;${quiet}">${escapeHtml(r.sub)}</div>` : ''}`)).join('')}
       ${notes.length ? block('Before you come', notes.map((n, i) => `<div style="margin-top:${i ? 6 : 0}px;${i ? quiet : `font-family:${SANS};font-size:15px;font-weight:600;line-height:1.5;color:#FFFFFF;${wrap}`}">${noteHtml(n)}</div>`).join('')) : ''}
     </table>`;
@@ -559,12 +566,14 @@ const sansEm = (s) => [...String(s)].reduce((w, c) => w + (/[MW]/.test(c) ? 0.95
  * card on a phone (about 92px of text) and the lines fit its 66px height. A line never ends on "&".
  */
 export function nameCard(label) {
-  const words = String(label).split(/\s+/).filter(Boolean);
+  // Words, and the parts of a hyphenated one ("Sherwin-" "Williams"), which join without a space
+  const words = String(label).split(/\s+/).filter(Boolean).flatMap((w) => w.split(/(?<=-)(?=.)/));
+  const join = (ws) => ws.reduce((line, w, i) => (i && !/-$/.test(ws[i - 1]) ? `${line} ${w}` : `${line}${w}`), '');
   const splits = (n, from = 0) => {
-    if (n === 1) return [[words.slice(from).join(' ')]];
+    if (n === 1) return [[join(words.slice(from))]];
     const out = [];
     for (let i = from + 1; i <= words.length - n + 1; i++) {
-      for (const rest of splits(n - 1, i)) out.push([words.slice(from, i).join(' '), ...rest]);
+      for (const rest of splits(n - 1, i)) out.push([join(words.slice(from, i)), ...rest]);
     }
     return out;
   };
@@ -595,7 +604,7 @@ export function partnerCards(kid, brokenLogos = new Set()) {
     const cells = row.map((l, k) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:${pad(k)};">${l.text
       // A logo that doesn't load reads as the partner's name instead of a broken picture, in even lines (nameCard)
       ? ((c) => tile(`<span style="display:block;font-family:${SANS};font-size:${c.size}px;font-weight:700;line-height:1.25;color:${D};word-break:normal;overflow-wrap:break-word;">${c.lines.map((t) => escapeHtml(t).replace(/ /g, '&nbsp;')).join('<br>')}</span>`))(nameCard(l.label))
-      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="116" alt="${escapeHtml(l.label || 'Partner logo')}" style="display:block;width:100%;max-width:116px;height:auto;margin:0 auto;" />`)}</td>`);
+      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="116" alt="${escapeHtml(l.label || 'Partner logo')}" style="display:block;width:100%;max-width:104px;height:auto;margin:0 auto;" />`)}</td>`);
     // Fixed layout keeps the columns equal, whatever is in them
     logoRows.push(`<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${row.length === 1 ? '50%' : '100%'}" align="center" style="margin:0 auto;table-layout:fixed;"><tr>${cells.join('')}</tr></table>`);
   }
@@ -656,9 +665,11 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     // One line ("Wheelchair-Accessible Bathroom and Dream Bedroom"), so a long name that wraps never reads as another room
     roomLines.length && { label: makeoverWord(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: [roomText], keep: roomLines },
   ].filter(Boolean);
-  const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  // Each line of the team's note on its own, without the bullet it was typed with ("- Park on the street")
+  const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim().replace(/^([-*•·]|\d+[.)])\s+/, '').trim()).filter(Boolean);
   // The team's own arrival note stands in for ours, so it isn't said twice
-  const arrive = /\barriv|\bearly\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
+  // ("Early Intervention" isn't an arrival note; "come 15 minutes early" is)
+  const arrive = /\barriv|\b(come|be|get there|get here|show up)\s+(\w+\s+){0,3}early\b|\b\d+\s*(min|mins|minutes)\s+early\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
 
   // No date yet (an early draft): no calendar buttons, since there's nothing to save
   const calendar = slug && when ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
@@ -680,7 +691,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   const opening = `After months of planning and building, the day is almost here. ${who} haven’t seen the finished ${space ? space.lower : several ? 'rooms' : 'room'} yet. Come be there for that first reaction.`;
 
   const html = emailFrame(preview, `
-  ${emailHeader(site)}
+  ${emailHeader(site, { mark: true })}
   ${cover({
     kicker: ['Reveal Day', shortDay(date)].filter(Boolean).join(' · '),
     headline: `<span style="display:block;margin-bottom:8px;font-size:24px;font-weight:400;font-style:italic;line-height:1.3;color:#E4E4E5;">You’re Invited to</span>${fit.html} <em style="font-style:italic;color:${Y};">Reveal&nbsp;Day</em>.`,
@@ -702,7 +713,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   </td></tr>
   ${partnerCards(kid, brokenLogos) || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
   ${signOff('Hope to see you there.', teamPicture)}
-  ${emailFooter(site)}`);
+  ${emailFooter(site, { mark: true })}`);
 
   const text = [
     `You’re Invited to ${name}’s Reveal Day`,
@@ -717,7 +728,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     ...noteLines.map(tidy),
     '',
     slug && when && `Add to your calendar: ${cal.apple}`,
-    `Watch it live: ${liveUrl}`,
+    slug && when && `Watch it live: ${liveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',
     'Hope to see you there.',
