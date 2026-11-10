@@ -19,7 +19,7 @@ export const SITE_URL = 'https://sunshineonaranneyday.com';
  * every draft still waiting in Kit that nobody has edited is then rebuilt on the next look, by itself.
  * tests/email-design.test.mjs fails if the emails change and this doesn't.
  */
-export const EMAIL_DESIGN = '2026-11-09f';
+export const EMAIL_DESIGN = '2026-11-10a';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const Y = '#FFDA24';
@@ -593,7 +593,7 @@ const sansEm = (s) => [...String(s)].reduce((w, c) => w + (/[MW]/.test(c) ? 0.95
 /**
  * A partner's name for its card, in lines as even as they can be ("Bin There / Dump That / Atlanta",
  * never "Bin There Dump That / Atlanta") at the largest size up to 13px where the widest line fits the
- * card on a phone (about 92px of text) and the lines fit its 66px height. A line never ends on "&".
+ * card on a phone (about 92px of text) and the lines fit its 66px height. A line never ends on "&" or "of".
  */
 export function nameCard(label) {
   // Words, and the parts of a hyphenated one ("Sherwin-" "Williams"), which join without a space
@@ -610,7 +610,8 @@ export function nameCard(label) {
   let best = null;
   for (let n = 1; n <= Math.min(3, words.length); n++) {
     for (const lines of splits(n)) {
-      if (lines.slice(0, -1).some((l) => /(^|\s)(&|and)$/i.test(l))) continue;
+      // A line never ends on "&" or a small joining word ("Friends / & Family / of Max Daniel", not "& Family of / Max Daniel")
+      if (lines.slice(0, -1).some((l) => /(^|\s)(&|and|of|the|for|to|at|in|on|a|an)$/i.test(l))) continue;
       const size = Math.min(13, Math.floor(92 / Math.max(...lines.map(sansEm))), Math.floor(60 / (n * 1.25)));
       const even = Math.max(...lines.map(sansEm)) - Math.min(...lines.map(sansEm));
       if (!best || size > best.size || (size === best.size && n === best.lines.length && even < best.even)) best = { size, lines, even };

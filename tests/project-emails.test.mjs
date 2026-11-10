@@ -1464,3 +1464,10 @@ test('a dash never starts a line, and "and" between names stays with the name af
   // "& Hearing Impaired" keeps together, so "Impaired" never ends a line alone
   assert.match(projectKickoffEmail({ kid: { ...KID, diagnosis: 'Down Syndrome, Autism & Hearing Impaired' } }).html, />Down Syndrome, Autism &amp;&nbsp;Hearing&nbsp;Impaired</);
 });
+
+test('a name card never ends a line on a small joining word: "Friends / & Family / of Max Daniel"', async () => {
+  const { nameCard } = await import('../functions/api/_reveal-invite-email.js');
+  const c = nameCard('Friends & Family of Max Daniel');
+  assert.deepEqual(c.lines, ['Friends', '& Family', 'of Max Daniel']);
+  assert.ok(c.lines.slice(0, -1).every((l) => !/(^|\s)(&|and|of|the|for|to)$/i.test(l)));
+});
