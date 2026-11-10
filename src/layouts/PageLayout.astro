@@ -25,6 +25,8 @@ const { title, description, heroTitle, heroSubtitle, heroLabel, ogImage, ogType,
 ---
 
 <BaseLayout title={title} description={description} ogImage={ogImage} ogType={ogType} jsonLd={jsonLd} breadcrumbs={breadcrumbs} datePublished={datePublished} dateModified={dateModified} noindex={noindex}>
+  {/* A page's own <head> additions (e.g. its main photo's preload) */}
+  <slot name="head" slot="head" />
   {(heroTitle || heroSubtitle) && (
     <section class="page-hero">
       <div class="container">

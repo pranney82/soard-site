@@ -58,7 +58,7 @@ const tagColors: Record<string, string> = {
   breadcrumbs={breadcrumbs}
 >
   <!-- Preload hero LCP image -->
-  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=640,h=800,fit=cover,gravity=face,q=65')} 640w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
 
   <!-- ══════ 1. HERO — Editorial Split ══════ -->
   <section class="hero" aria-label="Resources introduction">
@@ -81,7 +81,7 @@ const tagColors: Record<string, string> = {
         <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
           <img
             src={cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')}
-            srcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`}
+            srcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=640,h=800,fit=cover,gravity=face,q=65')} 640w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`}
             sizes="(max-width:768px) 85vw, 420px"
             alt="A child in their new dream room built by Sunshine on a Ranney Day"
             width="800" height="1000"

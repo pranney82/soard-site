@@ -113,6 +113,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   breadcrumbs={breadcrumbs}
   jsonLd={faqJsonLd}
 >
+  {/* The hero photo starts with the page, at the size it shows (the same srcset and sizes as the img below) */}
+  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })} imagesizes="(max-width: 768px) 80vw, (max-width: 1200px) 38vw, 420px" fetchpriority="high" />
 
   <!-- ══════ HERO — Oversized editorial, no data-reveal (LCP) ══════ -->
   <section class="hero">

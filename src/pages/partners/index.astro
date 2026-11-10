@@ -89,7 +89,7 @@ const breadcrumbs = [
 >
 
   <!-- Preload hero LCP image -->
-  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=640,h=800,fit=cover,gravity=auto,q=65')} 640w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial Split ══════ -->
   <section class="hero">
@@ -107,7 +107,7 @@ const breadcrumbs = [
         <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhoto)}')`}>
           <img
             src={cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')}
-            srcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`}
+            srcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=640,h=800,fit=cover,gravity=auto,q=65')} 640w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`}
             sizes="(max-width:768px) 85vw, 420px"
             alt="Partners and volunteers working together on a SOARD room build"
             width="800" height="1000"

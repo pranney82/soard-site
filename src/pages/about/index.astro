@@ -29,6 +29,10 @@ const stats = {
   years: computed.years,
 };
 const founderPhotoId = page.images.founder;
+// The founders photo is the page's main picture on a phone: the same 5:4 face crop at the sizes it shows
+// (phones: the column; computers: 44% up to 528px), and preloaded so it starts with the page
+const founderSrcset = [[400, 320], [600, 480], [640, 512], [800, 640], [1000, 800]].map(([w, h]) => `${CF}/${founderPhotoId}/w=${w},h=${h},fit=cover,gravity=face,q=80 ${w}w`).join(', ');
+const founderSizes = '(max-width: 768px) calc(100vw - 48px), (max-width: 1200px) 44vw, 528px';
 const storePhotoId = page.images.store;
 const graciePhotoId = page.images.gracie;
 const trippPhotoId = page.images.tripp;
@@ -85,13 +89,14 @@ const jsonLd = getFAQSchema(aboutFaqs);
   heroTitle={'Our <em class="highlight">Story</em>'}
   heroSubtitle="How it all started and where we're headed"
 >
+  <link slot="head" rel="preload" as="image" imagesrcset={founderSrcset} imagesizes={founderSizes} fetchpriority="high" />
 
   <!-- ══════ FOUNDERS — The Beginning ══════ -->
   <section class="founders" id="our-story" aria-labelledby="founders-heading">
     <div class="founders-inner">
       <div class="founders-photo">
         {/* Always 5:4, cropped around faces: its space is right before it loads, whatever photo is set */}
-        <img src={`${CF}/${founderPhotoId}/w=600,h=480,fit=cover,gravity=face,q=80`} srcset={`${CF}/${founderPhotoId}/w=400,h=320,fit=cover,gravity=face,q=80 400w, ${CF}/${founderPhotoId}/w=600,h=480,fit=cover,gravity=face,q=80 600w, ${CF}/${founderPhotoId}/w=800,h=640,fit=cover,gravity=face,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="600" height="480" loading="eager" decoding="async" fetchpriority="high" />
+        <img src={`${CF}/${founderPhotoId}/w=600,h=480,fit=cover,gravity=face,q=80`} srcset={founderSrcset} sizes={founderSizes} alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="600" height="480" loading="eager" decoding="async" fetchpriority="high" />
       </div>
       <div class="founders-text" data-reveal>
         <div class="section-label">{page.founders.label}</div>

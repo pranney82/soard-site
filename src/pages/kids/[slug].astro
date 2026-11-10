@@ -156,7 +156,6 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 // ── LCP preload for hero image ────────────
 // Fine steps: each screen gets the nearest size at or above what it shows (a 2x phone 750 w, not 900; a Retina laptop 1280, not 1600)
 const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 750, 900, 1080, 1280, 1600, 2400], { fit: 'cover', gravity: 'face' }) : '';
-const heroSizes = '(max-width: 768px) 92vw, (max-width: 1100px) 55vw, 640px';
 
 // ── Bio paragraphs + pull quote ───────────
 function splitBio(bio: string): string[] {
@@ -190,7 +189,15 @@ const isHeroLandscape = heroDims[0] > heroDims[1];
 // ── Hero: art-directed mobile ─────────────
 // The same steps as the gallery's lead photo (also 92vw on phones), so when the hero is that photo it's one download
 const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 750, 900, 1080, 1200], { fit: 'cover', gravity: 'face' }) : '';
-const heroMobileSizes = '(max-width: 480px) 92vw, 92vw';
+// The width it really shows at: a tall photo fits the max height (48vh on small phones, 52vh up to
+// 768px, see .hero__portrait), so it's narrower than the column; a wide one fills the column (92vw)
+const heroAspect = heroDims[0] / heroDims[1];
+const heroMobileSizes = heroAspect < 1
+  ? `(max-width: 480px) ${(48 * heroAspect).toFixed(1)}vh, ${(52 * heroAspect).toFixed(1)}vh`
+  : '92vw';
+// Computers: about 42% of the window up to 1100px, then the column (520px), or less for a tall
+// photo that fits the 680px max height (measured Nov 2026; .hero__portrait)
+const heroSizes = `(max-width: 768px) 92vw, (max-width: 1100px) 42vw, ${heroAspect < 1 ? Math.min(520, Math.round(680 * heroAspect)) : 520}px`;
 
 
 // ── Minimal data detection ────────────────
