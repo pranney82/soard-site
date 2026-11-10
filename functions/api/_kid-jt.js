@@ -110,7 +110,9 @@ export function linesOf(view) {
     for (const it of k.items) {
       if (it.gone) continue;
       const id = it.also ? it.also.costItemId || `pending:${it.also.key}` : it.itemId;
-      const l = byLine.get(id) || { jobId: k.jobId, kid: k.short, itemId: id, also: it.also || null, allowance: Boolean(it.allowance), items: [] };
+      const l = byLine.get(id) || { jobId: k.jobId, kid: k.short, itemId: id, also: it.also || null, allowance: false, items: [] };
+      // A decor allowance, or a line whose products aren't known one by one: never complete, so only ever "Partly"
+      if (it.allowance || it.allocated) l.allowance = true;
       l.items.push(it);
       byLine.set(id, l);
     }

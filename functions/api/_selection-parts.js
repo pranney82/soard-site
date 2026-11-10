@@ -109,7 +109,8 @@ export function wholeLine(line) {
   const words = tidy(line.description);
   const lineCents = cents(line.cost);
   const p = { name: tidy(line.name), brand: '', model: '', link: (words.match(URL_RE) || [])[0] || '', quantity: Math.max(1, Math.round(Number(line.quantity) || 1)), cents: lineCents || null };
-  return [{ ...p, source: sourceOf(words, `${line.name} ${words}`, lineCents), key: partKey(p) }];
+  // whole: the line's products aren't known one by one; each thing ordered for it is tracked as its own (./_kid-checkin.js)
+  return [{ ...p, source: sourceOf(words, `${line.name} ${words}`, lineCents), key: partKey(p), whole: true }];
 }
 
 /** A part's matching key: its model number, else the store's product id in its link, else its name */

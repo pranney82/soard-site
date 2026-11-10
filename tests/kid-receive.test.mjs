@@ -400,3 +400,17 @@ test('Nov 10 live check: the trades’ work and the job’s own costs aren’t t
   }
   assert.equal(isGoodsLine({ name: 'Cleaning cart', isSelected: true }), true, 'a family’s chosen selection is always goods');
 });
+
+test('Nov 10 live check: a line read as one whole part takes each thing ordered for it as its own item', async () => {
+  await line('j-ava', 'Ava Example (2026)', 'a-sensory', 'Sensory Items', 'Bubble Tube Lamp, Fiber Optic Lights, Weighted Blanket, Sensory Swing', [{ ...part('Sensory Items'), whole: true }]);
+  await order('m7', 'Amazon', '2026-11-05T15:00:00Z', { kind: 'order', orderNumber: 'S7', jobPo: 'AVA', items: [{ name: 'Sensory Bubble Tube Lamp 4ft' }, { name: 'Fiber Optic Lights Sensory' }] });
+  await order('m8', 'Amazon', '2026-11-06T15:00:00Z', { kind: 'order', orderNumber: 'S8', jobPo: 'AVA', items: [{ name: 'Weighted Blanket Sensory 10lb' }] });
+  const v = await view();
+  const ava = kidOf(v, 'Ava E.');
+  const sensory = ava.items.filter((i) => i.line === 'Sensory Items');
+  assert.deepEqual(sensory.map((i) => i.name).sort(), ['Fiber Optic Lights Sensory', 'Sensory Bubble Tube Lamp 4ft', 'Weighted Blanket Sensory 10lb']);
+  assert.ok(sensory.every((i) => i.status === 'ordered'));
+  assert.equal(v.needsLook.filter((o) => ['S7', 'S8'].includes(o.orderNumber)).length, 0, 'none of them asks “another one?”');
+  const l = linesOf(v).find((x) => x.itemId === 'a-sensory');
+  assert.equal(lineValues(l.items, { allowance: l.allowance }).status, 'Partly ordered', 'never “Ordered”: the line’s full list isn’t known');
+});

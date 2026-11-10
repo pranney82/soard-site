@@ -81,7 +81,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const made = new Set(record.also.map((a) => a.costItemId).filter(Boolean));
   const partRows = (await rows(DB, 'SELECT job_id, item_id, job_name, group_name, line_name, cents, parts, words, words_key, read_by FROM kid_parts ORDER BY job_name, group_name, line_name', strict))
     .filter((r) => !made.has(r.item_id));
-  const lines = partRows.map((r) => ({ jobId: r.job_id, itemId: r.item_id, jobName: r.job_name, lineName: r.line_name, words: r.words || '', wordsKey: r.words_key || '', parts: parse(r.parts, []) }));
+  const lines = partRows.map((r) => ({ jobId: r.job_id, itemId: r.item_id, jobName: r.job_name, lineName: r.line_name, words: r.words || '', wordsKey: r.words_key || '', parts: parse(r.parts, []).map((p) => (r.read_by === 'whole' ? { ...p, whole: true } : p)) }));
   const jobs = [...new Map(lines.map((l) => [l.jobId, { id: l.jobId, name: l.jobName }])).values()];
   // Kids with selection lines the reader couldn't split yet: their orders may belong on those lines
   const unread = [...new Set(partRows.filter((r) => String(r.read_by || '').startsWith('none')).map((r) => r.job_id))];
@@ -115,11 +115,20 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
       if (p.source === 'buy' || p.source === 'donated') {
         // "Lighting: Wayfair Louis Parisian Globe" on the Lighting line reads as the product alone
         const name = p.name.toLowerCase().startsWith(`${l.lineName.toLowerCase()}:`) ? p.name.slice(l.lineName.length + 1).trim() || p.name : p.name;
-        kid.items.push({ id: `${l.itemId}|${partKey}`, itemId: l.itemId, partKey, part: p.name, name, line: l.lineName, qty: Math.max(1, Math.round(p.quantity || 1)), cents: p.cents || null, source: p.source, order: null, receipts: [] });
+        kid.items.push({ id: `${l.itemId}|${partKey}`, itemId: l.itemId, partKey, part: p.name, name, line: l.lineName, qty: Math.max(1, Math.round(p.quantity || 1)), cents: p.cents || null, source: p.source, order: null, receipts: [], ...(p.whole ? { whole: true } : {}) });
       } else kid.others++;
     });
   }
   const itemById = (kid, itemId, partKey) => kid.items.find((x) => x.itemId === itemId && x.partKey === partKey);
+  /**
+   * A line read as one whole part (its products weren't split): each thing ordered for it is its own item on that line,
+   * so Dylan's fifteen sensory items are fifteen things to receive, not one that the first order fills
+   */
+  const onWhole = (kid, whole, orderKey, name, qty, cents) => {
+    whole.used = true;
+    const dk = `w:${decisionKey(orderKey, name)}`;
+    return itemById(kid, whole.itemId, dk) || kid.items[kid.items.push({ id: `${whole.itemId}|${dk}`, itemId: whole.itemId, partKey: dk, part: name, name, line: whole.line, qty, cents, source: 'buy', order: null, receipts: [], allocated: true }) - 1];
+  };
   const alsoItem = (kid, key, name, { qty = 1, cents = null, order = null, donated = false, typed = false } = {}) => {
     let it = itemById(kid, key, 'also');
     if (!it) {
@@ -169,7 +178,8 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
           continue;
         }
         let t = itemById(kid, d.itemId, d.partKey);
-        if (t?.order && t.order.key !== g.key) {
+        if (t?.whole) t = onWhole(kid, t, g.key, it.name, qty, cents);
+        else if (t?.order && t.order.key !== g.key) {
           // That part has another order on it already: a person says this is another one for the same line
           const dk = `${d.partKey}+${decisionKey(g.key, it.name)}`;
           t = itemById(kid, d.itemId, dk) || kid.items[kid.items.push({ ...t, id: `${d.itemId}|${dk}`, partKey: dk, name: it.name, qty, order: null, receipts: [] }) - 1];
@@ -183,8 +193,9 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
       const kid = m.kid ? kidOf.get(m.kid) : null;
       if (!x || x.look || !kid) { looks.push({ name: it.name, look: x?.look || 'which kid?' }); continue; }
       if (x.alsoBought) { put(kid, alsoItem(kid, alsoKey(g.key, it.name, kid.jobId), it.name, { qty, cents })); continue; }
-      const target = kid.items.find((y) => y.itemId === x.itemId && y.part === x.part && !y.order)
-        || kid.items.find((y) => y.itemId === x.itemId && !y.order);
+      const whole = kid.items.find((y) => y.itemId === x.itemId && y.whole);
+      const target = whole ? onWhole(kid, whole, g.key, it.name, qty, cents)
+        : kid.items.find((y) => y.itemId === x.itemId && y.part === x.part && !y.order) || kid.items.find((y) => y.itemId === x.itemId && !y.order);
       if (target) put(kid, target);
       else {
         const first = kid.items.find((y) => y.itemId === x.itemId && y.order);
@@ -231,6 +242,8 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     if (it) it.receipts.push(r);
   }
   for (const k of kids) {
+    // A whole line with things ordered for it shows those things, not itself (unless something was checked in against it)
+    k.items = k.items.filter((it) => !(it.whole && it.used && !it.receipts.length));
     for (const it of k.items) {
       if (it.qty === 0) it.qty = Math.max(1, it.receipts.filter((r) => !r.undoneAt).reduce((t, r) => t + (r.units || 0), 0));
       settle(it);
