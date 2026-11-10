@@ -77,7 +77,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       <p class="hero-status" data-live="status" aria-live="polite"></p>
       <!-- The reveals after this one, on a child's page or while /live/ follows one: "After Dylan: Max on Friday, November 20 and Colin in early December" -->
       <p class="hero-next" data-live="next-line" hidden><span data-live="next-text"></span> <a href="#up-next">See every reveal</a></p>
-      <div class="hero-party" data-slot="hero" hidden><LiveMessages /></div>
+      <!-- The messages box sits in the hero during the watch party; the server moves it (between the markers) into its
+           section below when the page goes out with a reveal coming up (functions/live/[[path]].js) -->
+      <div class="hero-party" data-slot="hero" hidden><!--msgs-panel--><LiveMessages /><!--/msgs-panel--></div>
       <div class="hero-ctas">
         <a class="btn btn-primary btn-lg hero-glow" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="cta-facebook" hidden>Watch on Facebook</a>
         <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Get every reveal by email</a>
@@ -412,7 +414,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 </style>
 
 <script>
-  import { getLiveClient, formatWhen, relativeUntil, revealLabel, type LiveState, type ReminderOptions } from '../../utils/live-client';
+  import { getLiveClient, formatWhen, relativeUntil, type LiveState, type ReminderOptions } from '../../utils/live-client';
   import { shareable } from '../../utils/live-stats';
   import { remindersUsable, browserCanPush, remindPromise, revealIsToday, replayOverdue, runningLate } from '../../utils/live-banner';
   import { holdPlace, keepFocus } from '../../utils/hold-place';
@@ -424,8 +426,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { createLiveDesign } from '../../utils/live-design';
   import { openShareSheet } from '../../utils/share-sheet';
   import { cfRaw } from '../../utils/cf-image';
-  import { readUpcoming, loadSignup, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
+  import { readUpcoming, loadSignup, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
   import { heroRowsHtml, rowsSignature, afterLine } from '../../utils/upcoming-rows';
+  import { plannedText, betweenText } from '../../utils/live-hero-text';
 
   /** The starting-soon screen fills the frame for the last hour: it carries the room's design for people waiting (the crew may start streaming up to 30 minutes early, per the runbook) */
   const SLATE_LEAD_MS = 60 * 60 * 1000;
@@ -719,8 +722,10 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
           if (eyebrow) eyebrow.textContent = runningLate(s.scheduledAt) ? 'Running late' : 'Starting soon';
           setStatus(s.scheduledAt && Date.parse(s.scheduledAt) > Date.now() ? `We go live ${formatWhen(s.scheduledAt)}. Stay right here.` : runningLate(s.scheduledAt) ? 'We’re running a little late. Stay right here.' : 'Any moment now. Stay right here.');
         } else {
-          if (eyebrow) eyebrow.textContent = revealLabel(s.scheduledAt);
-          setStatus(!s.scheduledAt ? 'A reveal is on the calendar.' : Date.parse(s.scheduledAt) > Date.now() ? `We go live ${formatWhen(s.scheduledAt)}${rel ? `, ${rel}` : ''}.` : runningLate(s.scheduledAt) ? 'We’re running a little late. Stay right here.' : 'Any moment now. Stay right here.');
+          // The server wrote the same (plannedText), so normally nothing changes here
+          const said = plannedText(s.scheduledAt);
+          if (eyebrow) eyebrow.textContent = said.eyebrow;
+          setStatus(said.status);
         }
         badge = rel ? `Live ${rel}` : 'Coming up';
       } else {
@@ -865,18 +870,12 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
     /** Between reveals: when this kid's reveal is, or which reveal is next */
     function idleStatus() {
-      if (pageKid) {
-        const mine = upcoming.find((r) => r.slug === pageKid);
-        if (!mine) return '';
-        return mine.confirmed
-          ? `${mine.name}'s reveal is ${revealWhen(mine)}.`
-          : `${mine.name}'s reveal is planned for ${mine.window.label}. The exact day and time go up here as soon as they're set.`;
-      }
-      const next = upcoming[0];
-      if (!next) return !upcomingLoaded ? '' : remindersUsable(lastMeta.reminders, browserCanPush())
+      // The server wrote the same (betweenText) when the schedule said something
+      const said = betweenText(upcoming, pageKid);
+      if (said || pageKid) return said;
+      return !upcomingLoaded ? '' : remindersUsable(lastMeta.reminders, browserCanPush())
         ? 'No reveal is scheduled right now. Get a reminder for the next one, and watch the last few while you wait.'
         : 'No reveal is scheduled right now. Watch the last few while you wait.';
-      return `Next up: ${next.name}'s reveal, ${next.confirmed ? revealWhen(next) : next.window.label}.`;
     }
     /** The hero's rows for this list, in this browser's time zone: drawn only when they'd say something different */
     const drawHeroRows = (list: UpcomingReveal[]) => {

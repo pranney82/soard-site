@@ -48,12 +48,14 @@ export function createMessages(opts: Options) {
 
   let view: MessagesView = { active: false, broadcastId: null, kidName: null, party: false };
   let broadcast = '';
-  let open = false;
+  // The server may have put the box in its section already, open and with the messages so far
+  // (functions/live/[[path]].js): it starts from that, so the first paint stays as it is until the API answers
+  let open = panel.dataset.open === '1';
   let enabled = true;
   let loading = false;
-  let shown = false;
+  let shown = !!open && !section.hidden;
   let relayed = false; // the hub relays messages, so no polling
-  const ids = new Set<string>();
+  const ids = new Set<string>([...panel.querySelectorAll<HTMLElement>('[data-msgs="list"] > li[data-id]')].map((li) => li.dataset.id || '').filter(Boolean));
 
   const nearEnd = () => !wall || wall.scrollHeight - wall.scrollTop - wall.clientHeight < 80;
   function toEnd() {

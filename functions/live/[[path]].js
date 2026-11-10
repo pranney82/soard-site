@@ -42,6 +42,8 @@ import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
 import { barFor, addBar, PAGE_REUSE } from '../_apply-bar.js';
 import { upcomingReveals } from '../_kid-reveal.js';
 import { heroRowsHtml, rowsSignature, afterLine } from '../../src/utils/upcoming-rows.ts';
+import { plannedText, betweenText } from '../../src/utils/live-hero-text.ts';
+import { messagesOpen, listShown } from '../api/_live-messages.js';
 
 const ACTIVE = new Set(['scheduled', 'armed', 'live', 'ending', 'replay']);
 const SITE = 'https://sunshineonaranneyday.com';
@@ -174,6 +176,83 @@ export function addAfterLine(res, text) {
   return new Response(out.body, { status: out.status, headers });
 }
 
+// ── Before a reveal: the hero as the page script will draw it ──────────
+
+const PANEL_OPEN = '<!--msgs-panel-->';
+const PANEL_CLOSE = '<!--/msgs-panel-->';
+const escHtml = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+/**
+ * What the page script will show, when the server can show it first: { view: 'upcoming' | 'idle', eyebrow, status }
+ * or null (the watch party has its own first paint, and a live reveal without a video is left to the script).
+ * Mirrors drawPage in src/components/live/LivePage.astro: a child's page follows the broadcast only when it's theirs.
+ */
+export function firstView({ state, pub, pageKid = '', party = null, rows = null, tz, now = Date.now() }) {
+  if (party || !state) return null;
+  const ours = !pageKid || pub?.kidSlug === pageKid;
+  const phase = ours ? state.phase : 'idle';
+  if (phase === 'scheduled' || phase === 'armed') return { view: 'upcoming', ...plannedText(state.scheduledAt || null, tz, now) };
+  if (phase === 'live' || phase === 'ending' || phase === 'replay') return null;
+  return { view: 'idle', eyebrow: null, status: rows ? betweenText(rows, pageKid, tz) : '' };
+}
+
+/** The messages box (between its markers) moved out of the hero into its section below → the page, or null when it can't be */
+export function messagesInSection(html) {
+  const a = html.indexOf(PANEL_OPEN);
+  const b = html.indexOf(PANEL_CLOSE);
+  if (a < 0 || b < a) return null;
+  const panel = html.slice(a, b + PANEL_CLOSE.length);
+  const rest = html.slice(0, a) + html.slice(b + PANEL_CLOSE.length);
+  const slot = rest.match(/<div[^>]*\bdata-slot="section"[^>]*>/);
+  if (!slot) return null;
+  const at = slot.index + slot[0].length;
+  return rest.slice(0, at) + panel + rest.slice(at);
+}
+
+/** One message as the page script draws it (live-messages.ts add, as a fresh load does: no entrance) */
+export const messageHtml = (m) => `<li class="msg" data-id="${escHtml(m.id)}" style="animation:none"><span class="msg__name">${escHtml(m.name)}</span><p class="msg__body">${escHtml(m.body)}</p></li>`;
+
+/**
+ * The hero (and, before a reveal with messages open, the messages box in its section with the notes so far)
+ * written into the page, so nothing on screen changes when the script takes over.
+ * first: firstView's; messages: { kidName, list } or null
+ */
+export async function addFirstView(res, first, messages = null) {
+  if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
+  let base = res;
+  let moved = false;
+  if (messages) {
+    const html = await res.text();
+    const next = messagesInSection(html);
+    moved = next !== null;
+    base = new Response(next ?? html, { status: res.status, headers: res.headers });
+  }
+  const text = (t) => ({ element(e) { e.setInnerContent(t); } });
+  let rw = new HTMLRewriter()
+    .on('.live-page', setAttrs({ 'data-view': first.view }))
+    .on('#live-hero', setAttrs({ 'data-phase': first.view }));
+  if (first.eyebrow) rw = rw.on('#live-hero [data-live="eyebrow"]', text(first.eyebrow));
+  if (first.status) rw = rw.on('#live-hero [data-live="status"]', text(first.status));
+  if (moved) {
+    const name = String(messages.kidName || '').trim();
+    rw = rw
+      .on('[data-live-msgs]', setAttrs({ hidden: null }))
+      .on('[data-msgs="panel"]', setAttrs({ 'data-place': 'section', 'data-open': '1' }))
+      .on('[data-msgs="list"]', { element(e) { e.setInnerContent(messages.list.map(messageHtml).join(''), { html: true }); } })
+      .on('[data-msgs="heading"]', text(name ? `Messages for ${name}'s family` : 'Messages for the family'))
+      .on('#msg-body', setAttrs({ placeholder: name ? `${name}, we are so happy for you!` : 'We are so happy for you!' }));
+    if (messages.list.length) rw = rw.on('[data-msgs="empty"]', setAttrs({ hidden: '' }));
+  }
+  const out = rw.transform(base);
+  const headers = new Headers(out.headers);
+  // "in 8 days", "in 3 hours": reused for half a minute at most, never a 304
+  if (!/no-store/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', PAGE_REUSE);
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
+  headers.delete('Content-Length');
+  return new Response(out.body, { status: out.status, headers });
+}
+
 const SLUG = /^[a-z0-9-]+$/;
 /** The reveals a row can be drawn for: a known child, with a day (confirmed) or a third of a month (tentative) */
 export const drawable = (list) => (list || []).filter((r) => r && SLUG.test(String(r.slug || '')) && (r.confirmed ? r.date : r.window?.label));
@@ -251,16 +330,24 @@ export async function onRequest(context) {
       rows = rows ? drawable(rows) : null;
     }
     const line = rows && lineKid ? afterLine(rows, lineKid, kid?.name || '', visitorZone(request)) : '';
-    const res = await next(kid || party || bar || rows ? fresh(request) : request);
+    // The hero as the page script will draw it before a reveal or between reveals, and the messages box with it
+    const first = broadcast ? firstView({ state: broadcast.state, pub: broadcast.pub, pageKid, party, rows, tz: visitorZone(request) }) : null;
+    let messages = null;
+    if (first?.view === 'upcoming' && messagesOpen(broadcast.state, broadcast.config)) {
+      try { messages = { kidName: broadcast.pub?.kidName || kid?.name || '', list: (await listShown(env, { broadcastId: broadcast.state.broadcastId })).messages || [] }; } catch { messages = null; }
+    }
+    const res = await next(kid || party || bar || rows || first ? fresh(request) : request);
     if (res.status === 404 && pageKid) return Response.redirect(`${url.origin}/live/${url.search}`, 302);
-    if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar || rows)) return res;
+    if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar || rows || first)) return res;
     let design = null;
     if (party) {
       const slug = pageKid || broadcast.state.kidSlug || '';
       const data = kid && kid.slug === slug ? kid.data : slug ? (await kidData(env, slug)).data : null;
       design = designFor(slug, data, broadcast.state);
     }
-    let page = kid || party ? rewrite(res, { kid, party, messages: broadcast.config?.messages?.enabled !== false, design }) : res;
+    // The messages box moves first (it needs the page's text); the rest are streamed rewrites
+    let page = first ? await addFirstView(res, first, messages) : res;
+    page = kid || party ? rewrite(page, { kid, party, messages: broadcast.config?.messages?.enabled !== false, design }) : page;
     if (rows && isIndex) page = addHeroRows(page, { list: rows, zone: visitorZone(request), between: !!broadcast && !kid && !ACTIVE.has(broadcast.state?.phase) });
     if (line) page = addAfterLine(page, line);
     return addBar(page, bar);

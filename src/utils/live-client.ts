@@ -207,37 +207,6 @@ export function getLiveClient(): LiveClient {
   return w[KEY];
 }
 
-/** "in 2 days", "in 3 hours", "in 12 minutes", "any minute now", "" once passed */
-export function relativeUntil(iso: string | null, now = Date.now()): string {
-  if (!iso) return '';
-  const ms = Date.parse(iso) - now;
-  if (!Number.isFinite(ms)) return '';
-  if (ms <= 60_000) return ms > -10 * 60_000 ? 'any minute now' : '';
-  const min = Math.round(ms / 60_000);
-  if (min < 60) return `in ${min} minute${min === 1 ? '' : 's'}`;
-  const hrs = Math.round(ms / 3_600_000);
-  if (hrs < 36) return `in ${hrs} hour${hrs === 1 ? '' : 's'}`;
-  // Calendar days, so it agrees with the day named beside it
-  const midnight = (t: number) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
-  const days = Math.round((midnight(Date.parse(iso)) - midnight(now)) / 86_400_000);
-  return `in ${days} day${days === 1 ? '' : 's'}`;
-}
-
-/** The heading over a planned reveal: "Reveal day" only on the day itself */
-export function revealLabel(iso: string | null): string {
-  return iso && new Date(iso).toDateString() === new Date().toDateString() ? 'Reveal day' : 'Coming up';
-}
-
-export function formatWhen(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-  // English sentences, whatever the browser's language. The zone says these are the viewer's own hours; the emails are in Eastern.
-  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(d);
-  if (sameDay) return `today at ${time}`;
-  if (d.toDateString() === tomorrow.toDateString()) return `tomorrow at ${time}`;
-  const day = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(d);
-  return `${day} at ${time}`;
-}
+// The time words ("in 8 days", "Wednesday, November 18 at 4:00 PM EST", "Reveal day") live in ./live-when, where the
+// server can use them too (functions/live/[[path]].js writes the hero before the page script runs)
+export { relativeUntil, revealLabel, formatWhen } from './live-when';
