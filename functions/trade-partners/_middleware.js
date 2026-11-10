@@ -8,6 +8,9 @@
  * pushing the forms under it down. Now the server puts the same lines
  * (src/components/trade-partners/words.ts) in on the way out; the script's own
  * drawing then changes nothing, or puts them in Spanish for a Spanish visitor.
+ * It also marks the quick check's box (data-on) when the check is switched on,
+ * so the page keeps its room from the start instead of growing 92px when
+ * Cloudflare draws it.
  *
  * The minimums are read from the database about every 5 minutes per edge, and
  * the page never waits on that more than 300 ms. If they can't be read in time,
@@ -18,6 +21,7 @@
 import { requirementLines } from '../../src/components/trade-partners/words.ts';
 import { DEFAULTS } from '../api/_vendor-defaults.js';
 import { fullPageRequest, PAGE_REUSE } from '../_apply-bar.js';
+import { turnstileOn } from '../api/_secure.js';
 
 const TTL = 300; // seconds an edge keeps the minimums: a change in admin reaches this page this soon
 const WAIT_MS = 300; // longest the page waits on the database; then it goes out as built
@@ -44,12 +48,13 @@ export async function minimums(context) {
   return m;
 }
 
-/** The page with the list filled in. Anything but the whole HTML page passes through as it came. */
-export function fillRequirements(res, lines) {
+/** The page with the list filled in (and the quick check's room kept when it's on). Anything but the whole HTML page passes through as it came. */
+export function fillRequirements(res, lines, { turnstile = false } = {}) {
   if (!lines?.length || res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
-  const out = new HTMLRewriter()
-    .on('#tp-reqs', { element(el) { el.setInnerContent(lines.map((l) => `<li>${esc(l)}</li>`).join(''), { html: true }); } })
-    .transform(res);
+  let rw = new HTMLRewriter()
+    .on('#tp-reqs', { element(el) { el.setInnerContent(lines.map((l) => `<li>${esc(l)}</li>`).join(''), { html: true }); } });
+  if (turnstile) rw = rw.on('#tp-turnstile', { element(el) { el.setAttribute('data-on', ''); } });
+  const out = rw.transform(res);
   const headers = new Headers(out.headers);
   // Built from today's minimums: never answered with a 304 for an older copy, reused for half a minute at most
   headers.set('Cache-Control', PAGE_REUSE);
@@ -70,5 +75,5 @@ export async function onRequest(context, wait = WAIT_MS) {
   if (!lines) return next();
   // From here a fault serves the page as built, never an error page
   if (context.passThroughOnException) context.passThroughOnException();
-  return fillRequirements(await next(fullPageRequest(request)), lines);
+  return fillRequirements(await next(fullPageRequest(request)), lines, { turnstile: turnstileOn(context.env) });
 }

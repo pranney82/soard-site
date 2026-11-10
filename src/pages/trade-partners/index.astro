@@ -350,6 +350,8 @@ const breadcrumbs = [
   .tp-span { grid-column: 1 / -1; }
   .tp-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
   .tp-turnstile:not(:empty) { margin-top: 20px; min-height: 65px; }
+  /* The server marks the box when the check is on: its room (Cloudflare's widget sits 72px tall) is kept from the first paint */
+  .tp-turnstile[data-on] { margin-top: 20px; min-height: 72px; }
   .tp-error { margin: 18px 0 0; padding: 12px 16px; border-radius: 12px; background: rgba(255,218,36,0.22); color: var(--c-dark); font-size: 14px; font-weight: 600; }
   .tp-send { margin-top: 22px; width: 100%; }
   .tp-sent { text-align: center; padding: 48px 32px; }
