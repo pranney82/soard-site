@@ -13,7 +13,7 @@ import {
   maybeReadSelections, selectionPartsStatus, simpleParts, sourceOf, partKey, lineHash, wordsKey, PARTS_SCHEMA,
 } from '../functions/api/_selection-parts.js';
 
-const T0 = Date.parse('2026-11-09T15:00:00Z');
+const T0 = Date.parse('2026-11-12T15:00:00Z'); // after MISSED_BEFORE, so a miss waits its six hours
 const MIN = 60e3;
 let env, jobs, lines, calls, aiParts, aiCap;
 const realFetch = globalThis.fetch;
@@ -261,4 +261,15 @@ test('the lines to buy or receive: chosen selections and plain product lines; ne
   await maybeReadSelections(env, { now: T0, force: true });
   const kept = ((await env.DB.prepare("SELECT item_id FROM kid_parts WHERE job_id = 'job-rowan' ORDER BY item_id").all()).results || []).map((r) => r.item_id);
   assert.deepEqual(kept, ['ci-chosen', 'ci-plain']);
+});
+
+test('Nov 10: a line missed before the AI got enough time is read again at once, not six hours later', async () => {
+  const OLD = Date.parse('2026-11-10T02:00:00Z');
+  jobs = [{ id: 'job-a', name: 'Kid A (2026)', status: 'Build' }];
+  lines = { 'job-a': [SHOWER] };
+  aiParts = {};
+  await maybeReadSelections(env, { now: OLD, force: true });
+  calls.length = 0;
+  await maybeReadSelections(env, { now: OLD + 60 * MIN, force: true });
+  assert.equal(calls.filter((c) => c.kind === 'ai').length, 1);
 });

@@ -368,3 +368,33 @@ test('review fixes: a shelf picked by mistake is let go; scanning finds what’s
   const found = findBox(await view(), await orderReads(env.DB), { trackingNumbers: ['1Z9999999999999999'], orderNumbers: [], po: '', items: [] });
   assert.deepEqual(found?.items, [valve.id], 'the second valve’s box');
 });
+
+test('Nov 10 live check: no Also bought line for a kid whose lines aren’t all read; a check-in follows its order to the real line', async () => {
+  env.JOBTREAD_GRANT_KEY = 'test-key';
+  await env.DB.prepare("INSERT INTO kid_parts (job_id, item_id, job_name, group_name, line_name, cents, hash, parts, read_by, read_at, words, words_key) VALUES ('j-rowan', 'r-furn', 'Rowan Sample (2026)', 'G', 'Furniture', 30000, 'hf', '[]', 'none:1', '2026-11-10', 'Bean Bag Chair, Big Joe', 'bean bag chair big joe')").run();
+  let v = await view();
+  assert.deepEqual(v.unread, ['j-rowan']);
+  const bean = itemOf(v, 'Rowan S.', 'Bean Bag Chair');
+  assert.equal(bean.line, 'Also bought', 'on the page meanwhile, so it can be checked in');
+  await receive(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: bean.itemId, partKey: bean.partKey, name: bean.orderedAs, units: 1, boxes: 1 });
+  const jt = fakeJobTread();
+  const r = await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.deepEqual([r.made, r.waiting], [0, 1], 'held until Rowan’s Furniture line is read');
+  // The reader reads it: the chair is on Rowan's Furniture line, and its check-in went with it
+  await env.DB.prepare("UPDATE kid_parts SET parts = ?, read_by = 'ai' WHERE item_id = 'r-furn'").bind(JSON.stringify([part('Bean Bag Chair', { brand: 'Big Joe' })])).run();
+  v = await view();
+  const chair = kidOf(v, 'Rowan S.').items.filter((i) => /bean bag/i.test(i.name));
+  assert.equal(chair.length, 1);
+  assert.deepEqual([chair[0].line, chair[0].status], ['Furniture', 'here']);
+});
+
+test('Nov 10 live check: the trades’ work and the job’s own costs aren’t things to receive', async () => {
+  const { isGoodsLine } = await import('../functions/api/_selection-parts.js');
+  for (const name of ['Portalet', 'Final Clean', 'Large Dumpster', 'Dust Protection', 'Drywall Material', 'Electrical all', 'Floor repair', 'Homeowner Agreement', 'Interior Door Install']) {
+    assert.equal(isGoodsLine({ name, isSelected: false, costType: { name: 'Materials' } }), false, name);
+  }
+  for (const name of ['Sink Plumbing', 'Therapy Equipment', 'Sensory Items', 'Furniture', 'Lighting']) {
+    assert.equal(isGoodsLine({ name, isSelected: false, costType: { name: 'Materials' } }), true, name);
+  }
+  assert.equal(isGoodsLine({ name: 'Cleaning cart', isSelected: true }), true, 'a family’s chosen selection is always goods');
+});

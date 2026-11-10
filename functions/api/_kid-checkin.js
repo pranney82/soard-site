@@ -79,10 +79,12 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const record = await readRecord(DB);
   // Lines the site made itself (Also bought) were read as selections before the reader knew them: never parts
   const made = new Set(record.also.map((a) => a.costItemId).filter(Boolean));
-  const partRows = (await rows(DB, 'SELECT job_id, item_id, job_name, group_name, line_name, cents, parts, words, words_key FROM kid_parts ORDER BY job_name, group_name, line_name', strict))
+  const partRows = (await rows(DB, 'SELECT job_id, item_id, job_name, group_name, line_name, cents, parts, words, words_key, read_by FROM kid_parts ORDER BY job_name, group_name, line_name', strict))
     .filter((r) => !made.has(r.item_id));
   const lines = partRows.map((r) => ({ jobId: r.job_id, itemId: r.item_id, jobName: r.job_name, lineName: r.line_name, words: r.words || '', wordsKey: r.words_key || '', parts: parse(r.parts, []) }));
   const jobs = [...new Map(lines.map((l) => [l.jobId, { id: l.jobId, name: l.jobName }])).values()];
+  // Kids with selection lines the reader couldn't split yet: their orders may belong on those lines
+  const unread = [...new Set(partRows.filter((r) => String(r.read_by || '').startsWith('none')).map((r) => r.job_id))];
   const dir = parse((await rows(DB, "SELECT data FROM staff_state WHERE key = 'directory'", strict))[0]?.data, {});
   const staff = new Set((dir.accounts || []).flatMap((a) => String(a.name || '').toLowerCase().split(/\s+/)).filter((w) => w.length > 1));
   // Who ordered, by first name: "Clareece", not her mailbox
@@ -218,7 +220,9 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   for (const r of record.receipts) {
     const kid = kidOf.get(r.jobId);
     if (!kid) continue;
-    let it = itemById(kid, r.itemId, r.partKey) || kid.items.find((x) => x.itemId === r.itemId && lower(x.name) === lower(r.name));
+    let it = itemById(kid, r.itemId, r.partKey) || kid.items.find((x) => x.itemId === r.itemId && lower(x.name) === lower(r.name))
+      // Checked in as Also bought, and since found on one of the kid's lines (their lines were read later): it follows
+      || (r.partKey === 'also' && !record.also.some((a) => a.key === r.itemId && a.typed) ? kid.items.find((x) => lower(x.orderedAs) === lower(r.name)) : null);
     if (!it) {
       const l = r.partKey === 'also' ? null : lineOf.get(`${r.jobId}|${r.itemId}`);
       it = { id: `${r.itemId}|${r.partKey}`, itemId: r.itemId, partKey: r.partKey, name: r.name || 'Checked in', line: l?.lineName || r.line || 'A line that changed', qty: 0, cents: null, source: 'buy', order: null, receipts: [], gone: !l };
@@ -239,7 +243,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     const here = kids.flatMap((k) => k.items.filter((i) => (i.status === 'here' || i.status === 'partly') && i.shelf === s).map(() => k.jobId));
     return { shelf: s, name: shelfName(s), kid: kid?.jobId || (s === FLOOR ? null : record.shelves.get(s) || null), things: here.length };
   });
-  return { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), open: jobs.map((j) => j.id), needsLook, orders, shelves };
+  return { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), open: jobs.map((j) => j.id), unread, needsLook, orders, shelves };
 }
 
 /** For an item a person places: each kid's likeliest open part ({ [jobId]: item id }), by the designer's words */

@@ -39,7 +39,7 @@ export const FIELDS = {
   also: { name: 'Also bought', type: 'boolean' },
 };
 export const ALSO_GROUP = 'Also bought';
-export const REHEARSAL_V = 1;
+export const REHEARSAL_V = 2; // 2: the cost code JobTread requires on a new line (Nov 10 2026)
 const EVERY_MS = 2 * 60 * 1000;
 const WRITES_A_RUN = 24;
 const RUN_MS = 20 * 1000;
@@ -241,18 +241,31 @@ async function alsoGroup(env, jobId, { fetchImpl }) {
 }
 
 let _types = null;
-/** Materials, and the cost code for furnishings or decor (else materials), for an Also bought line */
-async function alsoCodes(env, { fetchImpl }) {
-  if (_types && _types.env === env) return _types.v;
-  const data = await pave(env.JOBTREAD_GRANT_KEY, { organization: { $: { id: SOARD_ORG_ID }, costTypes: { $: { size: 50 }, nodes: { id: {}, name: {} } } } }, fetchImpl);
-  const types = data?.organization?.costTypes?.nodes || [];
-  const codes = await costCodes(env, { fetchImpl }).catch(() => []);
-  const v = {
-    costTypeId: types.find((t) => /material/i.test(t.name))?.id || null,
-    costCodeId: codes.find((c) => /furnish|furniture|decor|accessor/i.test(c.name))?.id || codes.find((c) => /material/i.test(c.name))?.id || null,
+/**
+ * The cost type and code for an Also bought line (JobTread requires a code): Materials, and the code the kid's own
+ * goods lines use most; else one named for furnishings, decor or materials; else SOARD's first code
+ */
+async function alsoCodes(env, jobId, { fetchImpl }) {
+  if (!_types || _types.env !== env) {
+    const data = await pave(env.JOBTREAD_GRANT_KEY, { organization: { $: { id: SOARD_ORG_ID }, costTypes: { $: { size: 50 }, nodes: { id: {}, name: {} } } } }, fetchImpl);
+    const types = data?.organization?.costTypes?.nodes || [];
+    const codes = await costCodes(env, { fetchImpl }).catch(() => []);
+    _types = { env, costTypeId: types.find((t) => /material/i.test(t.name))?.id || null, codes };
+  }
+  const job = await pave(env.JOBTREAD_GRANT_KEY, {
+    job: { $: { id: jobId }, costItems: { $: { size: 50, where: [['document', 'id'], '=', null] }, nodes: { costCode: { id: {} }, costType: { name: {} }, isSelected: {} } } },
+  }, fetchImpl).catch(() => null);
+  const count = new Map();
+  for (const c of job?.job?.costItems?.nodes || []) {
+    if (!c.costCode?.id || /labor|subcontract/i.test(c.costType?.name || '')) continue;
+    count.set(c.costCode.id, (count.get(c.costCode.id) || 0) + (c.isSelected ? 2 : 1));
+  }
+  const mostUsed = [...count].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const { codes } = _types;
+  return {
+    costTypeId: _types.costTypeId,
+    costCodeId: mostUsed || codes.find((c) => /furnish|furniture|decor|accessor/i.test(c.name))?.id || codes.find((c) => /material|finish|fixture/i.test(c.name))?.id || codes[0]?.id || null,
   };
-  _types = { env, v };
-  return v;
 }
 
 /**
@@ -281,7 +294,8 @@ async function makeClaimed(env, ids, thing, { fetchImpl, now }) {
   }, fetchImpl);
   let id = look?.job?.costItems?.nodes?.[0]?.id || null;
   if (!id) {
-    const [groupId, codes] = await Promise.all([alsoGroup(env, thing.jobId, { fetchImpl }), alsoCodes(env, { fetchImpl })]);
+    const [groupId, codes] = await Promise.all([alsoGroup(env, thing.jobId, { fetchImpl }), alsoCodes(env, thing.jobId, { fetchImpl })]);
+    if (!codes.costCodeId) throw new Error('JobTread has no cost code to put it under');
     const qty = Math.max(1, thing.qty || 1);
     const unit = thing.donated || !thing.cents ? 0 : Math.round(thing.cents) / 100;
     const where = [thing.store, thing.orderNumber ? `order ${thing.orderNumber}` : null].filter(Boolean).join(', ');
@@ -380,8 +394,11 @@ export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISO
   // Also bought lines first: a line can't be written before JobTread has it
   if (mode === 'on') {
     let madeAny = false;
+    const unread = new Set(view.unread || []);
     for (const k of kids) {
       for (const it of k.items.filter((i) => i.also && !i.also.costItemId)) {
+        // Some of the kid's lines aren't read yet: it may belong on one of them, so nothing is added to the budget yet
+        if (unread.has(k.jobId) && !it.also.typed) { out.waiting = (out.waiting || 0) + 1; continue; }
         if (budget <= 0 || Date.now() - started > RUN_MS) { out.left++; continue; }
         try {
           const id = await makeAlso(env, ids, { key: it.also.key, jobId: k.jobId, name: it.name, qty: it.qty, cents: it.order?.cents ?? it.cents, donated: it.source === 'donated', store: it.order?.store, orderNumber: it.order?.orderNumber, kid: k.short }, { fetchImpl, now });
@@ -462,7 +479,9 @@ export async function maybeWriteKidItems(env, { fetchImpl = fetch, now = Date.no
     Object.assign(st, { lastRunAt: now, runningUntil: now + 60000 });
     await writeState(env.DB, 'jt', st);
     const iso = new Date(now).toISOString();
-    if (!(st.rehearsal?.v === REHEARSAL_V && st.rehearsal.ok) && now - Date.parse(st.rehearsal?.at || '1970-01-01') > 30 * 60 * 1000) {
+    // A new rehearsal version runs at once; a failed one is tried again every 30 minutes
+    const passed = st.rehearsal?.v === REHEARSAL_V && st.rehearsal.ok;
+    if (!passed && (st.rehearsal?.v !== REHEARSAL_V || now - Date.parse(st.rehearsal?.at || '1970-01-01') > 30 * 60 * 1000)) {
       st.rehearsal = await rehearse(env, { fetchImpl, now: iso });
     }
     const ready = st.rehearsal?.v === REHEARSAL_V && st.rehearsal.ok;

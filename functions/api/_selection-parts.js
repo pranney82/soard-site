@@ -27,7 +27,13 @@ const AI_A_RUN = 8;
 const RUN_MS = 10 * 1000;
 const LINES_A_PAGE = 20;      // a line's words run to 4,096 characters: small pages keep JobTread under its size limit
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-const AI_TIMEOUT_MS = 12 * 1000;
+// A line with seven products, their links and prices takes the model 15-20 seconds to write out: 12 seconds cut every
+// long line off (Nov 10 2026: 27 lines across all five kids came back empty), so it gets 25 (the heartbeat allows 30)
+const AI_TIMEOUT_MS = 25 * 1000;
+// One long line at a time: an AI read starts only in a run's first seconds, so it finishes inside the heartbeat
+const AI_START_MS = 3 * 1000;
+// Lines missed before those limits were raised are read again now, not six hours later
+const MISSED_BEFORE = Date.parse('2026-11-10T05:00:00Z');
 // Not being worked on: nothing to buy or receive
 export const SKIP_STATUSES = new Set(['Closed Done', 'Denied', 'Warranty', 'Awaiting Funding']);
 export const SOURCES = ['buy', 'donated', 'family', 'others'];
@@ -152,7 +158,7 @@ export async function aiParts(env, line) {
     const out = await Promise.race([
       env.AI.run(AI_MODEL, {
         messages: [{ role: 'system', content: PARTS_PROMPT }, { role: 'user', content: input }],
-        max_tokens: 1200, temperature: 0, response_format: { type: 'json_schema', json_schema: PARTS_SCHEMA },
+        max_tokens: 3000, temperature: 0, response_format: { type: 'json_schema', json_schema: PARTS_SCHEMA },
       }, viaGateway('kid-parts')),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), AI_TIMEOUT_MS); }),
     ]);
@@ -206,6 +212,9 @@ async function openJobs(env, fetchImpl) {
 
 // Labor and the job's own costs, never things to buy or receive
 const NOT_GOODS = /labor|subcontract|permit|fee|dumpster|disposal|haul|design|engineering|overhead|contingency|insurance/i;
+// Budget lines that aren't things to buy and receive at the Office, by their name (they were showing on the check-in
+// list as "not ordered yet", Nov 10 2026): the trades' work and the job's own costs
+const NOT_GOODS_NAME = /\b(labor|install(ation)?|clean(ing|up)?|dumpster|portalet|port-?a-?potty|permit|protection|agreement|framing|drywall|insulation|demo(lition)?|haul(ing)?|disposal|design|engineering|allowance|fees?|repair|electrical|contingency|overhead|insurance|inspection|survey|uncategorized)\b/i;
 const isChoiceGroup = (g) => Boolean(g) && (g.maxSelectionsAllowed != null || g.minSelectionsRequired != null);
 
 /**
@@ -217,7 +226,7 @@ export function isGoodsLine(c) {
   if (c.isSelected) return true;
   const g = c.costGroup;
   if (isChoiceGroup(g) || isChoiceGroup(g?.parentCostGroup)) return false;
-  return !NOT_GOODS.test(c.costType?.name || '');
+  return !NOT_GOODS.test(c.costType?.name || '') && !NOT_GOODS_NAME.test(c.name || '');
 }
 
 /** A line the website made itself: an Also bought line (its globalId, or its group) */
@@ -287,12 +296,13 @@ async function run(env, st, { fetchImpl, now }) {
         const missed = prev?.hash === hash ? missTries(prev.read_by) : 0;
         // Read before the line's words were kept: they're added now, with no new reading
         if (prev?.hash === hash && prev.words_key == null) await env.DB.prepare('UPDATE kid_parts SET words = ?, words_key = ? WHERE job_id = ? AND item_id = ?').bind(String(line.description || '').slice(0, 3000), wordsKey(line.description), job.id, line.id).run();
-        if (prev?.hash === hash && (!missed || missed >= MISS_TRIES || now - Date.parse(prev.read_at || 0) < MISS_RETRY_MS)) continue;
+        const missedAt = Date.parse(prev?.read_at || 0);
+        if (prev?.hash === hash && (!missed || missed >= MISS_TRIES || (now - missedAt < MISS_RETRY_MS && missedAt >= MISSED_BEFORE))) continue;
         let parts = simpleParts(line);
         let by = 'rules';
         if (!parts) {
           // Out of AI turns or time: this job goes on from here next run
-          if (ai >= AI_A_RUN || Date.now() - started > RUN_MS) { finished = false; break; }
+          if (ai >= AI_A_RUN || Date.now() - started > (ai ? AI_START_MS : RUN_MS)) { finished = false; break; }
           ai++;
           parts = await aiParts(env, line);
           by = 'ai';
