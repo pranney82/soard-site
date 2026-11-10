@@ -24,7 +24,7 @@ export const hand = (o = {}) => ({
 });
 export const read = (o = {}) => ({ payer: 'Pine Foundation', remitter: '', cashiersCheck: false, payee: 'Sunshine On A Ranney Day', date: '2026-11-03', amount: 10000, checkNumber: '1042', memo: '', ...o });
 export const txn = (o = {}) => ({
-  id: TX, accountId: 'acct_check', kind: 'checkDeposit', status: 'pending', amount: 10000, counterpartyName: 'Check', createdAt: '2026-11-05T15:00:00Z', postedAt: null,
+  id: TX, accountId: 'acct_check', kind: 'checkDeposit', status: 'pending', amount: 10000, counterpartyName: 'Check', createdAt: '2026-11-05T15:00:00Z', postedAt: null, categoryData: { id: 'cat_ic', name: 'Individual Contribution' },
   checkNumber: '1042', dashboardLink: 'https://app.mercury.com/transactions/tx_1', attachments: [{ fileName: 'front.jpg', url: 'https://files.mercury.test/front.jpg', attachmentType: 'checkImage' }], relatedTransactions: [], ...o,
 });
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 255, 217]);

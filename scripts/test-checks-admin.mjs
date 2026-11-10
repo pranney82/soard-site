@@ -82,6 +82,10 @@ await seed({ ...base, id: 'p1', cents: 20000, state: 'person', reason: 'unreadab
 await seed({ ...base, id: 'p2', cents: 1000000, state: 'person', reason: 'maybe-double', payer: 'Elm Street Fund', note: JSON.stringify([{ id: 'zeffy_oak_1', name: 'Oak Trust', cents: 1000000, at: 1793750400, form: 'Grant Funding 2026' }]) });
 await seed({ ...base, id: 'p3', cents: 1000000, state: 'person', reason: 'event', payer: 'Northgate Builders', memo: 'Golf sponsor' });
 await seed({ ...base, id: 'p4', cents: 150000, state: 'person', reason: 'vendor', payer: 'Brightwell' });
+// Every check is marked a contribution in Mercury's Category but one, which shows what an unmarked check looks like
+const marked = (id, name = 'Individual Contribution') => DB.prepare("INSERT OR REPLACE INTO mercury_txns (id, kind, cents, category_name, created_at) VALUES (?, 'checkDeposit', 1, ?, '2026-11-05T15:00:00Z')").bind(id, name).run();
+for (const id of ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 'p1', 'p2', 'p3', 'p4']) await marked(id);
+await seed({ ...base, id: 'u1', cents: 35000, state: 'read', payer: 'Grace Okafor', check_date: '2026-11-04' });
 zeffy.payments.push({ id: 'zeffy_oak_1', amount: 1000000, status: 'succeeded', type: 'manual', campaign_id: 'form_grant', created: 1793750400, contact: 'c9', description: 'Grant Funding 2026', payment_method: { type: 'cheque' }, buyer: { first_name: 'Oak', last_name: 'Trust' } });
 
 async function toRequest(req) {
@@ -171,11 +175,12 @@ try {
   ok(/Oak Trust/.test(await textOf(page, '.ck-need')), 'the possible double shows the Zeffy entry');
   ok((await page.$$('.ck-need input')).length === 0, 'no entry form while staff enter by hand');
   const rows = await page.$$eval('.ck .jc-charge', (r) => r.length);
-  ok(rows === 11, `every other check is listed (${rows})`);
+  ok(rows === 12, `every other check is listed (${rows})`);
   const row = (id) => textOf(page, `[data-check="${id}"]`);
   ok(/In Zeffy/.test(await row('t1')) && /Found the hand entry/.test(await row('t1')), 'a hand entry reads In Zeffy');
   ok(/would use Help Build a Brighter Home/.test(await row('t3')), 'Watch says what it would do');
   ok(/Mercury is reviewing it/.test(await row('t4')), 'a pending check says Mercury has it');
+  ok(!/Needs its Category/.test(await row('u1')), 'while watching, no talk of categories');
   ok(/Left out/.test(await row('t6')) && /refund/.test(await row('t6')), 'a refund says it was left out and why');
   ok(/Store account/.test(await row('t7')), 'a store deposit says so');
   ok(/Came back/.test(await row('t8')), 'a returned check says so');
@@ -193,6 +198,7 @@ try {
   await answerAsks(page, { accept: true, onAsk: (t) => { asked = t; } });
   ok(await clickIn(page, '.ck .notice', 'Let the site enter checks'), 'the button appears once the write test passed');
   await page.waitForFunction(() => /enters checks in Zeffy/.test(document.querySelector('.ck')?.textContent || ''), { timeout: 5000 });
+  ok(/Needs its Category in Mercury/.test(await row('u1')) && /Individual Contribution or Contribution/.test(await row('u1')), 'a check not marked a contribution says so');
   ok(/Staff stop entering/.test(asked), 'it says what changes for staff before it does');
   ok(/Holly/.test(await textOf(page, '.ck .notice')), 'it says who turned it on');
   await page.waitForFunction(() => document.querySelectorAll('.ck-need select option').length > 2, { timeout: 5000 });
@@ -248,6 +254,7 @@ try {
   const LONG = { line1: '12345 Northwest Peachtree Industrial Boulevard Apt 1402', city: 'Peachtree Corners', state: 'GA', postal_code: '30092-1234', country: 'US' };
   await seed({ ...base, id: 'l1', cents: 2500000, status: 'pending', posted_at: null, deposited_at: new Date().toISOString(), state: 'read', payer: 'Dana Whitfield', drawer: 'Whitfield Family Charitable Fund at Harbor Trust Advisors',
     letter: JSON.stringify({ about: true, name: 'Dana Whitfield', email: 'dana.whitfield.family.giving@example.com', address: LONG, files: ['receipt:letter.jpg'], pending: [] }), address: JSON.stringify({ line1: '400 Harbor Trust Plaza Suite 1900', city: 'Atlanta', state: 'GA', postal_code: '30303', country: 'US', from: 'check', for: 'Whitfield Family Charitable Fund at Harbor Trust Advisors' }) });
+  for (const id of ['l1', 'l2', 'l3', 'l4']) await marked(id);
   await seed({ ...base, id: 'l2', cents: 100000, state: 'created', via: 'site', zeffy_id: 'zl2', payer: 'Oakline Design Build LLC', letter: JSON.stringify({ files: ['receipt:IMG_2231.jpg'], pending: [], late: ['receipt:IMG_2231.jpg'] }) });
   await seed({ ...base, id: 'l3', cents: 40000, state: 'created', via: 'site', zeffy_id: 'zl3', payer: 'Rosa Ortiz', address: JSON.stringify({ line1: '9 Elm St', city: 'Roswell', state: 'GA', postal_code: '30075', country: 'US', from: 'check', for: 'Rosa Ortiz' }), address_done: 'refused',
     address_tried: JSON.stringify({ address: { line1: '9 Elm St', city: 'Roswell', state: 'GA', postal_code: '30075', country: 'US' }, email: '', who: 'Rosa Ortiz' }) });

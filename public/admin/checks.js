@@ -82,6 +82,7 @@ function standing(c, mode) {
   if (c.state === 'came-back') return ['Came back', 'tag--warn'];
   if (c.state === 'creating' || c.state === 'unsure') return ['Checking Zeffy', 'tag--info'];
   if (c.letter?.reading && ['read', 'would'].includes(c.state)) return ['Reading the letter', 'tag--info'];
+  if (c.needsCategory && ['read', 'would'].includes(c.state)) return ['Needs its Category in Mercury', 'tag--info'];
   if (c.waitsUntil) return [atSeven(c.waitsUntil), 'tag--info'];
   if (c.status === 'pending') return ['Mercury is reviewing it', 'tag--info'];
   if (c.status === 'blocked') return ['Mercury is holding it', 'tag--warn'];
@@ -113,6 +114,7 @@ function mailFacts(c) {
 function howItWent(c, mode) {
   if (c.reason === 'amount-off' || c.reason === 'still-unpaid') return c.why;
   if (c.toDo) return c.why;
+  if (c.needsCategory && ['read', 'would'].includes(c.state)) return 'Only checks marked Individual Contribution or Contribution in Mercury go into Zeffy';
   if (c.waitsUntil) return 'A letter attached in Mercury before then is read with it';
   if (c.state === 'created') return c.via === 'person' ? `Saved by ${firstOf(c.by)}` : 'Entered by the site';
   if (c.state === 'linked') return c.via === 'person' ? `Matched by ${firstOf(c.by)}` : 'Found the hand entry';
@@ -307,6 +309,7 @@ function NeedsYou({ c, mode, act, busy, forms, formsGone, formsFailed }) {
   return html`<div class="ck-need" data-check=${c.id} tabindex="-1">
     ${head}
     <p class="ck-need__why">${c.why}${c.note ? ` ${c.note}` : ''}</p>
+    ${c.needsCategory && on && posted ? html`<p class="sec-head__hint ck-note">Before saving: set its Category in Mercury to Individual Contribution or Contribution. Only checks marked that way go into Zeffy.</p>` : ''}
     ${entries.length ? html`<ul class="ck-cands">
       ${entries.map((x) => html`<li>
         <span><strong>${x.name || 'No name'}</strong> · ${usd(x.cents)} · ${fromUnix(x.at)}${x.form ? ` · ${x.form}` : ''}</span>

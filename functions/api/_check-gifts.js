@@ -48,6 +48,12 @@
  * the record is in Zeffy changes nothing by itself and is a person's to look
  * at, because Zeffy can't move a payment and the site never deletes one.
  *
+ * Peter, Nov 10 2026 (later): only a check marked as a contribution in
+ * Mercury's Category ("Individual Contribution", "Contribution") goes into
+ * Zeffy. One with no category waits for it; any other category is left out.
+ * A gift through a giving platform or donor-advised fund goes under the donor
+ * its sheet names ("they should go under donor name").
+ *
  * It ships in Watch: everything but writing to Zeffy. Staff keep entering
  * checks; each hand entry is linked and scored against what the site would have
  * done, and each one teaches who that payer is (check_payers), so a later
@@ -151,12 +157,23 @@ export const REASONS = {
 };
 const ASKS_ABOUT_ENTRIES = ['maybe-double', 'amount-differs', 'pledge'];
 
+/** Mercury's Category that says a deposit is a gift: Individual Contribution, Contribution (Peter, Nov 10) */
+const CONTRIBUTION = /\bcontributions?\b/i;
+export const isContribution = (category) => CONTRIBUTION.test(clean(category));
+/** A check's Category in Mercury: from the transaction when the site has it in hand, else as last mirrored */
+async function categoryOf(env, row, txn = null) {
+  if (txn && 'categoryData' in txn) return clean(txn.categoryData?.name);
+  const t = await env.DB.prepare('SELECT category_name FROM mercury_txns WHERE id = ?').bind(row.id).first().catch(() => null);
+  return clean(t?.category_name);
+}
+
 /** Left out on purpose, without a person: not gifts. Each still says so on the page */
 export const LEFT_OUT = {
   own: 'This looks like SOARD’s own money.',
   refund: 'The memo says this is a refund or reimbursement.',
   'not-a-giver': 'This looks like insurance or a tax payment, not a gift.',
   person: 'A person said this isn’t a gift.',
+  category: 'Its Category in Mercury isn’t a contribution, so it stays out of Zeffy. Mark it Individual Contribution or Contribution in Mercury if it’s a gift.',
   back: 'The check came back.',
 };
 
@@ -205,7 +222,7 @@ const LETTER_SCHEMA = {
 
 const LETTER_PROMPT = `You read one page that came with a check given to a charity, Sunshine on a Ranney Day (SOARD). Report only what is written on it, as JSON.
 aboutGift: true when it's a letter or note about a gift to the charity: a cover letter, a donor-advised fund or foundation grant letter, a matching-gift letter, or a note saying who the gift is from or where to send its receipt. false for anything else, such as an invoice, a bill, a form, a deposit slip, or a picture of the check or an envelope.
-recordAs: the name the page says to record, credit or acknowledge the gift under. When it doesn't say, the person, couple, company or foundation the page says the gift is from. Never the charity, never someone who only signed the page for a bank, fund, foundation or company, and never someone named only as recommending or advising the gift or as who to contact (a foundation's director who recommended its grant: the gift is still the foundation's). "" if it doesn't name one.
+recordAs: the donor to record the gift under. The name the page says to record, credit or acknowledge it under; else the donor it names ("Donor:", "donation from", "on behalf of"); else who it says the gift is from. When the money comes through a giving platform, donor-advised fund, workplace giving or matching program (such as Groundswell, Chariot, Fidelity Charitable, Schwab Charitable, Benevity) for a donor it names, that donor, never the platform or fund. A foundation or company giving its own money is the donor itself: a director or employee named only as recommending, approving or signing it, or as who to contact, is not. Never the charity. "" if it doesn't name one.
 email: the email the page says to send the receipt, acknowledgment or correspondence to, else the donor's email it gives. "" if none.
 street, city, state, zip: the mailing address the page says to send the receipt, acknowledgment or correspondence to, else the donor's own address it gives, in its parts (the street line with any apartment or suite, the city, the two-letter state, the ZIP code). Never the charity's address, which is usually in the "To" lines at the top. "" for any part that isn't there.
 amount: the gift's amount in dollars as the page gives it, or 0.
@@ -671,6 +688,8 @@ async function hashOf(bytes) {
 
 // The checks the site is still deciding by itself: only for these are letter files read
 const DECIDING = ['new', 'read', 'would'];
+/** The letter reader's version: a reading by an older one is read again while its check is still being decided */
+const LETTER_READER = 2;
 const sameSet = (a, b) => a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
 
 /** What the letter's files there now say together, as the row keeps it */
@@ -688,7 +707,7 @@ async function noteLetters(env, row, txn, now) {
   const deciding = DECIDING.includes(row.state);
   const reads = Object.fromEntries(Object.entries(was?.reads || {}).filter(([k]) => present.includes(k)));
   // While deciding, every file there with no reading is read first: one added while a person had the check too
-  const pending = deciding && present.length <= MAX_LETTER_FILES ? present.filter((k) => !reads[k]) : [];
+  const pending = deciding && present.length <= MAX_LETTER_FILES ? present.filter((k) => !reads[k] || (reads[k].v !== LETTER_READER && !reads[k].why)) : [];
   const fresh = present.filter((k) => !known.includes(k));
   // A file added after the record is in: a person's to look at, while the site enters checks (watching, staff enter their own)
   const candidates = was && ['created', 'linked', 'creating', 'unsure'].includes(row.state) ? fresh : [];
@@ -822,7 +841,7 @@ export async function readLetter(env, row, { mode, now, fetchImpl }) {
   }
   if (!found) return { result: 'again' };
   const pending = (cur.pending || []).filter((k) => k !== key);
-  const reads = { ...(cur.reads || {}), [key]: { ...found, ...(hash ? { hash } : {}) } };
+  const reads = { ...(cur.reads || {}), [key]: { ...found, ...(hash ? { hash } : {}), v: LETTER_READER } };
   if (!(await save({ reads, pending, tryAt: null, at: iso, ...summary({ ...cur, reads }) }))) return { result: 'busy' };
   return { result: 'letter' };
 }
@@ -1538,6 +1557,10 @@ async function lookAgain(env, seen, txn, { now }) {
   const row = (await getRow(env.DB, seen.id)) || seen;
   // A letter the team attached since the last look is read before the check is decided, or put to use after
   if (row.state !== 'store') await noteLetters(env, row, txn, now);
+  // Left out for its category, and since marked a contribution in Mercury: decided again
+  if (row.state === 'left-out' && row.reason === 'category' && isContribution(txn?.categoryData?.name)) {
+    await setRow(env.DB, row.id, { state: 'read', reason: null, note: null, try_at: null }, now, 'left-out');
+  }
   const status = String(txn?.status || row.status || '');
   const patch = { status, posted_at: txn?.postedAt || row.posted_at, looked_at: iso };
   // Mercury can correct an amount when it reviews a check, and the record has to say what really came in
@@ -1702,6 +1725,17 @@ export async function decideCheck(env, row, { mode, now, fetchImpl, gift = false
   if (lettersWaiting(row)) return { result: 'letter' };
   // Each file read is still the file that was read: a letter swapped for another under the same name is read again first
   if (txn && await verifyLetters(env, row, txn, now, fetchImpl)) return { result: 'letter' };
+  // Only a check marked as a contribution in Mercury goes into Zeffy. None yet: it waits (asked again in 15 minutes, nothing
+  // read from Zeffy meanwhile). Any other category: left out, and it comes back if the category changes
+  const category = await categoryOf(env, row, txn);
+  if (!category) {
+    await setRow(env.DB, row.id, { try_at: new Date(now).toISOString() }, now, row.state);
+    return { result: 'category' };
+  }
+  if (!isContribution(category)) {
+    if (!(await setRow(env.DB, row.id, { state: 'left-out', reason: 'category', note: category }, now, row.state))) return { result: 'moved' };
+    return { result: 'left-out', reason: 'category' };
+  }
   // Who the gift is from: the letter's giver when it names one (the source of truth), else who wrote the check. The check's
   // name is kept as the drawer, so Zeffy's entries under either name are found (matchBoth)
   // A name a person gave this check stands, letter or not: they've seen it
@@ -1844,7 +1878,13 @@ async function matchOpen(env, { mode, now, fetchImpl }) {
   // Read or not, posted 10 days ago and still not finished: said once, so a stuck check is never silent
   const stuck = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE state IN ('new', 'read') AND status = 'sent' AND posted_at < ? AND deposited_at >= ? LIMIT 20`)
     .bind(new Date(now - NO_RECORD_ALARM_MS).toISOString(), since).all()).results || [];
-  for (const row of stuck) await tell(env, row, 'stuck', { title: `A check isn’t finished: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and the site hasn’t finished it. Zeffy or Mercury may not be answering.', fix: 'Enter it in Zeffy by hand, and it links itself within the hour.' });
+  for (const row of stuck) {
+    // One still waiting for its Category in Mercury isn't stuck on Zeffy: it's waiting to be marked a contribution
+    const unmarked = !isContribution(await categoryOf(env, row));
+    await tell(env, row, 'stuck', unmarked
+      ? { title: `A check isn’t marked in Mercury: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and its Category in Mercury isn’t Individual Contribution or Contribution, so it isn’t in Zeffy.', fix: 'If it’s a gift, set its Category in Mercury and it goes into Zeffy that evening. If it isn’t, say so on Checks.' }
+      : { title: `A check isn’t finished: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and the site hasn’t finished it. Zeffy or Mercury may not be answering.', fix: 'Enter it in Zeffy by hand, and it links itself within the hour.' });
+  }
   // The whole 400 days every hour, checks open or not: the site's record of when each payment showed up stays current, so
   // the wide look can tell an entry typed this week from one typed long ago
   const recent = await paymentsSince(env, Math.floor(now / 1000) - NET_S, fetchImpl);
@@ -2522,6 +2562,9 @@ function viewOf(r, claimed, mode = 'watch', now = Date.now()) {
     candidates: candidates?.length ? candidates : null, score, ver: versionOf(r),
     // Goes into Zeffy at 7 PM Eastern on the deposit day, so a letter attached that day is read with it
     waitsUntil: on && r.state === 'read' && !r.by && now < saveAt(r.deposited_at) ? new Date(saveAt(r.deposited_at)).toISOString() : null,
+    category: r.category || null,
+    // Not in Zeffy yet and not marked as a contribution in Mercury: it can't go in until it is
+    needsCategory: on && !r.zeffy_id && ['new', 'read', 'would', 'person'].includes(r.state) && !isContribution(r.category),
     drawer: r.drawer && r.payer && !surelySameGiver(r.drawer, r.payer) ? r.drawer : null,
     letter: letter.about || letter.why || (letter.files || []).length || letterToDo ? {
       unread: (letter.files || []).filter((k) => !letter.reads?.[k]).length,
@@ -2560,7 +2603,9 @@ export async function checksView(env) {
   const w = await env.DB.prepare(`SELECT SUM(CASE WHEN COALESCE(posted_at, deposited_at) >= ? THEN 1 ELSE 0 END) AS fresh, SUM(CASE WHEN COALESCE(posted_at, deposited_at) < ? THEN 1 ELSE 0 END) AS old FROM check_gifts WHERE state = 'would'`)
     .bind(new Date(Date.now() - OLD_CHECK_MS).toISOString(), new Date(Date.now() - OLD_CHECK_MS).toISOString()).first();
   const claimed = await claimedIds(env.DB);
-  const list = rows.map((r) => viewOf(r, claimed, mode));
+  // Each check's Category in Mercury, as last mirrored
+  const cats = new Map(((await env.DB.prepare("SELECT id, category_name FROM mercury_txns WHERE kind = 'checkDeposit' AND category_name IS NOT NULL").all().catch(() => null))?.results || []).map((t) => [t.id, t.category_name]));
+  const list = rows.map((r) => viewOf({ ...r, category: cats.get(r.id) || null }, claimed, mode));
   return {
     mode,
     onBy: cfg.onBy || null, onAt: cfg.onAt || null,
@@ -2636,6 +2681,7 @@ export async function personCreate(env, id, { name, formId, day = null, notThose
   if (!['person', 'left-out', 'store', 'would'].includes(row.state)) throw err('This check has moved on. Look again.', 409);
   // The record lands when the money does
   if (!['pending', 'sent'].includes(row.status)) throw err('Mercury didn’t take this check, so it isn’t saved in Zeffy.', 409);
+  if (!isContribution(await categoryOf(env, row))) throw err('Mark it Individual Contribution or Contribution in its Category in Mercury first, then save it here.', 409);
   if (hasAccountDigits(clean(name), row.check_number)) throw err('Leave the long number out of the name. Six or more digits in a row look like a bank account number, so the site never saves them.');
   const payer = safeText(name, 120, row.check_number);
   if (!payer) throw err('Who wrote this check?');

@@ -788,3 +788,52 @@ test('a scanned PDF\'s framing text ("Metadata … Contents") is never taken for
   const r = await rowOf();
   assert.deepEqual([r.state, r.reason, world().posts.length], ['person', 'letter', 0]);
 });
+
+// ── Only checks marked as a contribution in Mercury (Peter, Nov 10) ──────────────────────────────────────────────────
+const mark = (name) => { world().txns[TX] = { ...world().txns[TX], categoryData: name ? { id: `cat_${name}`, name } : null }; };
+
+test('a check with no Category in Mercury waits, and goes in once it\'s marked a contribution', async () => {
+  mark(null);
+  await runs(T0, T0 + 10 * MIN); await runs(EVENING, EVENING + 30 * MIN);
+  assert.equal(world().posts.length, 0);
+  let v = (await CG.checksView(env())).list[0];
+  assert.equal(v.needsCategory, true);
+  assert.equal((await rowOf()).state, 'read');
+  mark('Contribution');
+  await runs(EVENING + 35 * MIN, EVENING + 60 * MIN);
+  assert.equal(world().posts.length, 1);
+  v = (await CG.checksView(env())).list[0];
+  assert.equal(v.needsCategory, false);
+});
+
+test('a check with another Category stays out of Zeffy, and comes back if it\'s re-marked', async () => {
+  mark('Transfer');
+  await runs(T0, T0 + 10 * MIN); await runs(EVENING, EVENING + 15 * MIN);
+  let r = await rowOf();
+  assert.deepEqual([r.state, r.reason, world().posts.length], ['left-out', 'category', 0]);
+  mark('Individual Contribution');
+  await runs(EVENING + 20 * MIN, EVENING + 60 * MIN);
+  r = await rowOf();
+  assert.deepEqual([r.state, world().posts.length], ['created', 1]);
+});
+
+test('a person can\'t save a check that isn\'t marked a contribution', async () => {
+  mark(null);
+  world().reading = (m) => read({ payer: m === KIMI ? 'Pine Foundation' : 'Oakline Builders' });
+  await runs(T0, T0 + 30 * MIN);
+  const r = await rowOf();
+  assert.equal(r.reason, 'unreadable');
+  await assert.rejects(CG.personCreate(env(), TX, { name: 'Pine Foundation', formId: 'form_home', saw: CG.versionOf(r), by: 'staff@example.com', now: T0 + 40 * MIN, fetchImpl: fetchWithFiles }), /Mark it Individual Contribution or Contribution/);
+  assert.equal(world().posts.length, 0);
+});
+
+test('a letter read by an older reader is read again while its check is still being decided', async () => {
+  await runs(T0, T0 + 10 * MIN); attach(LETTER); await runs(T0 + 20 * MIN, T0 + 40 * MIN);
+  // As the first live letters were stored before the reader's version was kept
+  const l = JSON.parse((await rowOf()).letter);
+  for (const k of Object.keys(l.reads)) { delete l.reads[k].v; l.reads[k].name = 'Groundswell Charitable Foundation'; }
+  await env().DB.prepare('UPDATE check_gifts SET letter = ? WHERE id = ?').bind(JSON.stringify(l), TX).run();
+  await runs(T0 + 45 * MIN, T0 + 70 * MIN);
+  await runs(EVENING, EVENING + 10 * MIN);
+  assert.equal(world().posts[0]?.last_name, 'Whitfield');
+});
