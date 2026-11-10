@@ -1,17 +1,21 @@
 /**
  * /api/reminders — "remind me when the reveal goes live"
  * =======================================================
- * Nobody gets a reminder until the address proves it's theirs: an email
- * signup is held until the link we email is confirmed. People already on the
- * list stay on it. Signing up again never undoes an unsubscribe or changes which reveal an
- * address hears about; only the confirmation does.
+ * One press of "Email me" and an address is on the list (Peter, Nov 9 2026:
+ * no confirm step, as the newsletter): it gets a "You're on the list" email
+ * with a one-tap Stop for anyone who didn't ask. An address already on the
+ * list stays on it; asking about a different reveal widens it to every
+ * reveal, never narrows it. The one exception: an address that pressed Stop
+ * is only put back by its own tap on the link we email it. A sign-up form
+ * never undoes a Stop.
  *
  * POST (public; same-site pages only; Turnstile when it's on; D1 limits per
  * caller and per address). The public is never texted: texts go only to staff
  * (Reveals → Settings → Alerts), so there is no text channel here.
- *   { channel: 'email', email, kidSlug?, turnstileToken?, hp }  → { ok, channel, pending }  link emailed
+ *   { channel: 'email', email, kidSlug?, turnstileToken?, hp }  → { ok, channel }  on the list
+ *                                                            → { ok, channel, pending }  an address that pressed Stop: link emailed
  *   { channel: 'push',  subscription: PushSubscription JSON, kidSlug? } → { ok, channel }
- * POST ?confirm=<token>       confirm an email signup (the button on the confirm page)
+ * POST ?confirm=<token>       put a stopped address back on (the button on the confirm page)
  * POST ?unsubscribe=<token>   stop reminders (the button on the stop page, and mail
  *                             apps' one-click List-Unsubscribe, RFC 8058)
  * GET  ?confirm=<token>       a page with a "Yes, remind me" button
@@ -40,7 +44,7 @@ const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE, 
 export const CONFIRM_TTL_MS = 3 * 24 * 3600e3;
 export const LIMITS = {
   ipPerHour: 10, ipPerDay: 30,  // sign-ups from one address (IPv6 counts per /64)
-  perTargetPerDay: 3,           // confirm emails to one address
+  perTargetPerDay: 3,           // sign-up emails (welcome or confirm) to one address
 };
 
 function page(title, body, { status = 200, button = null } = {}) {
@@ -290,7 +294,7 @@ export async function onRequestPost(context) {
   const channel = String(body.channel || 'email').toLowerCase();
 
   // Honeypot: bots fill hidden fields; pretend it worked
-  if (body.hp || body.website) return json({ ok: true, channel, ...(channel === 'push' ? {} : { pending: true }) });
+  if (body.hp || body.website) return json({ ok: true, channel });
 
   try {
     await ensurePendingSchema(env.DB);
@@ -330,11 +334,6 @@ export async function onRequestPost(context) {
     if (turnstileOn(env) && !(await verifyTurnstile(env, body.turnstileToken, request.headers.get('CF-Connecting-IP') || ''))) {
       return json({ ok: false, code: 'turnstile', error: 'Please finish the quick check, then try again.' }, 403);
     }
-    // Per address, hashed so the limits table never holds anyone's email or number
-    const perTarget = await limit(env.DB, `reminders:to:${(await notify.sha256Hex(`${channel}:${address}`)).slice(0, 32)}`, LIMITS.perTargetPerDay, 86400);
-    if (!perTarget.ok) {
-      return tooMany(perTarget.retryAfter, 'We already sent this address a few links today. Look for the newest one in your inbox or spam folder.');
-    }
     // Links nobody used
     await env.DB.prepare('DELETE FROM broadcast_reminder_pending WHERE expires_at < ?').bind(nowIso()).run();
     return await emailSignup(context, { address, kid, source, config });
@@ -343,8 +342,40 @@ export async function onRequestPost(context) {
   }
 }
 
-/** Email: hold the sign-up and send the link that confirms it */
+/**
+ * Email: on the list at once. A new address gets the "You're on the list"
+ * email; one already on it gets nothing more (a different reveal widens it to
+ * every reveal); one that pressed Stop gets the link that puts it back.
+ */
 async function emailSignup(context, { address, kid, source, config }) {
+  const { env } = context;
+  const was = await env.DB.prepare(`SELECT kid_slug, unsubscribed_at FROM broadcast_reminders WHERE channel = 'email' AND address = ?`).bind(address).first();
+  const kidSlug = kid?.slug || null;
+  if (was && !was.unsubscribed_at) {
+    await activate(env.DB, { channel: 'email', address, kid_slug: kidSlug, source });
+    return json({ ok: true, channel: 'email' });
+  }
+  // Anything that emails the address: per address, hashed so the limits table never holds anyone's email
+  const perTarget = await limit(env.DB, `reminders:to:${(await notify.sha256Hex(`email:${address}`)).slice(0, 32)}`, LIMITS.perTargetPerDay, 86400);
+  if (!perTarget.ok) {
+    return tooMany(perTarget.retryAfter, was
+      ? 'We already sent this address a few links today. Look for the newest one in your inbox or spam folder.'
+      : 'This address was signed up a few times today already. Check your inbox or spam folder.');
+  }
+  if (was) return await confirmByLink(context, { address, kid, source, config });
+
+  await activate(env.DB, { channel: 'email', address, kid_slug: kidSlug, source });
+  later(context, signedUp(env, 'email', { kid_slug: kidSlug, source }));
+  const row = await env.DB.prepare(`SELECT token FROM broadcast_reminders WHERE channel = 'email' AND address = ?`).bind(address).first();
+  const stopUrl = `${SITE}/api/reminders?unsubscribe=${encodeURIComponent(row.token)}`;
+  const mail = notify.welcomeEmail({ stopUrl, kidName: kid?.name || null, kidSlug, hours: hoursOf(config), ...(await revealTiming(env.DB, kid)) });
+  // On the list either way: a welcome that can't go now doesn't undo the sign-up
+  later(context, notify.sendEmailItems(env, [{ to: address, ...mail, headers: notify.listUnsubscribeHeaders(stopUrl) }], { replyTo: notify.REVEAL_REPLY_TO, tags: [{ name: 'category', value: 'reminder-welcome' }] }));
+  return json({ ok: true, channel: 'email' });
+}
+
+/** An address that pressed Stop: held until its own tap on the link we email puts it back */
+async function confirmByLink(context, { address, kid, source, config }) {
   const { env } = context;
   const t = token(32);
   const id = crypto.randomUUID();

@@ -525,8 +525,10 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     case 'demo-invite':
     case 'demo-invite-update':
       return demoPreview(env, now);
+    case 'rem-welcome':
+      return email(notify.welcomeEmail({ stopUrl: '#', kidName: SAMPLE.childFirst, kidSlug: 'sample' }), { to: 'A new address signed up on a reveal page' });
     case 'rem-confirm':
-      return email(notify.confirmEmail({ confirmUrl: '#', kidName: SAMPLE.childFirst }), { to: 'A new address signed up on a reveal page' });
+      return email(notify.confirmEmail({ confirmUrl: '#', kidName: SAMPLE.childFirst }), { to: 'An address that pressed Stop signed up again' });
     case 'kit-live': {
       const m = notify.reminderEmail({ ...REMINDER_SAMPLE(scheduledAt, live), kind: 'live', list: true });
       return { channel: 'kit', from: KIT_FROM, to: 'The whole newsletter list (not waitlist-only families)', subject: m.subject, html: m.html, text: m.text, send: 'email' };

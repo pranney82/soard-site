@@ -1,5 +1,5 @@
 /**
- * Reveal reminders: confirmed sign-ups, text codes, push hosts, unsubscribe,
+ * Reveal reminders: one-press sign-ups (a link only after a Stop), text codes, push hosts, unsubscribe,
  * limits, and the batched send that never holds up go-live
  * Run: node --test tests/reminder-signups.test.mjs
  */
@@ -48,8 +48,13 @@ const post = (body, { ip = freshIp(), origin = SITE, url = `${SITE}/api/reminder
 const get = (path) => endpoint.onRequestGet(ctx(new Request(`${SITE}${path}`)));
 const rows = async (where = '1=1', ...args) => (await DB.prepare(`SELECT * FROM broadcast_reminders WHERE ${where}`).bind(...args).all()).results;
 const confirmLink = (to) => {
-  const m = [...emails].reverse().find(e => e.to[0] === to);
+  const m = [...emails].reverse().find(e => e.to[0] === to && /\?confirm=/.test(e.text));
   return m && m.text.match(/https:\/\/sunshineonaranneyday\.com\/api\/reminders\?confirm=[\w-]+/)[0];
+};
+/** Press Stop on an address's row (the stop page's button) */
+const stop = async (address) => {
+  const [row] = await rows('address = ?', address);
+  await endpoint.onRequestPost(ctx(new Request(`${SITE}/api/reminders?unsubscribe=${row.token}`, { method: 'POST' })));
 };
 
 before(async () => {
@@ -105,21 +110,53 @@ test('calendar text: a bare \\r cannot start a new property', () => {
   assert.match(ics, /DESCRIPTION:a\\nb\\nc\\nd/);
 });
 
-// ─── Email: held until the link is confirmed ────────────────────────
+// ─── Email: one press and you're on the list ────────────────────────
 
-test('an email sign-up waits for its link; opening the link only asks; the button confirms', async () => {
+test('one press puts a new address on the list, and it gets a "You’re on the list" email with a one-tap Stop', async () => {
   const res = await post({ channel: 'email', email: 'Ana@Example.com', kidSlug: 'remi' });
-  assert.deepEqual(await res.json(), { ok: true, channel: 'email', pending: true });
-  assert.equal((await rows()).length, 0, 'not on the list yet');
+  assert.deepEqual(await res.json(), { ok: true, channel: 'email' });
+  await flush();
+  const [row] = await rows();
+  assert.equal(row.address, 'ana@example.com');
+  assert.equal(row.kid_slug, 'remi');
+  assert.equal(row.unsubscribed_at, null);
+  assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM broadcast_reminder_pending').first()).n, 0, 'nothing waits on a link');
   const mail = emails.at(-1);
   assert.equal(mail.to[0], 'ana@example.com');
-  assert.match(mail.subject, /Confirm your reminders for Remi’s reveal/);
+  assert.match(mail.subject, /You’re on the list for Remi’s reveal/);
+  assert.doesNotMatch(mail.text, /\?confirm=/, 'nothing to confirm');
+  assert.ok(mail.text.includes(`/api/reminders?unsubscribe=${row.token}`), 'its Stop link is her own');
+  assert.equal(mail.headers['List-Unsubscribe'], `<${SITE}/api/reminders?unsubscribe=${row.token}>`);
+  assert.match(mail.text, /\/live\/remi\//, 'it links to Remi’s live page');
+  const ev = await DB.prepare(`SELECT COUNT(*) AS n FROM broadcast_events WHERE type = 'reminder_signup'`).first();
+  assert.equal(ev.n, 1, 'counted once');
+
+  // Pressing again: still on, no second email, not counted again
+  const n = emails.length;
+  assert.deepEqual(await (await post({ channel: 'email', email: 'ana@example.com', kidSlug: 'remi' })).json(), { ok: true, channel: 'email' });
+  await flush();
+  assert.equal(emails.length, n);
+  assert.equal((await DB.prepare(`SELECT COUNT(*) AS n FROM broadcast_events WHERE type = 'reminder_signup'`).first()).n, 1);
+});
+
+test('a sign-up form never undoes a Stop: only the address’s own tap on the emailed link does, and opening the link only asks', async () => {
+  // Ana is on for Remi. Someone asks for another reveal at her address: she hears about every reveal, never fewer
+  await post({ channel: 'email', email: 'ana@example.com', kidSlug: 'nobody-real' });
+  let [row] = await rows('address = ?', 'ana@example.com');
+  assert.equal(row.kid_slug, null, 'widened to every reveal, not narrowed');
+
+  // She presses Stop; a new sign-up doesn't put her back, it emails her the link
+  await stop('ana@example.com');
+  const res = await post({ channel: 'email', email: 'ana@example.com', kidSlug: 'max' });
+  assert.deepEqual(await res.json(), { ok: true, channel: 'email', pending: true });
+  [row] = await rows('address = ?', 'ana@example.com');
+  assert.ok(row.unsubscribed_at, 'still stopped');
   const link = confirmLink('ana@example.com');
+  assert.match(emails.at(-1).subject, /Confirm your reminders for Max’s reveal/);
   const tokenInLink = link.split('confirm=')[1];
-  const stored = await DB.prepare('SELECT * FROM broadcast_reminder_pending').all();
-  assert.equal(stored.results.length, 1);
-  assert.notEqual(stored.results[0].secret_hash, tokenInLink, 'the token is stored hashed');
-  assert.equal(stored.results[0].secret_hash, await notify.sha256Hex(tokenInLink));
+  const stored = (await DB.prepare('SELECT * FROM broadcast_reminder_pending WHERE address = ?').bind('ana@example.com').all()).results;
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].secret_hash, await notify.sha256Hex(tokenInLink), 'the token is stored hashed');
 
   // A mail scanner opening the link changes nothing
   const page = await get(link.replace(SITE, ''));
@@ -130,61 +167,33 @@ test('an email sign-up waits for its link; opening the link only asks; the butto
   assert.match(html, /<form method="post" action="\/api\/reminders\?confirm=/);
   assert.match(page.headers.get('Content-Security-Policy'), /frame-ancestors 'none'/);
   assert.equal(page.headers.get('Referrer-Policy'), 'strict-origin');
-  assert.equal((await rows()).length, 0);
+  assert.ok((await rows('address = ?', 'ana@example.com'))[0].unsubscribed_at);
 
-  // The button: a same-site POST with no body
+  // Her button: back on, for the reveal the link named
   const done = await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST', headers: { Origin: SITE } })));
   assert.equal(done.status, 200);
   assert.match(await done.text(), /on the list/);
   await flush();
-  const [row] = await rows();
-  assert.equal(row.address, 'ana@example.com');
-  assert.equal(row.kid_slug, 'remi');
+  [row] = await rows('address = ?', 'ana@example.com');
   assert.equal(row.unsubscribed_at, null);
-  assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM broadcast_reminder_pending').first()).n, 0, 'the link is used up');
-  const again = await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST' })));
-  assert.equal(again.status, 410);
-  const ev = await DB.prepare(`SELECT COUNT(*) AS n FROM broadcast_events WHERE type = 'reminder_signup'`).first();
-  assert.equal(ev.n, 1, 'counted once it is confirmed');
+  assert.equal(row.kid_slug, 'max');
+  assert.equal((await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST' })))).status, 410, 'a link already used is spent');
 });
 
 test('confirm links expire after 3 days', async () => {
+  await post({ channel: 'email', email: 'late@example.com' });
+  await stop('late@example.com');
   await post({ channel: 'email', email: 'late@example.com' });
   const link = confirmLink('late@example.com');
   travel(3 * 24 * 3600e3 + 60e3);
   assert.equal((await get(link.replace(SITE, ''))).status, 410);
   assert.equal((await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST' })))).status, 410);
-  assert.equal((await rows('address = ?', 'late@example.com')).length, 0);
-});
-
-test('signing up again never undoes an unsubscribe or changes which reveal, until confirmed', async () => {
-  // Ana is on the list for Remi. A stranger asks for every reveal at her address: nothing changes.
-  await post({ channel: 'email', email: 'ana@example.com', kidSlug: 'nobody-real' });
-  let [row] = await rows('address = ?', 'ana@example.com');
-  assert.equal(row.kid_slug, 'remi', 'an unconfirmed sign-up cannot mute her');
-  const strangerLink = confirmLink('ana@example.com');
-
-  // She unsubscribes; a new sign-up doesn't put her back
-  await endpoint.onRequestPost(ctx(new Request(`${SITE}/api/reminders?unsubscribe=${row.token}`, { method: 'POST' })));
-  await post({ channel: 'email', email: 'ana@example.com', kidSlug: 'max' });
-  [row] = await rows('address = ?', 'ana@example.com');
-  assert.ok(row.unsubscribed_at, 'still unsubscribed');
-  assert.equal(row.kid_slug, 'remi');
-
-  // Only her own confirmation does, for the reveal that link named; a bogus kid means every reveal
-  await endpoint.onRequestPost(ctx(new Request(confirmLink('ana@example.com'), { method: 'POST' })));
-  [row] = await rows('address = ?', 'ana@example.com');
-  assert.equal(row.unsubscribed_at, null);
-  assert.equal(row.kid_slug, 'max');
-  const oldMaxLink = confirmLink('ana@example.com');
-  assert.equal((await endpoint.onRequestPost(ctx(new Request(oldMaxLink, { method: 'POST' })))).status, 410, 'a link already used is spent');
-  assert.ok(strangerLink, 'a link for a different reveal stays hers to tap or ignore until it expires');
+  assert.ok((await rows('address = ?', 'late@example.com'))[0].unsubscribed_at, 'still stopped');
 });
 
 test('signing up for a second reveal keeps the first: the address goes on for every reveal', async () => {
   const signUp = async (email, kidSlug) => {
     await post({ channel: 'email', email, kidSlug });
-    await endpoint.onRequestPost(ctx(new Request(confirmLink(email), { method: 'POST' })));
     return (await rows('address = ?', email))[0];
   };
   let row = await signUp('two@example.com', 'remi');
@@ -197,7 +206,9 @@ test('signing up for a second reveal keeps the first: the address goes on for ev
   assert.equal(row.kid_slug, null, 'every reveal stays every reveal');
 });
 
-test('two sign-ups before either is confirmed: tapping both links covers both reveals', async () => {
+test('after a Stop, two sign-ups before either is tapped: tapping both links covers both reveals', async () => {
+  await post({ channel: 'email', email: 'both@example.com', kidSlug: 'remi' });
+  await stop('both@example.com');
   await post({ channel: 'email', email: 'both@example.com', kidSlug: 'remi' });
   const first = confirmLink('both@example.com');
   await post({ channel: 'email', email: 'both@example.com', kidSlug: 'max' });
@@ -212,26 +223,28 @@ test('two sign-ups before either is confirmed: tapping both links covers both re
 
 test('the confirm pages say what the person really ends up on', async () => {
   const text = async (res) => (await res.text()).replace(/<[^>]+>/g, ' ');
-  // On for Remi, then confirms Max: every reveal, and the page says so before and after
-  await post({ channel: 'email', email: 'say@example.com', kidSlug: 'remi' });
-  await endpoint.onRequestPost(ctx(new Request(confirmLink('say@example.com'), { method: 'POST' })));
-  await post({ channel: 'email', email: 'say@example.com', kidSlug: 'max' });
-  const link = confirmLink('say@example.com');
-  assert.match(await text(await endpoint.onRequestGet(ctx(new Request(link)))), /about every reveal/);
-  assert.match(await text(await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST' })))), /about every reveal/);
-  // On for every reveal already, confirming one kid stays every reveal
-  await post({ channel: 'email', email: 'say@example.com', kidSlug: 'remi' });
-  const page = await text(await endpoint.onRequestPost(ctx(new Request(confirmLink('say@example.com'), { method: 'POST' }))));
-  assert.match(page, /about every reveal/);
-  // Fresh address: just that reveal
+  // Stopped, then asks for Max: just Max, before and after the tap
   await post({ channel: 'email', email: 'one@example.com', kidSlug: 'max' });
-  assert.match(await text(await endpoint.onRequestPost(ctx(new Request(confirmLink('one@example.com'), { method: 'POST' })))), /about Max.+room reveal/);
-  await DB.prepare("DELETE FROM broadcast_reminders WHERE address IN ('say@example.com', 'one@example.com')").run();
+  await stop('one@example.com');
+  await post({ channel: 'email', email: 'one@example.com', kidSlug: 'max' });
+  const link = confirmLink('one@example.com');
+  assert.match(await text(await endpoint.onRequestGet(ctx(new Request(link)))), /about Max.+room reveal/);
+  assert.match(await text(await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST' })))), /about Max.+room reveal/);
+  // Back on for Max, a link for Remi (sent while stopped) widens it: the page says every reveal
+  await stop('one@example.com');
+  await post({ channel: 'email', email: 'one@example.com', kidSlug: 'remi' });
+  const remi = confirmLink('one@example.com');
+  await DB.prepare("UPDATE broadcast_reminders SET unsubscribed_at = NULL WHERE address = 'one@example.com'").run();
+  assert.match(await text(await endpoint.onRequestGet(ctx(new Request(remi)))), /about every reveal/);
+  assert.match(await text(await endpoint.onRequestPost(ctx(new Request(remi, { method: 'POST' })))), /about every reveal/);
+  await DB.prepare("DELETE FROM broadcast_reminders WHERE address = 'one@example.com'").run();
 });
 
 test('the confirm page\'s promise follows Settings, and reminders switched off stop a link already sent', async () => {
   const text = async (res) => (await res.text()).replace(/<[^>]+>/g, ' ');
   const config = await b.readConfig(DB);
+  await post({ channel: 'email', email: 'notes@example.com', kidSlug: 'max' });
+  await stop('notes@example.com');
   await post({ channel: 'email', email: 'notes@example.com', kidSlug: 'max' });
   const link = confirmLink('notes@example.com');
   await b.writeConfig(DB, { ...config, reminders: { ...config.reminders, hoursBefore: [] } });
@@ -242,7 +255,7 @@ test('the confirm page\'s promise follows Settings, and reminders switched off s
     const asked = await endpoint.onRequestGet(ctx(new Request(link)));
     assert.equal(asked.status, 503);
     assert.equal((await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST' })))).status, 503);
-    assert.equal((await rows('address = ?', 'notes@example.com')).length, 0, 'nobody goes on a list that sends nothing');
+    assert.ok((await rows('address = ?', 'notes@example.com'))[0].unsubscribed_at, 'nobody goes back on a list that sends nothing');
   } finally {
     await b.writeConfig(DB, config);
   }
@@ -259,7 +272,8 @@ test('reminders switched off: nobody can sign up for emails that would never com
     assert.equal(res.status, 503);
     assert.equal((await res.json()).ok, false);
     assert.equal((await rows()).length, before);
-    assert.equal(emails.filter((e) => e.to[0] === 'off@example.com').length, 0, 'no confirm email either');
+    await flush();
+    assert.equal(emails.filter((e) => e.to[0] === 'off@example.com').length, 0, 'no email either');
   } finally {
     await b.writeConfig(DB, config);
   }
@@ -298,8 +312,12 @@ test('sign-ups only from our own pages', async () => {
   assert.equal((await post({ channel: 'email', email: 'p2@example.com' }, { origin: 'http://localhost:4321', url: 'http://localhost:8788/api/reminders' })).status, 200);
 });
 
-test('limits: three links a day per address, ten sign-ups an hour per caller', async () => {
-  for (let i = 0; i < 3; i++) assert.equal((await post({ channel: 'email', email: 'busy@example.com' })).status, 200);
+test('limits: three sign-up emails a day per address, ten sign-ups an hour per caller', async () => {
+  // An address already on the list gets no email, so pressing again never runs into the limit
+  for (let i = 0; i < 5; i++) assert.equal((await post({ channel: 'email', email: 'busy@example.com' })).status, 200);
+  // The welcome was one email; after a Stop, two links make three, and a fourth is too many
+  await stop('busy@example.com');
+  for (let i = 0; i < 2; i++) assert.equal((await post({ channel: 'email', email: 'busy@example.com' })).status, 200);
   const fourth = await post({ channel: 'email', email: 'busy@example.com' });
   assert.equal(fourth.status, 429);
   assert.match((await fourth.json()).error, /already sent this address/);
@@ -352,8 +370,9 @@ test('Turnstile: required whenever its keys are set', async () => {
 test('the honeypot looks like success and stores nothing', async () => {
   const before = (await DB.prepare('SELECT COUNT(*) AS n FROM broadcast_reminder_pending').first()).n;
   const res = await post({ channel: 'email', email: 'bot@example.com', hp: 'filled' });
-  assert.deepEqual(await res.json(), { ok: true, channel: 'email', pending: true });
+  assert.deepEqual(await res.json(), { ok: true, channel: 'email' }, 'looks just like a real sign-up');
   assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM broadcast_reminder_pending').first()).n, before);
+  assert.equal((await rows('address = ?', 'bot@example.com')).length, 0);
 });
 
 // ─── Texts: never the public ────────────────────────────────────────

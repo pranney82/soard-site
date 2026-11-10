@@ -103,6 +103,7 @@ const BY_TAG = {
   'kid-status': 'staff-kid-hidden',
   'partner-logo': 'staff-partner-logo',
   'zeffy-alerts': 'staff-gift-problem',
+  'reminder-welcome': 'rem-welcome',
   'reminder-confirm': 'rem-confirm',
   'reveal-scheduled': 'rem-scheduled',
   'reveal-moved': 'rem-moved',
@@ -155,6 +156,8 @@ export function entryFor(type, subject = '') {
   if (/^Your SOARD application is waiting|le está esperando/i.test(s)) return 'app-reminder';
   if (/^New makeover application/i.test(s)) return 'staff-new-app';
   if (/^New community project application/i.test(s)) return 'staff-new-org';
+  // A reveal sign-up's welcome says which reveals; the application waitlist's doesn't
+  if (/^You[’']re on the list for (every reveal|.+[’']s? reveal)$/i.test(s)) return 'rem-welcome';
   if (/^You’re on the list|^You're on the list|^Ya está en la lista/i.test(s)) return 'waitlist-confirm';
   if (/^Application for .+ is stuck$/i.test(s)) return 'staff-stuck';
   // A status change summary about a TEST family is a test; any other is the real thing
@@ -188,7 +191,7 @@ export function alertEntry(title = '') {
 
 // Messages whose reader is a family (their address may be mistyped) or staff (a list address may be wrong)
 const FAMILY = new Set(['app-resume', 'app-reminder', 'waitlist-confirm', 'waitlist-open', 'advisory-thanks']);
-const WATCHERS = new Set(['rem-confirm', 'rem-scheduled', 'rem-moved', 'rem-day', 'rem-hour', 'rem-live', 'rem-replay']);
+const WATCHERS = new Set(['rem-welcome', 'rem-confirm', 'rem-scheduled', 'rem-moved', 'rem-day', 'rem-hour', 'rem-live', 'rem-replay']);
 export const audienceOf = (entry) => (FAMILY.has(entry) ? 'family' : WATCHERS.has(entry) ? 'watcher' : entry === 'preview' ? 'you' : entry ? 'staff' : null);
 
 // ─── Writing ────────────────────────────────────────────────────────

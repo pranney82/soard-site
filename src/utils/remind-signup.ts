@@ -4,12 +4,14 @@
  * Every email sign-up for reveal reminders runs through here: the /live/
  * pages' reminder block (one reveal, or every reveal) and the "Get every
  * reveal by email" card in the Coming up band (/live/ and the events page).
- * Nobody is on the list until the address proves it's theirs: /api/reminders
- * emails a link to confirm.
+ * One press and the address is on the list (Peter, Nov 9 2026: no confirm
+ * step); /api/reminders emails it a "You're on the list" note with a Stop
+ * link. Only an address that once pressed Stop is sent a link to confirm
+ * ({ pending: true }), and the form says so.
  *
  * The button is never `disabled` (that drops keyboard focus to the page):
  * while it sends or once it's done it's aria-disabled, shows a spinner or
- * "Sent", and presses do nothing. News goes to the form's status line.
+ * "Done", and presses do nothing. News goes to the form's status line.
  *
  * The quick check (Turnstile) runs while the server asks for one. The page's
  * CSP doesn't load Turnstile, so it runs in a frame /api/reminders serves
@@ -234,7 +236,7 @@ export function wireRemindForm(form: HTMLFormElement, { checkBox, kid, source, t
   }
   let doneFor = ''; // the reveal the finished sign-up was for ('' = every reveal, which covers any)
   let doneHere = false; // made in this form (not shown here because another form's covered it)
-  function markDone(email: string, forKid: string, here: boolean) {
+  function markDone(email: string, forKid: string, here: boolean, pending = false) {
     doneFor = forKid;
     doneHere = here;
     retryWhenChecked = '';
@@ -243,17 +245,19 @@ export function wireRemindForm(form: HTMLFormElement, { checkBox, kid, source, t
     setState(false);
     // The check has nothing more to ask of this sign-up
     showCheck(false);
-    say(`Check your email to confirm. We sent a link to ${email}. Nothing comes until you tap it.`);
+    say(pending
+      ? `Check your email to confirm. We sent a link to ${email}. Nothing comes until you tap it.`
+      : `You're on the list. We'll email ${email} about ${forKid ? 'this reveal' : 'every reveal'}.`);
     form.dispatchEvent(new Event('remind-done'));
   }
   // A sign-up in another form here: one for every reveal covers this form's too, and one for this form's reveal is
   // this form's; either way it says so, not "Email me" again (unless someone is busy with it)
   function onSigned(e: Event) {
-    const d = (e as CustomEvent<{ kid: string; email: string; from: HTMLFormElement }>).detail;
+    const d = (e as CustomEvent<{ kid: string; email: string; from: HTMLFormElement; pending?: boolean }>).detail;
     if (!d || d.from === form || done() || busy || form.contains(document.activeElement)) return;
     if (d.kid && d.kid !== kid()) return;
     input.value = d.email;
-    markDone(d.email, d.kid, false);
+    markDone(d.email, d.kid, false, !!d.pending);
   }
   document.addEventListener('remind-signed', onSigned);
   function reset() {
@@ -302,10 +306,11 @@ export function wireRemindForm(form: HTMLFormElement, { checkBox, kid, source, t
       return;
     }
     if (ok) {
-      markDone(email, kid(), true);
+      const pending = !!data.pending;
+      markDone(email, kid(), true, pending);
       showAnswer();
       // Any other reminder form on the page this covers shows it too, rather than asking again
-      document.dispatchEvent(new CustomEvent('remind-signed', { detail: { kid: kid(), email, from: form } }));
+      document.dispatchEvent(new CustomEvent('remind-signed', { detail: { kid: kid(), email, from: form, pending } }));
     } else {
       retryWhenChecked = data.check && !checkBlocked ? email : '';
       setState(false);

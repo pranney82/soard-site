@@ -7,7 +7,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmEmail, reminderEmail, reminderPlan, whenParts } from '../functions/api/_broadcast-notify.js';
+import { confirmEmail, reminderEmail, reminderPlan, welcomeEmail, whenParts } from '../functions/api/_broadcast-notify.js';
 import { reminderArgs } from '../functions/api/_broadcast.js';
 
 const FULL = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan-2026/1788202617604-dylanSOARD-23.jpeg/public';
@@ -195,6 +195,24 @@ test('the confirmation is one job: one button, what they\'ll hear, and how to ig
   assert.doesNotMatch(m.text, /an hour before|&#/);
   assert.match(m.text, /Ignore this email/);
   assert.match(confirmEmail({ confirmUrl: 'u', kidName: null }).text, /our live room reveals: when it gets a date/);
+});
+
+test('the welcome: on the list already, what they\'ll hear, the live page, and a Stop for anyone who didn\'t ask', () => {
+  const stopUrl = 'https://sunshineonaranneyday.com/api/reminders?unsubscribe=tok&x=1';
+  const m = welcomeEmail({ stopUrl, kidName: 'Dylan', kidSlug: 'dylan-2026', hours: [24, 1] });
+  assert.equal(m.subject, 'You’re on the list for Dylan’s reveal');
+  assert.equal(m.html.match(/<h1[^>]*>([^<]+)/)[1], 'You’re on the list');
+  assert.match(m.text, /Dylan’s room reveal: when it gets a date, the day before, an hour before, when we go live, and when the replay is up\. Nothing else, ever\./);
+  assert.match(m.html, /class="btn-big"/);
+  assert.match(m.html, /<a href="https:\/\/sunshineonaranneyday\.com\/live\/dylan-2026\/"/, 'the big button is Dylan’s live page');
+  assert.match(m.html, /href="https:\/\/sunshineonaranneyday\.com\/api\/reminders\?unsubscribe=tok&amp;x=1"[^>]*>Stop these reminders/);
+  assert.match(m.text, /Stop these reminders: https:\/\/sunshineonaranneyday\.com\/api\/reminders\?unsubscribe=tok&x=1/);
+  assert.doesNotMatch(m.text, /confirm|tap below|once more/i, 'nothing left to do');
+  assert.doesNotMatch(`${m.subject} ${m.text}`, /—/, 'no em dashes');
+  const all = welcomeEmail({ stopUrl, kidName: null });
+  assert.equal(all.subject, 'You’re on the list for every reveal');
+  assert.match(all.text, /every live room reveal: when it gets a date/);
+  assert.match(all.text, /See what’s coming up: https:\/\/sunshineonaranneyday\.com\/live\//);
 });
 
 test('a late signup and a same-day email promise only what can still arrive', () => {

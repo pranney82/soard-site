@@ -626,9 +626,37 @@ export function reminderPush({ kind, kidName, scheduledAt, tz, liveUrl, replayUr
   return { ...m, icon: '/apple-touch-icon.png', image: image || undefined, tag: `reveal-${kind}` };
 }
 
-// ─── Sign-up confirmations ──────────────────────────────────────────
+// ─── Sign-up emails ─────────────────────────────────────────────────
 
-/** The one email a new address gets before any reminder: a link that confirms it */
+/**
+ * The email a new address gets the moment it signs up. There's no confirm
+ * step (Peter, Nov 9 2026: one press of "Email me" and you're on the list, as
+ * the newsletter has always been): this says what's coming, and anyone who
+ * didn't ask stops it in one tap.
+ */
+export function welcomeEmail({ stopUrl, kidName, kidSlug = null, hours = [24, 1], dated = false, left = Infinity, site = SITE_ORIGIN }) {
+  const name = kidName ? curly(kidName) : '';
+  const what = name ? `${name}’s room reveal` : 'every live room reveal';
+  const watchUrl = kidSlug && name ? `${site}/live/${encodeURIComponent(kidSlug)}/` : `${site}/live/`;
+  const t = {
+    subject: name ? `You’re on the list for ${name}’s reveal` : 'You’re on the list for every reveal',
+    preheader: `We’ll email you about ${what}. Nothing else, ever.`,
+    heading: 'You’re on the list',
+    intro: `We’ll email you about ${what}: ${reminderPlan(hours, { dated, left })}. Nothing else, ever.`,
+    cta: name ? `${name}’s live page` : 'See what’s coming up',
+    ignore: 'Didn’t sign up? Tap Stop these reminders below and you won’t hear from us again.',
+  };
+  const footerHtml = `You got this because this address was entered on a reveal page at sunshineonaranneyday.com. <a class="muted" href="${esc(stopUrl)}" target="_blank" style="color:#6B6C72;text-decoration:underline;">Stop these reminders</a>.`;
+  const html = emailShell({
+    preheader: t.preheader, eyebrow: 'Reveal reminders', heading: t.heading, intro: esc(t.intro),
+    bodyHtml: button(t.cta, watchUrl, 'primary', { big: true }) + quiet(esc(t.ignore)),
+    footerHtml, banner: logoBand(site),
+  });
+  const text = `${t.heading}\n\n${t.intro}\n\n${t.cta}: ${watchUrl}\n\n${t.ignore}\n\nStop these reminders: ${stopUrl}`;
+  return { subject: t.subject, preheader: t.preheader, html, text };
+}
+
+/** For someone who pressed Stop before and signs up again: only their own tap undoes their Stop */
 export function confirmEmail({ confirmUrl, kidName, hours = [24, 1], dated = false, left = Infinity, site = SITE_ORIGIN }) {
   const name = kidName ? curly(kidName) : '';
   const what = name ? `${name}’s room reveal` : 'our live room reveals';

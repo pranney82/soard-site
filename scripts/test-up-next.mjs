@@ -144,7 +144,7 @@ async function open(path, { width = 1440, height = 900, upcoming = UPCOMING, ua 
       const body = JSON.parse(req.postData() || '{}');
       posts.push(body);
       // answer(body) → [status, json], or 'hang' to never answer
-      const a = answer ? answer(body) : [200, { ok: true, channel: 'email', pending: true }];
+      const a = answer ? answer(body) : [200, { ok: true, channel: 'email' }];
       return a === 'hang' ? undefined : json(a[1], a[0]);
     }
     if (url.pathname === '/api/live-ws' || url.pathname === '/api/live-messages') return req.abort();
@@ -388,6 +388,18 @@ for (const width of [1440, 820, 390]) {
     await page.close();
   }
 
+  // An address that once pressed Stop: the server emails it a link to come back (pending), and the form says so
+  {
+    const { page } = await open('/events/', { answer: () => [200, { ok: true, channel: 'email', pending: true }] });
+    await page.evaluate(() => document.querySelector('#reveals [data-upn-mail]').scrollIntoView({ block: 'center' }));
+    await page.type('#reveals-email', 'back@gmail.com');
+    await page.click('#reveals [data-upn-mail] button[type="submit"]');
+    await page.waitForSelector('#reveals [data-upn-mail-form].is-done', { timeout: 5000 }).catch(() => {});
+    const note = await page.$eval('#reveals [data-upn-mail] .remind-note', (n) => n.textContent).catch(() => '');
+    ok(/Check your email to confirm\. We sent a link to back@gmail\.com/.test(note), 'an address that pressed Stop before: the note says to check the email for the link', note);
+    await page.close();
+  }
+
   // Signing up: every reveal (no kid), counted as the events page's card, and a typo asked about first
   {
     const posts = [];
@@ -405,7 +417,7 @@ for (const width of [1440, 820, 390]) {
       const f = document.querySelector('#reveals [data-upn-mail-form]');
       return { done: f.classList.contains('is-done'), note: f.querySelector('.remind-note').textContent, btn: f.querySelector('button[type="submit"]').innerText.trim() };
     });
-    ok(done.done && /Check your email to confirm\. We sent a link to fan@gmail\.com/.test(done.note) && done.btn === 'Sent', 'signs up: the button says Sent, the note says to check the email', JSON.stringify(done));
+    ok(done.done && /You're on the list\. We'll email fan@gmail\.com about every reveal\./.test(done.note) && done.btn === 'Done', 'one press signs up: the button says Done, the note says they are on the list (nothing to confirm)', JSON.stringify(done));
     const body = posts[0] || {};
     ok(posts.length === 1 && body.channel === 'email' && body.email === 'fan@gmail.com' && !('kidSlug' in body && body.kidSlug) && body.source === 'events-all', 'the sign-up is for every reveal, from the events card', JSON.stringify(posts));
     await page.type('#reveals-email', 'x');
@@ -475,7 +487,7 @@ for (const width of [1440, 820, 390]) {
     await page.close();
   }
 
-  // "Email me" → "Check your email" moves nothing: not the box, not the button, not the calendar card
+  // "Email me" → "You're on the list" moves nothing: not the box, not the button, not the calendar card
   for (const [width, height] of [[1024, 768], [1100, 800], [1440, 900], [390, 844]]) {
     const { page } = await open('/events/', { width, height });
     await page.evaluate(() => document.querySelector('#reveals [data-upn-mail]').scrollIntoView({ block: 'center' }));
@@ -522,7 +534,7 @@ for (const width of [1440, 820, 390]) {
     await page.keyboard.press('Enter');
     await page.waitForSelector('#reveals [data-upn-mail-form].is-done', { timeout: 5000 }).catch(() => {});
     const f = await page.evaluate(() => { const b = document.querySelector('#reveals [data-upn-mail] button[type="submit"]'); return { onBtn: document.activeElement === b, aria: b.getAttribute('aria-disabled'), disabled: b.disabled, note: document.querySelector('#reveals [data-upn-mail] .remind-note').textContent }; });
-    ok(f.onBtn && f.aria === 'true' && !f.disabled && /Check your email to confirm/.test(f.note), 'keyboard sign-up: focus stays put on the button, the news is on the status line', JSON.stringify(f));
+    ok(f.onBtn && f.aria === 'true' && !f.disabled && /You're on the list/.test(f.note), 'keyboard sign-up: focus stays put on the button, the news is on the status line', JSON.stringify(f));
     await page.keyboard.press('Enter');
     await wait(200);
     ok(await page.$eval('#reveals [data-upn-mail-form]', (fm) => fm.classList.contains('is-done')), 'pressing the Sent button again does nothing');
@@ -781,7 +793,7 @@ for (const width of [1440, 820, 390]) {
   // The settings answer fails, but the server wants the check: the form loads the check and goes through
   {
     const posts = [];
-    const answer = (b) => (b.turnstileToken ? [200, { ok: true, channel: 'email', pending: true }] : [403, { ok: false, code: 'turnstile', error: 'Please finish the quick check, then try again.' }]);
+    const answer = (b) => (b.turnstileToken ? [200, { ok: true, channel: 'email' }] : [403, { ok: false, code: 'turnstile', error: 'Please finish the quick check, then try again.' }]);
     const { page } = await open('/events/', { posts, turnstile: '0xTEST', config: 'fail', checkSays: [{ ready: true }, { token: 'tok-c' }], answer });
     await page.type('#reveals-email', 'fan@example.com');
     await page.click('#reveals [data-upn-mail] button[type="submit"]');
@@ -1268,7 +1280,7 @@ for (const width of [1440, 820, 390]) {
     await page.evaluate(() => { document.activeElement?.blur(); document.body.focus(); });
     await wait(400);
     const r = await page.evaluate(() => { const m = document.querySelector('#up-next [data-upn-mail]'); return { shown: m.getBoundingClientRect().height > 0, note: m.querySelector('.remind-note').textContent }; });
-    ok(r.shown && /Check your email to confirm/.test(r.note), '/live/: the band’s "Sent" stays when the broadcast moves on', JSON.stringify(r));
+    ok(r.shown && /You're on the list/.test(r.note), '/live/: the band’s "Done" stays when the broadcast moves on', JSON.stringify(r));
     await page.close();
   }
 
@@ -1375,7 +1387,7 @@ for (const width of [1440, 820, 390]) {
     await page.evaluate(() => { document.activeElement?.blur(); document.body.focus(); });
     await wait(500);
     const mid = await page.evaluate(() => ({ band: getComputedStyle(document.querySelector('.live-next')).display !== 'none', note: document.querySelector('#up-next .remind-note').textContent, page: document.querySelector('[data-live="form-email"]').classList.contains('is-done') }));
-    ok(mid.band && /Check your email/.test(mid.note) && mid.page, '/live/ → idle after a band sign-up: the band stays on screen with its "Sent", and the page form shows it too', JSON.stringify(mid));
+    ok(mid.band && /You're on the list/.test(mid.note) && mid.page, '/live/ → idle after a band sign-up: the band stays on screen with its "Done", and the page form shows it too', JSON.stringify(mid));
     // Scroll down past it to the past reveals: the band goes, and what's on screen doesn't move
     await page.evaluate(() => document.querySelector('#past-reveals').scrollIntoView({ block: 'start' }));
     await wait(300);
