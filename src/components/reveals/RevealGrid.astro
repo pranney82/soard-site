@@ -8,7 +8,9 @@
  *
  * Cards are links to the video's watch page (the no-JS fallback); with JS
  * a plain click opens the in-page player instead. Modified clicks
- * (cmd/ctrl/shift, middle button) keep the browser's default.
+ * (cmd/ctrl/shift, middle button) keep the browser's default. A link with the
+ * same data-rv-open attributes outside any grid (the /reveals/ hero's latest
+ * reveal) plays in the page's first grid's player.
  */
 import type { Reveal } from '../../utils/reveals';
 import { nextRevealGridId, STREAM_CUSTOMER_HOST } from '../../utils/reveals';
@@ -310,7 +312,19 @@ function meta(r: Reveal) {
       e.preventDefault();
       open(link);
     });
+    (root as HTMLElement & { rvOpen?: (link: HTMLElement) => void }).rvOpen = open;
   }
+
+  // A play link outside any grid uses the page's first grid's player
+  document.addEventListener('click', (e) => {
+    const link = (e.target as HTMLElement).closest<HTMLElement>('[data-rv-open]');
+    if (!link || link.closest('[data-rv]')) return;
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const first = document.querySelector<HTMLElement & { rvOpen?: (link: HTMLElement) => void }>('[data-rv][data-rv-bound]');
+    if (!first?.rvOpen) return;
+    e.preventDefault();
+    first.rvOpen(link);
+  });
 
   function bindFilter(root: HTMLElement, bar: HTMLElement) {
     const chips = Array.from(bar.querySelectorAll<HTMLButtonElement>('[data-rv-year]'));
