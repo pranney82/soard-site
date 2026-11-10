@@ -17,8 +17,13 @@
  *     captions (address block crop), partners from the directory, the video
  *     the page plays, validation, the saved record, Preview, a new kid, delete
  *   - Profiles to tidy: broken partner logos, room counts, logo names, alt text, Stop
- *   - the side panel (status, profile health), Discard with Undo, adding a kid
- *     from the dialog, the photo wall, "/" to search, broken logos repaired
+ *   - the side panel (status, profile health), Discard with Undo, the photo
+ *     wall, "/" to search, broken logos repaired
+ *   - Upload photos and videos (no Add a kid: profiles are made on approval):
+ *     files waiting for a kid, drafts offered, gallery order, alt text, the
+ *     page's video vs. one kept in Stream (and swapping, Undo), duplicates,
+ *     empty and failed files, Try again, a save someone else beat, past the
+ *     30 the page shows, drops anywhere on the dialog, Stop, phone sheet
  *   - history: versions after saves, what each changed, restoring one (and
  *     Undo), Recently deleted and bringing a profile back
  *   - a photo's focal point: set by clicking the photo, previews, saved
@@ -38,6 +43,7 @@ import { join } from 'node:path';
 import { hoverSweep } from './lib/hover-sweep.mjs';
 import * as KS from '../public/admin/kids-shared.js';
 import { answerAsks } from './lib/ask.mjs';
+import { tiff, jpeg, heic as heicFile, pngImage } from '../tests/lib/exif-fixtures.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/kids-admin/');
@@ -74,10 +80,14 @@ const BROKEN_IDS = ['partners/real-floors-commercial', 'partners/usa-insulation'
 const isBrokenImage = (url) => BROKEN_IDS.some((id) => url.includes(`/${id}/w=`) || url.endsWith(`/${id}/public`));
 writeFileSync(PNG, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64'));
 
+// A Stream video id (32 hex), the nth one uploaded
+const VID = (n) => n.toString(16).padStart(32, 'c');
+const TUS = 'https://upload.videodelivery.net/tus/';
+
 // ── The fake API ──
 function makeApi() {
   const kids = structuredClone(KIDS0);
-  const st = { kids, calls: [], waiting: new Set(), uploads: 0, versions: {}, vid: 0 };
+  const st = { kids, calls: [], waiting: new Set(), uploads: 0, versions: {}, vid: 0, videos: 0, tus: {}, conflicts: 0, ids: [] };
   // The history the server keeps (functions/api/_content-history.js), in memory
   const version = (slug, data, by, action = 'save') => { (st.versions[slug] ||= []).push({ id: ++st.vid, at: new Date(Date.now() + st.vid).toISOString(), by, action, data: structuredClone(data) }); };
   const IGN = new Set(['order', 'sortOrder', 'photoCount']);
@@ -103,6 +113,9 @@ function makeApi() {
     }
     if (p === '/api/save-content') {
       const b = body();
+      // Someone else saved between this read and this save (once, when asked)
+      if (st.conflictOnce) { st.conflictOnce = false; st.conflicts++; return json({ success: false, error: 'Conflict: this item was changed since you loaded it. Reload to get the latest version.' }, 409); }
+      if (st.failSaves) { st.failSaves--; return json({ success: false, error: 'D1 is busy' }, 500); }
       const slug = b.path.match(/kids\/(.+)\.json$/)?.[1];
       const previous = st.kids[slug];
       st.kids[slug] = JSON.parse(b.content);
@@ -138,8 +151,29 @@ function makeApi() {
       return json({ success: true, versions: list.map((v, i) => ({ id: v.id, at: v.at, by: v.by, action: v.action, changed: i ? changed(list[i - 1].data, v.data) : null })).reverse() });
     }
     if (p === '/api/upload-image') {
+      if (st.failUploads) return json({ success: false, error: 'Image too large. Maximum size is 10 MB.' }, 413);
       st.uploads++;
-      return json({ success: true, imageId: `kids/test/up-${st.uploads}`, imageUrl: `https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/test/up-${st.uploads}/public` });
+      const n = st.uploads;
+      // The image name, checked as functions/api/upload-image.js checks it (a binary body needs fetchPostData)
+      const named = req.fetchPostData().catch(() => null).then((raw) => {
+        const id = String(raw ?? req.postData() ?? '').match(/name="id"\r\n\r\n([^\r\n]*)/)?.[1] || '';
+        st.ids.push(id);
+        // (a body Chrome can't hand over, like a file made in the page, has no name to check)
+        return id && (id.length > 256 || id.includes('..') || !/^[A-Za-z0-9][A-Za-z0-9/_.-]*$/.test(id)) ? 'Invalid image id. Use letters, numbers, and / _ . - only (max 256 chars).' : null;
+      });
+      // A request the page stopped can't be answered any more
+      const answer = () => named.then((bad) => (bad ? json({ success: false, error: bad }, 400) : json({ success: true, imageId: `kids/test/up-${n}`, imageUrl: `https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/test/up-${n}/public` }))).catch(() => {});
+      if (st.slowFirst) { const ms = st.slowFirst; st.slowFirst = 0; setTimeout(answer, ms); return true; }
+      if (st.slowUploads) { setTimeout(answer, st.slowUploads); return true; }
+      answer();
+      return true;
+    }
+    if (p === '/api/kid-homes' && st.slowHomes) { const ms = st.slowHomes; setTimeout(() => Promise.resolve().then(() => json({ success: true, homes: [{ slug: 'axel', lat: 33.749, lng: -84.388 }] })).catch(() => {}), ms); return true; }
+    if (p === '/api/kid-homes') return st.homesFail ? json({ success: false, error: 'JobTread is down' }, 500) : json({ success: true, homes: [{ slug: 'axel', lat: 33.749, lng: -84.388 }] });
+    if (p === '/api/upload-video') {
+      const uid = VID(++st.videos);
+      st.tus[uid] = body().fileSize;
+      return json({ success: true, uploadUrl: `${TUS}${uid}`, videoId: uid });
     }
     if (p === '/api/generate') {
       const b = body();
@@ -164,10 +198,21 @@ function makeApi() {
     if (p.startsWith('/api/live-ws')) { req.abort(); return true; }
     return json({ success: true, ok: true });
   };
-  return { st, respond };
+  // Stream's resumable upload (tus) on its own host, where a video's bytes go after /api/upload-video
+  const tus = (req) => {
+    const len = String(st.tus[new URL(req.url()).pathname.split('/').pop()] || 0);
+    const h = { 'Access-Control-Allow-Origin': SITE, 'Access-Control-Allow-Methods': 'HEAD, PATCH, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Tus-Resumable, Upload-Offset, Upload-Length, Content-Type',
+      'Access-Control-Expose-Headers': 'Upload-Offset, Upload-Length, Tus-Resumable, Location', 'Tus-Resumable': '1.0.0', 'Cache-Control': 'no-store' };
+    if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: h, body: '' });
+    if (req.method() === 'HEAD') return req.respond({ status: 200, headers: { ...h, 'Upload-Offset': '0', 'Upload-Length': len }, body: '' });
+    st.tusPatches = (st.tusPatches || 0) + 1;
+    return req.respond({ status: 204, headers: { ...h, 'Upload-Offset': len }, body: '' });
+  };
+  return { st, respond, tus };
 }
 
-async function open(browser, { width, height, mobile }) {
+// prep(st): change the fake data before the admin loads it
+async function open(browser, { width, height, mobile, prep }) {
   const page = await browser.newPage();
   await page.setViewport({ width, height, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 1 });
   const errors = [];
@@ -176,9 +221,11 @@ async function open(browser, { width, height, mobile }) {
   page.on('dialog', (d) => d.accept());
   await answerAsks(page);
   const api = makeApi();
+  prep?.(api.st);
   await page.setRequestInterception(true);
   page.on('request', (req) => {
     if (req.isInterceptResolutionHandled()) return;
+    if (req.url().startsWith(TUS)) return api.tus(req);
     if (new URL(req.url()).origin === SITE && api.respond(req) !== false) return;
     // Images: answered locally (the network isn't what's under test)
     if (req.resourceType() === 'image' && /imagedelivery|i\.ytimg|videodelivery/.test(req.url())) {
@@ -628,25 +675,425 @@ try {
     await page.close();
   }
 
-  console.log('Desktop 1440: a new kid, the tidy tool');
+  console.log('Desktop 1440: uploading photos and videos, the tidy tool');
   {
-    const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false });
+    // Peter's page as a new family's: made hidden when they're approved
+    // AJ's gallery has a photo from an earlier upload (images are named kids/<slug>/<time>-<file>)
+    const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false, prep: (st) => {
+      st.kids.peter = { ...st.kids.peter, publishStatus: 'draft' };
+      st.kids.aj = { ...st.kids.aj, photos: [...st.kids.aj.photos, { url: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/aj/1762700000000-old-1.jpg/public', alt: 'AJ in his room' }] };
+    } });
+    await page.click('.dnew-btn');
+    await sleep(250);
+    const created = await page.$$eval('[role="menuitem"]', (m) => m.map((x) => x.textContent.trim()));
+    ok(created.length && !created.some((t) => /^Kid\b/.test(t)), `the Dashboard’s Create new has no Kid (${created.join(', ')})`);
+    await page.keyboard.press('Escape');
     await goKids(page, false);
-    await clickText(page, '.kd-head__actions .btn-primary', 'Add a kid');
-    await page.waitForSelector('#kd-new-name');
-    ok(await page.evaluate(() => document.activeElement?.id === 'kd-new-name'), 'Add a kid opens a dialog, ready to type');
-    ok(await page.$eval('.kd-status-pick [aria-checked="true"]', (e) => e.textContent.startsWith('In build')), 'a new kid starts in build');
-    await page.type('#kd-new-name', 'Dylan');
-    ok(await page.evaluate(() => /already a Dylan/.test(document.querySelector('.kd-create').textContent) && /\/kids\/dylan-2026-2\//.test(document.querySelector('.kd-create').textContent)), 'a name already in use says so, with the new address');
-    await page.click('#kd-new-name', { clickCount: 3 });
-    await page.type('#kd-new-name', 'Test Kid');
-    ok(await page.evaluate(() => /\/kids\/test-kid\//.test(document.querySelector('.kd-create').textContent)), 'the web address follows the name');
-    await page.keyboard.press('Enter');
-    await page.waitForSelector('.kd-ed-head', { timeout: 10000 }).catch(async (e) => { console.log('DEBUG main:', (await page.evaluate(() => document.querySelector('.main')?.innerText.slice(0, 600))).replace(/\n+/g, ' | ')); console.log('DEBUG errors:', errors); throw e; });
+    ok(!(await page.evaluate(() => /Add a kid/.test(document.querySelector('.kd-head')?.textContent || ''))), 'Kids has no Add a kid: profiles are made when a family is approved');
+    await clickText(page, '.kd-head__actions .btn-primary', 'Upload photos and videos');
+    await page.waitForSelector('#kd-up-kid');
+    await sleep(200);
+    ok(await page.evaluate(() => document.activeElement?.id === 'kd-up-kid'), 'Upload photos and videos opens on “Whose page?”');
+    const opts = await page.$$eval('#kd-up-kid option', (o) => o.filter((x) => x.value).map((x) => ({ v: x.value, t: x.textContent, g: x.parentElement.label || '' })));
+    ok(opts.length === Object.keys(api.st.kids).length, `every kid is offered (${opts.length} of ${Object.keys(api.st.kids).length})`);
+    ok(opts.find((o) => o.v === 'peter')?.t === 'Peter (2026) · draft', 'a draft page is offered, marked as a draft');
+    ok(opts.find((o) => o.v === 'anna')?.g === 'Completed in 2015' && opts.find((o) => o.v === 'colin')?.g === 'In build', 'kids are grouped as the list groups them');
+    ok(/^Dylan \(20\d\d\)$/.test(opts.find((o) => o.v === 'dylan')?.t || '') && /^Dylan \(2026\)$/.test(opts.find((o) => o.v === 'dylan-2026')?.t || ''), 'two kids with one name both show their year');
+    await shot(page, 'desk-upload-open', { grow: false });
+
+    const F = (name, buf) => { const f = join(OUT, name); writeFileSync(f, buf); return f; };
+    const png = readFileSync(PNG);
+    const files = {
+      a2: F('a-2.png', png), a10: F('a-10.png', png), a3: F('a-3.png', png), txt: F('notes.txt', 'hello'), empty: F('empty.png', ''),
+      v1: F('clip-1.mp4', Buffer.alloc(2048, 1)), v2: F('clip-2.mov', Buffer.alloc(4096, 2)), v3: F('clip-3.mov', Buffer.alloc(3072, 3)), v4: F('clip-4.mp4', Buffer.alloc(1024, 4)),
+      old: F('old-1.png', png), new1: F('new-1.png', png), live: F('IMG_7.jpg', png), liveClip: F('IMG_7.mov', Buffer.alloc(1024, 5)),
+      reveal: F('reveal-9.jpg', png), revealVid: F('reveal-9.mp4', Buffer.alloc(2048, 6)), annaName: F('anna-reveal-1.png', png), dots: F('Photo 1..png', png),
+      // Phone photos taken at Axel's home (the fake /api/kid-homes puts it at 33.749, -84.388)
+      gps: F('gps-1.jpg', jpeg(tiff({ lat: 33.7492, lng: -84.3883, taken: '2026:10:25 14:30:00' }))),
+      gps2: F('gps-2.jpg', jpeg(tiff({ lat: 33.7489, lng: -84.3879, taken: '2026:10:25 14:31:00', le: true }))),
+      d: Array.from({ length: 26 }, (_, i) => F(`d-${i + 1}.png`, png)),
+      ellie: F('ellie-bedroom-01.png', png), x1: F('x-1.png', png), y1: F('y-1.png', png),
+      gps3: F('gps-3.jpg', jpeg(tiff({ lat: 33.7490, lng: -84.3881, taken: '2026:10:25 14:32:00' }))),
+      gps4: F('gps-4.jpg', jpeg(tiff({ lat: 33.7491, lng: -84.3880, taken: '2026:10:25 14:33:00' }))),
+      long: F(`${'reveal-day-'.repeat(20)}final.png`, png),
+      heic: F('IMG_8.HEIC', heicFile(tiff({ lat: 33.7491, lng: -84.3881, taken: '2026:10:25 15:00:00' }))), heicClip: F('IMG_8.MOV', Buffer.alloc(3000, 7)),
+      c: Array.from({ length: 6 }, (_, i) => F(`c-${i + 1}.png`, png)),
+      b: Array.from({ length: 8 }, (_, i) => F(`b-${i + 1}.png`, png)),
+    };
+    mkdirSync(join(OUT, 'web'), { recursive: true });
+    mkdirSync(join(OUT, 'full'), { recursive: true });
+    const webCopy = join(OUT, 'web', 'Axel-001.png');
+    const fullCopy = join(OUT, 'full', 'Axel-001.png');
+    writeFileSync(webCopy, png);
+    writeFileSync(fullCopy, Buffer.concat([png, Buffer.alloc(5000)]));
+    const chooseFiles = async (...list) => { await (await page.$('.kd-up input[type=file]')).uploadFile(...list); await sleep(150); };
+    const idle = () => page.waitForFunction(() => [...document.querySelectorAll('.kd-dialog__foot .btn')].some((b) => /^(Done|Close)$/.test(b.textContent.trim())), { timeout: 20000 })
+      .catch(async (e) => { console.log('DEBUG upload dialog:', (await page.evaluate(() => [...document.querySelectorAll('.kd-up-kid, .kd-up-notice, .kd-dialog__foot')].map((e) => e.innerText).join(' || ') || 'no dialog')).replace(/\n+/g, ' | ').slice(0, 1500)); console.log('DEBUG errors:', errors); throw e; });
+    const card = (name) => page.evaluate((n) => document.querySelector(`.kd-up-kid[aria-label="${n}’s uploads"]`)?.textContent.replace(/\s+/g, ' ') || '', name);
+
+    // Chosen before a kid is, and nothing in them says whose: they wait to be checked
+    await chooseFiles(files.a10, files.a2, files.txt);
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    ok(await page.evaluate(() => /Couldn’t tell whose these are/.test(document.querySelector('.kd-up-held')?.textContent || '') && document.querySelector('.kd-up-held .btn-primary').disabled),
+      'files nothing says the kid of wait in “Check whose page”, with Upload off until a kid is chosen');
+    ok(callsTo(api, '/api/upload-image') === 0, 'nothing uploads before a kid is chosen');
+    const anna0 = structuredClone(api.st.kids.anna);
+    const ups0 = api.st.uploads;
+    await page.select('#kd-up-kid', 'anna');
+    await sleep(200);
+    ok(await page.$eval('.kd-up-group select', (x) => x.value) === 'anna' && callsTo(api, '/api/upload-image') === 0, 'choosing Anna up top fills the group in; still nothing uploads');
+    await clickText(page, '.kd-up-held .btn-primary', 'Upload to Anna’s page');
+    await idle();
+    const anna = api.st.kids.anna;
+    ok(anna.photos.length === anna0.photos.length + 2 && anna.photoCount === anna.photos.length, `choosing Anna uploads them into her gallery (${anna0.photos.length} → ${anna.photos.length})`);
+    ok(JSON.stringify(anna.photos.slice(0, anna0.photos.length).map((x) => x.url)) === JSON.stringify(anna0.photos.map((x) => x.url)) && anna.heroImage === anna0.heroImage, 'the photos already there keep their place, and the main photo stays');
+    ok(JSON.stringify(anna.photos.slice(-2).map((x) => x.url.match(/up-(\d+)/)?.[1])) === JSON.stringify([ups0 + 1, ups0 + 2].map(String)), 'the new ones go last, in file-name order (a-2 before a-10)');
+    ok(anna.photos.slice(-2).every((x) => /^Described photo/.test(x.alt)), 'the new photos the page shows get alt text');
+    ok(anna.name === anna0.name && anna.bio === anna0.bio && anna.status === anna0.status, 'nothing else on the profile changes');
+    ok(/notes\.txt/.test(await page.$eval('.kd-up-notice', (e) => e.textContent)), 'a file that isn’t a photo or video is left out, by name');
+    ok(/2 photos added to Anna’s gallery\. Alt text written for 2\./.test(await card('Anna')), `Anna’s card says what happened (${(await card('Anna')).slice(0, 120)})`);
+
+    // Whose they are, guessed (from a file name, from where it was taken), and put right before anything uploads
+    const heldText = () => page.$eval('.kd-up-held', (e) => e.textContent.replace(/\s+/g, ' ')).catch(() => '');
+    await page.select('#kd-up-kid', '');
+    const upsG = api.st.uploads;
+    await chooseFiles(files.annaName);
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    ok(/Named like “anna-reveal-1”/.test(await heldText()) && await page.$eval('.kd-up-group select', (x) => x.value) === 'anna', `a file named for a kid is guessed as theirs (${(await heldText()).slice(0, 140)})`);
+    await clickText(page, '.kd-up-held .btn', 'Leave them out');
+    await sleep(200);
+    ok(!(await page.$('.kd-up-held')) && api.st.uploads === upsG, '“Leave them out” drops them, with nothing uploaded');
+    const aj1 = api.st.kids.aj.photos.length;
+    const axel1 = api.st.kids.axel.photos.length;
+    await chooseFiles(files.gps);
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    ok(/Taken at Axel’s home/.test(await heldText()) && await page.$eval('.kd-up-group select', (x) => x.value) === 'axel', `a phone photo taken at a family’s home is guessed as that kid’s (${(await heldText()).slice(0, 140)})`);
+    await shot(page, 'desk-upload-guess', { grow: false });
+    await page.select('.kd-up-group select', 'aj');
+    await sleep(150);
+    ok(/You changed it from Axel/.test(await heldText()), 'a wrong guess is put right in place, and says so');
+    await clickText(page, '.kd-up-held .btn-primary', 'Upload to AJ’s page');
+    await idle();
+    ok(api.st.kids.aj.photos.length === aj1 + 1 && api.st.kids.axel.photos.length === axel1, 'it goes to the kid chosen, not the guess');
+    // A kid chosen up top, and a photo that says it's someone else's: it waits to be checked
+    await page.select('#kd-up-kid', 'anna');
+    const annaG = api.st.kids.anna.photos.length;
+    await chooseFiles(files.gps2);
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    ok(/Taken at Axel’s home/.test(await heldText()) && api.st.kids.anna.photos.length === annaG, 'with Anna chosen, a photo taken at Axel’s home waits to be checked instead of going to Anna');
+    // More while it waits: a file no one can tell joins the kid chosen now, never an older choice; the same file again is one file
+    await chooseFiles(files.x1, files.gps3);
+    await page.waitForFunction(() => document.querySelectorAll('.kd-up-group').length === 2, { timeout: 10000 }).catch(() => {});
+    await page.select('#kd-up-kid', 'ayden');
+    await chooseFiles(files.y1, files.x1, files.gps4);
+    await page.waitForFunction(() => document.querySelectorAll('.kd-up-group').length === 3, { timeout: 10000 }).catch(() => {});
+    const groupsNow = await page.$$eval('.kd-up-group', (gs) => gs.map((g) => `${g.querySelector('select').value}:${g.querySelector('strong').textContent}`));
+    ok(groupsNow.includes('anna:1 photo') && groupsNow.includes('ayden:1 photo'), `a file added after switching to Ayden waits for Ayden, not Anna (${groupsNow.join(', ')})`);
+    ok(/1 file was already added/.test(await page.$eval('.kd-up-notice', (e) => e.textContent).catch(() => '')), 'the same file added again while it waits is one file');
+    ok((await page.$$eval('label[for^="kd-up-g-"]', (ls) => ls.map((l) => l.textContent.trim()))).includes('Whose page is this photo for?'), 'a group of one reads “this photo” to a screen reader');
+    await clickText(page, '.kd-up-held .btn', 'Leave them all out');
+    await sleep(200);
+    // A name two kids share goes to the one chosen
+    await page.select('#kd-up-kid', 'ellie');
+    const ellie0 = api.st.kids.ellie.photos.length;
+    await chooseFiles(files.ellie);
+    await idle();
+    ok(!(await page.$('.kd-up-held')) && api.st.kids.ellie.photos.length === ellie0 + 1, 'with Ellie (2022) chosen, “ellie-bedroom-01” goes straight to her, not the other Ellie');
+    // A photographer's Web and Full Resolution copies are one photo; a very long file name still uploads
+    await page.select('#kd-up-kid', 'axel');
+    const axel2 = api.st.kids.axel.photos.length;
+    await chooseFiles(webCopy, fullCopy, files.long);
+    await idle();
+    ok(api.st.kids.axel.photos.length === axel2 + 2 && /Left out 1 smaller copy of a photo with the same name for the same kid/.test(await page.$eval('.kd-up-notice', (e) => e.textContent)),
+      'two copies of one photo (Web and Full) go up once, and it says so');
+    ok(!/Invalid image id/.test(await card('Axel')) && api.st.ids.some((id) => /reveal-day-.*final\.png$/.test(id) && id.length <= 256), 'a 200-character file name uploads, its image name cut to fit');
+    await page.select('#kd-up-kid', 'anna');
+
+    // Videos: the first plays on a page without one; another waits in Stream
+    await chooseFiles(files.v1);
+    await idle();
+    ok(api.st.kids.anna.streamVideoId === VID(1) && lastCall(api, '/api/upload-video')?.body?.name === 'Anna - clip-1', 'a video for a page without one plays there, named for her in Stream');
+    ok(/On the page/.test(await card('Anna')), 'and says it’s on the page');
+    await chooseFiles(files.v2);
+    await idle();
+    ok(api.st.kids.anna.streamVideoId === VID(1), 'a second video doesn’t replace the first by itself');
+    ok(/Saved in Stream\. Anna’s page already has a video\./.test(await card('Anna')), 'it says it’s waiting in Stream');
+    await shot(page, 'desk-upload-anna', { grow: false });
+    await clickText(page, '.kd-up-video .btn', 'Play this one instead');
+    await sleep(700);
+    ok(api.st.kids.anna.streamVideoId === VID(2), '“Play this one instead” swaps the page’s video');
+    ok(await page.evaluate(() => [...document.querySelectorAll('.kd-up-video')].some((v) => v.querySelector('strong')?.textContent === 'clip-2.mov' && [...v.querySelectorAll('.btn')].some((b) => b.textContent.trim() === 'Undo'))), 'Undo is in the dialog too, where the keyboard reaches it');
+    ok(await clickToast(page, 'Undo'), 'with Undo');
+    await sleep(700);
+    ok(api.st.kids.anna.streamVideoId === VID(1) && /Play this one instead/.test(await card('Anna')), 'Undo puts the first one back');
+    // An older Undo never changes a newer choice
+    const playRow = (name) => page.evaluate((n) => [...document.querySelectorAll('.kd-up-video')].find((v) => v.querySelector('strong')?.textContent === n)?.querySelector('.btn')?.click(), name);
+    const onPage = () => page.evaluate(() => [...document.querySelectorAll('.kd-up-video')].filter((v) => /On the page/.test(v.textContent)).map((v) => v.querySelector('strong').textContent));
+    await chooseFiles(files.v3);
+    await idle();
+    await playRow('clip-2.mov');
     await sleep(600);
-    const made0 = api.st.kids['test-kid'];
-    ok(made0 && made0.publishStatus === 'draft' && made0.status === 'in-progress' && made0.year === new Date().getFullYear(), 'Create saves a hidden profile and opens it');
-    ok(await page.$eval('.kd-ed-id h2', (e) => /Test Kid/.test(e.textContent)) && await page.$('.kd-card__delete'), 'the editor opens on the new profile');
+    await playRow('clip-3.mov');
+    await sleep(600);
+    ok(api.st.kids.anna.streamVideoId === VID(3), 'a third video can be played instead too');
+    await page.evaluate(() => [...document.querySelectorAll('.toast-undo')].find((b) => b.textContent.trim() === 'Undo')?.click());
+    await sleep(700);
+    ok(api.st.kids.anna.streamVideoId === VID(3) && JSON.stringify(await onPage()) === '["clip-3.mov"]', `an older Undo leaves the newer choice alone, rows and all (${await onPage()})`);
+    ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some((t) => /Nothing to undo/.test(t.textContent))), 'and says there was nothing to undo');
+    await playRow('clip-1.mp4'); // back to the first, for the checks below
+    await sleep(600);
+
+    // The same file again, an empty one (iCloud), an upload that fails, then a save someone else beat
+    api.st.failUploads = true;
+    const annaN = api.st.kids.anna.photos.length;
+    await chooseFiles(files.a2, files.empty, files.a3);
+    await idle();
+    ok(/1 file was already added/.test(await page.$eval('.kd-up-notice', (e) => e.textContent)), 'a file already added is left out, and says so');
+    const annaCard = await card('Anna');
+    ok(/2 photos didn’t upload/.test(annaCard) && /empty\.png: The file is empty\. If it’s in iCloud/.test(annaCard) && /a-3\.png: Image too large/.test(annaCard), 'failures are listed by name, with why');
+    ok(api.st.kids.anna.photos.length === annaN, 'nothing is saved for them');
+    api.st.failUploads = false;
+    api.st.conflictOnce = true;
+    await clickText(page, '.kd-up-fails .btn', 'Try again');
+    await idle();
+    ok(api.st.conflicts === 1 && api.st.kids.anna.photos.length === annaN + 1, 'Try again uploads it, and a save someone else beat is read again and made');
+    ok(/1 photo didn’t upload/.test(await card('Anna')) && !(await page.evaluate(() => [...document.querySelectorAll('.kd-up-fails .btn')].length)), 'the empty file stays listed, with nothing to retry');
+
+    // A photo already in the gallery from an earlier upload, and an iPhone Live Photo's clip
+    await page.select('#kd-up-kid', 'aj');
+    const aj0 = api.st.kids.aj.photos.length;
+    const vids0 = callsTo(api, '/api/upload-video');
+    await chooseFiles(files.old, files.new1, files.live, files.liveClip);
+    await idle();
+    const ajNote = await page.$eval('.kd-up-notice', (e) => e.textContent.replace(/\s+/g, ' '));
+    ok(/1 file with the same name is already on AJ’s page, so it was left out: old-1\.png/.test(ajNote), `a photo already in the gallery is left out, by name (${ajNote.slice(0, 160)})`);
+    ok(/Left out 1 Live Photo clip/.test(ajNote) && callsTo(api, '/api/upload-video') === vids0, 'a Live Photo’s clip isn’t uploaded as a video');
+    ok(api.st.kids.aj.photos.length === aj0 + 2, 'the other photos go in');
+    await clickText(page, '.kd-up-notice .btn', 'Add them anyway');
+    await idle();
+    ok(api.st.kids.aj.photos.length === aj0 + 3 && callsTo(api, '/api/upload-video') === vids0 + 1, '“Add them anyway” adds the photo and the clip');
+    await chooseFiles(files.reveal, files.revealVid);
+    await idle();
+    ok(callsTo(api, '/api/upload-video') === vids0 + 2, 'a real video named like a photo (reveal-9.mp4 beside reveal-9.jpg) isn’t taken for a Live Photo clip');
+
+    // A page whose uploaded video no longer plays gets the new one
+    await page.select('#kd-up-kid', 'dex');
+    await chooseFiles(files.v4);
+    await idle();
+    ok(api.st.kids.dex.streamVideoId === KIDS0.dex.streamVideoId, 'a page whose uploaded video doesn’t play right now keeps it (Stream says the same while one is getting ready)');
+    ok(/has an uploaded video that doesn’t play right now/.test(await card('Dex')) && /Play this one instead/.test(await card('Dex')), 'and says so, offering this one instead');
+
+    // An iPhone photo taken at Axel's, and its Live Photo clip asked for anyway, with no kid chosen: both go once checked
+    await page.select('#kd-up-kid', '');
+    const vidsC = callsTo(api, '/api/upload-video');
+    await chooseFiles(files.heic, files.heicClip);
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    ok(/Taken at Axel’s home/.test(await heldText()) && /Left out 1 Live Photo clip/.test(await page.$eval('.kd-up-notice', (e) => e.textContent)), 'an iPhone photo (HEIC) taken at Axel’s is guessed as his; its clip is left out');
+    await clickText(page, '.kd-up-notice .btn', 'Add it anyway');
+    await sleep(300);
+    ok(await page.$$eval('.kd-up-group', (gs) => gs.length === 1 && /1 photo and 1 video/.test(gs[0].textContent)), 'the clip asked for joins its photo’s group (Axel’s), not the kid chosen');
+    await clickText(page, '.kd-up-held .btn-primary', 'Upload to Axel');
+    await idle();
+    ok(callsTo(api, '/api/upload-video') === vidsC + 1, 'the clip asked for goes up too, not left out again');
+
+    // With Lizzie chosen, an iPhone photo taken at Axel's waits; its clip, added anyway after the photo goes up, follows it to Axel
+    await page.select('#kd-up-kid', 'lizzie');
+    const lizzieVid = api.st.kids.lizzie.streamVideoId;
+    writeFileSync(join(OUT, 'IMG_6.HEIC'), heicFile(tiff({ lat: 33.7491, lng: -84.3881, taken: '2026:10:26 10:00:00' })));
+    writeFileSync(join(OUT, 'IMG_6.MOV'), Buffer.alloc(2800, 6));
+    await chooseFiles(join(OUT, 'IMG_6.HEIC'), join(OUT, 'IMG_6.MOV'));
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    writeFileSync(join(OUT, 'lizzie-x-1.png'), png);
+    await chooseFiles(join(OUT, 'lizzie-x-1.png'));
+    await idle();
+    ok(/Left out 1 Live Photo clip/.test(await page.$eval('.kd-up-notice', (e) => e.textContent).catch(() => '')), 'another drop keeps the offer to add the clip anyway');
+    await clickText(page, '.kd-up-held .btn-primary', 'Upload to Axel');
+    await idle();
+    await clickText(page, '.kd-up-notice .btn', 'Add it anyway');
+    await idle();
+    ok(lastCall(api, '/api/upload-video')?.body?.name === 'Axel - IMG_6' && api.st.kids.lizzie.streamVideoId === lizzieVid, 'the clip follows its photo to Axel, not to Lizzie on screen');
+
+    // Two different photos with one camera name, for two kids, aren't copies
+    mkdirSync(join(OUT, 'cam-a'), { recursive: true });
+    mkdirSync(join(OUT, 'cam-b'), { recursive: true });
+    const camA = join(OUT, 'cam-a', 'IMG_0001.jpg');
+    const camB = join(OUT, 'cam-b', 'IMG_0001.jpg');
+    writeFileSync(camA, jpeg(tiff({ lat: 33.7490, lng: -84.3880, taken: '2026:10:25 16:00:00' })));
+    writeFileSync(camB, png);
+    await page.select('#kd-up-kid', '');
+    await chooseFiles(camA, camB);
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    const camGroups = await page.$$eval('.kd-up-group', (gs) => gs.map((g) => `${g.querySelector('select').value}:${g.querySelector('strong').textContent}`));
+    ok(camGroups.length === 2 && !/copy/.test(await page.$eval('.kd-up-notice', (e) => e.textContent).catch(() => '')), `one camera name in two kids’ photos isn’t a copy (${camGroups.join(', ')})`);
+    await clickText(page, '.kd-up-held .btn', 'Leave them all out');
+    await sleep(200);
+    // Web, then Full Resolution in a second drop, for one kid: one photo
+    mkdirSync(join(OUT, 'web2'), { recursive: true });
+    mkdirSync(join(OUT, 'full2'), { recursive: true });
+    writeFileSync(join(OUT, 'web2', 'COLIN-1.png'), png);
+    writeFileSync(join(OUT, 'full2', 'COLIN-1.png'), Buffer.concat([png, Buffer.alloc(4000)]));
+    await page.select('#kd-up-kid', 'colin');
+    const colinW = api.st.kids.colin.photos.length;
+    await chooseFiles(join(OUT, 'web2', 'COLIN-1.png'));
+    await idle();
+    await chooseFiles(join(OUT, 'full2', 'COLIN-1.png'));
+    await idle();
+    const colinLast = api.st.kids.colin.photos.at(-1).url;
+    ok(api.st.kids.colin.photos.length === colinW + 1 && colinLast.includes(`up-${api.st.uploads}/`) && /The larger copy of 1 photo \(Full Resolution after Web\) takes the smaller one’s place/.test(await page.$eval('.kd-up-notice', (e) => e.textContent)),
+      'Full Resolution after Web takes the Web copy’s place: one photo, the larger, and it says so');
+    // A Google Photos Live Photo (HEIC beside a camera-named .MP4) leaves its clip out too
+    const vidsG = callsTo(api, '/api/upload-video');
+    writeFileSync(join(OUT, 'IMG_9.jpg'), png);
+    writeFileSync(join(OUT, 'IMG_9.mp4'), Buffer.alloc(2500, 9));
+    await chooseFiles(join(OUT, 'IMG_9.jpg'), join(OUT, 'IMG_9.mp4'));
+    await idle();
+    ok(callsTo(api, '/api/upload-video') === vidsG && /Left out 1 Live Photo clip/.test(await page.$eval('.kd-up-notice', (e) => e.textContent)), 'a Google Photos Live Photo’s .MP4 clip is left out like an iPhone’s');
+    // Long photographer names that differ only at the end are different photos
+    const longName = (n) => `Sunshine on a Ranney Day - Colin Reveal October 25 2026 - Jane Doe Photography LLC - ${String(n).padStart(3, '0')}.jpg`;
+    for (const n of [1, 2, 3, 4]) writeFileSync(join(OUT, longName(n)), png);
+    const colinL = api.st.kids.colin.photos.length;
+    await chooseFiles(join(OUT, longName(1)), join(OUT, longName(2)), join(OUT, longName(3)));
+    await idle();
+    await chooseFiles(join(OUT, longName(4)));
+    await idle();
+    ok(api.st.kids.colin.photos.length === colinL + 4, `long names that differ only at the end (… - 004) aren’t taken as already added (${api.st.kids.colin.photos.length - colinL} of 4)`);
+    // Before and after shots both named 001.png, with no dates in them, are two photos: both go in, each its own
+    const ramp = (w, dir) => pngImage(w, w, (x) => { const v = Math.round(((dir > 0 ? x : w - 1 - x) / (w - 1)) * 255); return [v, v, v]; });
+    for (const [dir, w, d] of [['before', 16, 1], ['after', 24, -1], ['web3', 16, 1], ['full3', 48, 1]]) { mkdirSync(join(OUT, dir), { recursive: true }); writeFileSync(join(OUT, dir, '001.png'), ramp(w, d)); }
+    const colinB = api.st.kids.colin.photos.length;
+    await chooseFiles(join(OUT, 'before', '001.png'));
+    await idle();
+    await chooseFiles(join(OUT, 'after', '001.png'));
+    await idle();
+    ok(api.st.kids.colin.photos.length === colinB + 2 && !/takes the smaller one’s place|smaller copy/.test(await page.$eval('.kd-up-notice', (e) => e.textContent).catch(() => '')),
+      'two different photos with one name (before/001, after/001) both go in: neither is taken for a copy of the other');
+    // A Web copy still uploading when its Full Resolution copy comes: the Full one takes its place, and the Web one never lands on the page
+    const prey = api.st.kids.lizzie.photos.length;
+    await page.select('#kd-up-kid', 'lizzie');
+    api.st.slowFirst = 2500;
+    await chooseFiles(join(OUT, 'web3', '001.png'));
+    await sleep(400);
+    await chooseFiles(join(OUT, 'full3', '001.png'));
+    await idle();
+    await sleep(2600);
+    await idle();
+    ok(api.st.kids.lizzie.photos.length === prey + 1, `a Web copy still uploading when its Full copy comes doesn’t end up on the page as well (${api.st.kids.lizzie.photos.length - prey} added)`);
+    // Someone else put this photo on the page after the list loaded: it isn't added twice
+    api.st.kids.colin = { ...api.st.kids.colin, photos: [...api.st.kids.colin.photos, { url: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/colin/1762800000000-colin-st-1.png/public', alt: 'Added in another tab' }] };
+    const colinM = api.st.kids.colin.photos.length;
+    await page.select('#kd-up-kid', 'colin');
+    writeFileSync(join(OUT, 'colin-st-1.png'), png);
+    await chooseFiles(join(OUT, 'colin-st-1.png'));
+    await idle();
+    ok(api.st.kids.colin.photos.length === colinM && /already on the page \(added meanwhile\)/.test(await card('Colin')), 'a photo someone added meanwhile (another tab) isn’t added twice, and the card says so');
+    // A file that failed, then a new file of the same name: that one is tried again, not called a copy
+    api.st.failUploads = true;
+    writeFileSync(join(OUT, 'big-02.png'), Buffer.concat([png, Buffer.alloc(9000)]));
+    await chooseFiles(join(OUT, 'big-02.png'));
+    await idle();
+    api.st.failUploads = false;
+    mkdirSync(join(OUT, 'smaller'), { recursive: true });
+    writeFileSync(join(OUT, 'smaller', 'big-02.png'), png);
+    const colinF = api.st.kids.colin.photos.length;
+    await chooseFiles(join(OUT, 'smaller', 'big-02.png'));
+    await idle();
+    ok(api.st.kids.colin.photos.length === colinF + 1 && !/big-02\.png: Image too large/.test(await card('Colin')) && !/smaller copy|takes the smaller/.test(await page.$eval('.kd-up-notice', (e) => e.textContent).catch(() => '')),
+      'a new file named like one that failed is that one tried again: no copy note, no failure left');
+    // A year in the name beats the kid chosen
+    await page.select('#kd-up-kid', 'ellie');
+    writeFileSync(join(OUT, 'ellie-2023-1.png'), png);
+    await chooseFiles(join(OUT, 'ellie-2023-1.png'));
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    ok(await page.$eval('.kd-up-group select', (x) => x.value) === 'ellie-2023', 'with Ellie (2022) chosen, “ellie-2023-1” waits to be checked, guessed as the 2023 Ellie');
+    await clickText(page, '.kd-up-held .btn', 'Leave them out');
+    await sleep(200);
+    // An upload that couldn't be saved to the profile isn't dropped without asking
+    await page.select('#kd-up-kid', 'anna');
+    api.st.failSaves = 4;
+    writeFileSync(join(OUT, 'unsaved-1.png'), png);
+    await chooseFiles(join(OUT, 'unsaved-1.png'));
+    await idle();
+    const askedUnsaved = [];
+    await answerAsks(page, { accept: false, onAsk: (t) => askedUnsaved.push(t) });
+    await page.keyboard.press('Escape');
+    await sleep(500);
+    ok(askedUnsaved.some((t) => /couldn’t be saved to its profile yet/.test(t)) && await page.$('.kd-up-dialog'), 'closing with an upload not saved to its profile asks first');
+    await answerAsks(page, { accept: true });
+    api.st.failSaves = 0;
+    await clickText(page, '.kd-up-line .btn', 'Try saving again');
+    await idle();
+    ok(api.st.kids.anna.photos.some((x) => x.url.includes(`up-${api.st.uploads}/`)), 'and Try saving again saves it');
+
+    // A full gallery: a new photo goes past the 30 the page shows; dropped on the dialog's title
+    await page.select('#kd-up-kid', 'max');
+    const max0 = api.st.kids.max.photos.length;
+    const drop = (sel) => page.evaluate(async (s) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'dropped-1.png', { type: 'image/png' }));
+      const el = document.querySelector(s);
+      el.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 80));
+      const cover = document.querySelector('.kd-up .kd-dropcover')?.textContent.trim() || '';
+      const ev = new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true });
+      el.dispatchEvent(ev);
+      return { cover, prevented: ev.defaultPrevented };
+    }, sel);
+    const d1 = await drop('.kd-up-dialog .kd-dialog__head h2');
+    ok(/Drop to add to Max’s page/.test(d1.cover) && d1.prevented, `dragging files over the dialog says where they’ll go (${d1.cover})`);
+    await sleep(300);
+    await idle();
+    ok(api.st.kids.max.photos.length === max0 + 1, 'a file dropped on the dialog’s title goes to the kid chosen');
+    ok(/The page shows the first 30 photos, so this one doesn’t show until you move it up in Max’s profile\./.test(await card('Max')), `it says the page won’t show it until it’s moved up (${(await card('Max')).slice(0, 160)})`);
+    ok(!String(api.st.kids.max.photos.at(-1).alt || ''), 'and writes no alt text for a photo the page doesn’t show');
+    const up1 = api.st.uploads;
+    const d2 = await drop('.kd-overlay');
+    await sleep(400);
+    ok(d2.prevented && api.st.uploads === up1, 'a file dropped beside the dialog is ignored, never opened in place of the admin');
+
+    // One slow photo never holds the rest back: they're saved as they land, and it slots in by name when it comes
+    await page.select('#kd-up-kid', 'adrian');
+    const adr0 = api.st.kids.adrian.photos.length;
+    const upsD = api.st.uploads;
+    api.st.slowFirst = 3000;
+    await chooseFiles(...files.d, files.dots);
+    // Every 25 photos is saved straight away: here before the slow first one (3 s) has landed
+    let early = false;
+    for (let i = 0; i < 25 && !early; i++) { early = api.st.kids.adrian.photos.length >= adr0 + 25; if (!early) await sleep(100); }
+    ok(early, `the photos that landed are saved without waiting for the slow one (${api.st.kids.adrian.photos.length - adr0} of 27 saved within 2.5 s)`);
+    await idle();
+    const tail = api.st.kids.adrian.photos.slice(adr0).map((x) => Number(x.url.match(/up-(\d+)/)?.[1]));
+    ok(tail.length === 27 && tail.every((n, i) => n === upsD + 1 + i), `the slow one slots in first, by its name (${tail.slice(0, 4).map((n) => n - upsD).join(', ')}…)`);
+    ok(api.st.ids.some((id) => /Photo-1\.png$/.test(id)) && !api.st.ids.some((id) => id.includes('..')), `a file name with “..” in it (Photo 1..png) uploads (${api.st.ids.find((id) => /Photo-1/.test(id))})`);
+
+    // Stop: what's in stays saved; the rest can follow
+    await page.select('#kd-up-kid', 'colin');
+    const colin0 = api.st.kids.colin.photos.length;
+    api.st.slowUploads = 700;
+    await chooseFiles(...files.b);
+    await sleep(900);
+    ok(await page.evaluate(() => [...document.querySelectorAll('.kd-dialog__foot .btn')].some((b) => b.textContent.trim() === 'Stop')) && await page.$eval('.kd-up-dialog .kd-x', (b) => b.disabled), 'while uploading, the dialog stays open with Stop');
+    await clickText(page, '.kd-dialog__foot .btn', 'Stop');
+    await idle();
+    api.st.slowUploads = 0;
+    const landed = api.st.kids.colin.photos.length - colin0;
+    ok(landed > 0 && landed < 8, `Stop keeps the photos already in (${landed} of 8)`);
+    ok(new RegExp(`${8 - landed} photos? (weren’t|wasn’t) uploaded because you stopped`).test(await card('Colin')), 'and says how many weren’t');
+    // Meanwhile someone else takes one of the new photos off in the editor
+    const removed = api.st.kids.colin.photos.at(-1).url;
+    api.st.kids.colin = { ...api.st.kids.colin, photos: api.st.kids.colin.photos.slice(0, -1) };
+    await clickText(page, '.kd-up-fails .btn', 'Upload the rest');
+    await idle();
+    ok(api.st.kids.colin.photos.length === colin0 + 7 && !api.st.kids.colin.photos.some((x) => x.url === removed), '“Upload the rest” finishes them, and a photo someone else took off stays off');
+    ok(await page.evaluate(() => [...document.querySelectorAll('.kd-dialog__foot .btn')].some((b) => b.textContent.trim() === 'Publish')), 'once done it offers Publish');
+    await shot(page, 'desk-upload-done', { grow: false });
+
+    // Open profile: the editor has them
+    const annaOpen = api.st.kids.anna.photos.length;
+    await page.evaluate(() => [...document.querySelectorAll('.kd-up-kid[aria-label="Anna’s uploads"] .btn')].find((b) => b.textContent.trim() === 'Open profile')?.click());
+    await page.waitForSelector('.kd-ed-head', { timeout: 10000 });
+    await sleep(600);
+    ok(await page.$$eval('#kd-sec-photos .kd-tile', (t) => t.length) === api.st.kids.anna.photos.length, 'Open profile shows Anna’s gallery with the new photos');
+    await page.click('#kd-ages', { clickCount: 3 });
     await page.type('#kd-ages', '7, x');
     await page.click('#kd-diagnosis');
     ok(await page.evaluate(() => document.querySelector('#kd-ages').classList.contains('is-invalid')), 'a bad age is flagged');
@@ -654,8 +1101,69 @@ try {
     await page.type('#kd-ages', '7, 9');
     await page.click('.kd-bar__save .kd-save');
     await sleep(800);
-    const made = api.st.kids['test-kid'];
-    ok(made && JSON.stringify(made.age) === '[7,9]' && made.roomTypes?.join() === 'Dream Bedroom', 'Save keeps the details');
+    const made = api.st.kids.anna;
+    ok(made && JSON.stringify(made.age) === '[7,9]' && made.streamVideoId === VID(1) && made.photos.length === annaOpen, 'Save keeps the details and the uploads');
+
+    // Closing with photos waiting to be checked asks first (and the homes not loading is said, not hidden)
+    await page.evaluate(() => document.querySelector('.breadcrumb button').click());
+    await page.waitForSelector('.kd-row');
+    api.st.homesFail = true;
+    await clickText(page, '.kd-head__actions .btn-primary', 'Upload photos and videos');
+    await page.waitForSelector('#kd-up-kid');
+    await chooseFiles(files.x1);
+    await page.waitForSelector('.kd-up-held', { timeout: 10000 });
+    ok(/can’t be checked right now/.test(await page.$eval('.kd-up-homes-off', (e) => e.textContent).catch(() => '')), 'when the homes don’t load, it says guesses go by names only');
+    api.st.homesFail = false;
+    const askedClose = [];
+    await answerAsks(page, { accept: false, onAsk: (t) => askedClose.push(t) });
+    await page.keyboard.press('Escape');
+    await sleep(500);
+    ok(askedClose.some((t) => /Leave them off the pages\?.*1 file is waiting in “Check whose page these are for”/.test(t)) && await page.$('.kd-up-held'), 'closing with photos waiting asks first; “Go back” keeps them');
+    await answerAsks(page, { accept: true, onAsk: (t) => askedClose.push(t) });
+    await clickText(page, '.kd-dialog__foot .btn', 'Close');
+    await sleep(500);
+    ok(!(await page.$('.kd-up-dialog')), 'and “Close without them” closes');
+
+    // Changing "Whose page?" while the files are still being read: they go to the kid on screen
+    api.st.slowHomes = 3000;
+    await clickText(page, '.kd-head__actions .btn-primary', 'Upload photos and videos');
+    await page.waitForSelector('#kd-up-kid');
+    await page.select('#kd-up-kid', 'anna');
+    const annaS = api.st.kids.anna.photos.length;
+    const aydenS = api.st.kids.ayden.photos.length;
+    writeFileSync(join(OUT, 'switch-1.png'), png);
+    await chooseFiles(join(OUT, 'switch-1.png'));
+    await page.select('#kd-up-kid', 'ayden');
+    await idle();
+    api.st.slowHomes = 0;
+    ok(api.st.kids.ayden.photos.length === aydenS + 1 && api.st.kids.anna.photos.length === annaS, 'switching to Ayden while they’re read sends them to Ayden, the kid on screen');
+    // The same video again in a new dialog isn't uploaded to Stream twice
+    await page.select('#kd-up-kid', 'anna');
+    const vidsR = callsTo(api, '/api/upload-video');
+    await chooseFiles(files.v1);
+    await idle();
+    ok(callsTo(api, '/api/upload-video') === vidsR && /already on Anna’s page/.test(await page.$eval('.kd-up-notice', (e) => e.textContent).catch(() => '')), 'a video already uploaded to a page isn’t uploaded again after reopening');
+
+    // Leaving mid-upload ("Leaving drops them"): nothing more uploads or saves
+    await page.select('#kd-up-kid', 'ayden');
+    const ayden0 = api.st.kids.ayden.photos.length;
+    api.st.slowUploads = 800;
+    await chooseFiles(...files.c);
+    await sleep(300);
+    const asked = [];
+    await answerAsks(page, { onAsk: (t) => asked.push(t) });
+    const hash0 = await page.evaluate(() => location.hash);
+    // As Back would to another area: the address changes, the admin asks
+    await page.evaluate(() => { location.hash = '#events'; });
+    await sleep(400);
+    const upsAtLeave = api.st.uploads;
+    await sleep(3500);
+    api.st.slowUploads = 0;
+    const hash1 = await page.evaluate(() => location.hash);
+    ok(asked.some((t) => /Leave without saving/.test(t)) && !(await page.$('.kd-up-dialog')), `leaving mid-upload asks first, then the dialog is gone (asked: ${asked.join(' / ').slice(0, 120) || 'nothing'}; ${hash0} → ${hash1})`);
+    ok(api.st.kids.ayden.photos.length === ayden0 && api.st.uploads - upsAtLeave <= 3, `and nothing more uploads or saves (${api.st.uploads - upsAtLeave} were already on their way; Ayden ${ayden0} → ${api.st.kids.ayden.photos.length})`);
+    await goKids(page, false);
+    await openKid(page, 'Anna');
 
     // Broken partner logos: flagged, and switched to the partner's current logo
     await page.evaluate(() => document.querySelector('.breadcrumb button').click());
@@ -668,7 +1176,8 @@ try {
     await clickText(page, '#kd-sec-partners .kd-sec__actions .btn', 'Use current logos');
     await sleep(500);
     ok(await page.$$eval('.kd-logo__broken', (b) => b.length) === 0, '“Use current logos” switches them to the directory’s logos');
-    await page.click('.kd-bar__save .kd-save');
+    // Nothing to save when no logo was flagged (the checks above say so): carry on to the rest of the suite
+    if (await page.$('.kd-bar__save .kd-save')) await page.click('.kd-bar__save .kd-save');
     await sleep(800);
     const abby = api.st.kids.abby;
     ok(abby.partnerLogos.filter((l) => /real-floors-commercial|usa-insulation|eclipse-brand-builders/.test(l.url)).every((l) => /\/\d{10,}\/public$/.test(l.url) && l.name), 'the saved profile has the current logos, named');
@@ -682,11 +1191,12 @@ try {
     const job = (text) => page.evaluate((t) => [...document.querySelectorAll('.kd-tidy-job')].find((j) => j.textContent.includes(t))?.querySelector('input').click(), text);
     await job('alt text');
     const before = callsTo(api, '/api/save-content');
+    const gen0 = callsTo(api, '/api/generate'); // the uploads above wrote alt text
     await clickText(page, '.kd-dialog__foot .btn-primary', 'Start');
     await page.waitForFunction(() => /updated/.test(document.querySelector('.kd-tidy-run strong')?.textContent || ''), { timeout: 60000 });
     const namedKids = callsTo(api, '/api/save-content') - before;
     const unnamedLeft = Object.values(api.st.kids).reduce((n, k) => n + (k.partnerLogos || []).filter((l) => !String(l.name || '').trim() && /\/partners\//.test(l.url)).length, 0);
-    ok(namedKids > 50 && callsTo(api, '/api/generate') === 0, `names come from the directory, no AI (${namedKids} profiles saved)`);
+    ok(namedKids > 50 && callsTo(api, '/api/generate') === gen0, `names come from the directory, no AI (${namedKids} profiles saved)`);
     const stillBroken = Object.values(api.st.kids).reduce((n, k) => n + (k.partnerLogos || []).filter((l) => isBrokenImage(l.url)).length, 0);
     ok(stillBroken === 0, `broken partner logos are restored everywhere (${stillBroken} left)`);
     ok(unnamedLeft < 300, `directory logos are named (${unnamedLeft} left that the directory doesn’t know)`);
@@ -720,6 +1230,28 @@ try {
     ok(!(await overflowing(page)).length, `the list fits the screen (${(await overflowing(page)).join(', ')})`);
     const small = await smallTargets(page, '.kd-row .kd-grip, .kd-row .ppl-menu__btn, .kd-filter, .kd-head__actions .btn, .kd-year__btn');
     ok(!small.length, `list targets are 44px (${small.join('; ')})`);
+    // Upload photos and videos, as a sheet
+    await clickText(page, '.kd-head__actions .btn-primary', 'Upload photos and videos');
+    await page.waitForSelector('#kd-up-kid');
+    await page.select('#kd-up-kid', 'axel');
+    writeFileSync(join(OUT, 'clip-a-really-long-file-name-from-the-photographer-2026-11-09-final-final.mp4'), Buffer.alloc(2048, 1));
+    writeFileSync(join(OUT, 'IMG_20231025_143012345_HDR_PORTRAIT_BURST_COVER_EXTRA_LONG_NAME_FROM_THE_CAMERA_FINAL_FINAL_V2.pdf'), 'x');
+    await (await page.$('.kd-up input[type=file]')).uploadFile(PNG, join(OUT, 'clip-a-really-long-file-name-from-the-photographer-2026-11-09-final-final.mp4'), join(OUT, 'notes.txt'),
+      join(OUT, 'IMG_20231025_143012345_HDR_PORTRAIT_BURST_COVER_EXTRA_LONG_NAME_FROM_THE_CAMERA_FINAL_FINAL_V2.pdf'));
+    await page.waitForFunction(() => [...document.querySelectorAll('.kd-dialog__foot .btn')].some((b) => b.textContent.trim() === 'Done'), { timeout: 20000 });
+    await sleep(500); // the sheet's slide up
+    await shot(page, 'phone-upload', { grow: false });
+    const sheet = await page.evaluate(() => {
+      const d = document.querySelector('.kd-up-dialog').getBoundingClientRect();
+      const out = [...document.querySelectorAll('.kd-up-dialog *')].filter((el) => { const r = el.getBoundingClientRect(); return r.width && (r.right > d.right + 1 || r.left < d.left - 1); });
+      return { fits: d.left >= 0 && d.right <= innerWidth, out: out.slice(0, 4).map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)}`) };
+    });
+    ok(sheet.fits && !sheet.out.length, `the upload sheet fits the screen, long file names too (${sheet.out.join(', ')})`);
+    const smallUp = await smallTargets(page, '.kd-up-dialog .btn, .kd-up-dialog .kd-x');
+    ok(!smallUp.length, `upload sheet targets are 44px (${smallUp.join('; ')})`);
+    ok(api.st.kids.axel.photos.length === KIDS0.axel.photos.length + 1 && api.st.kids.axel.streamVideoId === VID(1), 'on a phone the photo and the video land on Axel’s page');
+    await clickText(page, '.kd-dialog__foot .btn', 'Done');
+    await sleep(300);
     await openKid(page, 'Colin');
     ok(await page.$('.kd-story-peek') && !(await page.$('#kd-sec-story .rte-wrap')), 'on a phone the story shows as a preview');
     await page.evaluate(() => document.querySelector('.kd-story-peek').click());

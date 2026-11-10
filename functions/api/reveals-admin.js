@@ -30,8 +30,8 @@ const MAX_PAGES = 8;
 const MEMO_MS = 60 * 1000;
 let memo = null; // { at, value } per isolate, so a busy dashboard doesn't hammer JobTread
 
-/** Every SOARD job, open and closed, with its custom field values */
-export async function fetchAllJobs(grantKey, fetchImpl = fetch) {
+/** Every SOARD job, open and closed, with its custom field values (plus any `extra` job fields asked for) */
+export async function fetchAllJobs(grantKey, fetchImpl = fetch, extra = {}) {
   const jobs = [];
   let page = null;
   for (let i = 0; i < MAX_PAGES; i++) {
@@ -46,7 +46,7 @@ export async function fetchAllJobs(grantKey, fetchImpl = fetch) {
             jobs: {
               $: { size: 100, ...(page ? { page } : {}) },
               nextPage: {},
-              nodes: { id: {}, name: {}, closedOn: {}, customFieldValues: { $: { size: 50 }, nodes: { value: {}, customField: { id: {} } } } },
+              nodes: { id: {}, name: {}, closedOn: {}, customFieldValues: { $: { size: 50 }, nodes: { value: {}, customField: { id: {} } } }, ...extra },
             },
           },
         },

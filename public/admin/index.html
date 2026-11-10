@@ -2847,7 +2847,6 @@
     .modal.kd-dialog { display: flex; flex-direction: column; max-height: min(92vh, 900px); padding: 0; overflow: hidden; outline: none; }
     .modal.kd-dialog--sm { max-width: 480px; }
     .modal.kd-dialog--md { max-width: 600px; }
-    .kd-create__year { max-width: 180px; }
     .modal.kd-dialog--lg { max-width: 820px; }
     .modal.kd-dialog--xl { max-width: 1120px; }
     .kd-dialog__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.25rem 0.9rem; border-bottom: 1px solid var(--color-border); }
@@ -3065,6 +3064,87 @@
     .kd-dropzone:hover { border-color: var(--color-text); color: var(--color-text); }
     .kd-dropzone small { font-size: var(--fs-xs); font-weight: 400; color: var(--color-text-muted); }
     .kd-dropzone svg { width: 22px; height: 22px; }
+    /* Kids → Upload photos and videos */
+    .kd-up { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1rem; min-height: 100%; }
+    .kd-up .kd-dropcover { border-radius: 14px; }
+    .kd-up-pick { margin: 0; max-width: 420px; }
+    .kd-up-drop { margin: 0; text-align: center; padding: 1rem; }
+    .kd-up-drop:disabled { opacity: 0.6; cursor: default; }
+    .kd-up-drop small { max-width: 34rem; line-height: 1.45; }
+    .kd-up-notice { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.4rem; justify-items: start; margin-top: -0.4rem; min-width: 0; }
+    .modal .kd-up-notice .form-hint, .modal .kd-up-homes-off { margin: 0; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+    .kd-up-kid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.65rem; padding: 0.9rem 1rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+    .kd-up-kid__head { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+    .kd-up-kid__head .kd-thumb { width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; }
+    .kd-up-kid__head .btn { margin-left: auto; flex-shrink: 0; }
+    .kd-up-kid__who { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
+    .kd-up-kid__who strong { overflow-wrap: anywhere; }
+    .kd-up-kid__who span { font-size: var(--fs-xs); color: var(--color-text-secondary); }
+    .modal .kd-up-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--color-text-secondary); }
+    .kd-up-line > span:not(.spinner):not(.kd-tidy-done) { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
+    .kd-up-line .kd-tidy-done { flex-shrink: 0; }
+    .kd-up-line.is-ok { color: var(--color-text); }
+    .kd-up-line.is-warn { color: var(--tone-warn-fg); }
+    .kd-up-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+    .kd-up-tile { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 8px; background: var(--seg-bg); }
+    .kd-up-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .kd-up-tile__ph { display: grid; place-items: center; width: 100%; height: 100%; color: var(--tone-neutral-dot); }
+    .kd-up-tile__ph svg { width: 16px; height: 16px; }
+    .kd-up-tile.is-queued, .kd-up-tile.is-stopped, .kd-up-tile.is-onpage { opacity: 0.45; }
+    .kd-up-tile.is-failed { box-shadow: inset 0 0 0 2px var(--tone-warn-dot); }
+    .kd-up-tile__over { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(255,255,255,0.65); }
+    .kd-up-tile__over.is-bad { background: var(--tone-warn-surface); color: var(--tone-warn-fg); }
+    .kd-up-tile__over svg { width: 16px; height: 16px; }
+    .kd-up-fails { display: grid; gap: 0.35rem; justify-items: start; padding: 0.7rem 0.85rem; border-radius: 10px; background: var(--tone-warn-surface); border: 1px solid var(--tone-warn-line-strong); font-size: var(--fs-xs); color: var(--tone-warn-fg); }
+    .kd-up-fails p { margin: 0; }
+    .kd-up-fails ul { margin: 0; padding-left: 1.1rem; overflow-wrap: anywhere; }
+    .kd-up-videos { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+    .kd-up-video { display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.75rem; border: 1px solid var(--color-border); border-radius: 10px; }
+    .kd-up-video.is-failed, .kd-up-video.is-unsaved { border-color: var(--tone-warn-line-strong); background: var(--tone-warn-surface); }
+    .kd-up-video__icon { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 8px; background: var(--seg-bg); color: var(--color-text-secondary); }
+    .kd-up-video__main { display: grid; gap: 0.2rem; flex: 1; min-width: 0; }
+    .kd-up-video__main strong { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+    .kd-up-video__main small { font-size: var(--fs-xs); line-height: 1.45; color: var(--color-text-secondary); }
+    .kd-up-video.is-failed small, .kd-up-video.is-unsaved small { color: var(--tone-warn-fg); }
+    .kd-up-video .btn, .kd-up-video .kd-tag { flex-shrink: 0; }
+    .kd-up-foot { margin-right: auto; font-size: var(--fs-xs); color: var(--color-text-secondary); }
+    .kd-up-dialog .kd-dialog__foot .btn[aria-disabled="true"] { opacity: 0.6; cursor: default; }
+    .kd-up-video__acts { display: inline-flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+    /* Check whose page these are for */
+    .kd-up-held { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; padding: 0.9rem 1rem 1rem; border: 1px solid var(--tone-warn-line-strong); border-radius: var(--radius-md); background: var(--tone-warn-surface); outline: none; }
+    .kd-up-held:focus-visible { box-shadow: var(--focus-ring-strong); }
+    .modal .kd-up-held h3 { margin: 0; font-size: var(--fs-base); font-weight: 700; }
+    .modal .kd-up-held > .form-hint { margin: -0.3rem 0 0; color: var(--color-text-secondary); }
+    .kd-up-groups { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+    .kd-up-group { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 15rem) auto; align-items: center; gap: 0.75rem; padding: 0.6rem 0.7rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); }
+    .kd-up-group.is-open { border-color: var(--tone-warn-dot); }
+    .kd-up-group__thumbs { display: flex; gap: 0.25rem; }
+    .kd-up-group__thumb { position: relative; display: grid; place-items: center; width: 40px; height: 40px; overflow: hidden; border-radius: 6px; background: var(--seg-bg); color: var(--tone-neutral-dot); }
+    .kd-up-group__thumb svg { width: 14px; height: 14px; }
+    .kd-up-group__thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .kd-up-group__main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+    .kd-up-group__main strong { font-size: var(--fs-sm); }
+    .kd-up-group__why, .kd-up-group__changed { font-size: var(--fs-xs); line-height: 1.45; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+    .kd-up-group__why.is-unknown { color: var(--tone-warn-fg); font-weight: 600; }
+    .kd-up-group__pick .form-select { width: 100%; }
+    .kd-up-held__acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+    .kd-up-held__need { margin-right: auto; font-size: var(--fs-xs); color: var(--tone-warn-fg); }
+    @media (max-width: 640px) {
+      .kd-up-pick { max-width: none; }
+      .kd-up-kid { padding: 0.8rem; }
+      .kd-up-kid__head { flex-wrap: wrap; }
+      .kd-up-kid__head .btn { margin-left: 0; width: 100%; justify-content: center; min-height: 44px; }
+      .kd-up-video { flex-wrap: wrap; }
+      .kd-up-video .btn { width: 100%; justify-content: center; min-height: 44px; }
+      .kd-up-video__acts { width: 100%; }
+      .kd-up-video__acts .btn { flex: 1; }
+      .kd-up-group { grid-template-columns: auto minmax(0, 1fr); }
+      .kd-up-group__pick, .kd-up-group > .btn { grid-column: 1 / -1; }
+      .kd-up-group > .btn, .kd-up-held__acts .btn { min-height: 44px; width: 100%; justify-content: center; }
+      .kd-up-held__need { flex-basis: 100%; }
+      .kd-up-fails .btn, .kd-up-line .btn, .kd-up-notice .btn { min-height: 44px; }
+      .kd-up-foot { flex-basis: 100%; margin: 0 0 0.25rem; }
+    }
 
     /* Before & after */
     .kd-pairs { display: grid; gap: 1rem; list-style: none; }
@@ -4495,6 +4575,8 @@
     import * as RD from './reveal-design.js';
     // A home's details in JobTread (Zestimate, Year Built…): the Home card beside a kid, shared with Insights
     import * as HS from './home-shared.js';
+    // Whose photos are these? (where they were taken, folder and file names), for Kids → Upload photos and videos
+    import * as KG from './kid-guess.js';
     import { float, floatRef, hiddenAnchor } from './float.js';
     // Partner rules (levels, categories, what Save writes, which kid pages show a logo), shared with the unit tests
     import * as PS from './partners-shared.js';
@@ -4592,7 +4674,7 @@
       useEffect(() => {
         setGlobalDirty(dirty, reason);
         return () => setGlobalDirty(false);
-      }, [dirty]);
+      }, [dirty, reason]);
     }
 
     // ─── Cmd/Ctrl+S save event ───────────────────────────────
@@ -4745,11 +4827,11 @@
         if (data.success) window.dispatchEvent(new CustomEvent('soard-content-changed'));
         return data;
       },
-      async uploadImage(file, id) {
+      async uploadImage(file, id, { signal } = {}) {
         const form = new FormData();
         form.append('file', file);
         if (id) form.append('id', id);
-        const r = await fetch('/api/upload-image', { method: 'POST', body: form });
+        const r = await fetch('/api/upload-image', { method: 'POST', body: form, signal });
         return apiJson(r, '/api/upload-image');
       },
       async fetchOgImage(url, id) {
@@ -4776,7 +4858,7 @@
         const r = await fetch('/api/upload-file', { method: 'POST', body: form });
         return apiJson(r, '/api/upload-file');
       },
-      async uploadVideo(file, name, { onProgress } = {}) {
+      async uploadVideo(file, name, { onProgress, signal } = {}) {
         if (!file.size) {
           throw new Error(`"${file.name}" is 0 bytes. If it lives in iCloud or Google Drive, download it to this Mac first, then add it again.`);
         }
@@ -4821,6 +4903,11 @@
               resolve({ success: true, videoId: data.videoId });
             },
           });
+          // Stopped by the person: the part sent so far is dropped
+          if (signal) {
+            if (signal.aborted) { reject(new Error('Stopped')); return; }
+            signal.addEventListener('abort', () => { Promise.resolve().then(() => upload.abort()).catch(() => {}); reject(new Error('Stopped')); }, { once: true });
+          }
           upload.start();
         });
       },
@@ -8243,7 +8330,6 @@
 
     function DashNewMenu({ onNavigate }) {
       const items = [
-        ['Kid', () => onNavigate('kids-hub', '', 'kids')],
         ['Community project', () => onNavigate('kids-hub', '', 'community')],
         ['Partner', () => onNavigate('partners-hub', '', 'partners')],
         ['Event', () => onNavigate('events', '')],
@@ -8978,18 +9064,35 @@
         return { file, trimmed: false };
       }
     }
-    /** Uploads a few images at a time and reports each as it lands */
-    async function kdUploadAll(items, { idFor, onDone, onFail, limit = 3 }) {
+    /** Uploads a few images at a time and reports each as it lands. onStart(it) as each
+     *  one begins; once shouldStop() is true, the ones not yet begun are left alone, and
+     *  `signal` stops the ones under way (onFail(it, 'Stopped', { stopped: true })). One
+     *  stuck past timeoutMs (a dropped connection) gives up, so it never holds the rest */
+    async function kdUploadAll(items, { idFor, onDone, onFail, onStart, shouldStop, skip, signal, limit = 3, timeoutMs = 5 * 60 * 1000 }) {
       const queue = [...items];
       const worker = async () => {
-        while (queue.length) {
+        while (queue.length && !shouldStop?.() && !signal?.aborted) {
           const it = queue.shift();
+          // One no longer wanted while it waited its turn (skip(it))
+          if (skip?.(it)) continue;
+          onStart?.(it);
+          const ctrl = new AbortController();
+          let late = false;
+          const stop = () => ctrl.abort();
+          signal?.addEventListener('abort', stop);
+          const timer = setTimeout(() => { late = true; ctrl.abort(); }, timeoutMs);
           try {
-            const res = await api.uploadImage(await kdPrepareImage(it.file), idFor(it.file));
+            // Cloudflare refuses an image name with ".." in it ("Photo 1..jpg") or over 256 characters
+            const res = await api.uploadImage(await kdPrepareImage(it.file), idFor(it.file).replace(/\.{2,}/g, '.').slice(0, 250), { signal: ctrl.signal });
             if (res.success && res.imageUrl) onDone(it, res.imageUrl);
             else onFail(it, res.error || 'upload failed');
           } catch (e) {
-            onFail(it, e.message);
+            if (late) onFail(it, 'It took too long to upload (the connection may have dropped). Try again.');
+            else if (ctrl.signal.aborted) onFail(it, 'Stopped', { stopped: true });
+            else onFail(it, e.message);
+          } finally {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', stop);
           }
         }
       };
@@ -8998,6 +9101,18 @@
 
     // Will the kid page play this Stream video? (the same check the build makes)
     const kdStreamChecks = new Map();
+    /** 'playable' | 'gone' | 'unknown', asked once a session ('unknown' is asked again next time) */
+    function kdStreamState(uid) {
+      if (!KS.STREAM_UID_RE.test(uid || '')) return Promise.resolve('gone');
+      if (!kdStreamChecks.has(uid)) {
+        kdStreamChecks.set(uid, fetch(`/api/stream-check?uid=${uid}`, { cache: 'no-store' })
+          .then((r) => r.json()).then((d) => (['playable', 'gone'].includes(d?.state) ? d.state : 'unknown')).catch(() => 'unknown'));
+      }
+      return kdStreamChecks.get(uid).then((s) => {
+        if (s === 'unknown') kdStreamChecks.delete(uid);
+        return s;
+      });
+    }
     function useStreamState(uid) {
       const [state, setState] = useState(null);
       useEffect(() => {
@@ -9005,14 +9120,7 @@
         if (!KS.STREAM_UID_RE.test(uid)) { setState('gone'); return undefined; }
         let on = true;
         setState('checking');
-        if (!kdStreamChecks.has(uid)) {
-          kdStreamChecks.set(uid, fetch(`/api/stream-check?uid=${uid}`, { cache: 'no-store' })
-            .then((r) => r.json()).then((d) => (['playable', 'gone'].includes(d?.state) ? d.state : 'unknown')).catch(() => 'unknown'));
-        }
-        kdStreamChecks.get(uid).then((s) => {
-          if (s === 'unknown') kdStreamChecks.delete(uid);
-          if (on) setState(s);
-        });
+        kdStreamState(uid).then((s) => { if (on) setState(s); });
         return () => { on = false; };
       }, [uid]);
       return state;
@@ -9628,57 +9736,1031 @@
         addToast=${addToast} onClose=${onClose} onReload=${onReload} onDeploy=${onDeploy} />`;
     }
 
-    /**
-     * Add a kid: name, status and year, then the full editor opens on the new
-     * profile. It's saved hidden (a draft) so photos have somewhere to go and
-     * nothing shows on the site until it's switched on.
-     */
-    function KidCreateDialog({ kids, onClose, onCreated, addToast }) {
-      const [name, setName] = useState('');
-      const [status, setStatus] = useState('in-progress');
-      const [year, setYear] = useState(new Date().getFullYear());
-      const [busy, setBusy] = useState(false);
-      const [touched, setTouched] = useState(false);
-      const taken = kids.map((k) => k.slug);
-      const clean = name.trim();
-      const slug = kdDedupeSlug(slugify(clean), taken);
-      const same = clean ? kids.filter((k) => String(k.name || '').trim().toLowerCase() === clean.toLowerCase()) : [];
-      const create = async () => {
-        setTouched(true);
-        if (!clean || busy) return;
-        setBusy(true);
-        const rec = kdSaveRecord(kdForEditing(kdBlankKid({ name: clean, slug, status, year: Number(year) || null, publishStatus: 'draft' }), null, slug));
-        const res = await api.saveContent(`src/content/kids/${slug}.json`, JSON.stringify(rec, null, 2), `Add kid: ${rec.name}`).catch((e) => ({ success: false, error: e.message }));
-        setBusy(false);
-        if (!res.success) { addToast(`Couldn’t create the profile: ${res.error}`, 'error'); return; }
-        addToast(`${rec.name}’s profile is ready to fill in. It stays hidden until you switch on “Show on Meet the Kids”.`, 'success');
-        onCreated(slug);
+    // ═══════════════════════════════════════════
+    // KIDS: UPLOAD PHOTOS AND VIDEOS (many at once, to any kid's page)
+    // Profiles are made when a family is approved (functions/api/_applicant-approved.js),
+    // so the Kids page has no Add; this is where a makeover's pictures go in bulk.
+    //   Photos join the end of the gallery in file-name order, three at a time
+    //   (kdUploadAll). Ones already in the gallery (same file name) are left out,
+    //   and so are iPhone Live Photo clips (IMG_1234.MOV beside IMG_1234.HEIC).
+    //   A video plays on the page when the page plays none (no YouTube link, and
+    //   no uploaded video that still plays); any other waits in Stream, with
+    //   "Play this one instead".
+    //   Nothing waits on a Save: each kid is read fresh and saved with its version
+    //   every KD_UP_SAVE_EVERY photos or KD_UP_SAVE_MS, and once they're all in.
+    //   A save adds only photos never saved before, so one someone else moved or
+    //   removed meanwhile stays as they left it. Then the new photos the page
+    //   shows get alt text, as they do in the editor.
+    //   Closing or leaving stops everything: what's saved stays, the rest is dropped.
+    //   Whose they are: files dropped or chosen are read for where they were taken
+    //   and named (./kid-guess.js; homes from /api/kid-homes). With a kid chosen and
+    //   nothing saying otherwise they go straight in; otherwise they wait, grouped
+    //   by the guess and why, in "Check whose page these are for", where any
+    //   group's kid can be changed before anything uploads.
+    // ═══════════════════════════════════════════
+    const KD_UP_SAVE_EVERY = 25;
+    const KD_UP_SAVE_MS = 15000;
+    const KD_UP_PHOTO_EXT = /\.(jpe?g|png|webp|gif|heic|heif)$/i;
+    const KD_UP_VIDEO_EXT = /\.(mp4|mov|m4v|webm|mkv|avi|3gp|mpe?g)$/i;
+    /** 'photo', 'video', or null for anything the page can't show (a PDF, a TIFF, a RAW file) */
+    const kdUpKind = (f) => {
+      const t = String(f.type || '').toLowerCase();
+      if (/^image\/(jpeg|png|webp|gif|heic|heif)$/.test(t) || (!/^(image|video)\//.test(t) && KD_UP_PHOTO_EXT.test(f.name || ''))) return 'photo';
+      if (/^video\//.test(t) || KD_UP_VIDEO_EXT.test(f.name || '')) return 'video';
+      return null;
+    };
+    const kdUpSize = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`);
+    // Image names are kids/<slug>/<time>-<file>, as the editor names them; a fresh time for each, so two files of the same name never collide
+    const kdUpSafe = (name) => String(name || '').replace(/[^a-z0-9.]/gi, '-');
+    // The file's part of an image name: Cloudflare takes 256 characters in all, so a long name is cut (its extension kept)
+    const kdUpIdName = (name) => {
+      const safe = kdUpSafe(name).replace(/\.{2,}/g, '.');
+      const m = safe.match(/^(.*?)(\.[a-z0-9]{1,5})?$/i);
+      // Both ends are kept: a photographer's names differ at the end ("…Photography LLC - 001")
+      const b = m[1].length > 80 ? `${m[1].slice(0, 40)}${m[1].slice(-40)}` : m[1];
+      return `${b}${m[2] || ''}`;
+    };
+    // Names just uploaded to each kid, until the list behind has reloaded with them (KidsList clears it then)
+    const kdUpRecent = new Map();
+    // Videos uploaded to each kid this visit ("name|size"): a page's record keeps only the video's Stream id
+    const kdUpRecentVideos = new Map();
+    const kdUpBase = (name) => String(name || '').replace(/\.[^.]+$/, '').toLowerCase();
+    let kdUpLast = 0;
+    const kdUpStamp = () => (kdUpLast = Math.max(Date.now(), kdUpLast + 1));
+    /** The file names (without extension) already in a kid's gallery, from their image names. A name
+     *  with no letters or numbers left ("写真.jpg" is stored as "--.jpg") can't say which photo it was */
+    const kdUpNamed = (b) => /[a-z0-9]/.test(b);
+    const kdUpGalleryNames = (kid) => new Set((kid?.photos || [])
+      .map((p) => (String(p.url || '').match(/\/kids\/[^/]+\/\d{10,}-([^/]+)\/[^/]+$/) || [])[1]).filter(Boolean).map(kdUpBase).filter(kdUpNamed));
+    // An iPhone Live Photo's clip: a short .MOV saved beside a photo (HEIC or JPEG) of the same name
+    const KD_UP_LIVE_MAX = 15e6;
+    const kdUpPhotoNames = (files) => new Set(files.filter((f) => /\.(hei[cf]|jpe?g)$/i.test(f.name || '')).map((f) => kdUpBase(f.name)));
+    // (Google Photos saves the clip as .MP4, under the camera's own kind of name: IMG_4321, PXL_2026…)
+    const kdUpIsClip = (f, photoNames) => f.size <= KD_UP_LIVE_MAX && photoNames.has(kdUpBase(f.name))
+      && (/\.mov$/i.test(f.name || '') || (/\.mp4$/i.test(f.name || '') && /^(img|pxl|mvimg|vid|dsc)[_-]?\d/i.test(f.name || '')));
+    /** A Stream upload error in words (tus's own messages are for developers) */
+    const kdUpVideoError = (msg) => {
+      const m = String(msg || '');
+      if (!/^tus:/i.test(m)) return m;
+      const code = (m.match(/response code: (\d{3})/) || [])[1];
+      return `Stream didn’t accept the upload${code ? ` (error ${code})` : ''}. Check the connection and try again.`;
+    };
+    // Where each dropped file sat ("/Summer Reveal/IMG_1.jpg"): a folder's name says whose they are
+    const kdUpPaths = new WeakMap();
+    /** A tiny fingerprint of a picture (64-bit difference hash): copies of one photo match at any size; null if this browser can't draw it */
+    async function kdUpPrint(file) {
+      try {
+        const bmp = await createImageBitmap(file);
+        const c = document.createElement('canvas');
+        c.width = 9;
+        c.height = 8;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(bmp, 0, 0, 9, 8);
+        bmp.close?.();
+        const d = ctx.getImageData(0, 0, 9, 8).data;
+        const g = (x, y) => { const i = (y * 9 + x) * 4; return d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; };
+        let bits = '';
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) bits += g(x, y) < g(x + 1, y) ? '1' : '0';
+        return bits;
+      } catch {
+        return null;
+      }
+    }
+    const kdUpPrintsMatch = (a, b) => {
+      if (!a || !b) return false;
+      let n = 0;
+      for (let i = 0; i < 64; i++) if (a[i] !== b[i]) n++;
+      return n <= 6;
+    };
+    /** The files dropped, with everything inside dropped folders (a photographer's whole delivery); hidden files left out */
+    async function kdDroppedFiles(dt) {
+      // Entries have to be taken during the drop itself, before anything waits
+      const entries = [...(dt?.items || [])].map((i) => (i.kind === 'file' ? i.webkitGetAsEntry?.() : null)).filter(Boolean);
+      if (!entries.length || !entries.some((e) => e.isDirectory)) return [...(dt?.files || [])];
+      const out = [];
+      const walk = async (entry) => {
+        if (entry.name.startsWith('.')) return;
+        if (entry.isFile) { const f = await new Promise((done) => entry.file(done, () => done(null))); if (f) { kdUpPaths.set(f, entry.fullPath); out.push(f); } return; }
+        if (!entry.isDirectory) return;
+        const reader = entry.createReader();
+        for (;;) {
+          const batch = await new Promise((done) => reader.readEntries(done, () => done([])));
+          if (!batch.length) break;
+          for (const e of batch) await walk(e);
+        }
       };
-      const footer = html`
-        <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${busy}>Cancel</button>
-        <button type="button" class="btn btn-primary" onClick=${create} disabled=${busy}>${busy ? html`<span class="spinner" /> Creating…` : 'Create profile'}</button>`;
-      return html`<${KdDialog} title="Add a kid" sub="Start with the basics. Everything else is on the next page." size="sm" busy=${busy} onClose=${onClose} footer=${footer}>
-        <form class="kd-create" onSubmit=${(e) => { e.preventDefault(); create(); }}
-          onKeyDown=${(e) => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); create(); } }}>
-          <div class="form-group">
-            <label class="form-label" for="kd-new-name">Name on the site</label>
-            <input id="kd-new-name" class=${`form-input${touched && !clean ? ' is-invalid' : ''}`} data-autofocus autocomplete="off" value=${name}
-              placeholder="First name, or “Remi & Nico” for siblings" onInput=${(e) => setName(e.target.value)} />
-            <div class=${`form-hint${touched && !clean ? ' kd-bad' : ''}`}>${touched && !clean ? 'Add their name'
-              : same.length ? html`<span class="kd-warn-text">There’s already a ${same[0].name}${same[0].year ? ` (${same[0].year})` : ''}. This makes a separate profile at <code>/kids/${slug}/</code>.</span>`
-              : clean ? html`Web address <code>/kids/${slug}/</code>` : 'Their first name, as the family wants it shown.'}</div>
+      for (const e of entries) await walk(e);
+      return out;
+    }
+    /** The kids to choose from, as the list shows them: awaiting funding, in build, then each year's completed rooms. Drafts too */
+    function kdUpGroups(kids) {
+      const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
+      const done = kids.filter((k) => k.status !== 'in-progress' && k.status !== 'needs-funding');
+      const years = [...new Set(done.map((k) => k.year || 0))].sort((a, b) => b - a);
+      return [
+        { label: 'Awaiting funding', year: true, kids: kids.filter((k) => k.status === 'needs-funding').sort(kdActiveSort) },
+        { label: 'In build', year: true, kids: kids.filter((k) => k.status === 'in-progress').sort(kdActiveSort) },
+        ...years.map((y) => ({ label: y ? `Completed in ${y}` : 'Completed', year: !y, kids: done.filter((k) => (k.year || 0) === y).sort(byName) })),
+      ].filter((g) => g.kids.length);
+    }
+    const kdUpLabel = (k, withYear) => `${k.name || k.slug}${withYear && k.year ? ` (${k.year})` : ''}${k.publishStatus === 'draft' ? ' · draft' : ''}`;
+    const kdUpNameKey = (k) => String(k?.name || '').trim().toLowerCase();
+
+    function KidMediaUpload({ kids, onClose, onReload, onDeploy, onOpen, addToast }) {
+      const [slug, setSlug] = useState('');
+      const [over, setOver] = useState(false);
+      const [stopping, setStopping] = useState(false);
+      const [, setTick] = useState(0);
+      // Open, or closed/left (then nothing more is uploaded or saved)
+      const alive = useRef(true);
+      const refresh = () => { if (alive.current) setTick((n) => n + 1); };
+      const input = useRef(null);
+      const selectRef = useRef(null);
+      // Changed in place as uploads report, so the work in flight always reads the latest; refresh() redraws
+      const box = useRef(null);
+      if (!box.current) {
+        const s = { items: [], kids: {}, seq: 0, stop: false, video: null, videos: Promise.resolve(), held: [], notice: null,
+          saved: false, announce: '', reading: 0, mine: new Set(), photoStop: new AbortController(), forced: new WeakSet(),
+          // A file left out goes with another (a Live Photo clip with its photo, a copy with the one kept); when each was taken
+          follows: new WeakMap(), takenOf: new WeakMap(), printOf: new WeakMap(), homesOff: false };
+        // Where each kid's home is, for "taken at their home" (map points only; none if it can't be read)
+        s.homes = fetch('/api/kid-homes', { cache: 'no-store' }).then((r) => r.json()).then((d) => (d?.success ? d.homes || [] : null)).catch(() => null);
+        s.stopped = new Promise((done) => { s.stopNow = done; });
+        box.current = s;
+      }
+      const st = box.current;
+      const kidBy = useMemo(() => new Map(kids.map((k) => [k.slug, k])), [kids]);
+      const groups = useMemo(() => kdUpGroups(kids), [kids]);
+      const nameOf = (sl) => kidBy.get(sl)?.name || sl;
+      // Two kids with one name (Ellie 2022 and Ellie 2023) are told apart by their year wherever one is named on its own
+      const shared = useMemo(() => { const c = new Map(); kids.forEach((k) => c.set(kdUpNameKey(k), (c.get(kdUpNameKey(k)) || 0) + 1)); return c; }, [kids]);
+      const twin = (k) => (shared.get(kdUpNameKey(k)) || 0) > 1;
+      const labelOf = (sl) => { const k = kidBy.get(sl); return k ? `${k.name || sl}${twin(k) && k.year ? ` (${k.year})` : ''}` : sl; };
+      const kidOf = (sl) => (st.kids[sl] ||= { saved: new Set(), altTried: new Set(), chain: Promise.resolve(), photoSave: null, again: false, timer: null,
+        error: '', missing: false, altRunning: false, altAgain: false, alt: null, altCount: 0, heroName: '', inGallery: 0, onPage: 0, order: 0, settling: 0 });
+      // Files the person asked for anyway (a copy, a Live Photo clip, one already in the gallery): no rule leaves them out again
+      const forced = (f) => st.forced.has(f);
+      // Keyboard focus stays in the kid's card when the button that had it goes away
+      const focusCard = (sl) => requestAnimationFrame(() => document.querySelector(`.kd-up-kid[data-slug="${sl}"]`)?.focus());
+
+      // One save at a time for each kid: read it fresh, lay this change on top, save with its version
+      // always: an Undo from a toast, which outlives this window
+      const saveKid = (sl, change, message, { always = false } = {}) => {
+        const k = kidOf(sl);
+        const run = k.chain.catch(() => {}).then(async () => {
+          const path = `src/content/kids/${sl}.json`;
+          for (let attempt = 0; attempt < 4; attempt++) {
+            if (!alive.current && !always) throw new Error('the window was closed');
+            const r = await api.readContent(path);
+            if (!r.success) throw new Error(r.error || 'couldn’t read the profile');
+            const rec = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+            const next = change(rec);
+            if (!next) return rec;
+            if (!alive.current && !always) throw new Error('the window was closed');
+            const res = await api.saveContent(path, JSON.stringify(next, null, 2), message(next), r.sha).catch((e) => ({ success: false, error: e.message }));
+            if (res.success) { st.saved = true; return next; }
+            // Someone saved between the read and this save: read again
+            if (!/conflict|changed since/i.test(res.error || '')) throw new Error(res.error || 'the save didn’t go through');
+          }
+          throw new Error('the profile kept changing while this saved');
+        });
+        k.chain = run;
+        return run;
+      };
+
+      // Read out to screen readers; several results close together are read as one
+      const say = (text) => {
+        if (!text) return;
+        st.announce = Date.now() - (st.saidAt || 0) < 3000 && st.announce ? `${st.announce} ${text}` : text;
+        st.saidAt = Date.now();
+      };
+
+      // ── Photos ──
+      // (an item 'replaced' is a smaller copy a larger one took the place of)
+      const landedOf = (sl) => st.items.filter((it) => it.slug === sl && it.kind === 'photo' && it.url && it.state !== 'replaced');
+      const photosMoving = (sl) => st.items.some((it) => it.slug === sl && it.kind === 'photo' && (it.state === 'queued' || it.state === 'uploading'));
+      // Landed but not saved, in file-name order. One still uploading never holds the rest back:
+      // a late one is slotted in by its name when it lands (flushPhotos)
+      const unsavedOf = (sl) => {
+        const k = kidOf(sl);
+        return st.items.filter((it) => it.slug === sl && it.kind === 'photo' && it.url && !k.saved.has(it.url) && it.state !== 'replaced');
+      };
+      const flushPhotos = (sl) => {
+        const k = kidOf(sl);
+        clearTimeout(k.timer);
+        k.timer = null;
+        if (k.photoSave) { k.again = true; return k.photoSave; }
+        if (!unsavedOf(sl).length) return Promise.resolve();
+        const run = (async () => {
+          // Starts once k.photoSave holds this run, so the run is what clears it
+          await null;
+          do {
+            k.again = false;
+            const fresh = unsavedOf(sl);
+            if (!fresh.length) break;
+            refresh();
+            let hero = null;
+            let onPage = [];
+            try {
+              const rec = await saveKid(sl, (r0) => {
+                const had = r0.photos || [];
+                const there = new Set(had.map((p) => p.url));
+                // A photo someone else put on this page after the list loaded (another tab, a phone): by name, not
+                // counting names this upload put there itself
+                const own = new Set(landedOf(sl).filter((it) => k.saved.has(it.url)).map((it) => kdUpBase(kdUpIdName(it.name))));
+                const theirs = new Set([...kdUpGalleryNames({ photos: had })].filter((n) => !own.has(n)));
+                onPage = fresh.filter((it) => !there.has(it.url) && !it.replaces && !forced(it.file) && theirs.has(kdUpBase(kdUpIdName(it.name))));
+                // Only photos never saved: one someone else moved or removed meanwhile stays as they left it
+                const add = fresh.filter((it) => !there.has(it.url) && !onPage.includes(it));
+                if (!add.length) { hero = null; return null; }
+                // Each new one goes just before the first of this upload's photos that comes after it by
+                // name, else at the end: file-name order holds, and nobody else's photos move
+                const rank = new Map(st.items.map((it, i) => [it, i]));
+                const mineBy = new Map(landedOf(sl).map((it) => [it.url, it]));
+                const photos = [...had];
+                let heroNow = r0.heroImage;
+                for (const it of add) {
+                  // A larger copy (Full Resolution after Web) takes the smaller one's place, alt text and focal point
+                  const old = it.replaces?.url ? photos.findIndex((p) => p.url === it.replaces.url) : -1;
+                  if (old >= 0) {
+                    photos[old] = { ...photos[old], url: it.url };
+                    if (heroNow === it.replaces.url) heroNow = it.url;
+                    continue;
+                  }
+                  let at = photos.findIndex((p) => mineBy.has(p.url) && rank.get(mineBy.get(p.url)) > rank.get(it));
+                  if (at < 0) at = photos.length;
+                  photos.splice(at, 0, { url: it.url, alt: '' });
+                }
+                const first = photos.find((p) => mineBy.has(p.url));
+                hero = !heroNow && first ? mineBy.get(first.url) : null;
+                return { ...r0, photos, photoCount: photos.length, heroImage: heroNow || first?.url || '' };
+              }, (r1) => `Upload: ${kdPlural(fresh.length, 'photo')} for ${r1.name || sl}`);
+              if (hero) k.heroName = hero.name;
+              fresh.forEach((it) => { k.saved.add(it.url); if (it.state === 'uploaded') it.state = onPage.includes(it) ? 'onpage' : 'saved'; });
+              const recent = kdUpRecent.get(sl) || new Set();
+              fresh.forEach((it) => recent.add(kdUpBase(kdUpIdName(it.name))));
+              kdUpRecent.set(sl, recent);
+              // Where this upload's photos sit now: the page shows the first GALLERY_MAX
+              const at = new Map((rec.photos || []).map((p, i) => [p.url, i]));
+              const mine = [...k.saved].filter((u) => at.has(u));
+              k.inGallery = mine.length;
+              k.onPage = mine.filter((u) => at.get(u) < KS.GALLERY_MAX).length;
+              k.error = '';
+              k.missing = false;
+            } catch (e) {
+              k.error = e.message;
+              k.missing = /not found/i.test(e.message);
+              break;
+            }
+          } while (k.again);
+          if (k.photoSave === run) k.photoSave = null;
+          refresh();
+        })();
+        k.photoSave = run;
+        return run;
+      };
+      // Alt text for the new photos the page shows (its first GALLERY_MAX); Profiles to tidy can do any it skips
+      const altOnce = async (sl) => {
+        const k = kidOf(sl);
+        const mine = new Set(landedOf(sl).map((it) => it.url));
+        const r = await api.readContent(`src/content/kids/${sl}.json`).catch(() => null);
+        if (!r?.success) return;
+        const rec = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+        const todo = (rec.photos || []).slice(0, KS.GALLERY_MAX).filter((p) => mine.has(p.url) && KS.needsAlt(p) && !k.altTried.has(p.url));
+        if (!todo.length) return;
+        const got = new Map();
+        k.alt = { done: 0, total: todo.length };
+        refresh();
+        for (let b = 0; b < todo.length && !st.stop; b += KD_ALT_BATCH) {
+          const batch = todo.slice(b, b + KD_ALT_BATCH);
+          // Asked once each: one the model gives nothing for is left to Profiles to tidy
+          batch.forEach((p) => k.altTried.add(p.url));
+          const g = await Promise.race([
+            api.generate('alt-text', { name: rec.name, diagnosis: rec.diagnosis, photos: batch.map((p) => ({ url: p.url })) }).catch((e) => ({ success: false, error: e.message })),
+            st.stopped.then(() => null),
+          ]);
+          // Stopped mid-batch: these weren't described, so a later batch may still ask
+          if (!g) { batch.forEach((p) => k.altTried.delete(p.url)); break; }
+          if (g.success && Array.isArray(g.altTexts)) batch.forEach((p, j) => { if (g.altTexts[j]) got.set(p.url, g.altTexts[j]); });
+          k.alt = { done: b + batch.length, total: todo.length };
+          refresh();
+        }
+        if (!got.size) return;
+        let n = 0;
+        await saveKid(sl, (r0) => {
+          n = 0;
+          // Only alt text still empty: words someone wrote meanwhile stay
+          const photos = (r0.photos || []).map((p) => (KS.needsAlt(p) && got.has(p.url) ? (n++, { ...p, alt: got.get(p.url) }) : p));
+          return n ? { ...r0, photos } : null;
+        }, (r1) => `Alt text for ${kdPlural(n, 'new photo')} on ${r1.name || sl}`).catch(() => { n = 0; });
+        k.altCount += n;
+      };
+      const writeAlt = async (sl) => {
+        const k = kidOf(sl);
+        if (k.altRunning) { k.altAgain = true; return; }
+        k.altRunning = true;
+        try {
+          do { k.altAgain = false; await altOnce(sl); } while (k.altAgain && !st.stop);
+        } catch { /* the photos are saved either way */ }
+        k.altRunning = false;
+        k.alt = null;
+        refresh();
+      };
+      // Once a kid's photos are all in: save what's left, then the alt text. Busy from start to
+      // finish, so the dialog never looks done in the moment between the two
+      const settle = async (sl) => {
+        const k = kidOf(sl);
+        if (photosMoving(sl)) return;
+        k.settling++;
+        refresh();
+        try {
+          await flushPhotos(sl);
+          if (!k.error && !st.stop) await writeAlt(sl);
+        } finally {
+          k.settling--;
+        }
+        if (!photosMoving(sl)) say(kidLine(sl).text);
+        refresh();
+      };
+      const startPhotos = async (sl, list) => {
+        await kdUploadAll(list, {
+          idFor: (file) => `kids/${sl}/${kdUpStamp()}-${kdUpIdName(file.name)}`,
+          shouldStop: () => st.stop,
+          skip: (it) => it.state === 'replaced',
+          signal: st.photoStop.signal,
+          onStart: (it) => { it.state = 'uploading'; refresh(); },
+          onDone: (it, url) => {
+            if (it.state === 'replaced') { it.url = url; refresh(); return; }
+            it.state = 'uploaded';
+            it.url = url;
+            it.error = '';
+            const k = kidOf(sl);
+            // Saved every so many photos, or every so many seconds, so a long batch is never all at risk
+            if (unsavedOf(sl).length >= KD_UP_SAVE_EVERY) flushPhotos(sl);
+            else if (!k.timer) k.timer = setTimeout(() => { k.timer = null; if (alive.current) flushPhotos(sl); }, KD_UP_SAVE_MS);
+            refresh();
+          },
+          onFail: (it, err, how) => { if (it.state === 'replaced') return; it.state = how?.stopped ? 'stopped' : 'failed'; it.error = how?.stopped ? '' : String(err || 'upload failed'); refresh(); },
+        });
+        list.forEach((it) => { if (it.state === 'queued') it.state = 'stopped'; });
+        refresh();
+        await settle(sl);
+      };
+
+      // ── Videos: one at a time (they're big) ──
+      // The rows follow the profile: the one it plays is on the page, the rest wait in Stream
+      const syncVideos = (sl, playing) => {
+        st.items.forEach((x) => {
+          if (x.slug !== sl || x.kind !== 'video' || !x.uid || (x.state !== 'page' && x.state !== 'kept')) return;
+          x.state = x.uid === playing ? 'page' : 'kept';
+          if (x.state !== 'page') delete x.undoTo;
+        });
+      };
+      const placeVideo = async (it, instead) => {
+        it.state = 'saving';
+        it.error = '';
+        refresh();
+        let before = null;
+        try {
+          // A page's video is never replaced without asking: one that reads as not playing may only
+          // be getting ready in Stream (it answers the same), so the row just says so
+          const rec = await saveKid(it.slug, (r0) => {
+            before = r0.streamVideoId || null;
+            return (instead || !(r0.videoUrl || r0.streamVideoId)) && r0.streamVideoId !== it.uid ? { ...r0, streamVideoId: it.uid } : null;
+          }, (r1) => `Upload: video for ${r1.name || it.slug}`);
+          it.oldStill = !instead && rec.streamVideoId !== it.uid && rec.streamVideoId && !rec.videoUrl && !st.mine.has(rec.streamVideoId)
+            ? (await kdStreamState(rec.streamVideoId)) === 'gone' : false;
+          if (instead) it.undoTo = before; else delete it.undoTo;
+          it.state = 'kept';
+          syncVideos(it.slug, rec.streamVideoId);
+        } catch (e) {
+          it.state = 'unsaved';
+          it.error = e.message;
+          it.missing = /not found/i.test(e.message);
+          if (it.missing) kidOf(it.slug).missing = true;
+        }
+        refresh();
+        return { before };
+      };
+      const uploadVideo = async (it) => {
+        if (it.state !== 'queued') return;
+        if (st.stop) { it.state = 'stopped'; refresh(); return; }
+        const ctrl = new AbortController();
+        st.video = ctrl;
+        it.state = 'uploading';
+        it.pct = 0;
+        refresh();
+        try {
+          const res = await api.uploadVideo(it.file, `${nameOf(it.slug)} - ${it.name.replace(/\.[^.]+$/, '')}`, { signal: ctrl.signal, onProgress: (pct) => { it.pct = pct; refresh(); } });
+          it.uid = res.videoId;
+          st.mine.add(res.videoId);
+          kdUpRecentVideos.set(it.slug, new Set([...(kdUpRecentVideos.get(it.slug) || []), `${it.name}|${it.size}`]));
+          kdStreamChecks.delete(res.videoId);
+        } catch (e) {
+          st.video = null;
+          it.state = ctrl.signal.aborted ? 'stopped' : 'failed';
+          it.error = kdUpVideoError(e.message);
+          refresh();
+          return;
+        }
+        st.video = null;
+        if (!alive.current) return;
+        await placeVideo(it, false);
+        say(`${it.name}: ${videoText(it)}`);
+      };
+      const queueVideo = (it) => { st.videos = st.videos.then(() => uploadVideo(it)).catch(() => {}); };
+      // Undo "Play this one instead", from the row or the toast (the toast can outlive this window)
+      const undoPlay = async (it, before) => {
+        let did = false;
+        try {
+          // Only while it's still this one: an older Undo never changes a newer choice
+          const rec = await saveKid(it.slug, (r0) => { did = r0.streamVideoId === it.uid; return did ? { ...r0, streamVideoId: before } : null; },
+            (r1) => `Undo: video for ${r1.name || it.slug}`, { always: true });
+          syncVideos(it.slug, rec.streamVideoId);
+          delete it.undoTo;
+          refresh();
+          focusCard(it.slug);
+          addToast(did ? 'Put back' : 'Nothing to undo: the page plays a different video now.', did ? 'success' : 'info');
+        } catch (e) { addToast(`Couldn’t undo: ${e.message}`, 'error'); }
+      };
+      const playInstead = async (it) => {
+        const { before } = await placeVideo(it, true);
+        focusCard(it.slug);
+        if (it.state !== 'page') { if (it.state === 'unsaved') addToast(`Couldn’t change the video: ${it.error}`, 'error'); return; }
+        addToast(`${nameOf(it.slug)}’s page plays ${it.name} now.`, 'success', { label: 'Undo', fn: () => undoPlay(it, before) });
+      };
+
+      // ── Adding files ──
+      // What was left out, said under the drop zone: { skipped: [names], dupes, clips: [{ to, files }], already: [{ to, files }] }
+      const noted = (a, b) => (!a ? b : !b ? a : { skipped: [...a.skipped, ...b.skipped], dupes: a.dupes + b.dupes, clips: [...a.clips, ...b.clips],
+        copies: [...(a.copies || []), ...(b.copies || [])], already: [...a.already, ...b.already], swapped: (a.swapped || 0) + (b.swapped || 0) });
+      const shown = (n) => (n && (n.skipped.length || n.dupes || n.clips.length || n.copies?.length || n.already.length || n.swapped) ? n : null);
+      // Files going to one kid's page. merge: add to what's already said (several kids at once)
+      const add = (files, to, { force = false, merge = false } = {}) => {
+        const all = [...files].filter((f) => !String(f.name || '').startsWith('.'));
+        if (!all.length || !to) return;
+        const media = all.filter((f) => kdUpKind(f));
+        const skipped = all.filter((f) => !kdUpKind(f)).map((f) => f.name);
+        // The same file again (same name and size, even a fresh copy of it) isn't added twice; one that
+        // failed or was stopped is tried again
+        const seen = new Map(st.items.filter((it) => it.slug === to).map((it) => [`${it.name}|${it.size}`, it]));
+        // Already in the gallery from before (an earlier upload, here or in the editor): left out unless asked for again
+        // (this visit's own uploads are checked as copies instead, by when they were taken or how they look:
+        // two different photos may share a name, like before/001.jpg and after/001.jpg)
+        const ownNames = new Set(st.items.filter((it) => it.slug === to).map((it) => kdUpBase(kdUpIdName(it.name))));
+        const inGallery = force ? new Set() : new Set([...kdUpGalleryNames(kidBy.get(to)), ...[...(kdUpRecent.get(to) || [])].filter((n) => !ownNames.has(n))]);
+        const photoNames = kdUpPhotoNames([...media, ...st.items.filter((it) => it.slug === to).map((it) => it.file)]);
+        // A Live Photo's photo may be on the page already, from an earlier upload (its stored name, IMG-5102)
+        const pagePhotos = new Set([...kdUpGalleryNames(kidBy.get(to)), ...(kdUpRecent.get(to) || [])]);
+        const isClip = (f) => kdUpIsClip(f, photoNames) || kdUpIsClip({ name: kdUpIdName(f.name), size: f.size }, pagePhotos);
+        let dupes = 0;
+        let swapped = 0;
+        const clips = [];
+        const copies = [];
+        const already = [];
+        const fresh = [];
+        const again = [];
+        const newItem = (f, kind) => ({ key: `up-${++st.seq}`, slug: to, kind, file: f, name: f.name, size: f.size, state: 'queued', pct: 0, url: '', uid: '', error: '' });
+        // Copies of one photo coming together (Web and Full Resolution in one drop, or one Upload): the largest goes
+        const together = new Map();
+        for (const f of [...media].sort((a, b) => b.size - a.size)) {
+          const kind = kdUpKind(f);
+          const id = `${f.name}|${f.size}`;
+          const had = seen.get(id);
+          const lower = f.name.toLowerCase();
+          // One that failed or was stopped (an empty iCloud placeholder, a file too big) is tried again with this file
+          const retry = f.size && st.items.find((it) => it.slug === to && it.kind === kind && it.name.toLowerCase() === lower && (it.state === 'failed' || it.state === 'stopped'));
+          if (retry) {
+            Object.assign(retry, { file: f, size: f.size, state: 'queued', error: '', pct: 0 });
+            again.push(retry);
+            continue;
+          }
+          if (had) { dupes++; continue; }
+          const twinNow = !forced(f) && (together.get(lower) || []).find((x) => sameShot(x, f));
+          if (twinNow) { copies.push(f); st.follows.set(f, twinNow); continue; }
+          // A copy of one added before for this kid: a larger one (Full Resolution after Web) takes its place,
+          // a smaller one is left out (and follows it if asked for)
+          const twinItem = !forced(f) && st.items.find((it) => it.slug === to && it.kind === kind && !['replaced', 'failed', 'stopped', 'onpage'].includes(it.state) && it.name.toLowerCase() === lower && it.size !== f.size && sameShot(it.file, f));
+          if (twinItem && f.size < twinItem.size) { copies.push(f); st.follows.set(f, twinItem.file); continue; }
+          const base = kdUpBase(kdUpIdName(f.name));
+          if (!twinItem && kind === 'photo' && !forced(f) && kdUpNamed(base) && inGallery.has(base)) { already.push(f); continue; }
+          if (kind === 'video' && !forced(f) && kdUpRecentVideos.get(to)?.has(id)) { already.push(f); continue; }
+          if (kind === 'video' && !force && !forced(f) && isClip(f)) { clips.push(f); continue; }
+          seen.set(id, f);
+          together.set(lower, [...(together.get(lower) || []), f]);
+          const it = newItem(f, kind);
+          if (twinItem) {
+            it.replaces = twinItem;
+            twinItem.state = 'replaced';
+            swapped++;
+          }
+          fresh.push(it);
+        }
+        // Camera and photographer files are numbered in the order they were taken
+        fresh.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        // A file still in iCloud or Google Drive arrives empty
+        fresh.forEach((it) => { if (!it.size) { it.state = 'failed'; it.error = 'The file is empty. If it’s in iCloud or Google Drive, download it to this computer first.'; } });
+        st.notice = shown(noted(merge ? st.notice : null, { skipped, dupes, clips: clips.length ? [{ to, files: clips }] : [], copies: copies.length ? [{ to, files: copies }] : [], already: already.length ? [{ to, files: already }] : [], swapped }));
+        if (fresh.length || again.length) kidOf(to).order = ++st.seq;
+        st.items.push(...fresh);
+        refresh();
+        [...again, ...fresh].filter((it) => it.kind === 'video' && it.state === 'queued').forEach(queueVideo);
+        const photos = [...again, ...fresh].filter((it) => it.kind === 'photo' && it.state === 'queued');
+        if (photos.length) startPhotos(to, photos);
+      };
+      // ── Whose they are ──
+      const countText = (files) => {
+        const v = files.filter((f) => kdUpKind(f) === 'video').length;
+        const p = files.length - v;
+        return [p ? kdPlural(p, 'photo') : '', v ? kdPlural(v, 'video') : ''].filter(Boolean).join(' and ');
+      };
+      // "this photo", "these 3 photos and 1 video": for labels that name a group
+      const theseText = (files) => (files.length === 1 ? `this ${kdUpKind(files[0]) === 'video' ? 'video' : 'photo'}` : `these ${countText(files)}`);
+      const whyOf = (g) => `${g.by === 'home' ? `Taken at ${nameOf(g.slug)}’s home` : g.by === 'folder' ? `Folder “${g.part}”` : `Named like “${g.part}”`}${
+        !g.others ? '' : g.by === 'home' ? `. ${g.others + 1} pages share that home, so check it’s the right one` : `. ${g.others + 1} pages match “${g.word}”, so check it’s the right one`}`;
+      // Two files of one name for one kid are copies of one photo (a photographer's Web and Full Resolution),
+      // unless both say when they were taken and it differs (two phones' IMG_0001)
+      // Copies only with evidence: the same moment taken, else the same picture in a tiny fingerprint. With
+      // neither (before and after shots both named 001.jpg, no dates), they're two photos and both go in
+      const sameShot = (a, b) => {
+        const x = st.takenOf.get(a);
+        const y = st.takenOf.get(b);
+        if (x != null && y != null) return Math.abs(x - y) < 2000;
+        return kdUpPrintsMatch(st.printOf.get(a), st.printOf.get(b));
+      };
+      const topFolder = (f) => { const parts = String(kdUpPaths.get(f) || '').split('/').filter(Boolean); return parts.length > 1 ? parts[0].toLowerCase() : ''; };
+      const dropThumbs = (g) => { g.thumbs.forEach((u) => URL.revokeObjectURL(u)); g.thumbs = []; };
+      // What was left out, in words (shown under the drop zone and read out by screen readers)
+      const names = (files, n = 3) => `${files.slice(0, n).map((f) => kdUpPaths.get(f) || f.name).join(', ')}${files.length > n ? ` and ${files.length - n} more` : ''}`;
+      const noticeText = (nt) => (!nt ? '' : [
+        nt.skipped.length ? `Left out ${kdPlural(nt.skipped.length, 'file')} that ${nt.skipped.length === 1 ? 'isn’t a photo or video' : 'aren’t photos or videos'} the page can show: ${nt.skipped.slice(0, 3).join(', ')}${nt.skipped.length > 3 ? ` and ${nt.skipped.length - 3} more` : ''}.` : '',
+        nt.dupes ? `${kdPlural(nt.dupes, 'file')} ${nt.dupes === 1 ? 'was' : 'were'} already added, so ${nt.dupes === 1 ? 'it was' : 'they were'} left out.` : '',
+        (() => { const c = nt.clips.flatMap((a) => a.files); return c.length ? `Left out ${kdPlural(c.length, 'Live Photo clip')}: the short video an iPhone keeps with a photo of the same name (${names(c, 2)}).` : ''; })(),
+        (() => { const c = (nt.copies || []).flatMap((a) => a.files); return c.length ? `Left out ${kdPlural(c.length, 'smaller copy', 'smaller copies')} of a photo with the same name for the same kid, like a Web copy beside the Full Resolution one: ${names(c)}.` : ''; })(),
+        nt.swapped ? `The larger copy of ${kdPlural(nt.swapped, 'photo')} (Full Resolution after Web) takes the smaller one’s place.` : '',
+        ...nt.already.map((a) => `${kdPlural(a.files.length, 'file')} with the same name ${a.files.length === 1 ? 'is' : 'are'} already on ${nameOf(a.to)}’s page, so ${a.files.length === 1 ? 'it was' : 'they were'} left out: ${names(a.files)}.`),
+      ].filter(Boolean).join(' '));
+      // "Add them anyway": each goes where the file it goes with went (a clip with its photo, a copy with
+      // the one kept), else to the kid it was left out of, else it's guessed and checked like any new file
+      // From an earlier note, what can still be added anyway (the rest of it is done with)
+      const stillOffered = (n) => (n ? { skipped: [], dupes: 0, swapped: 0, clips: n.clips, copies: n.copies || [], already: n.already } : null);
+      const addAnyway = () => {
+        const n = st.notice;
+        st.notice = null;
+        const per = new Map();
+        const loose = [];
+        let focusTo = '';
+        const place = (list) => {
+          for (const a of list) {
+            for (const f of a.files) {
+              st.forced.add(f);
+              const with_ = st.follows.get(f);
+              const group = with_ && st.held.find((h) => h.files.includes(with_));
+              const item = with_ && st.items.find((x) => x.file === with_);
+              const to = item?.slug || a.to;
+              if (group) group.files.push(f);
+              else if (to) per.set(to, [...(per.get(to) || []), f]);
+              else loose.push(f);
+            }
+          }
+        };
+        const flush = () => { for (const [to, files] of per) { add(files, to, { merge: true }); focusTo ||= to; } per.clear(); };
+        // Photos first (one "already on the page" goes back up), so a clip or copy then finds where its photo went
+        place([...n.already, ...(n.copies || [])]);
+        flush();
+        place(n.clips);
+        flush();
+        // Nothing says where these go: they wait to be checked, never straight to the kid on screen
+        if (loose.length) intake(loose, slug, { check: true });
+        refresh();
+        if (focusTo) focusCard(focusTo); else focusDrop();
+      };
+      /**
+       * New files: read where they were taken and named, then guess whose they are.
+       * chosen: the kid picked in "Whose page?". Everything that agrees with it (or says nothing)
+       * goes straight in; anything else waits in the check card, grouped by the guess.
+       */
+      // check: always wait in "Check whose page", even with a kid chosen
+      const intake = async (files, chosen = slug, { check = false } = {}) => {
+        const all = [...files].filter((f) => !String(f.name || '').startsWith('.'));
+        if (!all.length) return;
+        st.reading++;
+        refresh();
+        try {
+          const media = all.filter(kdUpKind);
+          const skipped = all.filter((f) => !kdUpKind(f)).map((f) => f.name);
+          // A Live Photo's clip goes with its photo, so it's left out here, and follows the photo if asked for
+          const photoNames = kdUpPhotoNames(media);
+          const clips = media.filter((f) => !forced(f) && kdUpKind(f) === 'video' && kdUpIsClip(f, photoNames));
+          for (const c of clips) {
+            const photo = media.find((f) => kdUpKind(f) === 'photo' && kdUpBase(f.name) === kdUpBase(c.name));
+            if (photo) st.follows.set(c, photo);
+          }
+          const rest = media.filter((f) => !clips.includes(f));
+          const homesNow = await Promise.race([st.homes, new Promise((done) => setTimeout(() => done(null), 8000))]);
+          st.homesOff = homesNow === null;
+          const facts = new Map();
+          const queue = [...rest];
+          await Promise.all(Array.from({ length: Math.min(6, queue.length) }, async () => {
+            while (queue.length) { const f = queue.shift(); facts.set(f, await KG.readFacts(f)); }
+          }));
+          if (!alive.current) return;
+          // Changed while these were read: they go to the kid on screen now
+          if (latest.current.slug !== chosen) chosen = latest.current.slug;
+          rest.forEach((f) => st.takenOf.set(f, facts.get(f)?.taken?.getTime?.() ?? null));
+          // Fingerprints for photos sharing a name with another here, waiting or added (only those)
+          const known = [...st.items.map((it) => it.file), ...st.held.flatMap((g) => g.files)];
+          const nameCount = new Map();
+          [...rest, ...known].forEach((f) => nameCount.set(f.name.toLowerCase(), (nameCount.get(f.name.toLowerCase()) || 0) + 1));
+          const toPrint = [...rest, ...known].filter((f) => kdUpKind(f) === 'photo' && nameCount.get(f.name.toLowerCase()) > 1 && !st.printOf.has(f));
+          for (const f of toPrint) st.printOf.set(f, await kdUpPrint(f));
+          if (!alive.current) return;
+          // A name that fits several pages goes to the kid chosen, when that's one of them
+          const guesses = rest.map((f) => ({ file: f, guess: KG.guessKid({ path: kdUpPaths.get(f) || f.webkitRelativePath || f.name, facts: facts.get(f) }, kids, homesNow || [], chosen || '') }));
+          // Copies of one photo for one kid in this drop: the largest is kept
+          const copies = [];
+          const kept = new Map();
+          for (const g of [...guesses].sort((a, b) => b.file.size - a.file.size)) {
+            if (forced(g.file)) continue;
+            const key = `${g.guess?.slug || topFolder(g.file)}|${g.file.name.toLowerCase()}`;
+            const twin = (kept.get(key) || []).find((x) => sameShot(x, g.file));
+            if (twin) { copies.push(g.file); st.follows.set(g.file, twin); continue; }
+            kept.set(key, [...(kept.get(key) || []), g.file]);
+          }
+          const keep = guesses.filter((g) => !copies.includes(g.file));
+          const left = { skipped, dupes: 0, clips: clips.length ? [{ to: '', files: clips }] : [], copies: copies.length ? [{ to: '', files: copies }] : [], already: [] };
+          if (!check && chosen && keep.every((g) => !g.guess || g.guess.slug === chosen)) {
+            st.notice = shown(noted(stillOffered(st.notice), left));
+            add(keep.map((g) => g.file), chosen, { merge: true });
+            say(noticeText(st.notice));
+            return;
+          }
+          hold(keep, chosen, left);
+        } finally {
+          st.reading--;
+          refresh();
+        }
+      };
+      const hold = (guesses, chosen, left) => {
+        // The same file added again while it waits is one file
+        const waiting = new Set(st.held.flatMap((h) => h.files).map((f) => `${f.name}|${f.size}`));
+        const copy = (f, of) => { st.follows.set(f, of); left.copies = [{ to: '', files: [...(left.copies[0]?.files || []), f] }]; };
+        for (const { file, guess } of guesses) {
+          if (waiting.has(`${file.name}|${file.size}`)) { left.dupes++; continue; }
+          waiting.add(`${file.name}|${file.size}`);
+          const key = guess?.slug || '';
+          // Joins a group with the same guess, unless someone already changed that group's kid; one no
+          // one could tell joins only the group for the kid chosen now
+          let g = st.held.find((h) => h.guess === key && !h.touched && (key || h.slug === (chosen || '')));
+          if (!g) {
+            g = { key: `held-${++st.seq}`, guess: key, slug: key || chosen || '', files: [], thumbs: [], why: new Map() };
+            st.held.push(g);
+          }
+          // A copy of one already waiting for the same kid (Web, then Full Resolution): the larger stays
+          const twin = !forced(file) && g.files.find((f) => f.name.toLowerCase() === file.name.toLowerCase() && sameShot(f, file));
+          if (twin) {
+            if (file.size <= twin.size) { copy(file, twin); continue; }
+            g.files = g.files.filter((f) => f !== twin);
+            copy(twin, file);
+          }
+          g.files.push(file);
+          if (guess) { const w = whyOf(guess); g.why.set(w, (g.why.get(w) || 0) + 1); }
+          // A few of the photos, to see whose they are (one this browser can't draw shows a placeholder)
+          if (g.thumbs.length < 4 && kdUpKind(file) === 'photo') g.thumbs.push(URL.createObjectURL(file));
+        }
+        // The biggest guess first; "couldn't tell" last
+        st.held.sort((a, b) => (!a.guess - !b.guess) || b.files.length - a.files.length);
+        // A new drop says what it left out, plus anything earlier that can still be added anyway
+        st.notice = shown(noted(stillOffered(st.notice), left));
+        const waitingN = st.held.reduce((c, g) => c + g.files.length, 0);
+        say([waitingN ? `${kdPlural(waitingN, 'file')} to check before uploading.` : '', noticeText(st.notice)].filter(Boolean).join(' '));
+        refresh();
+        requestAnimationFrame(() => document.querySelector('.kd-up-held')?.focus());
+      };
+      const heldWhy = (g) => {
+        const top = [...g.why.entries()].sort((a, b) => b[1] - a[1]);
+        if (!top.length) return '';
+        const n = top.reduce((s, [, c]) => s + c, 0);
+        return top.length === 1 && n === g.files.length ? top[0][0] : `${top[0][0]}${n > top[0][1] || n < g.files.length ? ', and more' : ''}`;
+      };
+      const focusDrop = () => requestAnimationFrame(() => (document.querySelector('.kd-up-held') || document.querySelector('.kd-up-drop'))?.focus());
+      const leaveGroup = (g) => { dropThumbs(g); st.held = st.held.filter((x) => x !== g); refresh(); focusDrop(); };
+      const clearHeld = () => { st.held.forEach(dropThumbs); st.held = []; refresh(); focusDrop(); };
+      const uploadHeld = () => {
+        if (!st.held.length || st.held.some((g) => !g.slug)) return;
+        const per = new Map();
+        for (const g of st.held) { per.set(g.slug, [...(per.get(g.slug) || []), ...g.files]); dropThumbs(g); }
+        st.held = [];
+        for (const [to, files] of per) add(files, to, { merge: true });
+        refresh();
+        focusCard([...per.keys()][0]);
+      };
+      const pick = (v) => {
+        setSlug(v);
+        // The kid picked fills in the groups no one could tell, and keeps them in step when changed again (a group
+        // made while another kid was chosen, or set by hand, stays as it is); nothing starts until Upload
+        st.held.forEach((g) => { if (!g.guess && !g.touched && (!g.slug || g.byPick)) { g.slug = v; g.byPick = true; } });
+        refresh();
+      };
+      const retryPhotos = (sl) => {
+        const list = st.items.filter((it) => it.slug === sl && it.kind === 'photo' && (it.state === 'failed' || it.state === 'stopped') && it.size);
+        list.forEach((it) => { it.state = 'queued'; it.error = ''; });
+        refresh();
+        focusCard(sl);
+        if (list.length) startPhotos(sl, list);
+      };
+      const retrySave = (sl) => { kidOf(sl).error = ''; refresh(); focusCard(sl); settle(sl); };
+      const retryVideo = (it) => {
+        focusCard(it.slug);
+        if (it.uid) { placeVideo(it, false); return; }
+        it.state = 'queued';
+        it.error = '';
+        refresh();
+        queueVideo(it);
+      };
+      const stopAll = () => {
+        st.stop = true;
+        setStopping(true);
+        st.stopNow();
+        st.video?.abort();
+        st.photoStop.abort();
+        st.items.forEach((it) => { if (it.kind === 'video' && it.state === 'queued') it.state = 'stopped'; });
+        refresh();
+      };
+      // The list behind is reloaded on the way out (a reload that fails shows an error card in its place, which would take this with it)
+      // What closing would lose: files waiting to be checked, and uploads that couldn't be saved to a profile
+      const atRisk = () => ({
+        held: st.held.reduce((c, g) => c + g.files.length, 0),
+        unsaved: st.items.filter((it) => (it.kind === 'photo' && it.state === 'uploaded' && kidOf(it.slug).error && !kidOf(it.slug).missing)
+          || (it.kind === 'video' && it.state === 'unsaved' && !it.missing)).length,
+      });
+      const okToLeave = async () => {
+        const r = atRisk();
+        if (!r.held && !r.unsaved) return true;
+        const what = [r.unsaved ? `${kdPlural(r.unsaved, 'upload')} couldn’t be saved to ${r.unsaved === 1 ? 'its' : 'their'} profile yet` : '',
+          r.held ? `${kdPlural(r.held, 'file')} ${r.held === 1 ? 'is' : 'are'} waiting in “Check whose page these are for”` : ''].filter(Boolean).join(', and ');
+        return ask({ title: 'Leave them off the pages?', text: `${what}. Closing leaves ${r.held + r.unsaved === 1 ? 'it' : 'them'} off.`, yes: 'Close without them', no: 'Go back', danger: true });
+      };
+      // Resolves true once closed
+      const close = async () => {
+        if (!(await okToLeave())) return false;
+        st.held.forEach(dropThumbs);
+        st.held = [];
+        if (st.saved) onReload?.();
+        onClose();
+        return true;
+      };
+      const openProfile = async (sl) => { if (await okToLeave()) onOpen(sl); };
+
+      // ── Where things stand ──
+      const busy = st.reading > 0
+        || st.items.some((it) => it.state === 'queued' || it.state === 'uploading' || it.state === 'saving'
+          || (it.kind === 'photo' && it.state === 'uploaded' && !kidOf(it.slug).error))
+        || Object.values(st.kids).some((k) => k.photoSave || k.altRunning || k.settling);
+      const onlyAlt = busy && !st.reading && !st.items.some((it) => ['queued', 'uploading', 'saving', 'uploaded'].includes(it.state));
+      const risk = atRisk();
+      const heldFiles = risk.held + risk.unsaved > 0;
+      useGlobalDirty(busy || heldFiles, busy ? 'the uploads to kids’ pages' : risk.unsaved ? 'the uploads not saved to a profile' : 'the photos waiting to be checked');
+      useEffect(() => {
+        if (!busy && !heldFiles) return undefined;
+        const h = (e) => { e.preventDefault(); e.returnValue = ''; };
+        window.addEventListener('beforeunload', h);
+        return () => window.removeEventListener('beforeunload', h);
+      }, [busy, heldFiles]);
+      const latest = useRef({});
+      latest.current = { intake, slug, stopping };
+      // Everything finished (or stopped): ready for more, and files that waited out a Stop start now
+      const wasBusy = useRef(false);
+      useEffect(() => {
+        if (busy) { wasBusy.current = true; return; }
+        if (!wasBusy.current) return;
+        wasBusy.current = false;
+        st.stop = false;
+        st.stopped = new Promise((done) => { st.stopNow = done; });
+        st.photoStop = new AbortController();
+        setStopping(false);
+        // The footer's Stop went away: keyboard focus goes to its Done rather than the page behind
+        requestAnimationFrame(() => {
+          const a = document.activeElement;
+          if (!a || a === document.body || !a.isConnected) document.querySelector('.kd-up-dialog .kd-dialog__foot .btn-primary')?.focus();
+        });
+      }, [busy]);
+      // Closed, or the admin left for another page ("Leaving drops them"): stop everything, keep what's saved
+      useEffect(() => () => {
+        alive.current = false;
+        st.stop = true;
+        st.stopNow();
+        st.video?.abort();
+        st.photoStop.abort();
+        Object.values(st.kids).forEach((k) => clearTimeout(k.timer));
+        st.held.forEach(dropThumbs);
+      }, []);
+      // Files dropped anywhere on the dialog go to the kid chosen; dropped beside it they're ignored,
+      // never opened by the browser in place of the admin. A folder counts as busy while it's read
+      useEffect(() => {
+        const files = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+        const inside = (e) => !!e.target?.closest?.('.kd-up-dialog');
+        const onOver = (e) => {
+          if (!files(e)) return;
+          e.preventDefault();
+          const ok = inside(e) && !latest.current.stopping;
+          if (e.dataTransfer) e.dataTransfer.dropEffect = ok ? 'copy' : 'none';
+          setOver(ok);
+        };
+        const onLeave = (e) => { if (!e.relatedTarget) setOver(false); };
+        const onDrop = (e) => {
+          if (!files(e)) return;
+          e.preventDefault();
+          setOver(false);
+          if (!inside(e) || latest.current.stopping) return;
+          const to = latest.current.slug;
+          st.reading++;
+          refresh();
+          kdDroppedFiles(e.dataTransfer).then((list) => {
+            st.reading--;
+            if (alive.current) latest.current.intake(list, to);
+            refresh();
+          });
+        };
+        window.addEventListener('dragover', onOver);
+        window.addEventListener('dragleave', onLeave);
+        window.addEventListener('drop', onDrop);
+        return () => {
+          window.removeEventListener('dragover', onOver);
+          window.removeEventListener('dragleave', onLeave);
+          window.removeEventListener('drop', onDrop);
+        };
+      }, []);
+
+      function videoText(it) {
+        const who = nameOf(it.slug);
+        return {
+          queued: 'Waiting its turn',
+          uploading: `Uploading, ${it.pct}%`,
+          saving: 'Adding it to the page…',
+          page: `Plays on ${who}’s page. Stream takes a few minutes to get it ready.`,
+          kept: it.oldStill ? `Saved in Stream. ${who}’s page has an uploaded video that doesn’t play right now (it may still be getting ready, or it was removed).` : `Saved in Stream. ${who}’s page already has a video.`,
+          failed: `Didn’t upload: ${it.error}`,
+          stopped: 'Stopped before it finished',
+          unsaved: it.missing ? `Saved in Stream, but ${who}’s profile was deleted, so it isn’t on a page.` : `Uploaded, but not added to the page: ${it.error}`,
+        }[it.state] || '';
+      }
+      function kidLine(sl) {
+        const k = kidOf(sl);
+        const who = nameOf(sl);
+        const photos = st.items.filter((it) => it.slug === sl && it.kind === 'photo' && it.state !== 'replaced');
+        const count = (s) => photos.filter((it) => it.state === s).length;
+        const moving = count('queued') + count('uploading');
+        const landed = photos.filter((it) => it.url).length;
+        const saved = count('saved');
+        if (!photos.length) return { text: '', tone: '' };
+        if (moving) return { text: `Uploading photos: ${landed} of ${photos.length}`, pct: (photos.length - moving) / photos.length, tone: '' };
+        if (k.photoSave) return { text: 'Saving the photos…', pct: 1, tone: '' };
+        if (k.missing) return { text: `${who}’s profile was deleted, so ${landed - saved === 1 ? 'this photo can’t be added' : `these ${landed - saved} photos can’t be added`}.`, tone: 'warn' };
+        if (k.error) return { text: `${kdPlural(landed - saved, 'photo')} uploaded but not saved to the profile: ${k.error}`, tone: 'warn' };
+        if (k.alt) return { text: `Writing alt text: ${k.alt.done} of ${k.alt.total}`, pct: k.alt.done / k.alt.total, tone: '' };
+        const meanwhile = count('onpage');
+        if (!saved) return { text: meanwhile ? `${kdPlural(meanwhile, 'photo')} with the same name ${meanwhile === 1 ? 'was' : 'were'} already on ${who}’s page (added meanwhile), so nothing was added.` : 'No photos added.', tone: 'warn' };
+        // The page shows the first GALLERY_MAX photos; past that they're kept but not shown
+        const off = Math.max(0, k.inGallery - k.onPage);
+        const offText = off === k.inGallery ? (off === 1 ? 'this one doesn’t show until you move it' : 'these don’t show until you move them')
+          : off === 1 ? '1 of these doesn’t show until you move it' : `${off} of these don’t show until you move them`;
+        return {
+          tone: 'ok',
+          text: [
+            `${kdPlural(saved, 'photo')} added to ${who}’s gallery.`,
+            k.heroName ? `${k.heroName} is the main photo.` : '',
+            off ? `The page shows the first ${KS.GALLERY_MAX} photos, so ${offText} up in ${who}’s profile.` : '',
+            k.altCount ? `Alt text written for ${k.altCount}.` : '',
+            meanwhile ? `${kdPlural(meanwhile, 'photo')} with the same name ${meanwhile === 1 ? 'was' : 'were'} already on the page (added meanwhile), so ${meanwhile === 1 ? 'it was' : 'they were'} left out.` : '',
+          ].filter(Boolean).join(' '),
+        };
+      }
+
+      const kidCard = (sl) => {
+        const kid = kidBy.get(sl);
+        const who = nameOf(sl);
+        const mine = st.items.filter((it) => it.slug === sl && it.state !== 'replaced');
+        const photos = mine.filter((it) => it.kind === 'photo');
+        const videos = mine.filter((it) => it.kind === 'video');
+        const failed = photos.filter((it) => it.state === 'failed');
+        const stoppedN = photos.filter((it) => it.state === 'stopped').length;
+        const line = kidLine(sl);
+        const k = kidOf(sl);
+        const kidBusy = mine.some((it) => ['queued', 'uploading', 'saving'].includes(it.state) || (it.state === 'uploaded' && !k.error))
+          || k.photoSave || k.altRunning || k.settling;
+        return html`<section class="kd-up-kid" key=${sl} data-slug=${sl} tabindex="-1" aria-label=${`${who}’s uploads`}>
+          <header class="kd-up-kid__head">
+            ${kid?.heroImage ? html`<img class="kd-thumb" src=${kdImg(kid.heroImage, 'w=88,h=88,fit=cover,gravity=face,q=70', kdHeroFocus(kid))} alt="" width="40" height="40" />`
+              : html`<span class="kd-thumb kd-thumb--empty" aria-hidden="true">${kdIcon.image}</span>`}
+            <div class="kd-up-kid__who">
+              <strong>${labelOf(sl)}</strong>
+              <span>${[kid?.year, kid && KS.statusOf(kid.status).label, kid?.publishStatus === 'draft' ? 'Draft' : null, kdPlural(photos.length, 'photo'), videos.length ? kdPlural(videos.length, 'video') : null].filter(Boolean).join(' · ')}</span>
+            </div>
+            ${!busy && kid && !k.missing ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => openProfile(sl)}>Open profile</button>` : null}
+          </header>
+          ${line.text ? html`<p class=${`kd-up-line${line.tone ? ` is-${line.tone}` : ''}`}>${kidBusy ? html`<span class="spinner spinner-14" />` : line.tone === 'ok' ? html`<span class="kd-tidy-done">${kdIcon.check}</span>` : null}<span>${line.text}</span>
+            ${k.error && !k.missing && !kidBusy ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => retrySave(sl)}>Try saving again</button>` : null}</p>` : null}
+          ${line.pct != null && kidBusy ? html`<div class="kd-meter" aria-hidden="true"><span style=${`width:${Math.round(line.pct * 100)}%`}></span></div>` : null}
+          ${photos.length ? html`<ul class="kd-up-tiles" aria-label=${`${who}’s photos`}>
+            ${photos.map((it) => html`<li key=${it.key} class=${`kd-up-tile is-${it.state}`} title=${it.error ? `${it.name}: ${it.error}` : it.name}>
+              ${it.url ? html`<img src=${kdImg(it.url, 'w=112,h=112,fit=cover,q=60')} alt="" loading="lazy" decoding="async" />` : html`<span class="kd-up-tile__ph" aria-hidden="true">${kdIcon.image}</span>`}
+              ${it.state === 'uploading' ? html`<span class="kd-up-tile__over"><span class="spinner spinner-14" /></span>`
+                : it.state === 'failed' ? html`<span class="kd-up-tile__over is-bad">${kdIcon.alert}</span>` : null}
+              <span class="sr-only">${it.name}${it.state === 'failed' ? `: didn’t upload, ${it.error}` : it.state === 'stopped' ? ': stopped' : ''}</span>
+            </li>`)}
+          </ul>` : null}
+          ${failed.length || stoppedN ? html`<div class="kd-up-fails" role="alert">
+            ${failed.length ? html`<p><strong>${kdPlural(failed.length, 'photo')} didn’t upload.</strong></p>
+              <ul>${failed.slice(0, 4).map((it) => html`<li key=${it.key}>${it.name}: ${it.error}</li>`)}${failed.length > 4 ? html`<li>and ${failed.length - 4} more</li>` : null}</ul>` : null}
+            ${stoppedN ? html`<p>${stoppedN === 1 ? '1 photo wasn’t' : `${stoppedN.toLocaleString()} photos weren’t`} uploaded because you stopped.</p>` : null}
+            ${!kidBusy && !stopping && !k.missing && (failed.some((it) => it.size) || stoppedN) ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => retryPhotos(sl)}>${failed.length ? 'Try again' : 'Upload the rest'}</button>` : null}
+          </div>` : null}
+          ${videos.length ? html`<ul class="kd-up-videos">
+            ${videos.map((it) => html`<li key=${it.key} class=${`kd-up-video is-${it.state}`}>
+              <span class="kd-up-video__icon" aria-hidden="true">${kdIcon.play}</span>
+              <div class="kd-up-video__main">
+                <strong>${it.name}</strong>
+                <small>${kdUpSize(it.size)} · ${videoText(it)}</small>
+                ${it.state === 'uploading' ? html`<div class="kd-meter" aria-hidden="true"><span style=${`width:${it.pct}%`}></span></div>` : null}
+              </div>
+              ${it.state === 'page' ? html`<span class="kd-up-video__acts"><span class="kd-tag kd-tag--home">On the page</span>${'undoTo' in it ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => undoPlay(it, it.undoTo)}>Undo</button>` : null}</span>`
+                : it.state === 'kept' ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => playInstead(it)}>Play this one instead</button>`
+                : ((it.state === 'unsaved' && !it.missing) || ((it.state === 'failed' || it.state === 'stopped') && it.size)) && !stopping ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => retryVideo(it)}>Try again</button>` : null}
+            </li>`)}
+          </ul>` : null}
+        </section>`;
+      };
+
+      const order = Object.entries(st.kids).filter(([sl]) => st.items.some((it) => it.slug === sl)).sort((a, b) => b[1].order - a[1].order).map(([sl]) => sl);
+      const nt = st.notice;
+      const heldReady = st.held.length && st.held.every((g) => g.slug);
+      const heldTo = [...new Set(st.held.map((g) => g.slug).filter(Boolean))];
+      const kidOptions = () => groups.map((g) => html`<optgroup key=${g.label} label=${g.label}>${g.kids.map((k) => html`<option key=${k.slug} value=${k.slug}>${kdUpLabel(k, g.year || twin(k))}</option>`)}</optgroup>`);
+      const footer = busy ? html`
+          <span class="kd-up-foot">${stopping ? 'Stopping. What’s finished stays saved.'
+            : st.reading && !st.items.some((it) => it.state === 'uploading') ? 'Reading where they were taken…'
+            : onlyAlt ? 'Writing alt text for the new photos. Stop skips it; Profiles to tidy can write it later.'
+            : 'Keep this window open until the uploads finish.'}</span>
+          <button type="button" class="btn btn-ghost" aria-disabled=${stopping ? 'true' : null} onClick=${() => { if (!stopping) stopAll(); }}>${stopping ? 'Stopping…' : 'Stop'}</button>`
+        : html`
+          ${st.saved ? html`<button type="button" class="btn btn-ghost" onClick=${async () => { if (await close()) onDeploy?.(); }}>Publish</button>` : null}
+          <button type="button" class="btn btn-primary" onClick=${close}>${st.saved ? 'Done' : 'Close'}</button>`;
+
+      return html`<${KdDialog} title="Upload photos and videos" size="lg" busy=${busy} onClose=${close} footer=${footer} className="kd-up-dialog"
+          sub="Photos go at the end of the kid’s gallery. A video plays on their page if it has none yet. They’re saved to the profile as they upload; the site shows them after you publish.">
+        <div class=${`kd-up${over ? ' is-over' : ''}`}>
+          ${over ? html`<div class="kd-dropcover" aria-hidden="true">${kdIcon.upload} ${slug ? `Drop to add to ${labelOf(slug)}’s page` : 'Drop, and it guesses whose page'}</div>` : null}
+          <div class="form-group kd-up-pick">
+            <label class="form-label" for="kd-up-kid">Whose page?</label>
+            <select id="kd-up-kid" class="form-select" data-autofocus ref=${selectRef} value=${slug} onChange=${(e) => pick(e.target.value)}>
+              <option value="">Choose a kid…</option>
+              ${kidOptions()}
+            </select>
+            <div class="form-hint">Not sure? Drop them anyway: it guesses from where they were taken and their folder or file names, and you check before anything uploads. New families’ draft pages are here too.</div>
           </div>
-          <div class="form-group">
-            <span class="form-label" id="kd-new-status-l">Status</span>
-            <${KdStatusPicker} value=${status} onChange=${setStatus} />
-            <div class="form-hint">Once their JobTread job matches (same name and year), the status follows JobTread.</div>
-          </div>
-          <div class="form-group u-m-0 kd-create__year">
-            <label class="form-label" for="kd-new-year">Year</label>
-            <input id="kd-new-year" class="form-input" type="number" inputmode="numeric" min="2012" max=${new Date().getFullYear() + 2} value=${year} onInput=${(e) => setYear(e.target.value)} />
-            <div class="form-hint">The year of the reveal.</div>
-          </div>
-        </form>
+          <button type="button" class="kd-dropzone kd-up-drop" disabled=${stopping} onClick=${() => input.current?.click()}>
+            ${kdIcon.upload}<span>${slug ? `Add photos and videos to ${labelOf(slug)}’s page` : 'Add photos and videos'}</span>
+            <small>Drop them here, a whole folder at once, or click to choose. Photos: JPG, PNG, WebP or HEIC. Videos: MP4 or MOV.</small>
+          </button>
+          ${st.homesOff ? html`<p class="form-hint kd-warn-text kd-up-homes-off" role="status">Where photos were taken can’t be checked right now (the families’ homes didn’t load), so guesses go by folder and file names only.</p>` : null}
+          <input ref=${input} type="file" multiple hidden accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif,video/*,.mov,.mp4,.m4v"
+            onChange=${(e) => { intake([...e.target.files]); e.target.value = ''; }} />
+          ${nt ? html`<div class="kd-up-notice"><p class="form-hint">${noticeText(nt)}</p>
+            ${(nt.already.length || nt.clips.length || nt.copies?.length) && !stopping ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${addAnyway}>Add ${[...nt.already, ...nt.clips, ...(nt.copies || [])].reduce((c, a) => c + a.files.length, 0) === 1 ? 'it' : 'them'} anyway</button>` : null}
+          </div>` : null}
+          ${st.held.length ? html`<section class="kd-up-held" tabindex="-1" aria-labelledby="kd-up-held-h">
+            <h3 id="kd-up-held-h">Check whose page these are for</h3>
+            <p class="form-hint">${st.held.some((g) => g.guess) ? 'Guessed from where they were taken and their folder or file names. Change any that are wrong, then upload.' : 'Nothing in them says whose they are. Choose a kid, then upload.'}</p>
+            <ul class="kd-up-groups">
+              ${st.held.map((g) => html`<li key=${g.key} class=${`kd-up-group${g.slug ? '' : ' is-open'}`}>
+                <div class="kd-up-group__thumbs" aria-hidden="true">
+                  ${(g.thumbs.length ? g.thumbs : [null]).map((u, i) => html`<span class="kd-up-group__thumb" key=${i}>${kdIcon.image}${u ? html`<img src=${u} alt="" onError=${(e) => { e.currentTarget.hidden = true; }} />` : null}</span>`)}
+                </div>
+                <div class="kd-up-group__main" id=${`kd-up-g-${g.key}-d`}>
+                  <strong>${countText(g.files)}</strong>
+                  <span class=${`kd-up-group__why${g.guess ? '' : ' is-unknown'}`}>${g.guess ? heldWhy(g) : 'Couldn’t tell whose these are'}</span>
+                  ${g.guess && g.slug && g.slug !== g.guess ? html`<span class="kd-up-group__changed">You changed it from ${nameOf(g.guess)}</span>` : null}
+                </div>
+                <div class="kd-up-group__pick">
+                  <label class="sr-only" for=${`kd-up-g-${g.key}`}>Whose page ${g.files.length === 1 ? 'is' : 'are'} ${theseText(g.files)} for?</label>
+                  <select id=${`kd-up-g-${g.key}`} class="form-select" aria-describedby=${`kd-up-g-${g.key}-d`} value=${g.slug} onChange=${(e) => { g.slug = e.target.value; g.touched = true; refresh(); }}>
+                    <option value="">Choose a kid…</option>
+                    ${kidOptions()}
+                  </select>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" aria-label=${`Leave out ${theseText(g.files)} (${g.guess ? `guessed as ${labelOf(g.guess)}` : 'no guess'})`} onClick=${() => leaveGroup(g)}>Leave out</button>
+              </li>`)}
+            </ul>
+            <div class="kd-up-held__acts">
+              ${heldReady ? null : html`<span class="kd-up-held__need">Choose a kid for ${st.held.filter((g) => !g.slug).length === 1 && st.held.length > 1 ? 'the last group' : st.held.length > 1 ? 'each group' : 'them'}</span>`}
+              <button type="button" class="btn btn-ghost btn-sm" onClick=${clearHeld}>${st.held.length > 1 ? 'Leave them all out' : 'Leave them out'}</button>
+              <button type="button" class="btn btn-primary btn-sm" disabled=${!heldReady || stopping} onClick=${uploadHeld}>${heldReady && heldTo.length === 1 ? `Upload to ${labelOf(heldTo[0])}’s page` : heldReady ? `Upload to ${heldTo.length} pages` : 'Upload'}</button>
+            </div>
+          </section>` : null}
+          ${order.map(kidCard)}
+          <div class="sr-only" role="status" aria-live="polite">${st.announce}</div>
+        </div>
       <//>`;
     }
 
@@ -9694,8 +10776,12 @@
       return oA - oB || (b.year || 0) - (a.year || 0) || String(a.name || '').localeCompare(String(b.name || ''));
     };
 
-    function KidsList({ kids, partners = [], dashboardFilter, onClearFilter, onEdit, onAdd, onDelete, addToast, onReload, onDeploy, creating, onCreateClose }) {
+    function KidsList({ kids, partners = [], dashboardFilter, onClearFilter, onEdit, onDelete, addToast, onReload, onDeploy }) {
       const [search, setSearch] = useState('');
+      // Upload photos and videos (profiles themselves are made when a family is approved)
+      const [uploading, setUploading] = useState(false);
+      // Fresh profiles hold the photos just uploaded, so the uploader's own memory of them can go
+      useEffect(() => { kdUpRecent.clear(); }, [kids]);
       const searchRef = useRef(null);
       // Completed rooms as rows, or as a wall of photos to find a face
       const [view, setView] = useState(() => { try { return localStorage.getItem('soard-kids-view') === 'photos' ? 'photos' : 'rows'; } catch { return 'rows'; } });
@@ -9934,7 +11020,8 @@
 
       return html`
         ${tidy ? html`<${KidsTidyTool} kids=${kids} partners=${partners} repairs=${repairs} addToast=${addToast} onClose=${() => setTidy(false)} onReload=${onReload} onDeploy=${onDeploy} />` : null}
-        ${creating ? html`<${KidCreateDialog} kids=${kids} addToast=${addToast} onClose=${onCreateClose} onCreated=${(slug) => { onReload?.(); onEdit(slug); }} />` : null}
+        ${uploading ? html`<${KidMediaUpload} kids=${kids} addToast=${addToast} onClose=${() => setUploading(false)} onReload=${onReload} onDeploy=${onDeploy}
+          onOpen=${(slug) => { setUploading(false); onEdit(slug); }} />` : null}
         ${showDeleted ? html`<${KidsDeletedDialog} kids=${kids} deleted=${deleted} addToast=${addToast} onClose=${() => setShowDeleted(false)}
           onRestored=${(slug) => { setShowDeleted(false); setDeleted((d) => d.filter((x) => x.slug !== slug)); onReload?.(); }} />` : null}
         <div class="page-header kd-head">
@@ -9944,7 +11031,7 @@
           </div>
           <div class="kd-head__actions">
             <a class="btn btn-ghost btn-sm" href="/kids/" target="_blank" rel="noopener">Meet the Kids ${kdIcon.external}</a>
-            <button type="button" class="btn btn-primary" onClick=${onAdd}>${kdIcon.plus} Add a kid</button>
+            ${kids.length ? html`<button type="button" class="btn btn-primary" onClick=${() => setUploading(true)}>${kdIcon.upload} Upload photos and videos</button>` : null}
           </div>
         </div>
 
@@ -9958,8 +11045,7 @@
 
         ${!kids.length ? html`<div class="card kd-empty-all">
           <p><strong>No kid profiles yet.</strong></p>
-          <p class="text-muted">Add the first one and it appears on Meet the Kids after you publish.</p>
-          <button type="button" class="btn btn-primary" onClick=${onAdd}>${kdIcon.plus} Add a kid</button>
+          <p class="text-muted">Each family gets a hidden profile here once they’re approved.</p>
         </div>` : html`
         <div class=${`kd-toolbar${stuck ? ' is-stuck' : ''}`} ref=${toolbarRef}>
           <div class="search-bar kd-search">
@@ -23008,7 +24094,6 @@ ${sections || '<p>No one yet.</p>'}
           { type: 'link', label: 'GitHub repository', meta: 'The site’s code', href: 'https://github.com/pranney82/soard', section: 'Links' },
         ];
         const actions = [
-          { type: 'action', label: 'Add New Kid', id: 'kids-hub', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Partner', id: 'partners-hub', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Community Partner', id: 'partners-hub', subTab: 'community-partners', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add an outlet', id: 'press-hub', subTab: 'outlets', slug: '', section: 'Actions' },
@@ -24229,7 +25314,7 @@ ${sections || '<p>No one yet.</p>'}
           case 'kids-hub': {
             const tab = subTab || 'kids';
             // If editing, show the appropriate editor
-            // An empty slug is "add one": the list opens its Add dialog
+            // An empty slug is "add one": Community's list opens its Add dialog (kid profiles are made on approval)
             if (editSlug !== null && editSlug !== '') {
               if (tab === 'community') {
                 return html`<${CommunityEditor} key=${editSlug} slug=${editSlug} projects=${communityProjects} partners=${partners} addToast=${addToast}
@@ -24248,10 +25333,9 @@ ${sections || '<p>No one yet.</p>'}
                     onDelete=${p => setDeleteModal({ type: 'community project', item: p })} addToast=${addToast} onReload=${loadData} onDeploy=${promptDeploy}
                     dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)}
                     creating=${editSlug === ''} onCreateClose=${() => setEditSlug(null)} />`)
-                : listOrError('kids', 'kids', html`<${KidsList} kids=${kids} partners=${partners} onEdit=${s => { setSubTab('kids'); setEditSlug(s); }} onAdd=${() => { setSubTab('kids'); setEditSlug(''); }}
+                : listOrError('kids', 'kids', html`<${KidsList} kids=${kids} partners=${partners} onEdit=${s => { setSubTab('kids'); setEditSlug(s); }}
                     onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData} onDeploy=${promptDeploy}
-                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)}
-                    creating=${editSlug === ''} onCreateClose=${() => setEditSlug(null)} />`)
+                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`)
               }
             `;
           }
