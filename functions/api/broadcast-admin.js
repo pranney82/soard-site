@@ -96,7 +96,8 @@ export async function onRequestGet(context) {
       history: DB.prepare(`SELECT id, kid_slug, kid_name, title, scheduled_at, live_at, ended_at, phase, replay_uid, fb_permalink, source, data, created_at, updated_at FROM broadcasts ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`).all(),
       events: DB.prepare(`SELECT broadcast_id, type, COUNT(*) AS n FROM broadcast_events WHERE broadcast_id IN (SELECT id FROM broadcasts ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}) GROUP BY broadcast_id, type`).all(),
       fbRecent: withFb ? fb.fbRecentBroadcasts(env, 5) : Promise.resolve(null),
-      healthReports: DB.prepare(`SELECT broadcast_id, meta FROM broadcast_events WHERE type = 'health_report' ORDER BY id DESC LIMIT 12`).all(),
+      // The feed health report of every reveal History lists (oldest first, so each reveal keeps its newest)
+      healthReports: DB.prepare(`SELECT broadcast_id, meta FROM broadcast_events WHERE type = 'health_report' AND broadcast_id IN (SELECT id FROM broadcasts ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}) ORDER BY id ASC`).all(),
     };
     const keys = Object.keys(tasks);
     const settled = await Promise.allSettled(keys.map(k => tasks[k]));

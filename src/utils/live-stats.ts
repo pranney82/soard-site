@@ -170,12 +170,13 @@ export function watchMeter(opts: WatchMeterOptions): { stop: () => void; flush: 
     // A report marks the minutes just before it arrives: when the picture stops (paused, frozen) for 3 s, the
     // seconds watched go now, so "there for the reveal" counts the minutes they were really watched in
     const stalled = still >= 3 && acc >= 1;
-    if (acc >= due() || stalled) { opts.report(opts.kind, Math.round(acc), false); acc = 0; sent = true; }
+    // Whole seconds go; the fraction stays for the next report, so rounding never adds up to time that didn't play
+    if ((acc >= due() || stalled) && Math.round(acc) >= 1) { const n = Math.round(acc); opts.report(opts.kind, n, false); acc -= n; sent = true; }
   };
   // What's left goes when the tab hides or the page goes away (a hidden tab isn't watching anyway)
   const flush = () => {
     tick();
-    if (acc >= 1) { opts.report(opts.kind, Math.round(acc), true); acc = 0; sent = true; }
+    if (Math.round(acc) >= 1) { opts.report(opts.kind, Math.round(acc), true); acc = 0; sent = true; }
   };
   const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
   const timer = setInterval(tick, opts.every ?? 1000);

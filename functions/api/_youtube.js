@@ -117,12 +117,12 @@ export async function liveNow(env, channelId, { fresh = false } = {}) {
  */
 export async function videoStats(env, videoId) {
   if (!youtubeConfigured(env)) return { ok: false, error: 'YOUTUBE_API_KEY is not set' };
-  if (!/^[\w-]{6,20}$/.test(String(videoId || ''))) return { ok: false, error: 'No YouTube video for this reveal' };
+  if (!/^[\w-]{6,20}$/.test(String(videoId || ''))) return { ok: false, error: 'No YouTube video for this reveal', gone: true };
   try {
     const r = await yt(env, 'videos', { part: 'statistics', id: videoId });
     if (!r.ok) return { ok: false, error: r.error };
     const st = r.data.items?.[0]?.statistics;
-    if (!st) return { ok: false, error: 'YouTube has no video with that id (deleted or private)' };
+    if (!st) return { ok: false, error: 'YouTube has no video with that id (deleted or private)', gone: true };
     const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
     return { ok: true, views: num(st.viewCount), likes: num(st.likeCount), comments: num(st.commentCount) };
   } catch (e) {

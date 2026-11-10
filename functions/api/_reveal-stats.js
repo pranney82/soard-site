@@ -131,14 +131,14 @@ const REF_HOSTS = [
  */
 export function classifySource({ src = '', ref = '', ua = '' } = {}) {
   const word = String(src || '').toLowerCase().trim().slice(0, 24);
-  if (word) return SRC_WORDS[word] || 'other';
+  if (word) return Object.hasOwn(SRC_WORDS, word) ? SRC_WORDS[word] : 'other';
   const agent = String(ua || '');
   if (/FBAN|FBAV|FB_IAB|FBIOS|\bFB4A\b/.test(agent)) return 'facebook';
   if (/Instagram/.test(agent)) return 'instagram';
   const host = String(ref || '').toLowerCase().replace(/^www\./, '').trim();
   if (!host) return 'direct';
   if (SITE_HOSTS.has(host) || SITE_HOSTS.has(`www.${host}`)) return 'site';
-  if (APP_REFS[host]) return APP_REFS[host];
+  if (Object.hasOwn(APP_REFS, host)) return APP_REFS[host];
   for (const [re, name] of REF_HOSTS) if (re.test(host)) return name;
   return 'other';
 }
@@ -382,12 +382,12 @@ export async function refreshPlatforms(env, row, now = Date.now()) {
     // checkedAt: the last time Facebook was asked; readAt: when the numbers shown came back (a failed read leaves it)
     // A read that failed outright says nothing about the permission: the last word on it stands
     // checkedAt: last asked; readAt: when what came back came back; viewsReadAt: when the view totals themselves did
-    facebook = { ...prevFb, liveVideoId: row.fb_live_video_id || prevFb.liveVideoId || null, permalink: row.fb_permalink || prevFb.permalink || null, ...(r.ok ? numbersOnly(r.totals) : {}), error: r.ok ? (r.partial || null) : r.error, errorKind: r.ok ? (r.partial ? 'partial' : null) : 'failed', missing: r.ok && !r.partial ? null : (r.missing || prevFb.missing || null), checkedAt: iso(now), ...(r.ok ? { readAt: iso(now) } : {}), ...(r.ok && !r.partial ? { viewsReadAt: iso(now) } : {}) };
+    facebook = { ...prevFb, liveVideoId: row.fb_live_video_id || prevFb.liveVideoId || null, permalink: row.fb_permalink || prevFb.permalink || null, ...(r.ok ? numbersOnly(r.totals) : {}), error: r.ok ? (r.partial || null) : r.error, errorKind: r.ok ? (r.partial ? 'partial' : null) : r.gone ? 'gone' : r.missing ? 'denied' : 'failed', missing: r.ok && !r.partial ? null : (r.missing || prevFb.missing || null), checkedAt: iso(now), ...(r.ok ? { readAt: iso(now) } : {}), ...(r.ok && !r.partial ? { viewsReadAt: iso(now) } : {}) };
   }
   let youtube = prevYt;
   if (prevYt.videoId && yt.youtubeConfigured(env)) {
     const r = await yt.videoStats(env, prevYt.videoId).catch((e) => ({ ok: false, error: e.message }));
-    youtube = { ...prevYt, ...(r.ok ? numbersOnly({ views: r.views, likes: r.likes, comments: r.comments }) : {}), error: r.ok ? null : r.error, checkedAt: iso(now), ...(r.ok ? { readAt: iso(now) } : {}) };
+    youtube = { ...prevYt, ...(r.ok ? numbersOnly({ views: r.views, likes: r.likes, comments: r.comments }) : {}), error: r.ok ? null : r.error, errorKind: r.ok ? null : r.gone ? 'gone' : 'failed', checkedAt: iso(now), ...(r.ok ? { readAt: iso(now) } : {}) };
   }
   await DB.prepare(`INSERT INTO broadcast_stats (broadcast_id, facebook, youtube, next_check_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
     ON CONFLICT(broadcast_id) DO UPDATE SET facebook = ?2, youtube = ?3, next_check_at = ?4, updated_at = ?5`)
@@ -427,15 +427,20 @@ export function recordingOffset(row) {
 /** A reveal that is a rehearsal (a JobTread TEST job), not one to compare */
 export const isTestReveal = (row) => !!row?.data?.test || /^\s*TEST\b/i.test(row?.title || '');
 
+/** A place's reading: a count of people (never below 0), or null when it wasn't read */
+const count = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.max(0, Number(v)));
+
 /** The line through the reveal, its peaks and its average (all places together where known) */
 export function summarizeSeries(series) {
   // One point a second at most (two samples in the same second keep the bigger), in time order
   const bySec = new Map();
-  for (const p of (Array.isArray(series) ? series : [])) {
-    if (!Array.isArray(p) || !Number.isFinite(p[0])) continue;
+  for (const raw of (Array.isArray(series) ? series : [])) {
+    // Before going live and negative counts are nothing (the chart reads the line the same way)
+    if (!Array.isArray(raw) || !Number.isFinite(raw[0]) || raw[0] < 0) continue;
+    const p = [raw[0], count(raw[1]), count(raw[2]), count(raw[3])]; // a copy: the caller's line is left as it was
     const have = bySec.get(p[0]);
     const sum = (q) => (q[1] || 0) + (q[2] || 0) + (q[3] || 0);
-    if (!have || sum(p) > sum(have)) bySec.set(p[0], [p[0], p[1], p[2], p[3]]); // a copy: the caller's line is left as it was
+    if (!have || sum(p) > sum(have)) bySec.set(p[0], p);
   }
   const pts = [...bySec.values()].sort((a, b) => a[0] - b[0]);
   if (!pts.length) return null;
@@ -481,18 +486,37 @@ export function fillGaps(pts, carrySec = 120) {
   });
 }
 
-/** Thin a long line to at most `max` points, keeping each stretch's highest total (so a peak is never thinned away) */
+/**
+ * Thin a long line to about `max` points for the chart. Each stretch keeps its busiest moment counted the way
+ * "most at once" counts it (a missed reading carried up to 2 minutes), and every kept moment's carried reading
+ * keeps the reading it came from, so the chart carries the same numbers and its peak is the tile's.
+ */
 export function thinSeries(series, max = 240) {
-  const pts = (Array.isArray(series) ? series : []).filter((p) => Array.isArray(p) && Number.isFinite(p[0]));
-  if (pts.length <= max) return pts;
-  const size = Math.ceil(pts.length / max);
-  const out = [];
-  const tot = (p) => (p[1] || 0) + (p[2] || 0) + (p[3] || 0);
-  for (let i = 0; i < pts.length; i += size) {
-    const chunk = pts.slice(i, i + size);
-    out.push(chunk.reduce((a, b) => (tot(b) > tot(a) ? b : a)));
+  const sum = (q) => (q[1] || 0) + (q[2] || 0) + (q[3] || 0);
+  const bySec = new Map(); // one point a second (the bigger), in time order, as summarizeSeries reads it
+  for (const raw of (Array.isArray(series) ? series : [])) {
+    if (!Array.isArray(raw) || !Number.isFinite(raw[0]) || raw[0] < 0) continue;
+    const p = [raw[0], count(raw[1]), count(raw[2]), count(raw[3])];
+    const have = bySec.get(p[0]);
+    if (!have || sum(p) > sum(have)) bySec.set(p[0], p);
   }
-  return out;
+  const pts = [...bySec.values()].sort((a, b) => a[0] - b[0]);
+  if (pts.length <= max) return pts;
+  const filled = fillGaps(pts);
+  const size = Math.ceil(pts.length / max);
+  const keep = new Set();
+  for (let i = 0; i < pts.length; i += size) {
+    let best = i;
+    for (let k = i + 1; k < Math.min(pts.length, i + size); k++) if (sum(filled[k]) > sum(filled[best])) best = k;
+    keep.add(best);
+  }
+  for (const k of [...keep]) {
+    for (const i of [1, 2, 3]) {
+      if (Number.isFinite(pts[k][i]) || !Number.isFinite(filled[k][i])) continue;
+      for (let j = k - 1; j >= 0; j--) if (Number.isFinite(pts[j][i])) { keep.add(j); break; }
+    }
+  }
+  return [...keep].sort((a, b) => a - b).map((k) => pts[k]);
 }
 
 /**
@@ -598,13 +622,16 @@ export async function historyStats(DB, rows) {
 export async function revealStatsFacts(DB) {
   await ensureStatsSchema(DB);
   const since = iso(Date.now() - REFRESH_DAYS * 86400e3);
-  const [seen, stats] = await Promise.all([
+  const [seen, stats, lastFb] = await Promise.all([
     DB.prepare('SELECT MAX(last_at) AS at FROM broadcast_viewers WHERE who IS NULL').first(),
     DB.prepare(`SELECT MAX(sampled_at) AS sampled,
-        MAX(json_extract(facebook, '$.readAt')) AS fb_at, MAX(json_extract(youtube, '$.readAt')) AS yt_at,
-        MAX(CASE WHEN json_extract(facebook, '$.missing') IS NOT NULL AND json_extract(facebook, '$.checkedAt') >= ?1 THEN 1 ELSE 0 END) AS fb_missing
-      FROM broadcast_stats`).bind(since).first(),
+        MAX(json_extract(facebook, '$.readAt')) AS fb_at, MAX(json_extract(youtube, '$.readAt')) AS yt_at
+      FROM broadcast_stats`).first(),
+    // The permission as Facebook's latest answer has it (a newer good read clears an older refusal)
+    DB.prepare(`SELECT json_extract(facebook, '$.missing') AS missing FROM broadcast_stats
+      WHERE facebook IS NOT NULL AND json_extract(facebook, '$.checkedAt') >= ?1
+      ORDER BY json_extract(facebook, '$.checkedAt') DESC LIMIT 1`).bind(since).first(),
   ]);
   const totalsAt = [stats?.fb_at, stats?.yt_at].filter(Boolean).sort().pop() || null;
-  return { lastSeenAt: seen?.at || null, lastSampleAt: stats?.sampled || null, lastTotalsAt: totalsAt, fbMissing: !!stats?.fb_missing };
+  return { lastSeenAt: seen?.at || null, lastSampleAt: stats?.sampled || null, lastTotalsAt: totalsAt, fbMissing: !!lastFb?.missing };
 }

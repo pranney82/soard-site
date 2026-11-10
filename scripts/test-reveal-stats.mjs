@@ -116,7 +116,9 @@ try {
   console.log('\n▶ the comparison');
   const names = await page.$$eval('.rs-row .rs-name strong', (els) => els.map((e) => e.textContent.trim()));
   ok(names[0] === 'Dylan', `the next reveal first (newest), with "Coming up" (${names.join(', ')})`);
-  ok(await page.$$eval('.rs-row', (rows) => [...rows[0].querySelectorAll('td.num')].map((td) => td.textContent.trim()).filter((t) => t === '0').length === 0), 'a reveal that hasn\'t happened shows dashes, not zeros, for what it can\'t have yet');
+  // (Messages open before it goes live, so its count is real from the start)
+  ok(await page.$$eval('.rs-row', (rows) => [...rows[0].querySelectorAll('td.num')].filter((td) => td.dataset.label !== 'Messages').map((td) => td.textContent.trim()).filter((t) => t === '0').length === 0), 'a reveal that hasn\'t happened shows dashes, not zeros, for what it can\'t have yet');
+  ok(await page.$$eval('.rs-row', (rows) => /^\d/.test(rows[0].querySelector('td[data-label="Messages"]')?.textContent.trim() || '')), 'and its messages so far');
   ok(!(await page.$('.rs-card h3')), 'the card doesn\'t repeat the page\'s title');
   ok(!names.some((n) => /Isla|Live room reveal/.test(n)), 'tests and kid-less streams stay out of the table');
   ok(!names.includes('Hudson'), 'a reveal from before counting isn\'t in the comparison (it sits in the fold)');

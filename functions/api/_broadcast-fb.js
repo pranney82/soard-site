@@ -261,6 +261,9 @@ export async function fbLiveViewers(env, liveVideoId = null) {
 // Facebook's numbers for a finished live video (video_insights; read_insights + pages_manage_engagement)
 const INSIGHT_METRICS = ['total_video_views', 'total_video_views_unique', 'total_video_avg_time_watched', 'total_video_views_live'];
 
+/** Facebook's "Object with ID … does not exist" (deleted, never the Page's) */
+const notThere = (r) => !r.ok && /\b(does|do) not exist\b/i.test(r.error || '');
+
 /**
  * A finished live video's totals, for Reveal stats → { ok, totals, partial, missing, error }
  *   totals: { videoId, views, unique, avgSec, liveUnique, reactions, comments }
@@ -275,10 +278,10 @@ export async function fbVideoTotals(env, { liveVideoId = null, permalink = null,
   let id = videoId || (link.match(/\/videos\/(?:[^/?#]+\/)?(\d{6,})/) || link.match(/[?&]v=(\d{6,})/) || [])[1] || null;
   if (!id && liveVideoId) {
     const lv = await graph(env, 'GET', liveVideoId, { fields: 'video{id}' });
-    if (!lv.ok) return { ok: false, error: lv.error };
+    if (!lv.ok) return { ok: false, error: lv.error, gone: notThere(lv) };
     id = lv.data.video?.id || null;
   }
-  if (!id) return { ok: false, error: 'Facebook has no video for this reveal' };
+  if (!id) return { ok: false, error: 'Facebook has no video for this reveal', gone: true };
   const [ins, eng] = await Promise.all([
     graph(env, 'GET', `${id}/video_insights`, { metric: INSIGHT_METRICS.join(','), period: 'lifetime' }),
     graph(env, 'GET', id, { fields: 'reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)' }),
@@ -302,7 +305,8 @@ export async function fbVideoTotals(env, { liveVideoId = null, permalink = null,
   // cannot be loaded due to missing permissions": that's a deleted or wrong video, and a new token wouldn't help
   const blocked = !ins.ok && ins.code !== 100 && !/does not exist/i.test(ins.error || '')
     && ([10, 200, 283].includes(ins.code) || /read_insights|pages_manage_engagement|pages_read_engagement|\(#(10|200|283)\)/i.test(ins.error || ''));
-  if (!ins.ok && !eng.ok) return { ok: false, error: ins.error, missing: blocked ? 'read_insights' : null };
+  // gone: Facebook says the video isn't there (deleted, or not the Page's), so asking again won't help
+  if (!ins.ok && !eng.ok) return { ok: false, error: ins.error, missing: blocked ? 'read_insights' : null, gone: notThere(ins) && notThere(eng) };
   return { ok: true, totals, partial: ins.ok ? null : ins.error, missing: blocked ? 'read_insights' : null };
 }
 

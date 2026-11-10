@@ -27,7 +27,7 @@
  *        → date line, fmtDate(iso), renderExtra(row) → the parent's content
  */
 
-import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
+import { h, htm, useState, useEffect, useRef, useMemo, useCallback } from './vendor.js';
 
 const html = htm.bind(h);
 
@@ -87,6 +87,20 @@ const words = (e) => {
   const cut = t.length > 160 ? `${t.slice(0, 157).replace(/\s+\S*$/, '')}…` : t;
   return cut && !/[.!?…]$/.test(cut) ? `${cut}.` : cut;
 };
+/** A known kind of error in plain words (an expired sign-in, a missing permission, a slow answer); otherwise its own words */
+export const plainError = (e) => {
+  const t = String(e || '');
+  if (/session has expired|validating access token|invalid oauth|access token|\(#190\)/i.test(t)) return 'the site\'s Facebook sign-in has expired or was changed.';
+  if (/read_insights|pages_read_engagement|pages_manage_engagement|\(#(10|200|283)\)|permission/i.test(t)) return 'the site\'s Facebook connection is missing a permission it needs.';
+  if (/quotaExceeded|dailyLimitExceeded|quota/i.test(t)) return 'the site used up today\'s YouTube allowance.';
+  if (/\(#(4|17|32|613)\)|rate.?limit|too many (calls|requests)/i.test(t)) return 'it asked the site to slow down.';
+  if (/YOUTUBE_API_KEY|API key|keyInvalid|API_KEY_INVALID/i.test(t)) return 'the site\'s YouTube API key wasn\'t accepted.';
+  if (/FB_PAGE_ID|FB_PAGE_TOKEN/.test(t)) return 'the site isn\'t connected to the Facebook Page.';
+  if (/timed? ?out|timeout|abort|ETIMEDOUT|ECONNRESET|network|fetch failed/i.test(t)) return 'it didn\'t answer in time.';
+  if (/D1_ERROR|SQLITE|database/i.test(t)) return 'the site\'s database had a problem.';
+  if (/\b50[0-4]\b|unavailable|internal (server )?error|try again later|unknown error/i.test(t)) return 'it had a problem on its end.';
+  return words(t);
+};
 
 // ─── Which reveals compare ──────────────────────────────────────────
 
@@ -110,6 +124,26 @@ const real = (r) => !!r.kid_slug && !isTest(r) && r.source !== 'manual';
 export const compared = (r) => ended(r) && real(r) && !!r.stats?.counted;
 /** In the table: compared, plus the next reveal and one live now (what they have so far, out of the averages) */
 export const inTable = (r) => compared(r) || ((isUpcoming(r) || (isLiveNow(r) && !!r.live_at)) && real(r));
+/** Why a reveal is left out of the comparison → a key of WHY_NOT, or null */
+export function whyNot(r, error = null) {
+  if (inTable(r)) return null;
+  if (isTest(r)) return 'test';
+  if (r.source === 'manual') return 'manual';
+  if (!r.kid_slug) return 'nokid';
+  if (neverLive(r)) return 'cancelled';
+  if (!r.stats) return error ? 'unloaded' : null;
+  return ended(r) && !r.stats.counted ? 'before' : null;
+}
+// [the fold's title, the empty table's words, the row's own label]
+const WHY_NOT = {
+  unloaded: ['numbers didn\'t load', null, 'Numbers didn\'t load'],
+  before: ['from before counting began', 'from before the site counted people', 'Before counting began'],
+  test: ['tests', 'tests', null],
+  manual: ['Facebook-only', 'on Facebook only', 'Facebook only'],
+  nokid: ['without a kid', 'without a kid', 'No kid'],
+  cancelled: ['cancelled', 'cancelled', 'Cancelled'],
+};
+const orList = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
 
 // ─── Columns ────────────────────────────────────────────────────────
 
@@ -136,7 +170,7 @@ export const COLUMNS = [
   { key: 'hearts', label: 'Hearts', means: 'Hearts tapped on the live page during the reveal (a dash when none were recorded).',
     get: (s, r) => (wentLive(s, r) ? num(s.heartsTotal) : null), fmt: fmtN },
   { key: 'messages', label: 'Messages', means: 'Messages for the family shown on the live page.',
-    get: (s, r) => (r.live_at ? num(r.messageCount) ?? 0 : null), fmt: fmtN },
+    get: (s, r) => (r.live_at || isUpcoming(r) ? num(r.messageCount) ?? 0 : null), fmt: fmtN },
 ];
 
 const revealTime = (r) => Date.parse(r.live_at || r.scheduled_at || r.created_at || '') || 0;
@@ -269,6 +303,7 @@ export function AtOnceChart({ series, revealAt = null }) {
   // Lines run through a reading carried over a missed one (as the numbers do); a longer gap still breaks them
   const drawn = pts.map((p) => filled.get(p[0]) || p);
   const anyCarried = shown.some((s) => pts.some((p) => !Number.isFinite(p[s.i]) && Number.isFinite(filled.get(p[0])?.[s.i])));
+  const anyAtLeast = shown.length > 1 && pts.some((p) => !complete(p));
   const top = Math.max(0, ...pts.flatMap((p) => shown.map((s) => (Number.isFinite(p[s.i]) ? p[s.i] : 0))));
   const { max: maxY, ticks: yTicks } = yScale(top);
   const H = 200, padT = 22, padB = 26;
@@ -358,6 +393,7 @@ export function AtOnceChart({ series, revealAt = null }) {
       </table></div>
     </details>
     ${anyCarried ? html`<p class="rs-muted">≈ That place wasn't read at that moment; its reading from up to 2 minutes before stands in.</p>` : null}
+    ${anyAtLeast ? html`<p class="rs-muted">≥ At least this many: a place had no reading then (not started yet, or none for over 2 minutes), so together it may have been more.</p>` : null}
   </div>`;
 }
 
@@ -405,12 +441,16 @@ function Platforms({ r, s, youtubeKey, youtubeOn, facebookOn }) {
   const viewsAt = f.viewsReadAt || (!f.error && !f.missing ? readAt(f) : null);
   const hasViews = f.unique != null || f.views != null;
   const when = ago(f.checkedAt) ? ` (${ago(f.checkedAt)})` : '';
-  const failed = f.error && f.errorKind !== 'partial';
+  // errorKind: 'partial' (reactions, no views), 'denied' (the permission), 'gone' (no such video), 'failed' (anything else)
+  const failed = f.error && !['partial', 'denied'].includes(f.errorKind);
+  const gone = failed && (f.errorKind === 'gone' || /do(es)? not exist|has no video/i.test(f.error));
+  const shownFrom = fbNums.length && readAt(f) ? ` The numbers shown are from ${ago(hasViews && viewsAt ? viewsAt : readAt(f))}.` : '';
   const fbNote = !facebookOn ? `Facebook isn't connected to the site, so it can't read Facebook's numbers.${fbNums.length && readAt(f) ? ` The numbers shown are from ${ago(readAt(f))}.` : ''}`
-    : failed && !f.missing ? `Facebook didn't answer when last asked${when}: ${words(f.error)}${fbNums.length && readAt(f) ? ` The numbers shown are from ${ago(hasViews && viewsAt ? viewsAt : readAt(f))}.` : ''}`
+    : gone ? `Facebook says this reveal's video isn't there any more (deleted, or not on the Page), so its numbers can't be read.${shownFrom}`
+    : failed ? `Facebook couldn't be read when last asked${when}: ${plainError(f.error)}${shownFrom}`
     : f.missing
     ? `Facebook only shares its view totals once the site's Facebook connection has the "read insights" permission. Reactions and comments still come through.${hasViews && viewsAt ? ` The views shown are from ${ago(viewsAt)}.` : ''}`
-    : f.error ? `Facebook sent reactions and comments${when} but not its view totals: ${words(f.error)}${hasViews && viewsAt ? ` The views shown are from ${ago(viewsAt)}.` : ''}`
+    : f.error ? `Facebook sent reactions and comments${when} but not its view totals: ${plainError(f.error)}${hasViews && viewsAt ? ` The views shown are from ${ago(viewsAt)}.` : ''}`
     : fbNums.length && !hasViews && f.reactions == null && !old ? (isUpcoming(r) || isLiveNow(r) || ended(r) ? 'Facebook\'s totals come in after the reveal.' : null)
     : fbNums.length ? null
     : isUpcoming(r) ? 'Facebook\'s numbers come in once the reveal is live.'
@@ -419,20 +459,22 @@ function Platforms({ r, s, youtubeKey, youtubeOn, facebookOn }) {
     : r.source === 'manual' ? 'This reveal was live on Facebook, but the site doesn\'t know which video it was, so it can\'t read Facebook\'s numbers.'
     : 'This reveal wasn\'t on the Facebook Page.';
   const ytNote = !youtubeKey && (yt.videoId || ytNums.length) ? `YouTube isn't connected for numbers yet: it needs a YouTube API key.${ytNums.length && readAt(yt) ? ` The numbers shown are from ${ago(readAt(yt))}.` : ''}`
-    : yt.error ? `YouTube didn't answer when last asked${ago(yt.checkedAt) ? ` (${ago(yt.checkedAt)})` : ''}: ${words(yt.error)}${ytNums.length && readAt(yt) ? ` The numbers shown are from ${ago(readAt(yt))}.` : ''}`
+    : yt.error && (yt.errorKind === 'gone' || /has no video|no youtube video/i.test(yt.error)) ? `YouTube says this video isn't there any more (deleted or made private), so its numbers can't be read.${ytNums.length && readAt(yt) ? ` The numbers shown are from ${ago(readAt(yt))}.` : ''}`
+    : yt.error ? `YouTube couldn't be read when last asked${ago(yt.checkedAt) ? ` (${ago(yt.checkedAt)})` : ''}: ${plainError(yt.error)}${ytNums.length && readAt(yt) ? ` The numbers shown are from ${ago(readAt(yt))}.` : ''}`
+    : ytNums.length && yt.views == null && yt.likes == null && !old ? 'YouTube\'s totals come in after the reveal.'
     : ytNums.length ? null
     : yt.videoId ? (old ? 'YouTube didn\'t report numbers for this reveal.' : 'YouTube\'s numbers come in after the reveal.')
     : !youtubeOn ? 'Reveals aren\'t sent to YouTube (Settings → YouTube).'
     : !youtubeKey ? 'YouTube isn\'t connected for numbers yet: it needs a YouTube API key.'
     : isUpcoming(r) || isLiveNow(r) ? 'Counted once it\'s live on YouTube.'
     : 'YouTube wasn\'t showing this reveal.';
-  const block = (name, nums, note, when) => html`<div class="rs-plat">
+  const block = (name, nums, note, when, raw) => html`<div class="rs-plat">
     <h5>${name}</h5>
     ${nums.length ? html`<dl>${nums.map(([k, v]) => html`<div><dt>${k}</dt><dd>${v}</dd></div>`)}</dl>` : null}
-    ${note ? html`<p class="rs-muted">${note}</p>` : null}
+    ${note ? html`<p class="rs-muted" title=${raw ? words(raw) : null}>${note}</p>` : null}
     ${when && nums.length && !note ? html`<p class="rs-muted">Read ${ago(when)}.</p>` : null}
   </div>`;
-  return html`<div class="rs-plats">${block('Facebook', fbNums, fbNote, readAt(f))}${block('YouTube', ytNums, ytNote, readAt(yt))}</div>`;
+  return html`<div class="rs-plats">${block('Facebook', fbNums, fbNote, readAt(f), f.error)}${block('YouTube', ytNums, ytNote, readAt(yt), yt.error)}</div>`;
 }
 
 /** "Site 120 · Facebook 160 · YouTube 18, 20:30 after going live": where the most-at-once crowd was */
@@ -472,20 +514,22 @@ export function RevealDetail({ r, since, error, currentId, youtubeKey, youtubeOn
     : s?.revealAt == null ? (r.id === currentId && r.phase === 'replay' ? 'The reveal moment isn\'t known yet. Set it under Now → replay.' : 'The reveal moment wasn\'t found in the recording.')
     : null;
   const platforms = s && !neverLive(r) && (s.counted || s.facebook || s.youtube);
+  const why = whyNot(r, error);
   return html`<div class="rs-detail">
     ${!s ? html`<p class="rs-note">${error ? 'The numbers for this reveal couldn\'t be loaded. Reload the page to try again.' : 'There are no numbers for this reveal.'}</p>`
       : neverLive(r) && !s.counted ? html`<p class="rs-note">This reveal didn't go live, so there's nothing to compare.</p>`
       : !s.counted ? html`<p class="rs-note">This reveal went live before the site counted people${events.view_live_page ? `; it only kept page loads (${fmtN(events.view_live_page)})` : ''}, so it isn't in the comparison.</p>` : null}
     ${s?.counted && s.partial && since && !neverLive(r) ? html`<p class="rs-note">Counting began ${fmtDate(since)}, after this reveal was planned, so "before" misses anyone who looked earlier.</p>` : null}
+    ${s?.counted && (why === 'test' || why === 'nokid') ? html`<p class="rs-note">${why === 'test' ? 'This was a rehearsal (a TEST job), so it isn\'t compared.' : 'This stream wasn\'t for a kid, so it isn\'t compared.'}</p>` : null}
     ${s?.counted && neverLive(r) ? html`<p class="rs-note">This reveal didn't go live, so there's nothing to compare.${num(s.people) ? ` ${plural(num(s.people), 'person', 'people')} opened its page before then.` : ''}</p>` : null}
     ${s?.counted && !neverLive(r) ? html`
       <div class="stats rs-tiles">
         <${Tile} label="Most at once" value=${fmtN(live ? a?.peakAll : null)} note=${a && live ? peakNote(a) : !live ? 'Counted while it\'s live.' : isLiveNow(r) ? 'Counted every 30 seconds while it\'s live.' : 'Not measured.'} />
-        <${Tile} label="Average at once" value=${fmtN(live && a?.avgAll != null ? Math.round(a.avgAll) : null)} note=${a && live ? (a.avgPartial ? `Across the whole reveal, every place together. ${[a.hasFb ? 'Facebook' : null, a.hasYt ? 'YouTube' : null].filter(Boolean).join(' or ') || 'A place'} wasn't read at some moments, so it may have been more.` : 'Across the whole reveal, every place together.') : null} />
+        <${Tile} label="Average at once" value=${fmtN(live && a?.avgAll != null ? Math.round(a.avgAll) : null)} note=${a && live ? (a.avgPartial ? `Across the whole reveal, every place together. ${[a.hasFb ? 'Facebook' : null, a.hasYt ? 'YouTube' : null].filter(Boolean).join(' or ') || 'A place'} wasn't read at some moments, so it may have been more.` : 'Across the whole reveal, every place together.') : !live ? 'Counted while it\'s live.' : null} />
         <${Tile} label="People" value=${fmtN(s.people)} note=${peopleNote(r, s)} />
-        <${Tile} label="Avg. watch, live" value=${fmtDur(live ? s.avgLiveSec : null)} note=${s.avgReplaySec != null ? `Replay ${fmtDur(s.avgReplaySec)}` : null} />
+        <${Tile} label="Avg. watch, live" value=${fmtDur(live ? s.avgLiveSec : null)} note=${!live ? 'Counted while it\'s live.' : s.avgReplaySec != null ? `Replay ${fmtDur(s.avgReplaySec)}` : null} />
         <${Tile} label="There for the reveal" value=${fmtPct(there)} note=${thereNote} />
-        <${Tile} label="Hearts" value=${fmtN(live ? s.heartsTotal : null)} note=${live && s.heartsTotal == null ? (isLiveNow(r) ? 'None yet.' : 'None recorded.') : null} />
+        <${Tile} label="Hearts" value=${fmtN(live ? s.heartsTotal : null)} note=${!live ? 'Counted while it\'s live.' : s.heartsTotal == null ? (isLiveNow(r) ? 'None yet.' : 'None recorded.') : null} />
       </div>
       ${s.series?.length ? html`<section class="rs-sec"><h4>Watching at once</h4><${AtOnceChart} series=${s.series} revealAt=${num(s.revealAt)} /></section>` : null}` : null}
     ${platforms ? html`<div class="rs-cols">
@@ -494,15 +538,36 @@ export function RevealDetail({ r, since, error, currentId, youtubeKey, youtubeOn
       </div>` : null}
     ${s?.counted && clicks.length ? html`<p class="rs-muted rs-clicks">Clicks: ${clicks.join(' · ')}</p>` : null}
     ${leftOut.length ? html`<p class="rs-muted">Not counted: ${leftOut.join(' and ')}.</p>` : null}
-    ${renderExtra ? renderExtra(r) : null}
+    ${renderExtra ? html`<div class="rs-extra">${renderExtra(r)}</div>` : null}
   </div>`;
 }
 
 // ─── The table ──────────────────────────────────────────────────────
 
+const rowOf = (id) => document.querySelector(`[data-rid="${String(id).replace(/["\\]/g, '\\$&')}"]`);
+/** Where the open reveal is on screen: its row's top, and the bottom of what it opened */
+function whereIs(id) {
+  const el = id == null ? null : rowOf(id);
+  if (!el) return null;
+  const end = el.nextElementSibling?.classList.contains('rs-open') ? el.nextElementSibling : el;
+  return { id, top: el.getBoundingClientRect().top, bottom: end.getBoundingClientRect().bottom };
+}
+
+/**
+ * Table or cards. The CSS switch points cover the usual numbers; a table wider still (millions, a name that
+ * can't wrap) turns into cards. Laid out as a table, measured and decided in one go, so nothing paints between.
+ */
+function fitCards(card) {
+  if (!card?.isConnected) return;
+  if (card.dataset.fit) delete card.dataset.fit;
+  const head = card.querySelector('.rs-table thead');
+  const row = head?.querySelector('tr');
+  if (row && getComputedStyle(head).display !== 'none' && row.scrollWidth > card.clientWidth + 1) card.dataset.fit = 'cards';
+}
+
 /** Keep the row someone opened where it was on screen, though the one above closes */
 function keepInPlace(id, run) {
-  const find = () => document.querySelector(`[data-rid="${String(id).replace(/["\\]/g, '\\$&')}"]`);
+  const find = () => rowOf(id);
   const before = find()?.getBoundingClientRect().top;
   run();
   if (before == null) return;
@@ -513,11 +578,19 @@ function keepInPlace(id, run) {
 }
 
 export function RevealStats({ rows: given = [], since = null, error = null, currentId = null, youtubeKey = true, youtubeOn = true, facebookOn = true, replayHours = 72, when = () => '', fmtDate = (x) => x, renderExtra = null }) {
-  useEffect(injectCss, []);
   const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
   const [open, setOpen] = useState(null);
-  const [cards, setCards] = useState(0); // the table's width when it didn't fit (cards until the card is that wide)
   const cardRef = useRef(null);
+  const setCard = useCallback((el) => { cardRef.current = el; }, []);
+  const openRef = useRef(open);
+  openRef.current = open;
+  const seen = useRef(null); // where the open reveal was on screen when last looked
+  // While the card's width is changing (a resize, the sidebar's slide after it) the mark stays where it was before:
+  // a scroll in the middle of the slide would otherwise take the shifted spot as the new mark
+  const holding = useRef(0);
+  const look = () => { if (!holding.current) seen.current = whereIs(openRef.current); };
+  // Every render: table or cards again (new numbers, columns), after it's on the page and before it paints
+  queueMicrotask(() => fitCards(cardRef.current));
   const rows = useMemo(() => settle(given, currentId), [given, currentId]);
   const table = useMemo(() => rows.filter(inTable), [rows]);
   const rest = useMemo(() => rows.filter((r) => !inTable(r)), [rows]);
@@ -534,10 +607,11 @@ export function RevealStats({ rows: given = [], since = null, error = null, curr
   const toggle = (id) => keepInPlace(id, () => setOpen((cur) => (cur === id ? null : id)));
   // A row opens on a single click: a double-click (selecting a number to copy) or a drag-select doesn't toggle it
   const pending = useRef(null);
+  const downSel = useRef(false); // text was selected already when this press began (the click clears it)
   const selecting = () => { try { return !!String(window.getSelection?.() || '').trim(); } catch { return false; } };
   const rowClick = (e, id) => {
     clearTimeout(pending.current);
-    if (e.detail > 1 || selecting()) return;
+    if (e.detail > 1 || (selecting() && !downSel.current)) return;
     pending.current = setTimeout(() => { if (!selecting()) toggle(id); }, 260);
   };
   const nameClick = (e, id) => { e.stopPropagation(); clearTimeout(pending.current); if (e.detail > 1) return; toggle(id); };
@@ -548,32 +622,45 @@ export function RevealStats({ rows: given = [], since = null, error = null, curr
   const arrow = (key) => (sort.key === key ? (sort.dir === 'desc' ? '↓' : '↑') : '');
   const span = cols.length + 1;
 
-  // Numbers wider than the switch points expect (millions, long dashes of columns): turn into cards rather than spill
+  // The card's width changing (a window resized, a tablet turned): table or cards again, and the open reveal
+  // put back where it was on screen (the browser's own scroll anchoring may hold on to something else)
   useEffect(() => {
     const card = cardRef.current;
+    const probe = card?.querySelector('.rs-measure');
     if (!card) return undefined;
-    // The heading row's width is the table's own (an open reveal's content wraps to fit, and never decides this)
-    const check = () => {
-      const row = card.querySelector('.rs-table thead tr');
-      const head = card.querySelector('.rs-table thead');
-      if (!row || !head) return;
-      const asTable = getComputedStyle(head).display !== 'none';
-      if (asTable && row.scrollWidth > card.clientWidth + 1) setCards(row.scrollWidth);
-      else if (cards && card.clientWidth >= cards) setCards(0);
-    };
-    check();
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(check);
-    ro.observe(card);
-    return () => ro.disconnect();
-  }, [cards, cols.length, rows, open]);
-  // The page's font arriving after the first look changes every width: one fresh look then, once (never again,
-  // so cards and table can't keep swapping)
-  useEffect(() => {
     let on = true;
-    document.fonts?.ready?.then(() => { if (on) setCards((c) => (c ? 0 : c)); });
-    return () => { on = false; };
+    let width = card.clientWidth;
+    const onScroll = () => look();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    // The page's font arriving changes every width: one more look then (before it paints)
+    document.fonts?.ready?.then(() => { if (on) { fitCards(cardRef.current); look(); } });
+    const hold = () => { clearTimeout(holding.current); holding.current = setTimeout(() => { holding.current = 0; look(); }, 300); };
+    // A window resize: hold the mark before this frame's scroll events can move it
+    window.addEventListener('resize', hold);
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined' && probe) {
+      // The probe is the card's width and nothing else, so turning into cards (taller) never sets this off again
+      ro = new ResizeObserver(() => {
+        const c = cardRef.current;
+        if (!c) return;
+        fitCards(c);
+        const w = c.clientWidth;
+        if (Math.abs(w - width) > 1) {
+          hold();
+          const before = seen.current;
+          if (before && before.id === openRef.current && before.top < window.innerHeight && before.bottom > 0) {
+            const now = whereIs(before.id);
+            if (now && Math.abs(now.top - before.top) > 1) window.scrollBy(0, now.top - before.top);
+          }
+        }
+        width = w;
+        look();
+      });
+      ro.observe(probe);
+    }
+    return () => { on = false; ro?.disconnect(); clearTimeout(holding.current); holding.current = 0; window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', hold); };
   }, []);
+  useEffect(() => { look(); });
 
   const cell = (c, r) => {
     const v = valueOf(c, r);
@@ -590,11 +677,14 @@ export function RevealStats({ rows: given = [], since = null, error = null, curr
     'Staff and tests are never counted.',
   ].filter(Boolean).join(' ');
   const sizeClass = cols.length >= 10 ? ' rs-card--c10' : cols.length === 9 ? ' rs-card--c9' : '';
+  // Why the rest aren't compared, the reasons in this order, only those that apply
+  const whys = Object.keys(WHY_NOT).filter((k) => rest.some((r) => whyNot(r, error) === k));
 
   return html`<div class="rs">
-    <div class=${`card rs-card${sizeClass}${cards ? ' rs-card--cards' : ''}`} ref=${cardRef}>
+    <div class=${`card rs-card${sizeClass}`} ref=${setCard}>
+      <div class="rs-measure" aria-hidden="true"></div>
       <div class="rs-head">
-        ${error ? html`<p class="rs-note rs-note--warn" role="status">The reveal numbers couldn't be loaded: ${words(error)} Reload the page to try again.${rows.length ? ' The reveals and their messages are below.' : ''}</p>` : null}
+        ${error ? html`<p class="rs-note rs-note--warn" role="status" title=${words(error)}>The reveal numbers couldn't be loaded: ${plainError(error)} Reload the page to try again.${rows.length ? ' The reveals and their messages are below.' : ''}</p>` : null}
         <p class="text-sm text-muted">${head}</p>
       </div>
       ${table.length ? html`<label class="rs-sortpick">
@@ -611,7 +701,7 @@ export function RevealStats({ rows: given = [], since = null, error = null, curr
           ${cols.map((c) => html`<th class="num" aria-sort=${ariaSort(c.key)}><button type="button" class="rs-sort" title=${c.means} onClick=${() => sortBy(c.key)}>${c.label}<span aria-hidden="true">${arrow(c.key) ? ` ${arrow(c.key)}` : ''}</span></button></th>`)}
         </tr></thead>
         <tbody>${sorted.map((r) => { const isOpen = open === r.id; return [
-          html`<tr key=${r.id} data-rid=${r.id} class=${`rs-row${isOpen ? ' is-open' : ''}`} onClick=${(e) => rowClick(e, r.id)} onDblClick=${() => clearTimeout(pending.current)}>
+          html`<tr key=${r.id} data-rid=${r.id} class=${`rs-row${isOpen ? ' is-open' : ''}`} onPointerDown=${() => { downSel.current = selecting(); }} onClick=${(e) => rowClick(e, r.id)} onDblClick=${() => clearTimeout(pending.current)}>
             <td class="rs-name">
               <button type="button" class="rs-namebtn" aria-expanded=${isOpen} onClick=${(ev) => nameClick(ev, r.id)}><span class="rs-chev" aria-hidden="true"></span><strong>${r.kid_name || r.title || r.id}</strong></button>
               ${isUpcoming(r) ? html`<span class="tag tag--info">Coming up</span>` : r.phase === 'live' ? html`<span class="tag tag--success">Live now</span>` : r.phase === 'ending' ? html`<span class="tag tag--warn">Reconnecting</span>` : null}
@@ -625,7 +715,7 @@ export function RevealStats({ rows: given = [], since = null, error = null, curr
           <th scope="row">Average reveal <div class="text-sm text-muted">${plural(nAvg, 'finished reveal')}</div></th>
           ${cols.map(avgCell)}
         </tr></tfoot>` : null}
-      </table></div>` : html`<div class="empty empty--inline"><p class="empty__text">${error ? 'No reveals to compare until the numbers load.' : rest.length ? 'Nothing to compare yet: the reveals below are tests, cancelled, Facebook-only or without a kid. The next reveal the site shows comes up here.' : 'No reveals yet. The next one shows up here.'}</p></div>`}
+      </table></div>` : html`<div class="empty empty--inline"><p class="empty__text">${error ? 'No reveals to compare until the numbers load.' : rest.length ? `Nothing to compare yet${whys.some((k) => WHY_NOT[k][1]) ? `: the reveals below are ${orList(whys.map((k) => WHY_NOT[k][1]).filter(Boolean))}` : ''}. The next reveal the site shows comes up here.` : 'No reveals yet. The next one shows up here.'}</p></div>`}
       <details class="rs-means">
         <summary>What each number means</summary>
         <dl>${cols.map((c) => html`<div><dt>${c.label}</dt><dd>${c.key === 'replay' ? c.means.replace('a few days after, as Settings says', `${replayWords} after`) : c.means}</dd></div>`)}</dl>
@@ -633,12 +723,12 @@ export function RevealStats({ rows: given = [], since = null, error = null, curr
       </details>
     </div>
     ${rest.length ? html`<details class="card bc-fold rs-rest">
-      <summary>Not compared: from before counting began, tests, cancelled, Facebook-only or without a kid <span class="bc-fold-note">${rest.length}</span></summary>
+      <summary>Not compared${whys.length ? `: ${orList(whys.map((k) => WHY_NOT[k][0]))}` : ''} <span class="bc-fold-note">${rest.length}</span></summary>
       <div class="bc-fold-body">
         <p class="text-sm text-muted" style="margin:0 0 .5rem">Kept out of the comparison and the averages.</p>
-        ${rest.map((r) => { const isOpen = open === r.id; return html`<div key=${r.id} data-rid=${r.id} class=${`rs-restrow${isOpen ? ' is-open' : ''}`}>
+        ${rest.map((r) => { const isOpen = open === r.id; const label = WHY_NOT[whyNot(r, error)]?.[2]; return html`<div key=${r.id} data-rid=${r.id} class=${`rs-restrow${isOpen ? ' is-open' : ''}`}>
           <button type="button" class="rs-restbtn" aria-expanded=${isOpen} onClick=${() => toggle(r.id)}>
-            <span><strong>${r.title || r.kid_name || r.id}</strong>${isTest(r) ? html` <span class="tag">Test</span>` : null}<span class="text-sm text-muted"> ${when(r)}</span></span>
+            <span><strong>${r.title || r.kid_name || r.id}</strong>${isTest(r) ? html` <span class="tag">Test</span>` : null}<span class="text-sm text-muted"> ${when(r)}${label ? ` · ${label}` : ''}</span></span>
             <span class="rs-restbtn__go">${isOpen ? 'Close' : 'Open'}</span>
           </button>
           ${isOpen ? html`<${RevealDetail} r=${r} since=${since} error=${error} currentId=${currentId} youtubeKey=${youtubeKey} youtubeOn=${youtubeOn} facebookOn=${facebookOn} fmtDate=${fmtDate} renderExtra=${renderExtra} />` : null}
@@ -678,6 +768,7 @@ const CSS = `
 .rs { display: grid; gap: 1rem; min-width: 0; }
 /* clip, not hidden: a card that hides its overflow is a scroll box, and the headings couldn't stick to the page */
 .rs-card { padding: 0; container: rs / inline-size; min-width: 0; overflow: clip; }
+.rs-measure { height: 0; }
 .rs-head { padding: 1.1rem 1.5rem .5rem; }
 .rs-head p { margin: 0; }
 .rs-sr { user-select: none; position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -699,7 +790,7 @@ const CSS = `
 .rs-row { cursor: pointer; }
 .rs-row:hover td, .rs-row.is-open td { background: var(--color-bg-secondary); }
 .rs-name { min-width: 9rem; }
-.rs-name strong { min-width: 0; font-size: var(--fs-md); overflow-wrap: break-word; hyphens: auto; }
+.rs-name strong { min-width: 0; font-size: var(--fs-md); overflow-wrap: anywhere; hyphens: auto; }
 .rs-namebtn { all: unset; cursor: pointer; display: inline-flex; align-items: baseline; gap: .45rem; max-width: 100%; border-radius: 4px; color: var(--color-text); }
 .rs-namebtn:focus-visible { box-shadow: var(--focus-ring-strong); }
 .rs-chev { flex: none; width: 6px; height: 6px; border-right: 2px solid var(--color-text-muted); border-bottom: 2px solid var(--color-text-muted); transform: translateY(-2px) rotate(-45deg); transition: transform .15s; }
@@ -720,8 +811,10 @@ const CSS = `
 .rs-muted { overflow-wrap: anywhere; margin: .35rem 0 0; font-size: var(--fs-xs); line-height: 1.5; color: var(--color-text-muted); }
 .rs-avg__n { display: block; font-size: var(--fs-2xs); font-weight: 500; color: var(--color-text-muted); }
 .rs-note--warn { margin: 0 0 .6rem !important; background: var(--tone-warn-surface) !important; border-color: var(--tone-warn-line-strong) !important; color: var(--tone-warn-fg) !important; }
-.rs-note { margin: .75rem 0 0; padding: .6rem .8rem; border-radius: var(--radius-sm); background: var(--tone-info-surface); border: 1px solid var(--tone-info-line); color: var(--tone-info-fg); font-size: var(--fs-sm); line-height: 1.5; }
-.rs-detail { display: grid; gap: 1rem; padding-top: .5rem; min-width: 0; }
+.rs-note { overflow-wrap: anywhere; margin: .75rem 0 0; padding: .6rem .8rem; border-radius: var(--radius-sm); background: var(--tone-info-surface); border: 1px solid var(--tone-info-line); color: var(--tone-info-fg); font-size: var(--fs-sm); line-height: 1.5; }
+/* One column that never grows past the card: an address that can't wrap stays inside (the messages card's) */
+.rs-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding-top: .5rem; min-width: 0; }
+.rs-extra { min-width: 0; overflow-wrap: anywhere; }
 /* Six tiles: three to a row at most (3 + 3), two on a phone */
 .rs-tiles { margin: 0; grid-template-columns: repeat(auto-fit, minmax(max(120px, calc((100% - 1.5rem) / 3)), 1fr)); }
 .rs-sec { min-width: 0; }
@@ -735,7 +828,8 @@ const CSS = `
 .rs-legend span { display: inline-flex; align-items: center; gap: .35rem; }
 .rs-plot { position: relative; min-width: 0; touch-action: pan-y; }
 .rs-svg { display: block; overflow: visible; }
-.rs-svg:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); border-radius: 6px; }
+.rs-svg:focus { outline: none; }
+.rs-svg:focus-visible { box-shadow: var(--focus-ring-strong); border-radius: 6px; }
 .rs-grid { stroke: var(--color-border); stroke-width: 1; shape-rendering: crispEdges; }
 .rs-axis { font-size: 11px; fill: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .rs-reveal line { stroke: var(--color-text); stroke-width: 1; }
@@ -782,13 +876,15 @@ const CSS = `
 @container rs (max-width: ${CARDS_AT}px) { ${cards('.rs-card')} }
 @container rs (max-width: ${CARDS_AT_C9}px) { ${cards('.rs-card--c9')} }
 @container rs (max-width: ${CARDS_AT_C10}px) { ${cards('.rs-card--c10')} }
-${cards('.rs-card--cards')}
+${cards('.rs-card[data-fit="cards"]')}
 @container rs (max-width: 420px) {
   .rs-row, .rs-avg { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .rs-bars li { grid-template-columns: minmax(0, 1fr) auto; }
   .rs-bars__track { grid-column: 1 / -1; grid-row: 2; }
 }
 `;
+
+if (typeof document !== 'undefined') injectCss();
 
 function injectCss() {
   const have = document.getElementById('rs-css');
