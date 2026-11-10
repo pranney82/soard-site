@@ -1346,17 +1346,26 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Permit office lookup', s: 'live', k: 'schedule',
           when: 'Every 10 minutes, on the applicant sync (the live hub’s heartbeat).',
-          does: 'Finds who issues each home’s building permits: the city when the home is inside its city limits, else the county (“City of Woodstock”, “Cobb County”). It asks the U.S. Census Bureau’s map by the home’s map point (never the address) and writes the answer to the location’s Permitting Municipality field in JobTread, which it made the first time, after County. Only blanks are filled: what staff type is never changed. What the site wrote is looked up again when the home’s map point moves, and every 90 days, since cities annex land and the Census redraws city limits once a year. The kid’s Home card and Insights show it.',
-          touches: ['JobTread', 'U.S. Census', 'D1'], where: 'functions/api/_permit-office.js (from _applicants.js maybeSyncApplicants)',
-          info: 'A few homes a turn, so the Census is asked gently: about 20 every 10 minutes until every home has one. A home JobTread hasn’t put on the map gets nothing until it has a point.',
+          does: 'Writes who issues each home’s building permits to the location’s Permitting Municipality field in JobTread (made the first time, after County). First the home’s jurisdiction: the city when the home is inside its city limits, else the county, from the U.S. Census Bureau’s map by the home’s map point (never the address). Then who issues permits there: what staff taught it, else SOARD’s checked list of towns and counties (some small or new cities have their county issue permits), else the jurisdiction itself, flagged here until someone confirms it. When staff change one home’s value in JobTread, every other home in that town follows; change it back to undo. What staff type is never changed, and each home is looked up again when its map point moves and every 90 days, since cities annex land and the Census redraws city limits once a year. The kid’s Home card and Insights show it.',
+          touches: ['JobTread', 'U.S. Census', 'D1'], where: 'functions/api/_permit-office.js and _permit-offices-verified.js (from _applicants.js maybeSyncApplicants)',
+          info: 'A few homes a turn, so the Census is asked gently. The checked list lives in _permit-offices-verified.js with each town’s own page as its source. A town not on it says the city and asks for a look here.',
           live: (f) => {
             const p = f.permits;
             if (!p || typeof p.error === 'string') return null; // the facts themselves couldn’t be read
-            if (p.error) return ATTN(`The last turn stopped (${stamp(p.error.at)}): ${p.error.message}. It tries again every 10 minutes.`, p.lastFilledAt);
-            if (!p.run) return OFF('Hasn’t run yet. It starts with the next applicant sync.');
-            if (stale(p.run.at, HOUR)) return ATTN(`Hasn’t run since ${stamp(p.run.at)}. It rides on the applicant sync, so check the Heartbeat entry.`, p.run.at);
-            const left = p.run.waiting ? ` ${plural(p.run.waiting, 'more home')} next turn.` : '';
-            return ON(`${p.run.withOffice} of ${plural(p.run.homes, 'home')} in JobTread have their permit office.${left}${p.run.unplaced ? ` ${plural(p.run.unplaced, 'home')} with no map point yet.` : ''}`, p.lastFilledAt || p.run.at);
+            const run = p.run;
+            // One Census hiccup isn't trouble; no good turn for an hour is
+            if (p.error && (!run || Date.parse(p.error.at) - Date.parse(run.at) > HOUR)) return ATTN(`No turn has finished since ${run ? stamp(run.at) : 'it started'}: ${p.error.message}. It tries again every 10 minutes.`, p.lastFilledAt);
+            if (!run) return OFF('Hasn’t run yet. It starts with the next applicant sync.');
+            if (stale(run.at, HOUR)) return ATTN(`Hasn’t run since ${stamp(run.at)}. It rides on the applicant sync, so check the Heartbeat entry.`, run.at);
+            const towns = run.towns || [];
+            const names = (list) => list.map((t) => `${t.jurisdiction} (${plural(t.homes, 'home')})`).join(', ');
+            const conflicts = run.conflicts || [];
+            if (conflicts.length) return ATTN(`Staff wrote different permit offices for homes in the same place: ${conflicts.map((c) => `${c.jurisdiction} (${c.values.join(' and ')})`).join('; ')}. Make them agree in JobTread and the rest of the town follows.`, p.lastFilledAt || run.at);
+            const unconfirmed = towns.filter((t) => t.why === 'unconfirmed');
+            if (unconfirmed.length) return ATTN(`Needs a look: no one has confirmed who issues building permits in ${names(unconfirmed)}. They say the jurisdiction for now. If the county issues them instead, change one home there in JobTread and the rest follow.`, p.lastFilledAt || run.at);
+            const taught = (run.taught || []).length ? ` Taught by staff: ${run.taught.map((t) => `${t.jurisdiction} → ${t.office}`).join(', ')}.` : '';
+            const left = run.waiting ? ` ${plural(run.waiting, 'more home')} next turn.` : '';
+            return ON(`${run.withOffice} of ${plural(run.homes, 'home')} have their permit office, across ${plural(towns.length, 'town and county', 'towns and counties')}, every one checked.${taught}${left}${run.unplaced ? ` ${plural(run.unplaced, 'home')} with no map point yet.` : ''}`, p.lastFilledAt || run.at);
           } },
       ]},
     ]},
