@@ -157,9 +157,15 @@ export const REASONS = {
 };
 const ASKS_ABOUT_ENTRIES = ['maybe-double', 'amount-differs', 'pledge'];
 
-/** Mercury's Category that says a deposit is a gift: Individual Contribution, Contribution (Peter, Nov 10) */
-const CONTRIBUTION = /\bcontributions?\b/i;
-export const isContribution = (category) => CONTRIBUTION.test(clean(category));
+/**
+ * Mercury's Category that says a deposit is a gift (Peter, Nov 10): Individual Contribution, Corporate Contribution, Grant.
+ * Event & Sponsorship, Refund / Reimbursement and everything else stay out of Zeffy
+ */
+const GIFT_CATEGORY = /\b(contributions?|grants?)\b/i;
+export const isContribution = (category) => GIFT_CATEGORY.test(clean(category));
+/** A check marked Grant in Mercury goes on the newest Grant Funding form */
+const GRANT_CATEGORY = /\bgrants?\b/i;
+const GIFT_WORDS = 'Individual Contribution, Corporate Contribution or Grant';
 /** A check's Category in Mercury: from the transaction when the site has it in hand, else as last mirrored */
 async function categoryOf(env, row, txn = null) {
   if (txn && 'categoryData' in txn) return clean(txn.categoryData?.name);
@@ -173,7 +179,7 @@ export const LEFT_OUT = {
   refund: 'The memo says this is a refund or reimbursement.',
   'not-a-giver': 'This looks like insurance or a tax payment, not a gift.',
   person: 'A person said this isn’t a gift.',
-  category: 'Its Category in Mercury isn’t a contribution, so it stays out of Zeffy. Mark it Individual Contribution or Contribution in Mercury if it’s a gift.',
+  category: 'Its Category in Mercury isn’t a gift (Individual Contribution, Corporate Contribution or Grant), so it stays out of Zeffy. Change it in Mercury if it’s a gift.',
   back: 'The check came back.',
 };
 
@@ -1162,6 +1168,11 @@ function memoForm(memo, forms) {
 export function pickForm(row, forms, learned = null) {
   const named = memoForm(row.memo, forms);
   if (named) return named;
+  // Marked Grant in Mercury: the newest Grant Funding form, whoever it's from
+  if (GRANT_CATEGORY.test(row.category || '')) {
+    const grant = newest(forms.filter((f) => /grant funding/i.test(f.title)));
+    if (grant) return grant;
+  }
   if (learned?.campaign_id) {
     const was = forms.find((f) => f.id === learned.campaign_id);
     if (was) return was;
@@ -1736,6 +1747,7 @@ export async function decideCheck(env, row, { mode, now, fetchImpl, gift = false
     if (!(await setRow(env.DB, row.id, { state: 'left-out', reason: 'category', note: category }, now, row.state))) return { result: 'moved' };
     return { result: 'left-out', reason: 'category' };
   }
+  row = { ...row, category };
   // Who the gift is from: the letter's giver when it names one (the source of truth), else who wrote the check. The check's
   // name is kept as the drawer, so Zeffy's entries under either name are found (matchBoth)
   // A name a person gave this check stands, letter or not: they've seen it
@@ -1882,7 +1894,7 @@ async function matchOpen(env, { mode, now, fetchImpl }) {
     // One still waiting for its Category in Mercury isn't stuck on Zeffy: it's waiting to be marked a contribution
     const unmarked = !isContribution(await categoryOf(env, row));
     await tell(env, row, 'stuck', unmarked
-      ? { title: `A check isn’t marked in Mercury: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and its Category in Mercury isn’t Individual Contribution or Contribution, so it isn’t in Zeffy.', fix: 'If it’s a gift, set its Category in Mercury and it goes into Zeffy that evening. If it isn’t, say so on Checks.' }
+      ? { title: `A check isn’t marked in Mercury: ${money(row.cents)}`, lead: `This check posted more than 10 days ago and its Category in Mercury isn’t ${GIFT_WORDS}, so it isn’t in Zeffy.`, fix: 'If it’s a gift, set its Category in Mercury and it goes into Zeffy that evening. If it isn’t, say so on Checks.' }
       : { title: `A check isn’t finished: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and the site hasn’t finished it. Zeffy or Mercury may not be answering.', fix: 'Enter it in Zeffy by hand, and it links itself within the hour.' });
   }
   // The whole 400 days every hour, checks open or not: the site's record of when each payment showed up stays current, so
@@ -2681,7 +2693,8 @@ export async function personCreate(env, id, { name, formId, day = null, notThose
   if (!['person', 'left-out', 'store', 'would'].includes(row.state)) throw err('This check has moved on. Look again.', 409);
   // The record lands when the money does
   if (!['pending', 'sent'].includes(row.status)) throw err('Mercury didn’t take this check, so it isn’t saved in Zeffy.', 409);
-  if (!isContribution(await categoryOf(env, row))) throw err('Mark it Individual Contribution or Contribution in its Category in Mercury first, then save it here.', 409);
+  const category = await categoryOf(env, row);
+  if (!isContribution(category)) throw err(`Set its Category in Mercury to ${GIFT_WORDS} first, then save it here.`, 409);
   if (hasAccountDigits(clean(name), row.check_number)) throw err('Leave the long number out of the name. Six or more digits in a row look like a bank account number, so the site never saves them.');
   const payer = safeText(name, 120, row.check_number);
   if (!payer) throw err('Who wrote this check?');

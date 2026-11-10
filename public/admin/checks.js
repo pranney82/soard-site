@@ -114,7 +114,7 @@ function mailFacts(c) {
 function howItWent(c, mode) {
   if (c.reason === 'amount-off' || c.reason === 'still-unpaid') return c.why;
   if (c.toDo) return c.why;
-  if (c.needsCategory && ['read', 'would'].includes(c.state)) return 'Only checks marked Individual Contribution or Contribution in Mercury go into Zeffy';
+  if (c.needsCategory && ['read', 'would'].includes(c.state)) return 'Only checks marked Individual Contribution, Corporate Contribution or Grant in Mercury go into Zeffy';
   if (c.waitsUntil) return 'A letter attached in Mercury before then is read with it';
   if (c.state === 'created') return c.via === 'person' ? `Saved by ${firstOf(c.by)}` : 'Entered by the site';
   if (c.state === 'linked') return c.via === 'person' ? `Matched by ${firstOf(c.by)}` : 'Found the hand entry';
@@ -202,8 +202,9 @@ function LetterDone({ c, act, busy }) {
 /** A person's entry: what the site read, filled in, for them to finish */
 // The site's own rule for a person's entry: a foundation or fund goes on the newest grant form, everyone else the general one
 const GIVING_BODY = /\b(foundation|trust|fund|grant|charitable|endowment)\b/i;
-const suggestForm = (forms, name) => {
-  const grant = GIVING_BODY.test(name || '') && (forms || []).filter((f) => /grant funding/i.test(f.title)).sort((a, b) => b.title.localeCompare(a.title))[0];
+// A check marked Grant in Mercury goes on the grant form too, whoever it's from
+const suggestForm = (forms, name, category = '') => {
+  const grant = (GIVING_BODY.test(name || '') || /\bgrants?\b/i.test(category || '')) && (forms || []).filter((f) => /grant funding/i.test(f.title)).sort((a, b) => b.title.localeCompare(a.title))[0];
   return (grant || (forms || []).find((f) => /brighter home/i.test(f.title)))?.id || '';
 };
 
@@ -216,7 +217,7 @@ function Entry({ c, act, busy, forms, formsGone = () => {}, onCancel = null, mor
   // A bank's name is never offered as the giver: the check says who it's from, the bank only cashed it
   const [name, setName] = useState(draft.name ?? (c.reason === 'bank' ? '' : c.payer || ''));
   const [picked, setPicked] = useState(!!draft.picked);
-  const guessForm = (isOpen(c.formId) && c.formId) || suggestForm(forms, name);
+  const guessForm = (isOpen(c.formId) && c.formId) || suggestForm(forms, name, c.category);
   const [formId, setFormId] = useState(draft.formId ?? guessForm);
   const [day, setDay] = useState(draft.day ?? (usable ? c.checkDate : c.depositDay));
   const first = useRef(null);
@@ -309,7 +310,7 @@ function NeedsYou({ c, mode, act, busy, forms, formsGone, formsFailed }) {
   return html`<div class="ck-need" data-check=${c.id} tabindex="-1">
     ${head}
     <p class="ck-need__why">${c.why}${c.note ? ` ${c.note}` : ''}</p>
-    ${c.needsCategory && on && posted ? html`<p class="sec-head__hint ck-note">Before saving: set its Category in Mercury to Individual Contribution or Contribution. Only checks marked that way go into Zeffy.</p>` : ''}
+    ${c.needsCategory && on && posted ? html`<p class="sec-head__hint ck-note">Before saving: set its Category in Mercury to Individual Contribution, Corporate Contribution or Grant. Only checks marked that way go into Zeffy.</p>` : ''}
     ${entries.length ? html`<ul class="ck-cands">
       ${entries.map((x) => html`<li>
         <span><strong>${x.name || 'No name'}</strong> · ${usd(x.cents)} · ${fromUnix(x.at)}${x.form ? ` · ${x.form}` : ''}</span>

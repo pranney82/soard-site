@@ -198,7 +198,7 @@ try {
   await answerAsks(page, { accept: true, onAsk: (t) => { asked = t; } });
   ok(await clickIn(page, '.ck .notice', 'Let the site enter checks'), 'the button appears once the write test passed');
   await page.waitForFunction(() => /enters checks in Zeffy/.test(document.querySelector('.ck')?.textContent || ''), { timeout: 5000 });
-  ok(/Needs its Category in Mercury/.test(await row('u1')) && /Individual Contribution or Contribution/.test(await row('u1')), 'a check not marked a contribution says so');
+  ok(/Needs its Category in Mercury/.test(await row('u1')) && /Individual Contribution, Corporate Contribution or Grant/.test(await row('u1')), 'a check not marked a contribution says so');
   ok(/Staff stop entering/.test(asked), 'it says what changes for staff before it does');
   ok(/Holly/.test(await textOf(page, '.ck .notice')), 'it says who turned it on');
   await page.waitForFunction(() => document.querySelectorAll('.ck-need select option').length > 2, { timeout: 5000 });

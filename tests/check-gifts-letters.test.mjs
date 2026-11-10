@@ -823,7 +823,7 @@ test('a person can\'t save a check that isn\'t marked a contribution', async () 
   await runs(T0, T0 + 30 * MIN);
   const r = await rowOf();
   assert.equal(r.reason, 'unreadable');
-  await assert.rejects(CG.personCreate(env(), TX, { name: 'Pine Foundation', formId: 'form_home', saw: CG.versionOf(r), by: 'staff@example.com', now: T0 + 40 * MIN, fetchImpl: fetchWithFiles }), /Mark it Individual Contribution or Contribution/);
+  await assert.rejects(CG.personCreate(env(), TX, { name: 'Pine Foundation', formId: 'form_home', saw: CG.versionOf(r), by: 'staff@example.com', now: T0 + 40 * MIN, fetchImpl: fetchWithFiles }), /Individual Contribution, Corporate Contribution or Grant/);
   assert.equal(world().posts.length, 0);
 });
 
@@ -836,4 +836,22 @@ test('a letter read by an older reader is read again while its check is still be
   await runs(T0 + 45 * MIN, T0 + 70 * MIN);
   await runs(EVENING, EVENING + 10 * MIN);
   assert.equal(world().posts[0]?.last_name, 'Whitfield');
+});
+
+test('a check marked Grant goes in on the Grant Funding form; Event & Sponsorship stays out', async () => {
+  mark('Grant');
+  await runs(T0, T0 + 10 * MIN); await runs(EVENING, EVENING + 15 * MIN);
+  assert.equal(world().posts[0]?.campaign_id, 'form_grant');
+
+  await fresh();
+  mark('Event & Sponsorship');
+  await runs(T0, T0 + 10 * MIN); await runs(EVENING, EVENING + 15 * MIN);
+  const r = await rowOf();
+  assert.deepEqual([r.state, r.reason, world().posts.length], ['left-out', 'category', 0]);
+});
+
+test('Corporate Contribution goes in', async () => {
+  mark('Corporate Contribution');
+  await runs(T0, T0 + 10 * MIN); await runs(EVENING, EVENING + 15 * MIN);
+  assert.equal(world().posts.length, 1);
 });
