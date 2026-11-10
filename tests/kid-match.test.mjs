@@ -66,13 +66,13 @@ test('placed by the PO, each item on its line', () => {
 test('the PO names one kid but an item is plainly another kid’s: a person looks', () => {
   const m = matchOrder(order({ po: 'ROWAN', items: [{ name: 'Sommers Louis Parisian Globe Modern Contemporary LED' }] }), { jobs, lines, staff });
   assert.equal(m.decision, 'look');
-  assert.match(m.items[0].look, /looks like Ava Example/);
+  assert.match(m.items[0].look, /looks like Ava Example's Lighting/);
 });
 
-test('the PO names a kid but an item fits none of their lines: a person picks the line', () => {
-  const m = matchOrder(order({ po: 'ROWAN', items: [{ name: 'Bean Bag Chair, Teal' }] }), { jobs, lines, staff });
-  assert.equal(m.decision, 'look');
-  assert.match(m.items[0].look, /which of Rowan Sample/);
+test('the PO names a kid and an item fits none of their lines: Also bought for that kid (Peter, Nov 9)', () => {
+  const m = matchOrder(order({ po: 'ROWAN', items: [{ name: 'Bean Bag Chair, Teal' }, { name: 'Raincan Shower Head 52214-CZ' }] }), { jobs, lines, staff });
+  assert.equal(m.decision, 'placed');
+  assert.deepEqual(m.items.map((i) => i.alsoBought ? 'also bought' : i.line), ['also bought', 'Shower System']);
 });
 
 test('no PO: the items name the kid when they fit only one; the same product on two kids is looked at', () => {
@@ -103,5 +103,5 @@ test('an order’s emails go together: items once, the PO from whichever email h
 test('a loose likeness to another kid’s line isn’t a reason to stop: it needs the model or five of the designer’s words', () => {
   const near = [...lines, { jobId: 'j-ava', itemId: 'a-fan', lineName: 'Bath Fan', words: 'Exhaust Fan with Heater, RGB LED light', wordsKey: 'fan', parts: [{ name: 'Exhaust Fan with Heater', model: '' }] }];
   const m = matchOrder(order({ po: 'ROWAN', items: [{ name: 'RGB Neon LED Rope Light 50 ft' }] }), { jobs, lines: near, staff });
-  assert.match(m.items[0].look, /which of Rowan Sample/, 'asked for Rowan’s line, not flagged as Ava’s');
+  assert.equal(m.items[0].alsoBought, true, 'Rowan’s, also bought, not flagged as Ava’s');
 });

@@ -168,7 +168,7 @@ test('without JobTread’s key it does nothing; it never throws', async () => {
 test('the admin read-out: orders and parts together, read-only', async () => {
   const { onRequestGet, onRequestPost } = await import('../functions/api/kid-items-admin.js');
   await maybeReadSelections(env, { now: T0, force: true });
-  const res = await onRequestGet({ env });
+  const res = await onRequestGet({ env, request: new Request('https://site.example/api/kid-items-admin') });
   const body = await res.json();
   assert.equal(body.success, true);
   assert.equal(body.orders.watching, true);

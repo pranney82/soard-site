@@ -16,7 +16,8 @@
  * Which line: each item against that kid's chosen lines, by the part's model
  * number, then the designer's own words (brand and product). Template lines
  * (the same generic words on several makeovers, with no link or model) are
- * never matched by themselves. An item that fits no line needs a look.
+ * never matched by themselves. An item that fits none of the kid's lines is "Also bought" for that kid when the
+ * PO named them (Peter, Nov 9 2026: "ok do that then"), and needs a look when only its items said who it's for.
  */
 
 // Said in the PO box when an order isn't a kid's (Peter's list, Nov 9 2026)
@@ -115,7 +116,8 @@ function candidates(item, lines, templates) {
 export function orderGroups(reads) {
   const groups = new Map();
   for (const r of reads) {
-    const key = r.read.orderNumber ? `${r.store}|${r.read.orderNumber}` : `${r.store}|email:${r.id}`;
+    // No order number: the PO and the first item keep one order's emails together, else the email alone
+    const key = r.read.orderNumber ? `${r.store}|${r.read.orderNumber}` : r.read.jobPo && r.read.items?.[0] ? `${r.store}|po:${r.read.jobPo}|${r.read.items[0].name}` : `${r.store}|email:${r.id}`;
     const g = groups.get(key) || { key, store: r.store, orderNumber: r.read.orderNumber || null, po: null, at: r.at, kinds: [], items: [], buyer: r.mailbox };
     g.kinds.push(r.read.kind);
     g.po ||= r.read.jobPo || null;
@@ -135,14 +137,15 @@ export function matchOrder(order, { jobs, lines, staff = new Set(), templates = 
   const po = kidFromPo(order.po, jobs, staff);
   if (po?.notKid) return { decision: 'not-kid', why: `PO "${order.po}"` };
   const per = order.items.map((it) => ({ it, c: candidates(it, lines, templates) }));
-  const jobName = (id) => jobs.find((j) => j.id === id)?.name || id;
+  const jobName = (id) => String(jobs.find((j) => j.id === id)?.name || id).replace(/\s*\(\d{4}\)\s*$/, '');
   if (po?.kid) {
     const items = per.map(({ it, c }) => {
       const mine = c.filter((x) => x.jobId === po.kid);
       const other = c.find((x) => x.jobId !== po.kid && x.score >= PLAIN);
-      if (mine[0]?.score >= 2 && !(other && other.score > mine[0].score)) return { name: it.name, line: mine[0].line, part: mine[0].part, score: mine[0].score, how: mine[0].how };
+      if (mine[0]?.score >= 2 && !(other && other.score > mine[0].score)) return { name: it.name, itemId: mine[0].itemId, line: mine[0].line, part: mine[0].part, score: mine[0].score, how: mine[0].how };
       if (other) return { name: it.name, look: `the PO says ${jobName(po.kid)}, but it looks like ${jobName(other.jobId)}'s ${other.line}` };
-      return { name: it.name, look: `which of ${jobName(po.kid)}'s lines?` };
+      // The PO says whose it is and nothing on their lines fits: bought for them on top of the selections
+      return { name: it.name, alsoBought: true };
     });
     return { decision: items.some((i) => i.look) ? 'look' : 'placed', kid: po.kid, how: `PO "${order.po}"`, items };
   }
@@ -152,7 +155,7 @@ export function matchOrder(order, { jobs, lines, staff = new Set(), templates = 
   if (kids.size === 1) {
     const kid = [...kids][0];
     const items = strong.map(({ it, best, next }) => {
-      if (best?.jobId === kid && best.score >= 2 && !(next && next.score >= best.score)) return { name: it.name, line: best.line, part: best.part, score: best.score, how: best.how };
+      if (best?.jobId === kid && best.score >= 2 && !(next && next.score >= best.score)) return { name: it.name, itemId: best.itemId, line: best.line, part: best.part, score: best.score, how: best.how };
       return { name: it.name, look: best ? `fits ${jobName(best.jobId)}'s ${best.line} and ${next ? `${jobName(next.jobId)}'s ${next.line}` : 'nothing else'} as well` : `which of ${jobName(kid)}'s lines?` };
     });
     return { decision: items.some((i) => i.look) ? 'look' : 'placed', kid, how: 'its items', items, ...(po?.unclear ? { why: `PO "${po.unclear}" isn't a kid's name` } : {}) };

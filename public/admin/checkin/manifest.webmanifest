@@ -1,0 +1,16 @@
+{
+  "name": "SOARD Check-in",
+  "short_name": "Check-in",
+  "description": "Check in the things SOARD ordered for each kid's makeover, and print their labels.",
+  "start_url": "/admin/checkin/",
+  "scope": "/admin/checkin/",
+  "display": "standalone",
+  "theme_color": "#F5F4F0",
+  "background_color": "#F5F4F0",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
