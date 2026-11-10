@@ -3,7 +3,7 @@
  * ===========================================================================
  * Keyed by the jurisdiction the Census map gives a home ("City of Mableton", "Cobb County"). office: what the
  * home's Permitting Municipality says; source: the government's own page or filed agreement that says so;
- * checked: when. Most issue their own. The one that doesn't (Nov 2026): Hamilton, whose building codes Harris
+ * checked: when. Every place with a home in JobTread on Nov 9 2026 (115 homes, 46 places) is here. Most issue their own. The one that doesn't (Nov 2026): Hamilton, whose building codes Harris
  * County enforces under the county's service delivery agreement. A town missing here is written as itself and
  * Site → Automations asks for a look; staff can also teach the site by changing one home in JobTread.
  *
@@ -26,6 +26,7 @@ export const VERIFIED = Object.fromEntries([
     note: 'Harris County’s Office of Community Development enforces the City of Hamilton’s State minimum Building Codes (2010 service delivery strategy, extended without change in 2019). Harris County Community Development: 706-628-4700.' }],
   own('City of Hampton', 'https://hamptonga.gov/departments/community-development'),
   own('City of Holly Springs', 'https://www.hollyspringsga.us/168/Community-Development'),
+  own('City of Jasper', 'https://www.jasper-ga.us/building.htm'),
   own('City of Jefferson', 'https://www.jeffersonga.gov/219/Building-Permits-Certificates-of-Occupan'),
   own('City of Johns Creek', 'https://johnscreekga.gov/departments/community-development/building-permitting/'),
   own('City of Kennesaw', 'https://www.kennesaw-ga.gov/buildingservices/'),
@@ -34,6 +35,7 @@ export const VERIFIED = Object.fromEntries([
   own('City of McDonough', 'https://www.mcdonoughga.org/198/Building-Inspection-Division'),
   own('City of Mulberry', 'https://www.mulberryga.gov/167/Permitting'),
   own('City of Newnan', 'https://www.newnanga.gov/163/Building-Department'),
+  own('City of Norcross', 'https://norcrossga.net/DocumentCenter/View/6568/Residential-Building-Permit-Application'),
   own('City of Roswell', 'https://www.roswellgov.com/government/departments-division/community-development/building/'),
   own('City of Sandy Springs', 'https://www.sandyspringsga.gov/residential-building-permits'),
   own('City of Smyrna', 'https://www.smyrnaga.gov/business/community-development/building-division'),
@@ -41,14 +43,20 @@ export const VERIFIED = Object.fromEntries([
   own('City of South Fulton', 'https://www.cityofsouthfultonga.gov/2852/Building-Permits'),
   own('City of Stockbridge', 'https://stockbridgega.org/departments/community-development'),
   own('City of Union City', 'https://www.unioncityga.gov/Departments/Community-Development/Permits'),
+  own('City of Villa Rica', 'https://cms2.revize.com/revize/villaricaga/Documents/Departments/Building%20Development/Applications/Residential%20Permit.pdf'),
   own('City of Woodstock', 'https://www.woodstockga.gov/your_government/departments/community_development/building.php'),
   own('Town of Braselton', 'https://www.braselton.gov/departments/planning/building_permit_applications_and_information.php'),
+  // Out of state: one record in JobTread is a home in Garland, Texas
+  own('City of Garland', 'https://www.garlandtx.gov/2152/Building-Permit'),
   // Counties: the home is outside any city, and the county permits its unincorporated land
+  own('Barrow County', 'https://barrowga.org/484/Permits'),
   own('Bartow County', 'https://www.bartowcountyga.gov/departments/community_development/building_inspections/index.php'),
   own('Cherokee County', 'https://www.cherokeecountyga.gov/dsc/building-permits-and-inspections/'),
+  own('Clayton County', 'https://www.claytoncountyga.gov/government/community-development/administration/'),
   own('Cobb County', 'https://www.cobbcounty.gov/community-development/building-division/residential-building-permitting'),
   own('DeKalb County', 'https://dekalbcountyga.gov/departments/planning-and-sustainability/permits-plan-review-and-inspections'),
   own('Douglas County', 'https://www.douglascountyga.gov/224/Building-Permits-Inspections'),
+  own('Fayette County', 'https://fayettecountyga.gov/building_permits/permitting'),
   own('Forsyth County', 'https://www.forsythco.com/government/departments/building-licensing/'),
   own('Gilmer County', 'https://gilmercounty-ga.gov/planning-zoning/'),
   own('Gwinnett County', 'https://www.gwinnettcounty.com/government/departments/planning-development/building-services/building-permits-issued'),

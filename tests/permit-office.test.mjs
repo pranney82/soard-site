@@ -255,7 +255,10 @@ test('the checked list: every town and county SOARD has homes in (Nov 2026), eac
     'City of Holly Springs', 'City of Douglasville', 'City of Hamilton', 'City of Jefferson', 'City of Stockbridge', 'City of Mulberry', 'City of Smyrna', 'City of Lawrenceville',
     'City of South Fulton', 'City of Newnan', 'City of McDonough', 'City of Hampton', 'City of Union City', 'City of Snellville', 'City of Brookhaven', 'Town of Braselton',
     'City of Austell', 'City of Mableton', 'City of Kennesaw', 'Cobb County', 'Gwinnett County', 'Cherokee County', 'Forsyth County', 'Paulding County', 'DeKalb County',
-    'Douglas County', 'Rockdale County', 'Peach County', 'Spalding County', 'Henry County', 'Gilmer County', 'Bartow County'];
+    'Douglas County', 'Rockdale County', 'Peach County', 'Spalding County', 'Henry County', 'Gilmer County', 'Bartow County',
+    // And the homes in JobTread that aren't on the Applicants board
+    'Clayton County', 'Barrow County', 'Fayette County', 'City of Jasper', 'City of Norcross', 'City of Villa Rica', 'City of Garland'];
+  assert.equal(towns.length, 46, 'every place with a home in JobTread on Nov 9 2026');
   for (const t of towns) {
     assert.ok(VERIFIED[t], `${t} is checked`);
     assert.match(VERIFIED[t].source, /^https:\/\//, `${t}: a source`);
