@@ -122,7 +122,12 @@ test('everyday words aren’t names unless the rest is filler', () => {
   // The kid chosen, named further out, wins; otherwise a guess says a folder further out names someone else
   assert.equal(c('/Lizzie Reveal/Kyle Thomas/001.jpg', 'lizzie'), 'lizzie');
   const k2 = KG.guessFromName('/Lizzie Reveal/Kyle Thomas/001.jpg', kin);
-  assert.ok(k2.slug === 'kyle' && k2.outer === 'lizzie' && k2.outerPart === 'Lizzie Reveal', JSON.stringify(k2));
+  assert.ok(k2.slug === 'lizzie' && k2.inner === 'kyle' && k2.innerPart === 'Kyle Thomas', `a kid's reveal folder further out wins, and says a folder inside names someone else: ${JSON.stringify(k2)}`);
+  const k3 = KG.guessFromName('/Lizzie Photos/Kyle Thomas/001.jpg', kin);
+  assert.ok(k3.slug === 'kyle' && k3.outer === 'lizzie', `without a makeover word further out, the nearest folder, and the guess says who's further out: ${JSON.stringify(k3)}`);
+  assert.equal(c('/Leland Reveal/Ben Smith/IMG_1001.jpg'.replace('Leland', 'Colin')), 'colin');
+  assert.equal(c('/Jackson Reveal/Jack’s Room/IMG_1.jpg'), 'jackson');
+  assert.equal(c('/2026 Reveals/Jack/IMG_1.jpg'), 'jack', 'a reveals folder naming no kid leaves the kid inside it');
   assert.equal(g('/Summer’s room - edited/1.jpg'), 'summer');
   assert.equal(g('mason-03.jpg'), 'mason');
   assert.equal(g('/Glass Family Reveal/1.jpg'), 'glass-family');
@@ -170,6 +175,7 @@ test('a JPEG says where and when it was taken (both byte orders)', async () => {
     assert.equal(f.taken.getFullYear(), 2026);
     assert.equal(f.taken.getMonth(), 9);
   }
+  assert.equal((await KG.readFacts(file(jpeg(tiff({ lat: 33.749, lng: -84.388, taken: '2026:10:25 14:30:50' })), 'y.jpg', 'image/jpeg'))).taken.getSeconds(), 50, 'seconds count: two photos 45 s apart aren’t one moment');
   const south = await KG.readFacts(file(jpeg(tiff({ lat: -33.86, lng: 151.21, taken: '2025:01:02 03:04:05' })), 'x.jpg', 'image/jpeg'));
   assert.ok(south.lat < 0 && south.lng > 0);
 });

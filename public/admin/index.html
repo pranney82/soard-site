@@ -9991,7 +9991,8 @@
                 const rank = new Map(st.items.map((it, i) => [it, i]));
                 const mineBy = new Map(landedOf(sl).map((it) => [it.url, it]));
                 const photos = [...had];
-                let heroNow = r0.heroImage;
+                // The main photo this upload chose stays the first by name, even when an earlier one lands later
+                let heroNow = r0.heroImage && r0.heroImage === k.heroAuto ? '' : r0.heroImage;
                 for (const it of add) {
                   // A larger copy (Full Resolution after Web) takes the smaller one's place, alt text and focal point
                   const old = it.replaces?.url ? photos.findIndex((p) => p.url === it.replaces.url) : -1;
@@ -10006,9 +10007,10 @@
                 }
                 const first = photos.find((p) => mineBy.has(p.url));
                 hero = !heroNow && first ? mineBy.get(first.url) : null;
+                if (hero && r0.heroImage === hero.url) hero = null;
                 return { ...r0, photos, photoCount: photos.length, heroImage: heroNow || first?.url || '' };
               }, (r1) => `Upload: ${kdPlural(fresh.length, 'photo')} for ${r1.name || sl}`);
-              if (hero) k.heroName = hero.name;
+              if (hero) { k.heroName = hero.name; k.heroAuto = hero.url; }
               fresh.forEach((it) => { k.saved.add(it.url); if (it.state === 'uploaded') it.state = onPage.includes(it) ? 'onpage' : 'saved'; });
               const recent = kdUpRecent.get(sl) || new Set();
               fresh.forEach((it) => recent.add(kdUpBase(kdUpIdName(it.name))));
@@ -10172,6 +10174,7 @@
         } catch (e) {
           st.video = null;
           it.state = ctrl.signal.aborted ? 'stopped' : 'failed';
+          if (it.state === 'failed') say(`${it.name} didn’t upload: ${kdUpVideoError(e.message)}`);
           it.error = kdUpVideoError(e.message);
           refresh();
           return;
@@ -10242,7 +10245,8 @@
           const had = seen.get(id);
           const lower = f.name.toLowerCase();
           // One that failed or was stopped (an empty iCloud placeholder, a file too big) is tried again with this file
-          const retry = f.size && st.items.find((it) => it.slug === to && it.kind === kind && it.name.toLowerCase() === lower && (it.state === 'failed' || it.state === 'stopped'));
+          // (only the same picture, by evidence, or an empty placeholder: before/001 failing is no reason to lose after/001)
+          const retry = f.size && st.items.find((it) => it.slug === to && it.kind === kind && it.name.toLowerCase() === lower && (!it.size || sameShot(it.file, f)) && (it.state === 'failed' || it.state === 'stopped'));
           if (retry) {
             Object.assign(retry, { file: f, size: f.size, state: 'queued', error: '', pct: 0 });
             again.push(retry);
@@ -10270,7 +10274,9 @@
           fresh.push(it);
         }
         // Camera and photographer files are numbered in the order they were taken
-        fresh.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        // (a folder at a time: Before/001–004, then After/001–004, never interleaved)
+        const where = (it) => kdUpPaths.get(it.file) || it.name;
+        fresh.sort((a, b) => where(a).localeCompare(where(b), undefined, { numeric: true, sensitivity: 'base' }));
         // A file still in iCloud or Google Drive arrives empty
         fresh.forEach((it) => { if (!it.size) { it.state = 'failed'; it.error = 'The file is empty. If it’s in iCloud or Google Drive, download it to this computer first.'; } });
         st.notice = shown(noted(merge ? st.notice : null, { skipped, dupes, clips: clips.length ? [{ to, files: clips }] : [], copies: copies.length ? [{ to, files: copies }] : [], already: already.length ? [{ to, files: already }] : [], swapped }));
@@ -10290,7 +10296,8 @@
       // "this photo", "these 3 photos and 1 video": for labels that name a group
       const theseText = (files) => (files.length === 1 ? `this ${kdUpKind(files[0]) === 'video' ? 'video' : 'photo'}` : `these ${countText(files)}`);
       const whyOf = (g) => `${g.by === 'home' ? `Taken at ${nameOf(g.slug)}’s home` : g.by === 'folder' ? `Folder “${g.part}”` : `Named like “${g.part}”`}${
-        !g.others ? '' : g.by === 'home' ? `. ${g.others + 1} pages share that home, so check it’s the right one` : `. ${g.others + 1} pages match “${g.word}”, so check it’s the right one`}`;
+        !g.others ? '' : g.by === 'home' ? `. ${g.others + 1} pages share that home, so check it’s the right one` : `. ${g.others + 1} pages match “${g.word}”, so check it’s the right one`}${
+        g.outer ? `. The folder “${g.outerPart}” names ${labelOf(g.outer)}, so check it’s the right one` : g.inner ? `. The folder “${g.innerPart}” inside it names ${labelOf(g.inner)}` : ''}`;
       // Two files of one name for one kid are copies of one photo (a photographer's Web and Full Resolution),
       // unless both say when they were taken and it differs (two phones' IMG_0001)
       // Copies only with evidence: the same moment taken, else the same picture in a tiny fingerprint. With
@@ -10331,7 +10338,7 @@
               const group = with_ && st.held.find((h) => h.files.includes(with_));
               const item = with_ && st.items.find((x) => x.file === with_);
               const to = item?.slug || a.to;
-              if (group) group.files.push(f);
+              if (group) { group.files.push(f); group.follow = (group.follow || 0) + 1; }
               else if (to) per.set(to, [...(per.get(to) || []), f]);
               else loose.push(f);
             }
@@ -10454,7 +10461,8 @@
         const top = [...g.why.entries()].sort((a, b) => b[1] - a[1]);
         if (!top.length) return '';
         const n = top.reduce((s, [, c]) => s + c, 0);
-        return top.length === 1 && n === g.files.length ? top[0][0] : `${top[0][0]}${n > top[0][1] || n < g.files.length ? ', and more' : ''}`;
+        const reasoned = g.files.length - (g.follow || 0);
+        return top.length === 1 && n >= reasoned ? top[0][0] : `${top[0][0]}${n > top[0][1] || n < reasoned ? ', and more' : ''}`;
       };
       const focusDrop = () => requestAnimationFrame(() => (document.querySelector('.kd-up-held') || document.querySelector('.kd-up-drop'))?.focus());
       const leaveGroup = (g) => { dropThumbs(g); st.held = st.held.filter((x) => x !== g); refresh(); focusDrop(); };
@@ -10482,6 +10490,14 @@
         focusCard(sl);
         if (list.length) startPhotos(sl, list);
       };
+      // "Added meanwhile" was only the same name: put them on the page after all
+      const count = (s, sl) => st.items.filter((it) => it.slug === sl && it.kind === 'photo' && it.state === s).length;
+      const addOnPage = (sl) => {
+        st.items.forEach((it) => { if (it.slug === sl && it.state === 'onpage') { st.forced.add(it.file); kidOf(sl).saved.delete(it.url); it.state = 'uploaded'; } });
+        refresh();
+        focusCard(sl);
+        settle(sl);
+      };
       const retrySave = (sl) => { kidOf(sl).error = ''; refresh(); focusCard(sl); settle(sl); };
       const retryVideo = (it) => {
         focusCard(it.slug);
@@ -10506,13 +10522,17 @@
         held: st.held.reduce((c, g) => c + g.files.length, 0),
         unsaved: st.items.filter((it) => (it.kind === 'photo' && it.state === 'uploaded' && kidOf(it.slug).error && !kidOf(it.slug).missing)
           || (it.kind === 'video' && it.state === 'unsaved' && !it.missing)).length,
+        // didn't upload, or stopped before they did (an empty placeholder can't be tried again, so it isn't counted)
+        notUp: st.items.filter((it) => (it.state === 'failed' || it.state === 'stopped') && it.size && !kidOf(it.slug).missing).length,
       });
       const okToLeave = async () => {
         const r = atRisk();
-        if (!r.held && !r.unsaved) return true;
-        const what = [r.unsaved ? `${kdPlural(r.unsaved, 'upload')} couldn’t be saved to ${r.unsaved === 1 ? 'its' : 'their'} profile yet` : '',
+        if (!r.held && !r.unsaved && !r.notUp) return true;
+        const what = [r.notUp ? `${kdPlural(r.notUp, 'file')} didn’t upload (Try again or Upload the rest would send ${r.notUp === 1 ? 'it' : 'them'})` : '',
+          r.unsaved ? `${kdPlural(r.unsaved, 'upload')} couldn’t be saved to ${r.unsaved === 1 ? 'its' : 'their'} profile yet` : '',
           r.held ? `${kdPlural(r.held, 'file')} ${r.held === 1 ? 'is' : 'are'} waiting in “Check whose page these are for”` : ''].filter(Boolean).join(', and ');
-        return ask({ title: 'Leave them off the pages?', text: `${what}. Closing leaves ${r.held + r.unsaved === 1 ? 'it' : 'them'} off.`, yes: 'Close without them', no: 'Go back', danger: true });
+        const n = r.held + r.unsaved + r.notUp;
+        return ask({ title: 'Leave them off the pages?', text: `${what}. Closing leaves ${n === 1 ? 'it' : 'them'} off.`, yes: 'Close without them', no: 'Go back', danger: true });
       };
       // Resolves true once closed
       const close = async () => {
@@ -10520,6 +10540,7 @@
         st.held.forEach(dropThumbs);
         st.held = [];
         if (st.saved) onReload?.();
+        st.closedWell = true;
         onClose();
         return true;
       };
@@ -10532,7 +10553,7 @@
         || Object.values(st.kids).some((k) => k.photoSave || k.altRunning || k.settling);
       const onlyAlt = busy && !st.reading && !st.items.some((it) => ['queued', 'uploading', 'saving', 'uploaded'].includes(it.state));
       const risk = atRisk();
-      const heldFiles = risk.held + risk.unsaved > 0;
+      const heldFiles = risk.held + risk.unsaved + risk.notUp > 0;
       useGlobalDirty(busy || heldFiles, busy ? 'the uploads to kids’ pages' : risk.unsaved ? 'the uploads not saved to a profile' : 'the photos waiting to be checked');
       useEffect(() => {
         if (!busy && !heldFiles) return undefined;
@@ -10567,6 +10588,8 @@
         st.photoStop.abort();
         Object.values(st.kids).forEach((k) => clearTimeout(k.timer));
         st.held.forEach(dropThumbs);
+        // Left another way than Done (the sidebar, Back): the Kids list still gets the new photos
+        if (st.saved && !st.closedWell) onReload?.();
       }, []);
       // Files dropped anywhere on the dialog go to the kid chosen; dropped beside it they're ignored,
       // never opened by the browser in place of the admin. A folder counts as busy while it's read
@@ -10673,6 +10696,7 @@
             ${!busy && kid && !k.missing ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => openProfile(sl)}>Open profile</button>` : null}
           </header>
           ${line.text ? html`<p class=${`kd-up-line${line.tone ? ` is-${line.tone}` : ''}`}>${kidBusy ? html`<span class="spinner spinner-14" />` : line.tone === 'ok' ? html`<span class="kd-tidy-done">${kdIcon.check}</span>` : null}<span>${line.text}</span>
+            ${count('onpage', sl) && !kidBusy && !stopping ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => addOnPage(sl)}>Add ${count('onpage', sl) === 1 ? 'it' : 'them'} anyway</button>` : null}
             ${k.error && !k.missing && !kidBusy ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => retrySave(sl)}>Try saving again</button>` : null}</p>` : null}
           ${line.pct != null && kidBusy ? html`<div class="kd-meter" aria-hidden="true"><span style=${`width:${Math.round(line.pct * 100)}%`}></span></div>` : null}
           ${photos.length ? html`<ul class="kd-up-tiles" aria-label=${`${who}’s photos`}>
@@ -10697,9 +10721,9 @@
                 <small>${kdUpSize(it.size)} · ${videoText(it)}</small>
                 ${it.state === 'uploading' ? html`<div class="kd-meter" aria-hidden="true"><span style=${`width:${it.pct}%`}></span></div>` : null}
               </div>
-              ${it.state === 'page' ? html`<span class="kd-up-video__acts"><span class="kd-tag kd-tag--home">On the page</span>${'undoTo' in it ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => undoPlay(it, it.undoTo)}>Undo</button>` : null}</span>`
-                : it.state === 'kept' ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => playInstead(it)}>Play this one instead</button>`
-                : ((it.state === 'unsaved' && !it.missing) || ((it.state === 'failed' || it.state === 'stopped') && it.size)) && !stopping ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => retryVideo(it)}>Try again</button>` : null}
+              ${it.state === 'page' ? html`<span class="kd-up-video__acts"><span class="kd-tag kd-tag--home">On the page</span>${'undoTo' in it ? html`<button type="button" class="btn btn-ghost btn-sm" aria-label=${`Undo: put back the video before ${it.name}`} onClick=${() => undoPlay(it, it.undoTo)}>Undo</button>` : null}</span>`
+                : it.state === 'kept' ? html`<button type="button" class="btn btn-ghost btn-sm" aria-label=${`Play ${it.name} on the page instead`} onClick=${() => playInstead(it)}>Play this one instead</button>`
+                : ((it.state === 'unsaved' && !it.missing) || ((it.state === 'failed' || it.state === 'stopped') && it.size)) && !stopping ? html`<button type="button" class="btn btn-ghost btn-sm" aria-label=${`Try ${it.name} again`} onClick=${() => retryVideo(it)}>Try again</button>` : null}
             </li>`)}
           </ul>` : null}
         </section>`;
@@ -10709,7 +10733,7 @@
       const nt = st.notice;
       const heldReady = st.held.length && st.held.every((g) => g.slug);
       const heldTo = [...new Set(st.held.map((g) => g.slug).filter(Boolean))];
-      const kidOptions = () => groups.map((g) => html`<optgroup key=${g.label} label=${g.label}>${g.kids.map((k) => html`<option key=${k.slug} value=${k.slug}>${kdUpLabel(k, g.year || twin(k))}</option>`)}</optgroup>`);
+      const kidOptions = () => groups.map((g) => html`<optgroup key=${g.label} label=${g.label}>${g.kids.map((k) => html`<option key=${k.slug} value=${k.slug}>${kdUpLabel(k, true)}</option>`)}</optgroup>`);
       const footer = busy ? html`
           <span class="kd-up-foot">${stopping ? 'Stopping. What’s finished stays saved.'
             : st.reading && !st.items.some((it) => it.state === 'uploading') ? 'Reading where they were taken…'
@@ -10793,8 +10817,10 @@
       const [search, setSearch] = useState('');
       // Upload photos and videos (profiles themselves are made when a family is approved)
       const [uploading, setUploading] = useState(false);
-      // Fresh profiles hold the photos just uploaded, so the uploader's own memory of them can go
-      useEffect(() => { kdUpRecent.clear(); }, [kids]);
+      // Fresh profiles hold the photos just uploaded, so the uploader's own memory of them can go (not on the
+      // way back to this page, when the list may still be the one from before the upload)
+      const kidsSeen = useRef(kids);
+      useEffect(() => { if (kidsSeen.current !== kids) { kidsSeen.current = kids; kdUpRecent.clear(); } }, [kids]);
       const searchRef = useRef(null);
       // Completed rooms as rows, or as a wall of photos to find a face
       const [view, setView] = useState(() => { try { return localStorage.getItem('soard-kids-view') === 'photos' ? 'photos' : 'rows'; } catch { return 'rows'; } });

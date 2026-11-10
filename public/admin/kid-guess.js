@@ -134,6 +134,20 @@ export function guessFromName(path, kids, taken = null, prefer = '') {
       if (hit) return { slug: prefer, word: hit.word, where, part, others: 0, outer: '', outerPart: '' };
     }
   }
+  // A kid's own makeover folder further out ("Leland Reveal/Ben Smith", "Lizzie Reveal/Elizabeth",
+  // "Jackson Reveal/Jack's Room") is whose they are: the folders inside it are its people and rooms
+  const MAKEOVER = /\b(reveal|reveals|makeover|makeovers|room|bedroom|bathroom|build)\b/i;
+  for (let i = scans.length - 1; i >= 0; i--) {
+    const { part, where, pool } = scans[i];
+    if (where !== 'folder' || !pool.length || !MAKEOVER.test(nameText(part))) continue;
+    const strong = pool.filter((h) => !weakOnly(h));
+    if (!strong.length || !scans.slice(0, i).some((sc) => sc.pool.some((h) => !strong.some((x) => x.k === h.k)))) continue;
+    const best = strong.sort((a, b) => (b.share - a.share) || (b.initials - a.initials) || ((yearOk(b) ? 1 : 0) - (yearOk(a) ? 1 : 0))
+      || ((ACTIVE.has(b.k.status) ? 1 : 0) - (ACTIVE.has(a.k.status) ? 1 : 0)) || ((Number(b.k.year) || 0) - (Number(a.k.year) || 0)))[0];
+    const others = strong.filter((h) => h !== best && h.matched.includes(best.word) && h.initials === best.initials && !(yearOk(best) && !yearOk(h))).length;
+    const inner = scans.slice(0, i).map((sc) => ({ sc, h: sc.pool.find((h) => !weakOnly(h) && h.k !== best.k) })).find((x) => x.h);
+    return { slug: best.k.slug, word: best.word, where, part, others, outer: '', outerPart: '', inner: inner?.h.k.slug || '', innerPart: inner?.sc.part || '' };
+  }
   // A folder whose only name is an everyday word ("Grace session") counts if nothing further out names a kid
   let fallback = null;
   for (let i = 0; i < scans.length; i++) {
@@ -190,7 +204,8 @@ export function guessKid({ path = '', facts = null } = {}, kids = [], homes = []
     return { slug: pick.slug, by: 'home', others: pick.slug === prefer ? 0 : house.length - 1 };
   }
   const named = guessFromName(path, kids, facts?.taken || null, prefer);
-  return named ? { slug: named.slug, by: named.where, word: named.word, part: named.part, others: named.others || 0, outer: named.outer || '', outerPart: named.outerPart || '' } : null;
+  return named ? { slug: named.slug, by: named.where, word: named.word, part: named.part, others: named.others || 0,
+    outer: named.outer || '', outerPart: named.outerPart || '', inner: named.inner || '', innerPart: named.innerPart || '' } : null;
 }
 
 // ── Where and when it was taken ─────────────────────────────────────
@@ -244,8 +259,8 @@ export function tiffFacts(v, start) {
       if (Math.abs(la) <= 90 && Math.abs(lo) <= 180 && (la || lo)) { facts.lat = la; facts.lng = lo; }
     }
     const exif = ifd0.get(0x8769) ? ifd(u32(ifd0.get(0x8769).at)) : new Map();
-    const when = ascii(exif.get(0x9003) || ifd0.get(0x0132)).match(/^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d)/);
-    if (when) facts.taken = new Date(+when[1], +when[2] - 1, +when[3], +when[4], +when[5]);
+    const when = ascii(exif.get(0x9003) || ifd0.get(0x0132)).match(/^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d)(?::(\d\d))?/);
+    if (when) facts.taken = new Date(+when[1], +when[2] - 1, +when[3], +when[4], +when[5], +(when[6] || 0));
     return facts;
   } catch {
     return null;

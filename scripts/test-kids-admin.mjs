@@ -682,6 +682,8 @@ try {
     const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false, prep: (st) => {
       st.kids.peter = { ...st.kids.peter, publishStatus: 'draft' };
       st.kids.aj = { ...st.kids.aj, photos: [...st.kids.aj.photos, { url: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/aj/1762700000000-old-1.jpg/public', alt: 'AJ in his room' }] };
+      // A new family's page with no photos yet
+      st.kids.zed = { slug: 'zed', name: 'Zed', year: 2026, status: 'in-progress', publishStatus: 'draft', photos: [], heroImage: '', partnerLogos: [], plans: [], beforeAfterPhotos: [] };
     } });
     await page.click('.dnew-btn');
     await sleep(250);
@@ -986,6 +988,9 @@ try {
     await chooseFiles(join(OUT, 'colin-st-1.png'));
     await idle();
     ok(api.st.kids.colin.photos.length === colinM && /already on the page \(added meanwhile\)/.test(await card('Colin')), 'a photo someone added meanwhile (another tab) isn’t added twice, and the card says so');
+    await clickText(page, '.kd-up-kid[aria-label="Colin’s uploads"] .kd-up-line .btn', 'Add it anyway');
+    await idle();
+    ok(api.st.kids.colin.photos.length === colinM + 1, '“Add it anyway” puts it on the page after all (it was only the same name)');
     // A file that failed, then a new file of the same name: that one is tried again, not called a copy
     api.st.failUploads = true;
     writeFileSync(join(OUT, 'big-02.png'), Buffer.concat([png, Buffer.alloc(9000)]));
@@ -999,6 +1004,33 @@ try {
     await idle();
     ok(api.st.kids.colin.photos.length === colinF + 1 && !/big-02\.png: Image too large/.test(await card('Colin')) && !/smaller copy|takes the smaller/.test(await page.$eval('.kd-up-notice', (e) => e.textContent).catch(() => '')),
       'a new file named like one that failed is that one tried again: no copy note, no failure left');
+    // A different picture named like one that failed is its own photo: the failed one stays, to try again
+    for (const [dir, d] of [['before4', 1], ['after4', -1]]) { mkdirSync(join(OUT, dir), { recursive: true }); writeFileSync(join(OUT, dir, '005.png'), ramp(20, d)); }
+    api.st.failUploads = true;
+    await chooseFiles(join(OUT, 'before4', '005.png'));
+    await idle();
+    api.st.failUploads = false;
+    const colinR = api.st.kids.colin.photos.length;
+    await chooseFiles(join(OUT, 'after4', '005.png'));
+    await idle();
+    ok(api.st.kids.colin.photos.length === colinR + 1 && /005\.png: Image too large/.test(await card('Colin')), 'a different picture named like one that failed goes in as its own; the failed one stays listed to try again');
+    // Done with a photo that didn't upload asks first
+    const askedNotUp = [];
+    await answerAsks(page, { accept: false, onAsk: (t) => askedNotUp.push(t) });
+    await clickText(page, '.kd-dialog__foot .btn', 'Done');
+    await sleep(500);
+    ok(askedNotUp.some((t) => /1 file didn’t upload/.test(t)) && await page.$('.kd-up-dialog'), 'Done with a photo that didn’t upload asks first');
+    await answerAsks(page, { accept: true });
+    await clickText(page, '.kd-up-kid[aria-label="Colin’s uploads"] .kd-up-fails .btn', 'Try again');
+    await idle();
+    // A page with no photos: the main photo is the first by name, even when it lands last
+    await page.select('#kd-up-kid', 'zed');
+    const upsZ = api.st.uploads;
+    for (let n = 1; n <= 26; n++) writeFileSync(join(OUT, `z-${String(n).padStart(2, '0')}.png`), png);
+    api.st.slowFirst = 3000;
+    await chooseFiles(...Array.from({ length: 26 }, (_, n) => join(OUT, `z-${String(n + 1).padStart(2, '0')}.png`)));
+    await idle();
+    ok(api.st.kids.zed.heroImage.includes(`up-${upsZ + 1}/`) && api.st.kids.zed.photos[0].url === api.st.kids.zed.heroImage, `the main photo is the first by name (z-01), though it landed last (${api.st.kids.zed.heroImage.match(/up-\d+/)?.[0]})`);
     // A year in the name beats the kid chosen
     await page.select('#kd-up-kid', 'ellie');
     writeFileSync(join(OUT, 'ellie-2023-1.png'), png);
