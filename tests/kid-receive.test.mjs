@@ -467,43 +467,7 @@ test('check-out: a label scanned after Load all counts once', async () => {
   assert.deepEqual([it.status, it.sent], ['out', 1]);
 });
 
-test('check-out by the box: each label is one box; a sink in three boxes is out when the third is; towels two a box', async () => {
-  const { checkOut } = await import('../functions/api/_kid-record.js');
-  const v0 = await view();
-  const head = itemOf(v0, 'Rowan S.', 'Raincan Shower Head');
-  const valve = itemOf(v0, 'Rowan S.', 'Shower Valve');
-  const a = tap(), b = tap();
-  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 3 });
-  await receive(env.DB, { tap: b, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 2, boxes: 1 });
-  const r1 = await checkOut(env.DB, { tap: tap(), ref: a, box: 1 });
-  assert.deepEqual([r1.repeat, r1.receipt.units, r1.receipt.box], [false, 0, 1], 'box 1 of 3 carries no whole unit yet');
-  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a, box: 1 })).repeat, true, 'the same box again counts once');
-  await checkOut(env.DB, { tap: tap(), ref: a, box: 2 });
-  assert.equal(itemOf(await view(), 'Rowan S.', 'Raincan Shower Head').status, 'here', 'two of its three boxes are out: not all of it yet');
-  const r3 = await checkOut(env.DB, { tap: tap(), ref: a, box: 3 });
-  assert.equal(r3.receipt.units, 1);
-  assert.equal(itemOf(await view(), 'Rowan S.', 'Raincan Shower Head').status, 'out');
-  const rv = await checkOut(env.DB, { tap: tap(), ref: b, box: 1 });
-  assert.equal(rv.receipt.units, 2, 'both valves in the one box');
-  assert.equal(itemOf(await view(), 'Rowan S.', 'Shower Valve').status, 'out');
-  assert.equal((await checkOut(env.DB, { tap: tap(), ref: b, box: 9 })).repeat, true, 'a box number past the last is the whole check-in, already out');
-});
 
-test('review 2: box n carries the same share in any order; undo and rescan can’t over- or under-count', async () => {
-  const { checkOut } = await import('../functions/api/_kid-record.js');
-  const valve = itemOf(await view(), 'Rowan S.', 'Shower Valve');
-  await env.DB.prepare("UPDATE kid_parts SET parts = ? WHERE item_id = 'r-shower'").bind(JSON.stringify([part('Raincan Shower Head', { model: '52214-CZ' }), part('Shower Valve', { quantity: 7 })])).run();
-  const a = tap();
-  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 7, boxes: 5 });
-  const outs = {};
-  for (const b of [1, 2, 3, 4]) outs[b] = (await checkOut(env.DB, { tap: tap(), ref: a, box: b })).receipt;
-  assert.deepEqual([1, 2, 3, 4].map((b) => outs[b].units), [1, 1, 2, 1], 'seven towels in five boxes: 1, 1, 2, 1, 2');
-  await undo(env.DB, outs[3].id);
-  await checkOut(env.DB, { tap: tap(), ref: a, box: 3 });
-  await checkOut(env.DB, { tap: tap(), ref: a, box: 5 });
-  const it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
-  assert.deepEqual([it.sent, it.got, it.status], [7, 7, 'out']);
-});
 
 test('review 3, 11: a stale tick is capped at what’s still here; the same box twice at once counts once', async () => {
   const { checkOut } = await import('../functions/api/_kid-record.js');
@@ -642,4 +606,43 @@ test('batch review: past 60 are refused, not lost; a retry prints what it saved 
   const big = await post({ items: many });
   assert.equal(big.results.length, 62);
   assert.equal(big.results.filter((r) => r.status === 400).length, 2);
+});
+
+test('check-out by the box (round 2): a check-in is out only when every box is; units go as the boxes do, in any order', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const v0 = await view();
+  const head = itemOf(v0, 'Rowan S.', 'Raincan Shower Head');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 3 });
+  // The review's case: the LAST of the sink's three boxes scanned first
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a, box: 3 })).repeat, false);
+  let it = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  assert.deepEqual([it.status, it.sent, it.boxesLeft], ['here', 0, 2], 'one of three boxes out: not out, two boxes left');
+  assert.deepEqual(kidOf(await view(), 'Rowan S.').shelves, ['1'], 'the shelf stays: two boxes are still on it');
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a, box: 1 })).repeat, false, 'box 1 isn’t “already loaded”');
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a, box: 1 })).repeat, true, 'the same box again counts once');
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 2 });
+  it = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  assert.deepEqual([it.status, it.sent, it.boxesLeft], ['out', 1, 0]);
+  assert.deepEqual(kidOf(await view(), 'Rowan S.').shelves, []);
+});
+
+test('check-out by the box (round 2): seven towels in five boxes, a box undone and rescanned, ends seven of seven', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  await env.DB.prepare("UPDATE kid_parts SET parts = ? WHERE item_id = 'r-shower'").bind(JSON.stringify([part('Raincan Shower Head', { model: '52214-CZ' }), part('Shower Valve', { quantity: 7 })])).run();
+  const valve = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 7, boxes: 5 });
+  const outs = {};
+  for (const b of [1, 2, 3, 4]) outs[b] = (await checkOut(env.DB, { tap: tap(), ref: a, box: b })).receipt;
+  assert.deepEqual([itemOf(await view(), 'Rowan S.', 'Shower Valve').sent, itemOf(await view(), 'Rowan S.', 'Shower Valve').boxesLeft], [5, 1], 'four of five boxes: five of seven towels');
+  await undo(env.DB, outs[3].id);
+  assert.equal(itemOf(await view(), 'Rowan S.', 'Shower Valve').boxesLeft, 2);
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 3 });
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 5 });
+  const it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  assert.deepEqual([it.sent, it.got, it.status], [7, 7, 'out']);
+  const { outState } = await import('../functions/api/_kid-record.js');
+  const st = outState([{ id: 'r1', units: 4, boxes: 2, at: '1' }], [{ ref: 'r1', box: 1 }, { units: 2 }]);
+  assert.deepEqual([st.sent, st.allOut, st.boxesLeft], [4, true, 0], 'one box scanned and the rest ticked: all out');
 });

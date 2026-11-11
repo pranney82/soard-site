@@ -150,7 +150,10 @@ export async function onRequestPost(context) {
         }
       }
       out.results = results;
-      for (const j of jobs) out.jt = await writeKidNow(env, j);
+      // JobTread in the background: Confirm answers at once (the heartbeat backs it up)
+      const write = (async () => { for (const j of jobs) await writeKidNow(env, j); })();
+      if (context.waitUntil) context.waitUntil(write); else await write;
+      out.jt = 'later';
     } else if (q.get('out')) {
       const r = await checkOut(env.DB, body, { by });
       jobId = r.receipt.job_id;

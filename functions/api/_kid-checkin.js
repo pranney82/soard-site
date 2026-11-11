@@ -14,7 +14,7 @@
 import { matchOrder, orderGroups, templateLines, namesOf, fit, tokensOf, groupKey } from './_kid-match.js';
 import { loadCostRecords } from './_makeover-costs.js';
 import { matchProject } from './_reveals.js';
-import { readRecord, readState, decisionKey, alsoKey, shelfName, SHELVES, FLOOR } from './_kid-record.js';
+import { readRecord, readState, decisionKey, alsoKey, shelfName, SHELVES, FLOOR, outState } from './_kid-record.js';
 
 const ORDER_KINDS = new Set(['order', 'shipped', 'out', 'delivered', 'pickup']);
 const UNDO_KINDS = new Set(['cancelled', 'refund', 'return']);
@@ -65,11 +65,14 @@ export async function orderReads(DB, kinds = ORDER_KINDS, strict = false) {
  */
 function settle(it, whoOf = () => null) {
   const live = it.receipts.filter((r) => !r.undoneAt);
-  it.got = live.filter((r) => r.kind === 'receive').reduce((t, r) => t + (r.units || 0), 0);
-  it.sent = live.filter((r) => r.kind === 'out').reduce((t, r) => t + (r.units || 0), 0);
+  // What's out, by the boxes (./_kid-record.js outState: the same rule the server frees shelves by)
+  const st = outState(live.filter((r) => r.kind === 'receive'), live.filter((r) => r.kind === 'out'));
+  it.got = st.got;
+  it.sent = st.sent;
+  it.boxesLeft = st.boxesLeft;
   it.shelf = [...live].reverse().find((r) => r.kind === 'receive' && r.shelf)?.shelf || null;
   if (live.some((r) => r.kind === 'house')) it.status = 'house';
-  else if (it.got > 0 && it.sent >= it.got && it.got >= it.qty) it.status = 'out';
+  else if (st.allOut && it.got >= it.qty) it.status = 'out';
   else if (it.got >= it.qty) it.status = 'here';
   else if (it.got > 0) it.status = 'partly';
   else it.status = it.order ? 'ordered' : 'not';

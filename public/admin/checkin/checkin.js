@@ -49,6 +49,7 @@ const ICON = {
 // ─── Talking to the site; a check-in made offline waits on this phone ───
 
 const QUEUE_KEY = 'soard-checkin-queue';
+const clean = (m) => String(m || '').replace(/[.\s]+$/, '');
 const readQueue = () => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; } };
 const writeQueue = (q) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch { /* private window: it can't wait, it's sent now or said */ } };
 const QUEUEABLE = new Set(['receive', 'other', 'house', 'undo', 'shelf', 'decide', 'out']);
@@ -59,7 +60,9 @@ class Offline extends Error {}
 async function send(action, body) {
   let res;
   try {
-    res = await fetch(`/api/kid-items-admin?${action}=1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    // Poor signal can hang a request for a minute: one that could wait on the phone stops at 10 seconds and does
+    const signal = QUEUEABLE.has(action) && AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined;
+    res = await fetch(`/api/kid-items-admin?${action}=1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
   } catch {
     throw new Offline('No connection');
   }
@@ -91,13 +94,21 @@ async function flush() {
   if (!readQueue().length) { showQueue(); return; }
   flushing = true;
   const done = new Set();
+  const said = [];
+  let savedCount = 0;
   try {
     for (const q of readQueue()) {
       try {
         const out = await send(q.action, Array.isArray(q.body?.items) ? { ...q.body, again: true } : q.body);
         done.add(q.id);
-        const refused = (out.results || []).filter((x) => x.error && [400, 404, 409].includes(x.status));
-        if (refused.length) toast(`Not saved: ${refused.map((x) => x.error).join('; ')}`);
+        const results = out.results || [];
+        const refused = results.filter((x) => x.error && [400, 404, 409].includes(x.status));
+        // Items the site failed on (not refused): back in the queue with their own ids, to try again
+        const retry = Array.isArray(q.body?.items) ? q.body.items.filter((it) => results.find((x) => x.tap === it.tap && x.error && !refused.includes(x))) : [];
+        if (retry.length) writeQueue([...readQueue(), { id: newTap(), action: q.action, body: { items: retry }, at: Date.now() }]);
+        const landed = Array.isArray(q.body?.items) ? q.body.items.length - refused.length - retry.length : 1;
+        said.push(...refused.map((x) => clean(x.error)));
+        if (landed > 0) savedCount += landed;
       } catch (err) {
         if (FOR_GOOD.has(err.status)) { done.add(q.id); toast(`A check-in couldn’t be saved: ${err.message}`); continue; }
         if (err.status === 403) toast('Your sign-in ran out. Reload the page to sign in, and what’s waiting will save.');
@@ -110,6 +121,8 @@ async function flush() {
     flushing = false;
     showQueue();
     if (done.size) render();
+    // What waited on the phone has landed: said once, with anything the site refused
+    if (savedCount || said.length) toast([savedCount ? `${savedCount} saved` : null, said.length ? `Not saved: ${said.join('; ')}` : null].filter(Boolean).join('. '));
   }
 }
 /** Undo a check-in: one still waiting on this phone just comes off the queue */
@@ -123,11 +136,11 @@ async function undoTap(tap) {
   return sendOrKeep('undo', { tap });
 }
 function showQueue() {
-  const n = readQueue().length;
+  const n = readQueue().reduce((t, q) => t + (Array.isArray(q.body?.items) ? q.body.items.length : 1), 0);
   const el = $('queue');
   el.hidden = !n;
   el.textContent = n ? `${n} to save` : '';
-  el.setAttribute('aria-label', n ? `${plural(n, 'check-in')} waiting for the connection` : '');
+  el.setAttribute('aria-label', n ? `${n} waiting for the connection` : '');
   // One chip up top at a time: what's waiting matters more than Practice
   $('mode').hidden = Boolean(n) || !state.practice;
 }
@@ -145,6 +158,7 @@ function toast(text) {
 }
 
 function apply(view) {
+  pruneLoad(view);
   Object.assign(state, { kids: view.kids || [], needsLook: view.needsLook || [], shelves: view.shelves || [], shipments: view.shipments || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
   $('mode').hidden = !state.practice || readQueue().length > 0;
 }
@@ -177,7 +191,7 @@ function rowHtml(kid, it) {
 
 function render() {
   document.body.dataset.mode = state.mode;
-  document.querySelector('h1').textContent = state.mode === 'out' ? 'Check-out' : 'Check-in';
+  document.querySelector('h1').textContent = state.mode === 'out' ? 'Check out' : 'Check in';
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode)));
   if (state.mode === 'out') { renderOut(); return; }
   $('scan').querySelector('span').textContent = 'Scan a box';
@@ -246,7 +260,7 @@ function close() {
     closeTimer = setTimeout(() => {
       $('sheet-root').innerHTML = '';
       // What changed while the sheet was up shows once it's gone; focus goes back to what opened it (or the next card)
-      if (state.renderOnClose) { state.renderOnClose = false; render(); }
+      if (state.renderOnClose) { state.renderOnClose = false; settleAfter(); }
       const back = state.openedFrom && document.querySelector(state.openedFrom);
       (back || document.querySelector('#list .ship, #list .row, #list button'))?.focus({ preventScroll: true });
       state.openedFrom = null;
@@ -485,6 +499,29 @@ async function printed(kid, it, { units = 1, boxes = 1, other = null, tap = newT
   $('moveit').onclick = () => (out.receipt ? shelfPicker(kid, tap, () => printedShelf(kid)) : null);
 }
 const printedShelf = (kid) => { const s = $('shelf'); if (s) s.textContent = kidById(kid.jobId)?.shelf || s.textContent; };
+
+/** After a load: its rows fade and close up, then the list redraws and each bar grows from where it was */
+async function settleAfter() {
+  const ids = state.afterLoad || [];
+  state.afterLoad = null;
+  const rows = ids.map((id) => document.querySelector(`#list .lrow[data-row="${CSS.escape(id)}"]`)).filter(Boolean);
+  const bars = new Map([...document.querySelectorAll('[data-bar]')].map((b) => [b.dataset.bar, b.style.transform]));
+  if (rows.length && !reduced()) {
+    rows.forEach((r) => { r.style.maxHeight = `${r.offsetHeight}px`; r.classList.add('fading'); });
+    await wait(120);
+    rows.forEach((r) => r.classList.add('leaving'));
+    await wait(280);
+  }
+  render();
+  if (reduced()) return;
+  document.querySelectorAll('[data-bar]').forEach((b) => {
+    const from = bars.get(b.dataset.bar);
+    if (!from || from === b.style.transform) return;
+    const to = b.style.transform;
+    b.style.transition = 'none'; b.style.transform = from;
+    requestAnimationFrame(() => requestAnimationFrame(() => { b.style.transition = ''; b.style.transform = to; }));
+  });
+}
 
 /** Once the sheet is gone: the row fades, closes up, and the kid's bar grows */
 async function leave(kid, it) {
@@ -938,7 +975,7 @@ async function loadPage() {
     apply(body);
     // A makeover's Project Manager loads out: the page opens on Check out for them (Peter, Nov 10 2026)
     state.me = body.me || null;
-    if (!state.loadedOnce) state.mode = state.me?.pm ? 'out' : 'in';
+    if (!state.loadedOnce) state.mode = state.me?.pm || load.size ? 'out' : 'in';
     state.loadedOnce = true;
     state.printerUrl = body.printerUrl || '';
     render();
@@ -962,23 +999,31 @@ const STAGE_RANK = { Build: 0, Mobilization: 1, Design: 2 };
  * Boxes of an item still at the Office. Each label is one box: a box scanned out comes off its check-in; an older
  * label with no box number, Load all and a tick take whole check-ins
  */
-function boxesLeft(it) {
+/** What's out of an item by its boxes: the same rule as the server's (functions/api/_kid-record.js outState) */
+function outStateOf(it) {
   const live = (it.receipts || []).filter((r) => !r.undone);
+  const ins = live.filter((r) => r.kind === 'receive');
   const outs = live.filter((r) => r.kind === 'out');
-  // Ticks and Load all (no label) take units from whatever is still here, oldest check-in first, as the site does
-  let tapped = outs.filter((r) => !r.ref).reduce((t, r) => t + (r.units || 0), 0);
-  let boxes = 0;
-  for (const r of live.filter((x) => x.kind === 'receive')) {
-    const mine = outs.filter((o) => o.ref === r.id);
-    if (mine.some((o) => !o.box)) continue;
+  let ticked = outs.filter((o) => !o.ref).reduce((t, o) => t + (o.units || 0), 0);
+  let got = 0, sent = 0, boxesLeft = 0, allOut = true;
+  for (const r of [...ins].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
     const total = Math.max(1, r.boxes || 1);
-    const scannedBoxes = new Set(mine.map((o) => o.box)).size;
-    const unitsLeft = (r.units || 0) - mine.reduce((t, o) => t + (o.units || 0), 0);
-    if (tapped >= unitsLeft) { tapped -= Math.max(0, unitsLeft); continue; }
-    tapped = 0;
-    boxes += Math.max(0, total - scannedBoxes);
+    const units = r.units || 0;
+    got += units;
+    const mine = outs.filter((o) => o.ref === r.id);
+    const boxes = new Set(mine.filter((o) => o.box).map((o) => Number(o.box)));
+    let done = mine.some((o) => !o.box) ? total : Math.min(total, boxes.size);
+    let out = done >= total ? units : Math.floor((units * done) / total);
+    let full = done >= total;
+    if (!full && ticked > 0) { const need = units - out; if (ticked >= need) { ticked -= need; out = units; full = true; done = total; } else { out += ticked; ticked = 0; } }
+    sent += out;
+    if (!full) { boxesLeft += total - done; allOut = false; }
   }
-  return boxes;
+  return { got, sent: Math.min(sent, got), allOut: got > 0 && allOut, boxesLeft };
+}
+
+function boxesLeft(it) {
+  return outStateOf(it).boxesLeft;
 }
 const boxesIn = (it) => (it.receipts || []).filter((r) => !r.undone && r.kind === 'receive').reduce((t, r) => t + Math.max(1, r.boxes || 1), 0);
 const kidLoad = (kid) => {
@@ -999,6 +1044,16 @@ const loadBoxes = () => [...load.values()].reduce((t, e) => t + (e.boxes || 1), 
 const itemKey = (it) => `item:${it.id}`;
 const inLoad = (it, kid) => load.has(itemKey(it)) || [...load.values()].some((e) => e.kind === 'box' && e.itemId === it.itemId && e.partKey === it.partKey && e.jobId === kid?.jobId);
 const findByRef = (ref) => state.kids.flatMap((k) => k.items.map((i) => ({ k, i }))).find(({ i }) => (i.receipts || []).some((r) => r.id === ref && r.kind === 'receive' && !r.undone));
+/** Boxes in the load whose check-in was taken back (on another phone, say) come out of it, and it's said */
+function pruneLoad(view) {
+  const live = new Set((view.kids || []).flatMap((k) => k.items.flatMap((i) => (i.receipts || []).filter((r) => r.kind === 'receive' && !r.undone).map((r) => r.id))));
+  const gone = [...load.values()].filter((e) => e.kind === 'box' && !live.has(e.ref));
+  if (!gone.length) return;
+  for (const e of gone) load.delete(e.key);
+  saveLoad();
+  toast(`Out of this load, its check-in was taken back: ${gone.map((e) => e.name).join(', ')}`);
+}
+
 function addItem(kid, it) {
   for (const [k, e] of load) if (e.kind === 'box' && e.jobId === kid.jobId && e.itemId === it.itemId && e.partKey === it.partKey) load.delete(k);
   load.set(itemKey(it), { key: itemKey(it), kind: 'item', tap: newTap(), jobId: kid.jobId, kid: kid.short, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: toLoad(it), boxes: Math.max(1, boxesLeft(it)) });
@@ -1015,9 +1070,10 @@ function renderOut() {
   $('scan').classList.toggle('confirming', Boolean(n));
   const kid = kidById(state.loadKid);
   if (kid) renderLoad(kid); else renderOutHome();
-  if (n) { $('scan').querySelector('span').textContent = confirmWords(n); $('other').textContent = 'Scan more'; }
+  if (n) { $('scan').querySelector('span').textContent = reviewWords(n); $('other').textContent = 'Scan more'; }
 }
 const confirmWords = (n) => `Confirm ${boxWord(n)} out`;
+const reviewWords = (n) => `Review ${boxWord(n)}`;
 
 /** Check out: scan any box straight away; or pick a kid to see their boxes and tick them off. Kids with nothing at the Office fold into one line */
 function renderOutHome() {
@@ -1058,10 +1114,10 @@ function renderLoad(kid) {
     <section class="card load-head" aria-label="${esc(kid.short)}">
       <div class="card-head">
         <div class="card-title"><div class="who">${face(kid, 56)}<div><h2>${esc(kid.short)}</h2>${kid.stage ? `<span class="kt-stage">${esc(kid.stage)}</span>` : ''}</div></div>
-          <span class="count big"><b>${l.done}</b> of ${l.total} ${l.total === 1 ? 'box' : 'boxes'}<br><span>loaded</span></span></div>
+          <span class="count big">${!l.left && l.done ? '<span class="chip-ok">All loaded</span>' : `<b>${l.done}</b> of ${l.total} ${l.total === 1 ? 'box' : 'boxes'}<br><span>loaded</span>`}</span></div>
         <div class="bar" aria-hidden="true"><i data-bar="${esc(kid.jobId)}" style="transform:scaleX(${l.total ? l.done / l.total : 0})"></i></div>
       </div>
-      ${!l.left && l.done ? `<div class="all-loaded">${ICON.tick}<span>Everything at the Office is loaded${l.missing.length ? `. ${notHereYet(l.missing.length)}.` : '.'}</span></div>` : ''}
+
     </section>`;
   if (shelves.length) {
     html += '<section class="card">';
@@ -1099,22 +1155,50 @@ function loadRow(kid, it) {
   </div>`;
 }
 
-/** The circle: into the load, out of it, or (loaded already) taken back */
+/** The circle: into the load or out of it, changing where it is (so its fill and tick animate); loaded already, it opens Take back */
 async function tick(jobId, id) {
   const kid = kidById(jobId);
   const it = kid?.items.find((i) => i.id === id);
   if (!it) return;
   tones.wake();
-  if (it.status === 'out') {
-    const last = [...(it.receipts || [])].reverse().find((r) => r.kind === 'out' && !r.undone);
-    if (!last) return;
-    try {
-      const r = await undoTap(last.id);
-      if (r.queued || r.local) { last.undone = true; it.sent = Math.max(0, (it.sent || 0) - (last.units || 0)); it.status = 'here'; }
-      tones.undo();
-    } catch (err) { tones.warn(); toast(err.message); return; }
-  } else if (inLoad(it, kid)) { dropItem(kid, it); tones.undo(); } else { addItem(kid, it); tones.ok(); }
-  render();
+  if (it.status === 'out') { takeBackSheet(kid, it); return; }
+  if (inLoad(it, kid)) { dropItem(kid, it); tones.undo(); } else { addItem(kid, it); tones.ok(); }
+  const row = document.querySelector(`#list .lrow[data-row="${CSS.escape(it.id)}"]`);
+  if (!row) { render(); return; }
+  const pending = inLoad(it, kid);
+  row.classList.toggle('pending', pending);
+  const b = row.querySelector('.tickbtn');
+  b.setAttribute('aria-pressed', pending ? 'mixed' : 'false');
+  b.setAttribute('aria-label', `${pending ? 'Take out of this load' : 'Add to this load'}: ${it.name}`);
+  row.querySelector('.row-sub').textContent = [it.line, pending ? 'In this load' : boxWord(boxesLeft(it))].filter(Boolean).join(' · ');
+  renderDock();
+}
+
+/** Something loaded: when and who, and Take back off the truck (every box of it), never by a stray tap */
+function takeBackSheet(kid, it) {
+  const outs = (it.receipts || []).filter((r) => r.kind === 'out' && !r.undone);
+  openSheet(`${head(kidTitle(kid), { kid: true })}
+    <p class="item-name">${esc(it.name)}</p>
+    <div class="receipts">${outs.map((r) => `<div class="receipt"><span>${r.box ? `Box ${r.box} out` : 'Out'} ${esc(dayOf(r.at))}${byWho(r)}</span></div>`).join('')}</div>
+    <div class="sheet-foot"><button class="btn btn-big" type="button" id="takeback" data-focus>Take back off the truck</button></div>`);
+  $('takeback').onclick = async () => {
+    for (const r of outs) { try { await undoTap(r.id); } catch (err) { toast(err.message); return; } }
+    tones.undo();
+    await close();
+    render();
+    toast(`${it.name}: back at the Office`);
+  };
+}
+
+/** Only the dock changes (the list stays as it is, so nothing jumps) */
+function renderDock() {
+  const n = loadBoxes();
+  $('scan').classList.toggle('confirming', Boolean(n));
+  const kid = kidById(state.loadKid);
+  if (n) { $('scan').querySelector('span').textContent = reviewWords(n); $('other').textContent = 'Scan more'; return; }
+  $('scan').querySelector('span').textContent = 'Scan boxes';
+  const left = kid ? kidLoad(kid).left : 0;
+  $('other').textContent = kid && left ? `Load all ${boxWord(left)}` : '';
 }
 
 /** One thing at the Office: where it is, who checked it in; into this load (the one box, when opened from its label) */
@@ -1190,7 +1274,12 @@ function confirmLoad({ keep = false, said = '' } = {}) {
       b.outerHTML = `<button class="box-chip put-back" type="button" data-putback="${esc(e.key)}">Put back</button>`;
       const pb = document.querySelector(`#sheet-root [data-putback="${CSS.escape(e.key)}"]`);
       pb.onclick = () => { load.set(e.key, e); saveLoad(); tones.ok(); confirmLoad({ keep: true }); };
-      setTimeout(() => { if (document.body.contains(pb) && !load.has(e.key)) confirmLoad({ keep: true }); }, 5000);
+      setTimeout(() => {
+        if (!document.body.contains(pb) || load.has(e.key)) return;
+        const line = pb.closest('.load-line');
+        pb.remove();
+        if (line && !line.querySelector('.box-chip')) line.remove();
+      }, 5000);
       const m = loadBoxes();
       const h = document.querySelector('#sheet-root h3');
       if (h) h.firstChild.textContent = `This load: ${boxWord(m)}`;
@@ -1217,40 +1306,59 @@ function confirmLoad({ keep = false, said = '' } = {}) {
       confirmLoad({ keep: true, said: `Not saved: ${err.message}` });
       return;
     }
-    if (r.queued) {
-      for (const e of entries) load.delete(e.key);
-      saveLoad();
-      tones.ok();
-      await close();
-      render();
-      toast(`${boxWord(n)} wait on this phone for the connection, then JobTread.`);
-      return;
-    }
     const byTap = new Map((r.out?.results || []).map((x) => [x.tap, x]));
     let saved = 0;
     const refused = [];
     const failed = [];
+    const went = [];
     for (const e of entries) {
       const x = byTap.get(e.tap);
-      if (!x || x.error) {
-        if (x && [400, 404, 409].includes(x.status)) { refused.push(`${e.name}: ${x.error}`); load.delete(e.key); } else failed.push(e);
+      if (!r.queued && (!x || x.error)) {
+        if (x && [400, 404, 409].includes(x.status)) { refused.push(`${e.name}: ${clean(x.error)}`); load.delete(e.key); } else failed.push(e);
         continue;
       }
       saved += e.boxes || 1;
+      went.push(e);
       load.delete(e.key);
     }
     saveLoad();
+    if (r.queued) {
+      // Waiting on the phone: the boxes show as loaded at once, so they can't go into a load a second time
+      for (const e of went) {
+        const it = kidById(e.jobId)?.items.find((x) => x.itemId === e.itemId && x.partKey === e.partKey);
+        if (!it) continue;
+        it.receipts = [...(it.receipts || []), e.kind === 'box' ? { id: e.tap, kind: 'out', ref: e.ref, box: e.box, units: 0, at: new Date().toISOString(), waiting: true } : { id: e.tap, kind: 'out', units: e.units, at: new Date().toISOString(), waiting: true }];
+        const st = outStateOf(it);
+        it.sent = st.sent; it.boxesLeft = st.boxesLeft;
+        if (st.allOut && it.got >= it.qty) it.status = 'out';
+      }
+    }
     if (failed.length) {
       tones.warn();
       confirmLoad({ keep: true, said: `${boxWord(saved)} of ${boxWord(n)} saved. ${refused.length ? `Not loaded: ${refused.join('; ')}. ` : ''}Try the rest again.` });
       return;
     }
     if (refused.length) tones.warn(); else tones.ok();
-    await close();
-    render();
-    toast([saved ? `${boxWord(saved)} out${r.out?.jt === 'written' ? ', in JobTread' : ''}.` : null, refused.length ? `Not loaded: ${refused.join('; ')}.` : null].filter(Boolean).join(' ') || 'Nothing was saved.');
+    loadDone(went, refused, { queued: Boolean(r.queued) });
   };
 }
+
+/** The end of a load, on the sheet (never a toast that covers the page): each kid's boxes that went, what's still on their shelf, what was refused */
+function loadDone(went, refused, { queued = false } = {}) {
+  const byKid = new Map();
+  for (const e of went) byKid.set(e.jobId, (byKid.get(e.jobId) || 0) + (e.boxes || 1));
+  const total = went.reduce((t, e) => t + (e.boxes || 1), 0);
+  openSheet(`<div class="sheet-head"><div><h3 tabindex="-1" data-focus>${esc(total ? `${boxWord(total)} out` : 'Nothing saved')}</h3><div class="sheet-sub">${esc(queued ? `Saved on this phone. It goes to JobTread when the connection is back.` : 'In JobTread in a minute')}</div></div>
+      <button class="x" type="button" data-close="1" aria-label="Close">${ICON.x}</button></div>
+    ${[...byKid].map(([jobId, n]) => { const k = kidById(jobId); const l = k ? kidLoad(k) : null; return `<div class="shelf-callout static"><span class="who">${face(k, 36)}${esc(k?.short || '')} · ${boxWord(n)}</span><b>${l && l.left ? esc(`${boxWord(l.left)} left`) : 'All out'}</b>
+      ${l && l.left ? `<span class="sc-items"><span>${esc(`Still on ${k.shelves.map(shelfName).join(', ') || 'the shelf'}`)}</span></span>` : ''}</div>`; }).join('')}
+    ${refused.length ? `<p class="why-line">Not loaded: ${esc(refused.join('; '))}</p>` : ''}
+    <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-close="1">Done</button></div>`, { keep: true });
+  // Behind the sheet, the loaded rows fade and close up and the bars grow once it's down
+  state.afterLoad = went.map((e) => `${e.itemId}|${e.partKey}`);
+  state.renderOnClose = true;
+}
+
 
 /** Short tones (rising: in the load; low twice: stop; falling: taken out; one blip: seen already). Made in the page, no files */
 const tones = (() => {
@@ -1290,7 +1398,15 @@ let scanning = null;
 async function scanLabels(scope) {
   let read;
   if ('BarcodeDetector' in window) {
-    try { const bd = new window.BarcodeDetector({ formats: ['qr_code'] }); read = async (src) => (await bd.detect(src))[0]?.rawValue || null; } catch { read = null; }
+    try {
+      const bd = new window.BarcodeDetector({ formats: ['qr_code'] });
+      read = async (src) => {
+        const found = await bd.detect(src);
+        const cx = (src.videoWidth || 0) / 2, cy = (src.videoHeight || 0) / 2;
+        const dist = (c) => { const b = c.boundingBox || {}; return ((b.x || 0) + (b.width || 0) / 2 - cx) ** 2 + ((b.y || 0) + (b.height || 0) / 2 - cy) ** 2; };
+        return found.sort((a, b) => dist(a) - dist(b))[0]?.rawValue || null;
+      };
+    } catch { read = null; }
   }
   if (!read) {
     let jsQR;
@@ -1344,13 +1460,14 @@ async function scanLabels(scope) {
     if (k) {
       const l = kidLoad(k);
       const mine = [...load.values()].filter((e) => e.jobId === k.jobId).reduce((t, e) => t + (e.boxes || 1), 0);
-      pill.innerHTML = `${face(k, 28)}<span>${esc(k.short)} · ${l.done + mine} of ${l.total}</span>`;
+      pill.innerHTML = `${face(k, 28)}<span>${esc(k.short)}${l.total ? ` · ${l.done + mine} of ${l.total}` : ''}</span>`;
     } else pill.textContent = n ? `${boxWord(n)} in this load` : 'Point at a label';
     cam.querySelector('.cam-done').textContent = n ? `Review ${boxWord(n)}` : 'Done';
     return k;
   };
   count();
-  const flash = (cls) => { frameEl.classList.remove('hit', 'stop'); void frameEl.offsetWidth; frameEl.classList.add(cls); };
+  let flashTimer;
+  const flash = (cls) => { clearTimeout(flashTimer); frameEl.classList.remove('hit', 'stop'); frameEl.classList.add(cls); flashTimer = setTimeout(() => frameEl.classList.remove(cls), 600); };
   const say = (cls, html, { stay = false } = {}) => {
     const el = cam.querySelector('.cam-said');
     el.className = `cam-said ${cls}`;
@@ -1363,7 +1480,22 @@ async function scanLabels(scope) {
     return el;
   };
   // The camera fades as the next thing rises, instead of cutting away
+  let wake = null;
+  try { wake = await navigator.wakeLock?.request('screen'); } catch { wake = null; }
+  const back = async () => {
+    if (document.visibilityState !== 'visible' || !document.body.contains(cam)) return;
+    try { wake = await navigator.wakeLock?.request('screen'); } catch { /* not this phone */ }
+    if (stream?.getVideoTracks().every((t) => t.readyState === 'live' && !t.muted)) return;
+    try {
+      stream?.getTracks().forEach((t) => t.stop());
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      video.srcObject = stream;
+    } catch { /* the camera again on the next tap */ }
+  };
+  document.addEventListener('visibilitychange', back);
   const stop = (then) => {
+    document.removeEventListener('visibilitychange', back);
+    try { wake?.release(); } catch { /* gone */ }
     cancelAnimationFrame(scanning); scanning = null;
     cam.classList.add('leaving');
     if (then) then();
@@ -1392,7 +1524,7 @@ async function scanLabels(scope) {
       <span class="dim">${end ? `All ${l.total} of ${esc(k.short)}’s boxes` : 'In this load'}</span><button class="cam-undo" type="button">Take it out</button>`, { stay: end });
     el.querySelector('.cam-undo').onclick = () => { load.delete(key); saveLoad(); tones.undo(); count(); say('seen', '<b>Taken out of this load</b>'); };
   };
-  const seen = new Set();
+  const seen = new Map();
   let lastAt = 0, busy = false;
   const frame = async (t) => {
     if (!document.body.contains(cam) || cam.classList.contains('leaving')) return;
@@ -1402,10 +1534,13 @@ async function scanLabels(scope) {
     busy = true;
     let data = null;
     try { data = await read(video); } catch { data = null; } finally { busy = false; }
-    if (!data || seen.has(data)) return;
-    seen.add(data);
+    if (!data) return;
+    const nowMs = performance.now();
+    const last = seen.get(data);
+    seen.set(data, nowMs);
+    if (last && nowMs - last < 800) return;
     // Read again after a pause (the box was set down and picked up), it says so once more
-    setTimeout(() => seen.delete(data), 4000);
+
     let url = null;
     try { url = new URL(data); } catch { /* not a link */ }
     const ours = url?.pathname.startsWith('/admin/checkin');

@@ -282,7 +282,7 @@ body[data-mode="out"] .chips-bar { display: none; }
 .cam-said span { grid-column: 2; font-size: 14.5px; overflow-wrap: anywhere; }
 .cam-said .dim { color: var(--muted); }
 .cam-said .tick { grid-column: 1; grid-row: 1 / span 3; align-self: start; }
-.cam-said:not(.warn):not(.info) > b, .cam-said:not(.warn):not(.info) > span:not(.tick) { grid-column: 2; }
+.cam-said:not(.warn):not(.info):not(.seen) > b, .cam-said:not(.warn):not(.info):not(.seen) > span:not(.tick) { grid-column: 2; }
 .cam-said.info .tick { display: none; }
 .more.warn { color: var(--warn-fg); }
 .cam-said.warn { background: var(--warn-bg); color: var(--warn-fg); grid-template-columns: minmax(0, 1fr); }
@@ -379,8 +379,8 @@ body[data-mode="out"] .chips-bar { display: none; }
 .cam-top .cam-count:not(:has(.face)) { padding-left: 12px; }
 .cam-top .cam-count .face { width: 28px; height: 28px; box-shadow: none; }
 .cam .frame.square { transition: border-color 250ms ease-out; }
-.cam .frame.square.hit { animation: frame-hit 600ms ease-out; }
-.cam .frame.square.stop { animation: frame-stop 900ms ease-out; }
+.cam .frame.square.hit { border-color: #2F7D4F; border-width: 5px; }
+.cam .frame.square.stop { border-color: #FFD500; border-width: 5px; }
 @keyframes frame-hit { 0%, 40% { border-color: #2F7D4F; border-width: 5px; } 100% { border-color: rgba(255, 255, 255, 0.92); } }
 @keyframes frame-stop { 0%, 60% { border-color: #FFD500; border-width: 5px; } 100% { border-color: rgba(255, 255, 255, 0.92); } }
 .cam-said.ok { background: var(--ok-bg); color: var(--ok-fg); }
@@ -465,3 +465,12 @@ body[data-mode="out"] .chips-bar { display: none; }
 .shelf-callout.static { flex-wrap: wrap; }
 .sc-items { flex-basis: 100%; display: grid; gap: 2px; padding-left: 48px; font-size: 14px; color: var(--muted); }
 .sc-items span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Check-out round 2: box chips sit side by side; the end of a load is a chip; the title fits a narrow phone */
+.load-line > .chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-ok { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 5px 10px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-fg); }
+h1 { font-size: clamp(24px, 7.6vw, 30px); }
+@media (min-width: 700px) { h1 { font-size: 34px; } }
+/* A toast sits above the dock, and at the top while a sheet is up (never over a sheet's buttons) */
+.toast { top: auto; bottom: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px) + 12px); }
+body:has(.scrim) .toast { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 12px); }
