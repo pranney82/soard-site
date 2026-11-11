@@ -12605,7 +12605,8 @@
         const other = kind === 'designed' ? 'sponsored' : 'designed';
         const stays = (credits.room?.kinds?.[other]?.credits || []).some((c) => c.slug === p.slug);
         const job = credits.room?.kinds?.[kind]?.job || jobId;
-        if (job && !stays && !p.gone && status !== 'completed' && !(await ask({ title: `Take ${p.name} off as ${creditWord(kind)}?`, yes: 'Take them off', danger: true,
+        // (a finished job moves nobody; not known whether it is: asked, to be safe)
+        if (job && !stays && !p.gone && credits.room?.closed !== true && !(await ask({ title: `Take ${p.name} off as ${creditWord(kind)}?`, yes: 'Take them off', danger: true,
           text: 'They come off this makeover with it: their logo off this page, and off the JobTread job and the reveal invite. Undo puts it all back.' }))) return null;
         return setCredit(kind, p, false);
       };
@@ -12634,7 +12635,8 @@
         takePage(r);
         if (!r.put?.logo && !r.put?.people?.length) { addToast(`Nothing to put back: ${p.name} has no logo in Partners${jobId ? ' and nobody of theirs with an email to add to the job' : ', and this page has no JobTread job'}.`, 'info'); return; }
         const said = `${kdCreditPutSaid(p.name, r.put)} ${kdCreditsFollowed(r.put?.followed)}`.trim();
-        addToast(said ? `${p.name} is back on this makeover. ${said}` : `${p.name} is back on this makeover.`, 'success', { label: 'Undo', fn: () => kdTakeOffNow(takeOffEd(), { partner: p.slug }, p.name) });
+        // No Undo: credited means on the makeover, so taking them off again is the X on the credit (it asks, and has its own Undo)
+        addToast(said ? `${p.name} is back on this makeover. ${said}` : `${p.name} is back on this makeover.`, 'success');
       };
 
       const cards = html`${['sponsored', 'designed'].map((kind) => html`<${KdCreditCard} key=${kind} kind=${kind} name=${name} status=${status} room=${credits.room} error=${credits.error}
@@ -13384,7 +13386,7 @@
         setBase(JSON.stringify(out));
         set({ slug: slugToSave });
         history.reload();
-        if (!wasNew) kdAddToJob(slugToSave, newLogos, addToast, () => setVendorsStamp((n) => n + 1), (res) => credit.follow(res));
+        if (!wasNew) kdAddToJob(slugToSave, newLogos, addToast, () => setVendorsStamp((n) => n + 1), (r) => credit.follow(r), res.sha);
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on Meet the Kids”.` : `${out.name} saved. The site shows it after you publish.`, 'success');
@@ -14477,9 +14479,10 @@
      * Logos just saved on a page go on the job now; the sweep would get there within 15 minutes. A company back on the
      * makeover this way gets back the credits that went with it (onCredits: the editor follows)
      */
-    const kdAddToJob = (record, logos, addToast, reload, onCredits = null) => {
+    // sha: the page's version the Save just got, so the server hands back a newer one only if nobody saved in between
+    const kdAddToJob = (record, logos, addToast, reload, onCredits = null, sha = null) => {
       if (!logos.length) return;
-      ptAccessPost({ addToJob: { record, logos: logos.map(({ url, name }) => ({ url, name })) } }).catch((e) => ({ success: false, error: e.message })).then((r) => {
+      ptAccessPost({ addToJob: { record, logos: logos.map(({ url, name }) => ({ url, name })), sha } }).catch((e) => ({ success: false, error: e.message })).then((r) => {
         if (!r.success) { addToast(`Saved, but JobTread wasn’t told (${r.error}). Check this page’s Vendors list.`, 'error'); reload(); return; }
         const { added = [] } = r.result || {};
         const credits = kdCreditsFollowed(r.result?.credits?.changed);
@@ -14516,12 +14519,15 @@
       };
       const add = async (t) => {
         setBusy(t.id);
-        const r = await ptAccessPost({ addToJob: { record, account: t.id, name: t.name } }).catch((e) => ({ success: false, error: e.message }));
+        const r = await ptAccessPost({ addToJob: { record, account: t.id, name: t.name, sha: ed.sha() } }).catch((e) => ({ success: false, error: e.message }));
         setBusy(null);
         setQ('');
         if (!r.success) { addToast(`Couldn’t add ${t.name}: ${r.error}`, 'error'); return; }
         const { added = [], waiting = [] } = r.result || {};
-        if (added.length) addToast(`${kdNames(added)} ${added.length === 1 ? 'is' : 'are'} on the JobTread job now.`, 'success');
+        // Credits that came back with someone back on the makeover: the editor and its cards follow, with the page's version
+        if (r.result?.credits?.changed?.length) { if (r.result.sha) ed.setSha(r.result.sha); ed.credits?.(r.result); }
+        const back = kdCreditsFollowed(r.result?.credits?.changed);
+        if (added.length || back) addToast(`${added.length ? `${kdNames(added)} ${added.length === 1 ? 'is' : 'are'} on the JobTread job now.` : ''} ${back}`.trim(), 'success');
         if (waiting.length) addToast(`${t.name} has no contact with an email in JobTread, so nobody could be added.`, 'error');
         read();
       };
@@ -21690,7 +21696,7 @@ ${sections || '<p>No one yet.</p>'}
         setBase(JSON.stringify(out));
         set({ slug: slugToSave });
         history.reload();
-        if (!wasNew) kdAddToJob(`community/${slugToSave}`, newLogos, addToast, () => setVendorsStamp((n) => n + 1), (res) => credit.follow(res));
+        if (!wasNew) kdAddToJob(`community/${slugToSave}`, newLogos, addToast, () => setVendorsStamp((n) => n + 1), (r) => credit.follow(r), res.sha);
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on the Community page”.` : `${out.name} saved. The site shows it after you publish.`, 'success');

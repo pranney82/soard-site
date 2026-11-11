@@ -2092,3 +2092,140 @@ test('a pick made after a take-off puts their people back on the job even when s
   await w.run(); await w.run();
   assert.deepEqual((await w.kid('axel')).designers, ['crosby-design-group']);
 });
+
+// From the independent review (Nov 11): the site's own take-offs and writes are never read as a person's take-off
+// after her pick, a move between the two parts isn't a take-off, a busy page doesn't lose one, and a launch question
+// moves nobody
+const ELLA = { email: 'ella@crosbydesigngroup.com', name: 'Ella Guinn', role: 'Signature' };
+const crosbyDesigner = () => ({ kids: [{ ...AXEL, designers: ['crosby-design-group'], partnerLogos: [{ url: CROSBY.logo, name: CROSBY.name }] }], jobs: [axelJob({ [DESIGNED]: ['Crosby Design Group'] }, { access: [ELLA.email] })], members: [ELLA], fields: crosbyChoices });
+
+test('Clareece moves Crosby from Designed By to Monetary Sponsor across a run: the sponsor, still on the makeover, never taken off', async () => {
+  const w = await world(crosbyDesigner());
+  await w.run();
+  w.jt.jobs[0].values[DESIGNED] = [];
+  await w.run(MIN);
+  w.jt.jobs[0].values[FIELD_MONETARY_SPONSOR] = ['Crosby Design Group'];
+  await w.run(); await w.run(); await w.run();
+  const k = await w.kid('axel');
+  assert.deepEqual(both(k), [[], ['crosby-design-group']], 'the sponsor now, not the designer');
+  assert.deepEqual(w.jt.jobs[0].values[FIELD_MONETARY_SPONSOR], ['Crosby Design Group'], 'and it stays in JobTread');
+  assert.deepEqual(w.put.filter((x) => x.off), [], 'never taken off: the take-off waited for her other change, which kept them on');
+  assert.deepEqual(w.jt.jobs[0].access, [ELLA.email]);
+  assert.deepEqual((await readJobRows(w.DB)).get('axel designed').follow.went, [], 'and nothing is left to bring back the design credit later');
+});
+
+test('Clareece re-picks Crosby right after the run that took Crosby off for her unpick: her pick stands and puts them back', async () => {
+  const w = await world(crosbyDesigner());
+  await w.run();
+  w.jt.jobs[0].values[DESIGNED] = [];
+  await w.run(MIN); await w.run();
+  assert.ok(w.put.some((x) => x.off), 'taken off for the unpick');
+  w.jt.jobs[0].values[DESIGNED] = ['Crosby Design Group'];
+  await w.run(); await w.run(); await w.run();
+  assert.deepEqual(w.jt.jobs[0].values[DESIGNED], ['Crosby Design Group'], 'her re-pick stays in JobTread');
+  assert.deepEqual((await w.kid('axel')).designers, ['crosby-design-group']);
+  assert.ok(w.put.some((x) => x.job === 'Crosby Design Group'), 'and puts them back on (Add to job brings back who came off)');
+});
+
+test('a re-pick in JobTread after the site took the credit out for a take-off is newer than it: it stands', async () => {
+  const w = await world(crosbyDesigner());
+  await w.run();
+  w.later(MIN);
+  await w.deps.takeOffJob(w.env, { record: 'axel', partner: 'crosby-design-group' }, 'linzi', { now: w.now() });
+  w.later(1000);
+  await followRoom(w.env, { record: 'axel' }, 'linzi', { fetchImpl: w.jt.fetchImpl, now: w.now() });
+  assert.deepEqual(w.jt.jobs[0].values[DESIGNED], [], 'the site took the credit out of JobTread');
+  w.later(MIN);
+  w.jt.jobs[0].values[DESIGNED] = ['Crosby Design Group'];
+  await w.run(); await w.run(); await w.run();
+  assert.deepEqual(w.jt.jobs[0].values[DESIGNED], ['Crosby Design Group'], 'her re-pick stays');
+  assert.deepEqual((await w.kid('axel')).designers, ['crosby-design-group']);
+});
+
+test('the page busy when an unpick settles: the take-off it owes still happens', { timeout: 60000 }, async () => {
+  const w = await world(crosbyDesigner());
+  await w.run();
+  w.jt.jobs[0].values[DESIGNED] = [];
+  await w.run(MIN);
+  await w.DB.prepare('INSERT OR REPLACE INTO kid_partner_lock (name, until) VALUES (?, ?)').bind('sync', Date.now() + 10 * 60 * 1000).run();
+  await w.run();
+  await w.DB.prepare("DELETE FROM kid_partner_lock WHERE name = 'sync'").run();
+  await w.run(); await w.run();
+  assert.ok(w.put.some((x) => x.off === 'Crosby Design Group'), 'Crosby comes off the makeover for the unpick');
+  assert.deepEqual((await w.kid('axel')).designers, []);
+  assert.deepEqual(w.jt.jobs[0].access, []);
+});
+
+test('launch asked about a sponsor the page never had, and Clareece takes the name out of JobTread: nobody is moved', async () => {
+  const BRIAN = { email: 'brian@robins.org', name: 'Brian', role: 'Champion' };
+  const w = await world({ kids: [{ ...LIZ, partnerLogos: [{ url: ROBINS.logo, name: ROBINS.name }] }], jobs: [{ id: 'j-liz', name: 'Lizzie Francis (2026)', values: { [FIELD_MONETARY_SPONSOR]: ['Brian Robins Family Foundation'] }, access: [BRIAN.email] }], members: [BRIAN], fields: robinsOnly });
+  await w.run();
+  assert.ok((await readJobRows(w.DB)).get('lizzie sponsored').held, 'launch asks');
+  w.jt.jobs[0].values[FIELD_MONETARY_SPONSOR] = [];
+  await w.run(MIN); await w.run(); await w.run();
+  assert.deepEqual(w.put.filter((x) => x.off), [], 'a name the page never credited takes nobody off');
+  assert.equal((await w.kid('lizzie')).partnerLogos.length, 1);
+  assert.deepEqual(w.jt.jobs[0].access, [BRIAN.email]);
+});
+
+test('a pick for the other part doesn’t bring back a credit a person took off (its removal took them off); a take-off’s credits do come back with it', async () => {
+  const w = await world(crosbyDesigner());
+  await w.run();
+  await w.set({ record: 'axel', kind: 'designed', partner: 'crosby-design-group', on: false });
+  assert.ok(w.put.some((x) => x.off), 'the X took them off');
+  const r = await w.set({ record: 'axel', kind: 'sponsored', partner: 'crosby-design-group', on: true });
+  assert.ok(r.put.logo, 'the sponsor pick puts them back on');
+  assert.deepEqual(r.followed, [], 'the design credit a person took off stays off');
+  assert.deepEqual(both(await w.kid('axel')), [[], ['crosby-design-group']]);
+});
+
+test('a Partners merge carries when a credit was made: a take-off of the old company before the pick doesn’t take the merged credit', async () => {
+  const w = await mergeWorld();
+  await w.run();
+  await takenOffAt(w, 'means-design', 'Means Design Studio', w.now() + 1000);
+  w.later(MIN);
+  await w.set({ record: 'axel', kind: 'designed', partner: 'means-design', on: true });
+  const before = (await readJobRows(w.DB)).get('axel designed').follow.picked['means-design'];
+  assert.ok(before, 'the pick time is kept');
+  await mergeAway(w, 'means-design', 'Means Design Studio', 'means-interiors');
+  assert.equal((await readJobRows(w.DB)).get('axel designed').follow.picked['means-interiors'], before, 'and moves to the company it went into');
+  await w.run(); await w.run();
+  assert.deepEqual((await w.kid('axel')).designers, ['means-interiors'], 'the credit stands');
+});
+
+// From the second review: what the site took out of a field is never forgotten by another company's change, and the
+// site's own take-off counts as a time neither field held them, whatever the looks did in between
+test('staff take Means off, then another company is taken off and its credits follow: Clareece’s re-pick of Means minutes later still stands', async () => {
+  const MIA = { email: 'mia@meansinteriors.com', name: 'Mia', role: 'Friend' };
+  const w = await world({ kids: [{ ...AXEL, designers: ['crosby-design-group', 'means-interiors'], partnerLogos: [{ url: CROSBY.logo, name: CROSBY.name }] }], jobs: [axelJob({ [DESIGNED]: ['Crosby Design Group', 'Means Interiors'] }, { access: [ELLA.email, MIA.email] })], members: [ELLA, MIA] });
+  await w.run();
+  await w.set({ record: 'axel', kind: 'designed', partner: 'means-interiors', on: false });
+  w.later(MIN);
+  await w.deps.takeOffJob(w.env, { record: 'axel', partner: 'crosby-design-group' }, 'linzi', { now: w.now() });
+  w.later(1000);
+  await followRoom(w.env, { record: 'axel' }, 'linzi', { fetchImpl: w.jt.fetchImpl, now: w.now() });
+  assert.ok((await readJobRows(w.DB)).get('axel designed').follow.cleared['means-interiors'], 'when the site took Means out is still kept');
+  w.later(MIN);
+  w.jt.jobs[0].values[DESIGNED] = [...w.jt.jobs[0].values[DESIGNED], 'Means Interiors'];
+  await w.run(); await w.run(); await w.run();
+  assert.ok(w.jt.jobs[0].values[DESIGNED].includes('Means Interiors'), 'her re-pick of Means stays');
+  assert.deepEqual((await w.kid('axel')).designers, ['means-interiors']);
+});
+
+test('a take-off made in a run that wasn’t a full look: Clareece’s re-pick after it is still newer than it', { timeout: 60000 }, async () => {
+  const w = await world(crosbyDesigner());
+  await w.run();
+  w.jt.jobs[0].values[DESIGNED] = [];
+  await w.run(MIN);
+  // The run that takes Crosby off can't save the page copy (busy), so it doesn't count as a look
+  await w.DB.prepare('INSERT OR REPLACE INTO kid_partner_lock (name, until) VALUES (?, ?)').bind('sync', Date.now() + 10 * 60 * 1000).run();
+  w.failTakeOff = null;
+  await w.run();
+  await w.DB.prepare("DELETE FROM kid_partner_lock WHERE name = 'sync'").run();
+  if (!w.put.some((x) => x.off)) await w.run();
+  assert.ok(w.put.some((x) => x.off), 'taken off for the unpick');
+  w.jt.jobs[0].values[DESIGNED] = ['Crosby Design Group'];
+  await w.run(); await w.run(); await w.run();
+  assert.deepEqual(w.jt.jobs[0].values[DESIGNED], ['Crosby Design Group'], 'her re-pick stands');
+  assert.deepEqual((await w.kid('axel')).designers, ['crosby-design-group']);
+});

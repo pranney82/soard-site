@@ -89,8 +89,10 @@ export async function onRequestPost(context) {
       // Credited means on the makeover: a company taken off loses its Designed By / Monetary Sponsor credits here,
       // one put back or added gets back what went with it, now (the credits sweep is the backstop). The page's new
       // version goes back with them, but only to an editor that was in step (it sent the version it had, and got one back)
-      // In step: the version it sent is the page's now (or the change it asked for answered with a new one)
-      const inStep = !!result.sha || (!!sha && (await pageOf(env.DB, record).catch(() => null))?.sha === sha) || !!body.addToJob;
+      // In step: the version it sent is the page's now (or the change it asked for answered with a new one). An editor
+      // that sent none, or an older one, never gets the newer version: its next Save conflicts rather than write over
+      // someone else's
+      const inStep = !!result.sha || (!!sha && (await pageOf(env.DB, record).catch(() => null))?.sha === sha);
       const credits = await followRoom(env, { record }, by).catch((e) => ({ changed: [], error: e.message }));
       if (credits.changed?.length) {
         result.credits = { changed: credits.changed, page: credits.page || null };
