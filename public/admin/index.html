@@ -12227,10 +12227,43 @@
       };
       return { room, error, contacts, setContacts, pledges, savePledge, busy, post, reload: load };
     }
+    /**
+     * What a take-off, a put back or a pick did to the room's other credits, in words ('' when nothing): a company's
+     * Designed By and Monetary Sponsor credits follow it on and off the makeover (functions/api/_room-credits.js).
+     * changed: [{ kind, name, on }]
+     */
+    const KD_PART_WORDS = { designed: 'Designed By', sponsored: 'Monetary Sponsor' };
+    function kdCreditsFollowed(changed) {
+      const by = new Map();
+      for (const c of changed || []) {
+        const k = `${c.on ? 1 : 0}${c.name}`;
+        by.set(k, { name: c.name, on: c.on, parts: [...new Set([...(by.get(k)?.parts || []), KD_PART_WORDS[c.kind]])] });
+      }
+      return [...by.values()].map(({ name, on, parts }) => {
+        const what = `${parts.join(' and ')} credit${parts.length > 1 ? 's' : ''}`;
+        return on ? `${name}’s ${what} ${parts.length > 1 ? 'are' : 'is'} back too.` : `${name}’s ${what} went with them, in JobTread too.`;
+      }).join(' ');
+    }
+    /** The parts a company is credited for on this page: ['Designed By', 'Monetary Sponsor'] (none: []) */
+    const kdCreditParts = (d, slug) => (slug ? [...((d?.designers || []).includes(slug) ? ['Designed By'] : []), ...((d?.sponsors || []).includes(slug) ? ['Monetary Sponsor'] : [])] : []);
+    /** The take-off confirm's line about credits: ' Their Designed By credit comes off with them, in JobTread too.' */
+    const kdCreditsGoLine = (parts) => (parts.length ? ` Their ${parts.join(' and ')} credit${parts.length > 1 ? 's come' : ' comes'} off with them, in JobTread too.` : '');
+    /** What taking a company off with its credit did, in words */
+    function kdCreditOffSaid(off) {
+      if (!off) return '';
+      if (off.error) return `Taking them off the makeover didn’t finish (${off.error}), so it’s tried again in a few minutes.`;
+      const people = (off.taken || []).flatMap((t) => t.people || []);
+      const bits = [];
+      if (off.removed?.length) bits.push('their logo is off the page');
+      if (people.length) bits.push(`${kdNames(people)} ${people.length === 1 ? 'is' : 'are'} off the JobTread job`);
+      const line = bits.length ? `${bits.join(' and ')}.` : 'nobody of theirs was on the job.';
+      const more = off.pending?.length ? ' JobTread didn’t answer for the job, so that finishes on its own.' : '';
+      return `${line[0].toUpperCase()}${line.slice(1)}${more}`;
+    }
     /** What putting a company on the room did, in words */
     function kdCreditPutSaid(name, put) {
       if (!put) return '';
-      if (put.off) return `${name} was taken off this makeover earlier, so they weren’t put back. Add them back here if they should be.`;
+      if (put.off) return `${name} was taken off this makeover after that pick, so the credit went with them.`;
       if (put.retry) return `Putting ${name} on the makeover didn’t finish (JobTread didn’t answer). It’s tried again in a few minutes.`;
       const bits = [];
       if (put.logo) bits.push('their logo is on the page');
@@ -12343,8 +12376,9 @@
 
     /**
      * Who designed the room, or who paid for it: one card for each, the same component (Peter, Nov 10 2026). Picked
-     * from Partners here or in JobTread's Designed By / Monetary Sponsor dropdowns, one record either way. A pick of
-     * a company that isn't on the makeover puts it on, once; taking a credit off is the credit only.
+     * from Partners here or in JobTread's Designed By / Monetary Sponsor dropdowns, one record either way. Credited
+     * means on the makeover (Nov 11): a pick of a company that isn't on it puts it on; taking off its last credit
+     * takes it off (logo and job); taking it off the makeover takes its credits; adding it back brings them back.
      */
     const KD_CREDIT_KINDS = {
       designed: { id: 'kd-sec-designer', h: 'Designed by', field: 'Designed By', category: 'design', what: 'design partner', search: 'Find the design partner in Partners',
@@ -12497,7 +12531,7 @@
           : v?.pending ? html`${ok(false)} Still writing this to JobTread. It finishes on its own.`
           : v?.held ? html`${ok(false)} Until someone says which is right (above), this page keeps its own answer, with any change made since in either place.`
           : v?.waiting ? html`${ok(false)} JobTread’s ${K.field} changed a moment ago${v.waiting.added?.length ? ` (${kdNames(v.waiting.added.map((x) => (x.p ? nameOf(x.p) : x.v)))} added)` : ''}${v.waiting.removed?.length ? ` (${kdNames(v.waiting.removed.map((x) => (x.p ? nameOf(x.p) : x.v)))} taken off)` : ''}. It shows here after a second look, within 20 minutes.`
-          : html`${ok(true)} The same as JobTread’s ${K.field}${(v?.others || []).length ? `, which also says ${kdNames(v.others.map((x) => `“${x}”`))}` : ''}${(v?.unknown || []).length ? `, apart from ${v.unknown.length === 1 ? 'the name' : 'the names'} above` : ''}. A change in either place shows in the other.`
+          : html`${ok(true)} The same as JobTread’s ${K.field}${(v?.others || []).length ? `, which also says ${kdNames(v.others.map((x) => `“${x}”`))}` : ''}${(v?.unknown || []).length ? `, apart from ${v.unknown.length === 1 ? 'the name' : 'the names'} above` : ''}. A change in either place shows in the other, and whoever is credited is on the makeover.`
         }${job ? html` <a href=${JT_JOB_URL(job)} target="_blank" rel="noopener">Open the job ${kdIcon.external}</a>` : null}</p>
       </section>`;
     }
@@ -12530,11 +12564,19 @@
         if (r?.sha && !r.behind) { holdSha(r.sha); setSha(r.sha); }
         if (!r?.page) return;
         const { designers, sponsors, partnerLogos } = r.page;
-        // Only the logo this request put on joins the editor's list: one the person took off here, not saved yet, stays off
+        // Only the logo this request put on joins the editor's list: one the person took off here, not saved yet, stays
+        // off. One it took off (the company off the makeover with its credit) leaves it
+        const gone = new Set((r.off?.removed || []).map((l) => l.url));
         const added = partnerLogos.filter((l) => l.url === r.put?.logoUrl && !(dataRef.current.partnerLogos || []).some((x) => x.url === l.url));
-        set((d) => ({ designers, sponsors, partnerLogos: [...added.map((l) => ({ ...l, _key: l.url })), ...(d.partnerLogos || [])] }));
+        set((d) => ({ designers, sponsors, partnerLogos: [...added.map((l) => ({ ...l, _key: l.url })), ...(d.partnerLogos || []).filter((l) => !gone.has(l.url))] }));
         // Through the editor's own save shape, so the saved copy compares equal and nothing reads as unsaved
         setBase((b) => JSON.stringify(toBase({ ...JSON.parse(b || '{}'), designers, sponsors, partnerLogos })));
+      };
+      // A take-off, a put back or a logo added on this page took the credits with it (credited means on the makeover):
+      // the editor takes the page's new credits and version, and the cards read the room again
+      const follow = (res) => {
+        if (res?.credits?.page) takePage({ sha: res.sha || null, behind: !res.sha || res.behind, page: res.credits.page });
+        credits.reload();
       };
       const creditWord = (kind) => (kind === 'designed' ? 'the design partner' : 'the monetary sponsor');
       const setCredit = async (kind, p, on, { quiet = false, put = true } = {}) => {
@@ -12544,16 +12586,28 @@
         if (quiet) return r;
         const field = KD_CREDIT_KINDS[kind].field;
         const putOn = !!(r.put && (r.put.logo || r.put.people?.length));
-        const said = r.owed ? `${p.name} ${on ? 'is' : 'is no longer'} ${creditWord(kind)} here. JobTread didn’t take it just now, so it’s written there within 10 minutes${on ? ', and putting them on the makeover follows' : ''}.`
-          : on ? `${p.name} is ${creditWord(kind)}${r.job ? `, in JobTread’s ${field} too` : ''}. ${kdCreditPutSaid(p.name, r.put)}`
-          : `${p.name} is no longer ${creditWord(kind)}${r.job ? `, in JobTread too` : ''}. Their logo and place on the job stay; take them off the makeover in Partners below if they shouldn’t be there.`;
-        // Undo takes back exactly what was done: a pick that put them on the makeover takes them off it again (they
-        // weren't on it before); taking a credit off comes back as the credit only
-        addToast(said.trim(), 'success', { label: 'Undo', fn: async () => {
-          const back = await setCredit(kind, p, !on, { quiet: true, put: false });
-          if (back?.success && on && putOn) await kdTakeOffNow(takeOffEd(), { partner: p.slug }, p.name);
-        } });
+        const tookOff = !!(r.off && !r.off.error);
+        const others = kdCreditsFollowed(r.followed);
+        const said = r.owed ? `${p.name} ${on ? 'is' : 'is no longer'} ${creditWord(kind)} here. JobTread didn’t take it just now, so it’s written there within 10 minutes${on ? ', and putting them on the makeover follows' : ''}.${r.off ? ` ${kdCreditOffSaid(r.off)}` : ''}`
+          : on ? `${p.name} is ${creditWord(kind)}${r.job ? `, in JobTread’s ${field} too` : ''}. ${kdCreditPutSaid(p.name, r.put)} ${others}`
+          : r.off ? `${p.name} is no longer ${creditWord(kind)}${r.job ? `, in JobTread too` : ''}, and is off this makeover: ${kdCreditOffSaid(r.off)} ${others}`
+          : r.stays ? `${p.name} is no longer ${creditWord(kind)}${r.job ? `, in JobTread too` : ''}. They’re still ${creditWord(r.stays)}, so they stay on this makeover.`
+          : `${p.name} is no longer ${creditWord(kind)}${r.job ? `, in JobTread too` : ''}.`;
+        // Undo takes back exactly what was done: a pick that put them on the makeover takes them off it again with the
+        // credit (they weren't on it before), one that didn't is the credit only; taking a credit off that took them off
+        // the makeover puts them back on it with the credit (Add to job brings back who came off)
+        addToast(said.trim(), 'success', { label: 'Undo', fn: () => setCredit(kind, p, !on, { quiet: true, put: on ? putOn : tookOff }) });
         return r;
+      };
+      // The X on a credit: with an open job and no other credit for them here, the company comes off the makeover with
+      // it, so it's asked first, as the X on their logo is
+      const dropCredit = async (kind, p) => {
+        const other = kind === 'designed' ? 'sponsored' : 'designed';
+        const stays = (credits.room?.kinds?.[other]?.credits || []).some((c) => c.slug === p.slug);
+        const job = credits.room?.kinds?.[kind]?.job || jobId;
+        if (job && !stays && !p.gone && status !== 'completed' && !(await ask({ title: `Take ${p.name} off as ${creditWord(kind)}?`, yes: 'Take them off', danger: true,
+          text: 'They come off this makeover with it: their logo off this page, and off the JobTread job and the reveal invite. Undo puts it all back.' }))) return null;
+        return setCredit(kind, p, false);
       };
       const settleCredit = async (kind, use) => {
         const r = await credits.post(kind, () => ({ settle: { record, kind, use, sha: getSha() } }));
@@ -12579,13 +12633,13 @@
         if (!r.success) { addToast(`Couldn’t put ${p.name} back: ${r.error}`, 'error'); return; }
         takePage(r);
         if (!r.put?.logo && !r.put?.people?.length) { addToast(`Nothing to put back: ${p.name} has no logo in Partners${jobId ? ' and nobody of theirs with an email to add to the job' : ', and this page has no JobTread job'}.`, 'info'); return; }
-        const said = kdCreditPutSaid(p.name, r.put);
+        const said = `${kdCreditPutSaid(p.name, r.put)} ${kdCreditsFollowed(r.put?.followed)}`.trim();
         addToast(said ? `${p.name} is back on this makeover. ${said}` : `${p.name} is back on this makeover.`, 'success', { label: 'Undo', fn: () => kdTakeOffNow(takeOffEd(), { partner: p.slug }, p.name) });
       };
 
       const cards = html`${['sponsored', 'designed'].map((kind) => html`<${KdCreditCard} key=${kind} kind=${kind} name=${name} status=${status} room=${credits.room} error=${credits.error}
             partners=${allPartners} used=${creditUse[kind]} slug=${saved ? record : null} jobId=${jobId} busy=${credits.busy}
-            onSet=${(p, on) => setCredit(kind, p, on)} onAddNew=${(prefill) => setCreditDialog({ kind, create: prefill })} onAddBack=${(p) => addBackCredit(kind, p)}
+            onSet=${(p, on) => (on ? setCredit(kind, p, true) : dropCredit(kind, p))} onAddNew=${(prefill) => setCreditDialog({ kind, create: prefill })} onAddBack=${(p) => addBackCredit(kind, p)}
             onSameAs=${(v, partner) => sameAsCredit(kind, v, partner)} onNotCompany=${(v) => notCompanyCredit(kind, v)} onSettle=${(use) => settleCredit(kind, use)}
             contacts=${credits.contacts} onContacts=${kind === 'sponsored' ? (p) => setCreditDialog({ contacts: p }) : null}
             pledges=${credits.pledges} onPledge=${kind === 'sponsored' && !String(record).startsWith('community/') ? credits.savePledge : null} noun=${String(record).startsWith('community/') ? 'project' : 'kid'} />`)}`;
@@ -12604,7 +12658,7 @@
         ${creditDialog?.contacts ? html`<${KdSponsorContactsDialog} partner=${creditDialog.contacts} people=${credits.contacts[creditDialog.contacts.slug] || []}
           addToast=${addToast} onClose=${() => setCreditDialog(null)}
           onSaved=${(people) => { credits.setContacts((c) => ({ ...c, [creditDialog.contacts.slug]: people })); setCreditDialog(null); credits.reload(); }} />` : null}`;
-      return { cards, dialogs, allPartners };
+      return { cards, dialogs, allPartners, follow };
     }
 
     // ═══════════════════════════════════════════
@@ -13240,17 +13294,18 @@
       const [vendorsStamp, setVendorsStamp] = useState(0);
       const shaRef = useRef(sha);
       shaRef.current = sha;
-      const takeOffEd = () => ({ record: slug, sha: () => shaRef.current, setSha, setBase, set, addToast, reload: () => { history.reload(); setVendorsStamp((n) => n + 1); } });
+      const takeOffEd = () => ({ record: slug, sha: () => shaRef.current, setSha, setBase, set, addToast, reload: () => { history.reload(); setVendorsStamp((n) => n + 1); },
+        credits: (res) => credit.follow(res), creditsOf: (s) => kdCreditParts(dataRef.current, s) });
       const removeLogo = async (key) => {
         const prev = dataRef.current.partnerLogos;
         const logo = prev.find((l) => l._key === key);
         const inSaved = () => JSON.parse(base || '{}').partnerLogos || [];
         const company = kdLogoPartner(logo?.url, partners);
         const who = logo?.name?.trim() || company?.name || '';
-        // A design partner's or sponsor's logo comes off like anyone's: the credit is its own card, and stays
+        // A design partner's or sponsor's logo comes off like anyone's, and its credits go with it (Undo brings them back)
         if (who && slug && inSaved().some((l) => l.url === logo.url)) {
           if (await ask({ title: `Take ${who} off this makeover?`, yes: 'Take them off', danger: true,
-            text: 'Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there.' })) await kdTakeOffNow(takeOffEd(), { logos: [{ url: logo.url, name: who }] }, who);
+            text: `Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there.${kdCreditsGoLine(kdCreditParts(dataRef.current, company?.slug))}` })) await kdTakeOffNow(takeOffEd(), { logos: [{ url: logo.url, name: who }] }, who);
           return;
         }
         set((d) => ({ partnerLogos: d.partnerLogos.filter((l) => l._key !== key) }));
@@ -13329,7 +13384,7 @@
         setBase(JSON.stringify(out));
         set({ slug: slugToSave });
         history.reload();
-        if (!wasNew) kdAddToJob(slugToSave, newLogos, addToast, () => setVendorsStamp((n) => n + 1));
+        if (!wasNew) kdAddToJob(slugToSave, newLogos, addToast, () => setVendorsStamp((n) => n + 1), (res) => credit.follow(res));
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on Meet the Kids”.` : `${out.name} saved. The site shows it after you publish.`, 'success');
@@ -14371,7 +14426,7 @@
         : res.pending?.length || res.left?.length || unknown.length ? ''
         : 'Nobody from them was on the job.';
       // Only the sponsor was asked about, and nothing moved
-      if (!(sponsor.length && !res.taken?.length && !res.removed?.length)) addToast(`${lead} ${job}`.trim(), 'success', undo);
+      if (!(sponsor.length && !res.taken?.length && !res.removed?.length)) addToast(`${lead} ${job} ${kdCreditsFollowed(res.credits?.changed)}`.trim(), 'success', undo);
       for (const l of res.left || []) addToast(`${kdNames(l.people)} ${l.people.length === 1 ? 'is' : 'are'} still on the job: the site can’t be sure they’re with ${l.name}. Take them off in JobTread if they are.`, 'error');
       if (res.pending?.length) addToast(`JobTread didn’t answer for ${kdNames(res.pending)}. The site keeps trying, so they’ll come off the job on their own.`, 'info');
       if (unknown.length) addToast(`The site can’t tell who ${kdNames(unknown)} is, so nobody came off the job. If they’re on it, take them off in JobTread.`, 'info');
@@ -14393,6 +14448,8 @@
       ed.set((d) => ({ partnerLogos: d.partnerLogos.filter((l) => !gone.has(l.url)) }));
       ed.setBase((b) => { const d = JSON.parse(b || '{}'); return JSON.stringify({ ...d, partnerLogos: (d.partnerLogos || []).filter((l) => !gone.has(l.url)) }); });
       if (res.sha) ed.setSha(res.sha);
+      // Their Designed By / Monetary Sponsor credits went with them: the editor and its credit cards follow
+      ed.credits?.(res);
       ed.reload();
       kdSayTakenOff(res, removed.length ? `${who} is off this page. Publish to update the site.` : `${who} is off this makeover.`, ed.addToast, res.who?.length || removed.length ? { label: 'Undo', fn: () => kdPutBackNow(ed, res.who || [], who, res.who?.length ? [] : removed, true) } : null);
       return true;
@@ -14407,20 +14464,27 @@
       ed.set((d) => ({ partnerLogos: into(d.partnerLogos).map((l) => (l._key ? l : { ...l, _key: l.url })) }));
       ed.setBase((b) => { const d = JSON.parse(b || '{}'); return JSON.stringify({ ...d, partnerLogos: into(d.partnerLogos) }); });
       if (res.sha) ed.setSha(res.sha);
+      ed.credits?.(res);
       ed.reload();
-      const said = res.back?.length ? `${kdNames(res.back)} ${res.back.length === 1 ? 'is' : 'are'} back on the job${logos.length ? ', and the logo’s back on the page' : ''}.` : logos.length ? 'The logo’s back on the page.' : '';
+      const credits = kdCreditsFollowed(res.credits?.changed);
+      const said = `${res.back?.length ? `${kdNames(res.back)} ${res.back.length === 1 ? 'is' : 'are'} back on the job${logos.length ? ', and the logo’s back on the page' : ''}.` : logos.length ? 'The logo’s back on the page.' : ''} ${credits}`.trim();
       if (said) ed.addToast(said, 'success');
       if (res.pending?.length) ed.addToast(`JobTread didn’t take all of ${kdNames(res.pending)}. The site keeps trying.`, 'info');
       if (!said && !res.pending?.length) ed.addToast(`Nobody to put back: ${who} had nobody on the job.`, 'info');
       return true;
     }
-    /** Logos just saved on a page go on the job now; the sweep would get there within 15 minutes */
-    const kdAddToJob = (record, logos, addToast, reload) => {
+    /**
+     * Logos just saved on a page go on the job now; the sweep would get there within 15 minutes. A company back on the
+     * makeover this way gets back the credits that went with it (onCredits: the editor follows)
+     */
+    const kdAddToJob = (record, logos, addToast, reload, onCredits = null) => {
       if (!logos.length) return;
       ptAccessPost({ addToJob: { record, logos: logos.map(({ url, name }) => ({ url, name })) } }).catch((e) => ({ success: false, error: e.message })).then((r) => {
         if (!r.success) { addToast(`Saved, but JobTread wasn’t told (${r.error}). Check this page’s Vendors list.`, 'error'); reload(); return; }
         const { added = [] } = r.result || {};
-        if (added.length) addToast(`${kdNames(added)} ${added.length === 1 ? 'is' : 'are'} on the JobTread job now.`, 'success');
+        const credits = kdCreditsFollowed(r.result?.credits?.changed);
+        if (r.result?.credits?.changed?.length) onCredits?.(r.result);
+        if (added.length || credits) addToast(`${added.length ? `${kdNames(added)} ${added.length === 1 ? 'is' : 'are'} on the JobTread job now.` : ''} ${credits}`.trim(), 'success');
         reload();
       });
     };
@@ -14438,7 +14502,7 @@
       const off = async (row) => {
         const who = row.name;
         if (!(await ask({ title: `Take ${who} off this makeover?`, yes: 'Take them off', danger: true,
-          text: 'Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there. Nothing changes on their other makeovers.' }))) return;
+          text: `Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there.${kdCreditsGoLine(ed.creditsOf?.(row.partner) || [])} Nothing changes on their other makeovers.` }))) return;
         setBusy(row.who);
         await kdTakeOffNow(ed, row.partner ? { partner: row.partner } : { account: row.account, name: row.name }, who);
         setBusy(null);
@@ -21541,16 +21605,18 @@ ${sections || '<p>No one yet.</p>'}
       const [vendorsStamp, setVendorsStamp] = useState(0);
       const shaRef = useRef(sha);
       shaRef.current = sha;
-      const takeOffEd = () => ({ record: `community/${slug}`, sha: () => shaRef.current, setSha, setBase, set, addToast, reload: () => { history.reload(); setVendorsStamp((n) => n + 1); } });
+      const takeOffEd = () => ({ record: `community/${slug}`, sha: () => shaRef.current, setSha, setBase, set, addToast, reload: () => { history.reload(); setVendorsStamp((n) => n + 1); },
+        credits: (res) => credit.follow(res), creditsOf: (s) => kdCreditParts(dataRef.current, s) });
       const removeLogo = async (key) => {
         const prev = dataRef.current.partnerLogos;
         const logo = prev.find((l) => l._key === key);
         const inSaved = () => JSON.parse(base || '{}').partnerLogos || [];
         const company = kdLogoPartner(logo?.url, partners);
         const who = logo?.name?.trim() || company?.name || '';
-        if (who && slug && inSaved().some((l) => l.url === logo.url) && !(dataRef.current.sponsors || []).includes(company?.slug)) {
+        // A design partner's or sponsor's logo comes off like anyone's, and its credits go with it (Undo brings them back)
+        if (who && slug && inSaved().some((l) => l.url === logo.url)) {
           if (await ask({ title: `Take ${who} off this makeover?`, yes: 'Take them off', danger: true,
-            text: 'Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there.' })) await kdTakeOffNow(takeOffEd(), { logos: [{ url: logo.url, name: who }] }, who);
+            text: `Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there.${kdCreditsGoLine(kdCreditParts(dataRef.current, company?.slug))}` })) await kdTakeOffNow(takeOffEd(), { logos: [{ url: logo.url, name: who }] }, who);
           return;
         }
         set((d) => ({ partnerLogos: d.partnerLogos.filter((l) => l._key !== key) }));
@@ -21624,7 +21690,7 @@ ${sections || '<p>No one yet.</p>'}
         setBase(JSON.stringify(out));
         set({ slug: slugToSave });
         history.reload();
-        if (!wasNew) kdAddToJob(`community/${slugToSave}`, newLogos, addToast, () => setVendorsStamp((n) => n + 1));
+        if (!wasNew) kdAddToJob(`community/${slugToSave}`, newLogos, addToast, () => setVendorsStamp((n) => n + 1), (res) => credit.follow(res));
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on the Community page”.` : `${out.name} saved. The site shows it after you publish.`, 'success');

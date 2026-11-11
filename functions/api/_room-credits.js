@@ -10,21 +10,30 @@
  * A room with no JobTread job keeps its credits on its own record until it
  * gets one, and then they're written into the job.
  *
- * Each control does one thing (plan: ~/.claude/plans/room-credits.md, v3):
- *   - A credit changes the credit. Picking a company that isn't on the room
- *     (no logo of theirs on the page, nobody of theirs on the job) also puts
- *     it on, once, the way "Add to job" in Partners does: its logo on the
- *     page and its main contact on the job, without JobTread's email. A
- *     company a person took off before the pick goes back on (a pick is a
- *     person saying so); one taken off after it stays off. A sponsor's
- *     contacts all go on the job, each once (someone a person then takes off
- *     in JobTread stays off). Unpicking takes off the credit and nothing else.
- *   - Logos, job access and Take off this job change who's on the room, as
- *     they always have (./_vendor-access.js), and never change a credit. A
- *     credit whose company isn't on the room any more is shown, with a button
- *     each way.
- * So nothing here can loop with the logo and job-access syncs, undo what a
- * person did, or take off anyone it didn't put on.
+ * Credited means on the makeover (Peter, Nov 11 2026: "if they are the
+ * monetary sponsor or designer, they should always have job access. and
+ * simple add/delete. in case of accidently deleting, we did this for
+ * partners job access too"). On a room with an open job, a credit and the
+ * company being on the room (its logo on the page, its people on the job,
+ * kept together by ./_vendor-access.js) go together, both ways:
+ *   - A pick of a company that isn't on the room puts it on, the way "Add to
+ *     job" in Partners does: its logo on the page and its people on the job,
+ *     without JobTread's email. A company a person took off before the pick
+ *     goes back on (a pick is a person saying so). A sponsor's contacts all
+ *     go on the job, each once (someone a person then takes off in JobTread
+ *     stays off).
+ *   - Taking a credit off (in JobTread or here) takes the company off the
+ *     room, as Take off this job does, unless it's still credited there for
+ *     the other part (designer and sponsor both).
+ *   - A company taken off the room (Take off this job, the X on its logo, or
+ *     everyone of theirs out of the job in JobTread) loses its credits there;
+ *     a pick made after the take-off stands instead, and puts them back.
+ *   - Added back (Undo, Put back, its logo again, back on the job in
+ *     JobTread, or picked again): the credits that went with them come back.
+ * A finished room (closed job) or one with no job: the credit is the credit,
+ * and nobody is put on or taken off, as with job access itself. Each side
+ * acts only on the other's settled state (a take-off finished, a pick on its
+ * second look), so nothing loops.
  *
  * JobTread has no webhook for a field, so every linked job is read every 10
  * minutes. A change made there counts on the second look, at least 10
@@ -83,7 +92,9 @@ const SCHEMA = [
   // pending: { add: [names], remove: [names], rename: [[from, to]] } still to write; held: launch found JobTread and
   // the website disagreeing, a person settles it (the copy keeps the website's, with any change made since);
   // retry: [{ s: slug, r: past "already on the room?", at: when it was picked }] still to put on; older: names the
-  // job held from before launch that weren't a company then (one later named a company is a question, not a credit)
+  // job held from before launch that weren't a company then (one later named a company is a question, not a credit);
+  // follow: { picked: { slug: when the credit was made }, went: [{ s, v, at }] credits that went with the company
+  // leaving the room (back when it is), offs: [{ s, at }] take-offs a credit coming off still owes }
   `CREATE TABLE IF NOT EXISTS room_credit_jobs (
     record TEXT NOT NULL, kind TEXT NOT NULL, job_id TEXT NOT NULL, seen TEXT, next TEXT, next_at TEXT, next_since TEXT,
     pending TEXT, held TEXT, read_at TEXT, updated_at TEXT, retry TEXT, older TEXT, PRIMARY KEY (record, kind))`,
@@ -92,6 +103,12 @@ const SCHEMA = [
 ];
 export async function ensureSchema(DB) {
   for (const sql of SCHEMA) await DB.prepare(sql).run();
+  // Added Nov 11 2026 (credits follow the room). Two requests at once can both add it: the second one's "duplicate
+  // column" is the column being there
+  const cols = (await DB.prepare('PRAGMA table_info(room_credit_jobs)').all()).results || [];
+  if (!cols.some((c) => c.name === 'follow')) {
+    try { await DB.prepare('ALTER TABLE room_credit_jobs ADD COLUMN follow TEXT').run(); } catch (e) { if (!/duplicate column/i.test(String(e?.message))) throw e; }
+  }
   // The lock this shares with the logo sync (kid_partner_lock) and its "Same as" links
   await ensureLogoSchema(DB);
 }
@@ -236,7 +253,7 @@ function owedLanded(row, ctx) {
   return { ...row, seen, next: still, nextAt: still ? row.nextAt : null, nextSince: still ? row.nextSince : null, pending: null };
 }
 /** The parts of a row that are stored, to write it only when one changed */
-const rowSig = (r) => JSON.stringify([r.jobId, r.seen, r.next, r.nextAt, r.next ? r.nextSince || null : null, r.pending, r.held, r.retry || [], r.older || []]);
+const rowSig = (r) => JSON.stringify([r.jobId, r.seen, r.next, r.nextAt, r.next ? r.nextSince || null : null, r.pending, r.held, r.retry || [], r.older || [], followSaved(r.follow)]);
 
 /** What changed between two value lists, by partner when known, else by name: { added: [{ v, p }], removed: [{ v, p }] } */
 export function diff(before, after) {
@@ -344,17 +361,26 @@ export function onJob(partner, aces, { contacts = [], account = null, links = {}
 const rowOf = (r) => r && ({
   record: r.record, kind: r.kind, jobId: r.job_id, seen: parse(r.seen, []), next: parse(r.next, null), nextAt: r.next_at || null, nextSince: r.next_since || null,
   pending: parse(r.pending, null), held: parse(r.held, null), readAt: r.read_at || null, retry: parse(r.retry, []), older: parse(r.older, []),
+  follow: followOf(parse(r.follow, null)),
 });
+/** A row's follow, every part there: { picked: {}, went: [], offs: [] } */
+const followOf = (f) => ({ picked: { ...(f?.picked || {}) }, went: [...(f?.went || [])], offs: [...(f?.offs || [])] });
+/** As stored: null when there's nothing in it */
+const followSaved = (f) => {
+  const x = followOf(f);
+  return Object.keys(x.picked).length || x.went.length || x.offs.length ? x : null;
+};
 export async function readJobRows(DB) {
   await ensureSchema(DB);
   const rows = (await DB.prepare('SELECT * FROM room_credit_jobs').all()).results || [];
   return new Map(rows.map((r) => [`${r.record} ${r.kind}`, rowOf(r)]));
 }
 async function writeJobRow(DB, row, at) {
-  await DB.prepare('INSERT OR REPLACE INTO room_credit_jobs (record, kind, job_id, seen, next, next_at, next_since, pending, held, read_at, updated_at, retry, older) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+  const follow = followSaved(row.follow);
+  await DB.prepare('INSERT OR REPLACE INTO room_credit_jobs (record, kind, job_id, seen, next, next_at, next_since, pending, held, read_at, updated_at, retry, older, follow) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(row.record, row.kind, row.jobId, JSON.stringify(row.seen || []), row.next ? JSON.stringify(row.next) : null, row.nextAt || null, row.next ? row.nextSince || null : null,
       row.pending ? JSON.stringify(row.pending) : null, row.held ? JSON.stringify(row.held) : null, row.readAt || null, at, row.retry?.length ? JSON.stringify(row.retry) : null,
-      row.older?.length ? JSON.stringify(row.older) : null).run();
+      row.older?.length ? JSON.stringify(row.older) : null, follow ? JSON.stringify(follow) : null).run();
 }
 async function readState(DB, key, d = {}) {
   const r = await DB.prepare('SELECT value FROM room_credit_state WHERE key = ?').bind(key).first();
@@ -536,6 +562,8 @@ function mergePending(a, b) {
 const realDeps = {
   pageLogosOn: async (...a) => (await import('./partners-batch.js')).pageLogosOn(...a),
   addToJob: async (...a) => (await import('./_vendor-access.js')).addToJob(...a),
+  // Take off this job, as Partners and the kid's page do it: the logo off the page, their people off the job
+  takeOffJob: async (...a) => (await import('./_vendor-access.js')).takeOffJob(...a),
   roleMode,
 };
 // resume: a put-on that failed part way (the logo on, the job not): what's missing is done now
@@ -553,28 +581,27 @@ export async function putOnRoom(env, rec, partner, kind, { job, ctx, fetchImpl, 
   // A company a person took off this job, and a pick of it: a pick is a person saying so, and the later of the two
   // stands. Picked after they came off, they go back on (Add to job brings back who came off); taken off after the
   // pick was made (or when that can't be told), they stay off, and the card says so with a way back
-  if (!person) {
-    const off = await offSince(DB, job.id, partner.slug);
-    if (off && !(pickedAt && off.at && Date.parse(off.at) < Date.parse(pickedAt))) { out.off = true; return out; }
-  }
+  const off = await offSince(DB, job.id, partner.slug);
+  if (!person && off && !(pickedAt && off.at && Date.parse(off.at) < Date.parse(pickedAt))) { out.off = true; return out; }
   const contacts = ctx.contacts[partner.slug] || [];
   const aces = (await fetchAccess(key, [job.id], fetchImpl)).get(job.id);
   const page = logoOnPage(partner, rec, ctx.partners);
   const there = onJob(partner, aces, { contacts, links: ctx.links, account: ctx.accounts?.get?.(partner.slug) || null });
   // Already on the room: a pick puts nobody on, so an Undo of it takes nobody off. A put-on finishing (resume),
-  // or a person putting them back, goes on to whatever part is still missing
-  if (!resume && !person && (page || there)) return out;
+  // a person putting them back, or a pick made after a person took them off (Add to job brings back who came off,
+  // whatever's left of them on the page or the job) goes on to whatever part is still missing
+  if (!resume && !person && !off && (page || there)) return out;
   // Past the "already on?" question: a failure from here is finished next run (resume), not asked again
   if (decided) await decided();
   try {
-  if (!(page && there)) {
+  if (!(page && there) || off) {
     if (partner.logo) {
       // The page first, then the job: exactly what a person adding the logo and pressing Add to job does
       if (!page) {
         if (!(await takeLock(DB, true, 'sync'))) throw new Error('That page is busy');
         try { await deps.pageLogosOn(env, { table: tableOf(rec), slug: rec.slug, logos: [{ url: partner.logo, name: partner.name, at: 0 }] }, by); out.logo = true; out.logoUrl = partner.logo; } finally { await freeLock(DB, 'sync'); }
       }
-      if (!there) {
+      if (!there || off) {
         const r = await deps.addToJob(env, { record: keyOf(rec), logos: [{ url: partner.logo, name: partner.name }] }, by, { fetchImpl, now });
         out.people.push(...(r.added || []));
         out.waiting = !!(r.waiting || []).length;
@@ -716,6 +743,196 @@ async function saveCopy(env, rec, kindKey, slugs, at, why, { exact = false, by =
   } finally { await freeLock(DB, 'sync'); }
 }
 
+// ── Credited means on the makeover ───────────────────────────────────
+
+/**
+ * Each company's standing on each job, as the partners sync keeps it (./_vendor-access.js, vendor_job_seen):
+ * Map("job slug" → { off, people: how many of theirs it knows on the job, at: when that last changed })
+ */
+async function readStanding(DB) {
+  let rows = [];
+  try {
+    rows = (await DB.prepare("SELECT job_id, who, off, people, updated_at FROM vendor_job_seen WHERE who LIKE 'p:%'").all()).results || [];
+  } catch (e) {
+    // Nothing kept yet: nobody's been taken off anything. Any other failure stops the work (read as "nobody's off")
+    if (missingTable(e)) return new Map();
+    throw e;
+  }
+  return new Map(rows.map((r) => [`${r.job_id} ${r.who.slice(2)}`, { off: r.off || null, people: parse(r.people, []).length, at: r.updated_at || null }]));
+}
+/** Taken off the room, finished: by a person (Take off this job, the X on their logo), or everyone of theirs out of the job in JobTread */
+const offRoom = (st) => !!st && (st.off === 'site' || st.off === 'jobtread');
+/**
+ * Back on the room since `since`: put back (Undo, Put back, their logo added again, a pick), or someone of theirs on
+ * the job again in JobTread. Only a change after `since` counts: a take-off that couldn't start leaves the row as it was
+ */
+const backOn = (st, since, logo) => !!st && (!st.off || st.off === 'returning') && !!st.at && !!since && Date.parse(st.at) > Date.parse(since)
+  && (st.people > 0 || logo || st.off === 'returning');
+/** What a row's part credits now: the question's answer while one is open, else what the site means the field to hold */
+const copyNow = (row, ctx) => (row.held ? row.held.website : copyOf(meantOf(row, ctx)));
+/** Every company credited on the room, either part (a part with no row yet: the page's own copy) */
+const creditedOn = (rec, rows, ctx) => new Set(KIND_LIST.flatMap((kind) => (rows[kind.key] ? copyNow(rows[kind.key], ctx) : Array.isArray(rec.data?.[kind.record]) ? rec.data[kind.record] : [])));
+const idOf = (x) => (typeof x === 'string' ? x : x.s);
+
+/**
+ * Credits just taken off a room (in JobTread on the second look, or here): a company with no credit left on it is
+ * owed a take-off (offs), and the credit is kept as what went with them (went), so an add back brings it back.
+ * Written before any take-off starts, so one cut short is finished next run. rows: { designed, sponsored } (changed
+ * in place). removed: [{ kind, s, v }]. → the slugs owed a take-off now
+ */
+async function oweTakeOffs(env, { rec, job, rows, removed, ctx, at }) {
+  if (!job || job.closedOn) return [];
+  const still = creditedOn(rec, rows, ctx);
+  const owed = [];
+  for (const { kind, s, v } of removed) {
+    const row = rows[kind];
+    if (!row || still.has(s) || !ctx.partners.some((p) => p.slug === s)) continue;
+    const f = followOf(row.follow);
+    delete f.picked[s];
+    f.went = [...f.went.filter((w) => w.s !== s), { s, v, at }];
+    f.offs = [...f.offs.filter((o) => o.s !== s), { s, at }];
+    rows[kind] = { ...row, follow: f };
+    await writeJobRow(env.DB, rows[kind], at);
+    owed.push(s);
+  }
+  return owed;
+}
+
+/**
+ * The take-offs owed: each company goes off the room as Take off this job does (its logos off the page, its people
+ * off the job, written down so Undo and Put back can bring them back). One credited again since, already off, or
+ * gone from Partners owes nothing; one that fails stays owed for the next run. standing is kept up to date.
+ * → [{ kind, s, name, off: takeOffJob's answer } | { kind, s, name, error }]
+ */
+async function payTakeOffs(env, { rec, k, job, rows, standing, ctx, at, by, deps, fetchImpl, now, stopAt = Infinity, report = null }) {
+  const out = [];
+  if (!job) return out;
+  const still = creditedOn(rec, rows, ctx);
+  for (const kind of KIND_LIST) {
+    const row = rows[kind.key];
+    const f = followOf(row?.follow);
+    if (!row || !f.offs.length) continue;
+    const keep = [];
+    for (const o of f.offs) {
+      const st = standing.get(`${job.id} ${o.s}`);
+      const p = ctx.partners.find((x) => x.slug === o.s);
+      if (job.closedOn || still.has(o.s) || !p || offRoom(st) || st?.off === 'going') continue;
+      if (Date.now() > stopAt) { keep.push(o); if (report) report.more = true; continue; }
+      try {
+        const r = await deps.takeOffJob(env, { record: k, partner: o.s }, by, { fetchImpl, now });
+        standing.set(`${job.id} ${o.s}`, { off: r?.pending?.length ? 'going' : 'site', people: 0, at });
+        out.push({ kind: kind.key, s: o.s, name: p.name, off: r });
+      } catch (e) {
+        keep.push(o);
+        out.push({ kind: kind.key, s: o.s, name: p.name, error: e.message });
+        report?.problems.push(`${rec.data?.name || k}: couldn’t take ${p.name} off the makeover yet (tried again next run): ${e.message}`);
+      }
+    }
+    if (keep.length !== f.offs.length) {
+      rows[kind.key] = { ...row, follow: { ...f, offs: keep } };
+      await writeJobRow(env.DB, rows[kind.key], at);
+    }
+  }
+  return out;
+}
+
+/**
+ * A room's credits after who's on it. A company taken off the room since its credit was made loses the credit (it
+ * goes with them); one back on the room since its credit went gets it back. One change on what JobTread has now, as a
+ * person's would be; one JobTread doesn't take is owed, like any other. Open jobs only, and a part with a question
+ * open or a change of hers waiting on its second look waits for it. rows changed in place → [{ kind, s, on }]
+ */
+async function followStanding(env, { rec, k, job, rows, standing, ctx, ids, at, fetchImpl, stopAt = Infinity, report = null }) {
+  const changed = [];
+  if (!job || job.closedOn) return changed;
+  for (const kind of KIND_LIST) {
+    let row = rows[kind.key];
+    if (!row || row.held || row.next || row.jobId !== job.id) continue;
+    const f = followOf(row.follow);
+    const has = copyOf(meantOf(row, ctx));
+    const putting = new Set((row.retry || []).map(idOf));
+    const nameOf = (s) => ctx.partners.find((p) => p.slug === s)?.name || null;
+    // Off the room: the credit goes with them. A pick made after the take-off stands (its put-on brings them back),
+    // and so does one still being put on
+    const losing = has.filter((s) => {
+      const st = standing.get(`${job.id} ${s}`);
+      if (!offRoom(st) || putting.has(s) || !nameOf(s)) return false;
+      return !(f.picked[s] && st.at && Date.parse(f.picked[s]) > Date.parse(st.at));
+    });
+    // Back on: what went with them comes back (credited again meanwhile, or gone from Partners: nothing to bring)
+    const gaining = [];
+    const went = [];
+    for (const w of f.went) {
+      const p = ctx.partners.find((x) => x.slug === w.s);
+      if (!p || has.includes(w.s)) continue;
+      if (backOn(standing.get(`${job.id} ${w.s}`), w.at, logoOnPage(p, rec, ctx.partners))) gaining.push({ s: w.s, name: p.name }); else went.push(w);
+    }
+    if (!losing.length && !gaining.length) {
+      if (went.length !== f.went.length) { rows[kind.key] = { ...row, follow: { ...f, went } }; await writeJobRow(env.DB, rows[kind.key], at); }
+      continue;
+    }
+    if (Date.now() > stopAt) { if (report) report.more = true; continue; }
+    const follow = { picked: { ...f.picked }, went, offs: f.offs };
+    for (const s of losing) { delete follow.picked[s]; follow.went = [...follow.went.filter((w) => w.s !== s), { s, v: nameOf(s), at }]; }
+    for (const g of gaining) follow.picked[g.s] = at;
+    const change = {
+      add: gaining.map((g) => g.name), slugs: Object.fromEntries(gaining.map((g) => [nameKey(g.name), g.s])),
+      remove: losing.flatMap((s) => [nameOf(s), ...row.seen.filter((x) => x.p === s).map((x) => x.v)]),
+    };
+    row = { ...row, follow };
+    try {
+      row = await writeChange(env, row, change, ids, { fetchImpl, at, ctx });
+    } catch (e) {
+      if (e.gone) throw e;
+      // JobTread didn't take it just now: owed (written first by writeChange), the page says it now, tried again next run
+      const was = (await readJobRows(env.DB)).get(`${k} ${kind.key}`) || row;
+      const tries = (was.pending?.tries || 0) + 1;
+      row = { ...was, follow, pending: { ...was.pending, tries, error: e.message, failedAt: at } };
+      await writeJobRow(env.DB, row, at);
+      report?.problems.push(`${rec.data?.name || k} (${kind.label}): JobTread didn’t take a change still owed to it (try ${tries}, tried again next run): ${e.message}`);
+    }
+    rows[kind.key] = row;
+    changed.push(...losing.map((s) => ({ kind: kind.key, s, name: nameOf(s), on: false })), ...gaining.map((g) => ({ kind: kind.key, s: g.s, name: g.name, on: true })));
+  }
+  return changed;
+}
+
+/**
+ * Right after a person takes a company off a makeover, puts one back, or adds one (Partners, the kid's page): the
+ * room's credits follow now, not at the next run. Busy (a run under way): the run does it. → { changed: [{ kind, s,
+ * name, on }], sha?, page? } (the page's new version and credits, for an editor that has it open)
+ */
+export async function followRoom(env, { record }, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  await ensureSchema(DB);
+  const at = iso(now);
+  if (!env.JOBTREAD_GRANT_KEY) return { changed: [] };
+  if (!(await takeLock(DB, true, LOCK))) return { changed: [], busy: true };
+  let rec = null;
+  let changed = [];
+  try {
+    const [kids, projects, partners, links, contacts, all, standing] = await Promise.all([loadAllKids(DB), loadAllProjects(DB), readPartners(DB), readLinks(DB), readContacts(DB), readJobRows(DB), readStanding(DB)]);
+    rec = [...kids, ...projects].find((r) => keyOf(r) === record) || null;
+    const rows = { designed: all.get(`${record} designed`) || null, sponsored: all.get(`${record} sponsored`) || null };
+    const jobId = rows.designed?.jobId || rows.sponsored?.jobId || null;
+    // A room the sweep hasn't read yet: its first look does this
+    if (!rec || !jobId) return { changed: [] };
+    const ctx = { partners, links, contacts, ...(await knownNames(DB, partners)) };
+    for (const kind of KIND_LIST) if (rows[kind.key]) rows[kind.key] = remap(rows[kind.key], ctx);
+    const ids = await creditIds(env, fetchImpl);
+    const jobNow = await readJobValues(env.JOBTREAD_GRANT_KEY, jobId, ids, fetchImpl);
+    changed = await followStanding(env, { rec, k: record, job: { id: jobId, closedOn: jobNow.closedOn }, rows, standing, ctx, ids, at, fetchImpl });
+    for (const kind of KIND_LIST) {
+      const mine = changed.filter((c) => c.kind === kind.key);
+      if (!mine.length) continue;
+      await saveCopy(env, rec, kind.key, keepGone(copyNow(rows[kind.key], ctx), partners), at, `${kind.label}: ${mine.map((c) => `${c.on ? 'back with' : 'went with'} ${c.name}`).join(', ')}`, { by: by || 'unknown' });
+    }
+  } finally { await freeLock(DB, LOCK); }
+  if (!changed.length) return { changed };
+  await logAudit(DB, { userEmail: by || 'unknown', action: 'updated', entityType: 'room-credits', entitySlug: record, entityName: rec?.data?.name || record, changes: { followed: changed } }).catch(() => {});
+  return { changed, ...(await pageOf(DB, record)) };
+}
+
 // ── The sweep ────────────────────────────────────────────────────────
 
 /**
@@ -756,6 +973,9 @@ export async function syncCredits(env, { fetchImpl = fetch, now = Date.now(), de
     const holder = new Map([...held].map(([k, id]) => [id, k]));
     for (const [k, job] of [...linked]) if (holder.has(job.id) && holder.get(job.id) !== k) linked.delete(k);
     const ctx = { partners, links, contacts, accounts: await readAccounts(DB), ...(await knownNames(DB, partners)) };
+    // Who's been taken off which job, and who's back (the partners sync's own record of it)
+    let standing = await readStanding(DB);
+    report.followed = [];
     const saved = new Set();
     // When each room was last looked at (a change first seen next look was made after it), and the order this run
     // goes in: the rooms looked at longest ago first, so a run its time budget cuts short is taken up where it stopped
@@ -771,6 +991,10 @@ export async function syncCredits(env, { fetchImpl = fetch, now = Date.now(), de
       // The room counts as looked at only when both fields were read and compared (a look that wasn't made can't be
       // the read before a change)
       let lookedAll = true;
+      // Each part's row as this run leaves it, the credits taken off this run, and whether anyone was put on
+      const cur = { designed: null, sponsored: null };
+      const removedNow = [];
+      let putSome = false;
       for (const kind of KIND_LIST) {
         let row = rows.get(`${k} ${kind.key}`) || null;
         let stored = row ? rowSig(row) : null;
@@ -860,6 +1084,13 @@ export async function syncCredits(env, { fetchImpl = fetch, now = Date.now(), de
               // A question still open on this room: what she picked or took off since is hers, so it's made to the
               // website's answer too (and a question with nothing left to ask is closed)
               if (row.held) row = { ...row, held: heldAfter(row.held, d) };
+              // When each credit was made (a take-off after it takes it away; one before it doesn't), and the credits
+              // taken off, each owing a take-off once the room's two parts are done
+              const f = followOf(row.follow);
+              for (const x of d.added) if (x.p) { if (step.since) f.picked[x.p] = step.since; else delete f.picked[x.p]; f.went = f.went.filter((w) => w.s !== x.p); }
+              for (const x of d.removed) if (x.p) delete f.picked[x.p];
+              row = { ...row, follow: f };
+              removedNow.push(...d.removed.filter((x) => x.p).map((x) => ({ kind: kind.key, s: x.p, v: partners.find((p) => p.slug === x.p)?.name || x.v })));
             }
             const still = copyOf(meantOf(row, ctx));
             // Retries: { s: slug, r: true when it had got past "already on the room?" (finish it), else ask again, at }
@@ -880,7 +1111,7 @@ export async function syncCredits(env, { fetchImpl = fetch, now = Date.now(), de
                 const mark = async () => { setRetry(t.s, (list) => list.map((x) => (x.s === t.s ? { ...x, r: true } : x))); await writeJobRow(DB, row, at); };
                 const put = await putOnRoom(env, rec, p, kind, { job, ctx, fetchImpl, now, deps, resume: t.resume, pickedAt: t.at, decided: mark });
                 setRetry(t.s, (list) => list.filter((x) => x.s !== t.s));
-                if (put.logo || put.people.length) report.put.push({ record: k, kind: kind.key, partner: p.slug, ...put });
+                if (put.logo || put.people.length) { report.put.push({ record: k, kind: kind.key, partner: p.slug, ...put }); putSome = true; }
               } catch (e) {
                 // Tried again next run, while it's still credited
                 setRetry(t.s, (list) => list.map((x) => (x.s === t.s ? { ...x, r: !!e.decided } : x)));
@@ -923,9 +1154,29 @@ export async function syncCredits(env, { fetchImpl = fetch, now = Date.now(), de
           // site means the job to hold (JobTread's, with any change still owed to it)
           const copy = row.held ? row.held.website : copyOf(meantOf(row, ctx));
           if (await saveCopy(env, rec, kind.key, keepGone(copy, partners), at, `${kind.label}: ${copy.map((s) => partners.find((p) => p.slug === s)?.name || s).join(', ') || 'none'}, from JobTread`)) saved.add(k);
+          cur[kind.key] = row;
         } catch (e) {
           lookedAll = false;
           report.problems.push(`${rec.data?.name || k} (${kind.label}): ${e.message}`);
+        }
+      }
+      // Credited means on the makeover (open jobs only): a credit taken off takes the company off the room unless it's
+      // still credited there for the other part; a company off the room loses its credits; one back on gets them back
+      if (!job.closedOn && (cur.designed || cur.sponsored)) {
+        try {
+          if (removedNow.length) await oweTakeOffs(env, { rec, job, rows: cur, removed: removedNow, ctx, at });
+          // Someone put on just now changed who's on the room (Add to job brings back who came off)
+          if (putSome) standing = await readStanding(DB);
+          const offs = await payTakeOffs(env, { rec, k, job, rows: cur, standing, ctx, at, by: SYNC_USER, deps, fetchImpl, now, stopAt, report });
+          report.followed.push(...offs.filter((o) => o.off).map((o) => ({ record: k, kind: o.kind, partner: o.s, on: false, room: true })));
+          const moved = await followStanding(env, { rec, k, job, rows: cur, standing, ctx, ids, at, fetchImpl, stopAt, report });
+          report.followed.push(...moved.map((c) => ({ record: k, kind: c.kind, partner: c.s, on: c.on })));
+          for (const kind of KIND_LIST) {
+            const mine = moved.filter((c) => c.kind === kind.key);
+            if (mine.length && await saveCopy(env, rec, kind.key, keepGone(copyNow(cur[kind.key], ctx), partners), at, `${kind.label}: ${mine.map((c) => `${c.on ? 'back with' : 'went with'} ${c.name}`).join(', ')}, from JobTread`)) saved.add(k);
+          }
+        } catch (e) {
+          report.problems.push(`${rec.data?.name || k}: ${e.message}`);
         }
       }
       if (lookedAll) lookedNow[k] = at;
@@ -978,8 +1229,8 @@ export async function syncCredits(env, { fetchImpl = fetch, now = Date.now(), de
       if ((r.pending?.tries || 0) >= OWED_TRIES) owedN += 1;
       for (const x of r.seen) if (!x.p && !partnerFor(x.v, ctx) && !notCompanies.includes(nameKey(x.v))) names.add(`${r.kind} ${nameKey(x.v)}`);
     }
-    await writeState(DB, 'last', { at, changed: report.changed.length, put: report.put.length, unknown: names.size, held: asked, owed: owedN, problems: report.problems, more: report.more });
-    if (report.changed.length || report.put.length) await logAudit(DB, { userEmail: SYNC_USER, action: 'updated', entityType: 'room-credits', entitySlug: 'sweep', entityName: 'Room credits', changes: { changed: report.changed, put: report.put } }).catch(() => {});
+    await writeState(DB, 'last', { at, changed: report.changed.length, put: report.put.length, followed: report.followed.length, unknown: names.size, held: asked, owed: owedN, problems: report.problems, more: report.more });
+    if (report.changed.length || report.put.length || report.followed.length) await logAudit(DB, { userEmail: SYNC_USER, action: 'updated', entityType: 'room-credits', entitySlug: 'sweep', entityName: 'Room credits', changes: { changed: report.changed, put: report.put, followed: report.followed } }).catch(() => {});
     return report;
   } catch (e) {
     await writeState(DB, 'last', { at, error: e.message, code: e.code || null }).catch(() => {});
@@ -1072,11 +1323,15 @@ async function roomJob(env, rec, record, rows, { fetchImpl }) {
 
 /**
  * A person sets or takes off a credit. A room with a JobTread job: its field
- * is changed (read now, one change), and a pick of a company not on the room
- * puts it on at once. A room with no job: its own record, and the logo.
- * → { record, kind, credits: [slugs], job: id | null, put: { logo, people } | null }
+ * is changed (read now, one change), a pick of a company not on the room puts
+ * it on at once, and taking off its last credit there takes it off the room
+ * (an open job). A room with no job: its own record, and the logo.
+ * → { record, kind, credits: [slugs], job: id | null, put: { logo, people } | null, off: Take off this job's
+ * answer | { pending, error } | null, stays: the other part when they're still credited for it, followed: [{ kind,
+ * s, name, on }] other credits that came back with them }
  */
-// put: false, the credit only (an Undo of taking a credit off puts back the credit, never a company that wasn't there)
+// put: false, the credit only, nobody put on or taken off (Undo of a pick that put nobody on; of taking off a credit
+// whose company stayed on)
 // person: a person picking it means them on the makeover, even after a person took them off (the Advisory Board's Pick the kid)
 export async function setCredit(env, { record, kind: kindKey, partner: slug, on, put = true, person = false }, by = null, { fetchImpl = fetch, now = Date.now(), deps = realDeps } = {}) {
   const { DB } = env;
@@ -1148,9 +1403,35 @@ export async function setCredit(env, { record, kind: kindKey, partner: slug, on,
           out.put = { logo: false, people: [], waiting: false, off: false, ...(e.done || {}), retry: true, error: e.message };
         }
       }
-      const copy = row.held ? row.held.website : owed ? meant : copyOf(row.seen);
+      // When the credit was made (a take-off after it takes it away), and a pick is what went with them, credited again
+      const f = followOf(row.follow);
+      if (on) { f.picked[slug] = at; f.went = f.went.filter((w) => w.s !== slug); } else delete f.picked[slug];
+      row = { ...row, follow: f };
+      await writeJobRow(DB, row, at);
+      // Credited means on the makeover (an open job): the last credit taken off takes them off the room, now; and the
+      // room's credits follow who's on it (what went with a company this pick put back comes back)
+      const job = { id: jobId, closedOn: jobNow.closedOn };
+      const both = Object.fromEntries(KIND_LIST.map((kd) => {
+        if (kd.key === kind.key) return [kd.key, row];
+        const other = rows.get(`${record} ${kd.key}`);
+        return [kd.key, other?.jobId === jobId ? remap(other, ctx) : null];
+      }));
+      if (!on && put && !job.closedOn) {
+        const owes = await oweTakeOffs(env, { rec, job, rows: both, removed: [{ kind: kind.key, s: slug, v: partner.name }], ctx, at });
+        if (owes.length) {
+          const done = (await payTakeOffs(env, { rec, k: record, job, rows: both, standing: await readStanding(DB), ctx, at, by: who, deps, fetchImpl, now }))[0];
+          out.off = done?.off || (done?.error ? { pending: [partner.name], error: done.error } : null);
+        } else if (creditedOn(rec, both, ctx).has(slug)) out.stays = KIND_LIST.find((kd) => kd.key !== kind.key)?.key || null;
+      }
+      out.followed = job.closedOn ? [] : await followStanding(env, { rec, k: record, job, rows: both, standing: await readStanding(DB), ctx, ids, at, fetchImpl });
+      row = both[kind.key];
+      const copy = row.held ? row.held.website : owed && !out.followed.some((c) => c.kind === kind.key) ? meant : copyOf(meantOf(row, ctx));
       if (owed) out.meant = copy;
       await saveCopy(env, rec, kind.key, keepGone(copy, partners, on ? null : slug), at, `${kind.label}: ${on ? 'added' : 'took off'} ${partner.name}`, { by: who });
+      for (const kd of KIND_LIST) {
+        const mine = out.followed.filter((c) => c.kind === kd.key);
+        if (kd.key !== kind.key && mine.length) await saveCopy(env, rec, kd.key, keepGone(copyNow(both[kd.key], ctx), partners), at, `${kd.label}: ${mine.map((c) => `${c.on ? 'back with' : 'went with'} ${c.name}`).join(', ')}`, { by: who });
+      }
       out.credits = Array.isArray(rec.data?.[kind.record]) ? rec.data[kind.record] : [];
     } else {
       // No job: the record holds the credit, and that's all (a finished room's page is changed by a person, on the
@@ -1188,7 +1469,19 @@ export async function addBack(env, { record, kind: kindKey, partner: slug }, by 
   if (jobId) {
     const ids = await creditIds(env, fetchImpl);
     const closedOn = (await readJobValues(env.JOBTREAD_GRANT_KEY, jobId, ids, fetchImpl)).closedOn;
-    put = await putOnRoom(env, rec, partner, kind, { job: { id: jobId, closedOn }, ctx: { partners, links, contacts, accounts: await readAccounts(DB), ...(await knownNames(DB, partners)) }, fetchImpl, now, by: by || 'unknown', deps, person: true });
+    const ctx = { partners, links, contacts, accounts: await readAccounts(DB), ...(await knownNames(DB, partners)) };
+    put = await putOnRoom(env, rec, partner, kind, { job: { id: jobId, closedOn }, ctx, fetchImpl, now, by: by || 'unknown', deps, person: true });
+    // Back on the room: any other credit that went with them comes back too
+    if (!closedOn) {
+      const at = iso(now);
+      const both = Object.fromEntries(KIND_LIST.map((kd) => { const r = rows.get(`${record} ${kd.key}`); return [kd.key, r?.jobId === jobId ? remap(r, ctx) : null]; }));
+      const moved = await followStanding(env, { rec, k: record, job: { id: jobId, closedOn }, rows: both, standing: await readStanding(DB), ctx, ids, at, fetchImpl });
+      for (const kd of KIND_LIST) {
+        const mine = moved.filter((c) => c.kind === kd.key);
+        if (mine.length) await saveCopy(env, rec, kd.key, keepGone(copyNow(both[kd.key], ctx), partners), at, `${kd.label}: ${mine.map((c) => `${c.on ? 'back with' : 'went with'} ${c.name}`).join(', ')}`, { by: by || 'unknown' });
+      }
+      put.followed = moved;
+    }
   }
   // No open job: the logo back on the page is all there is to it
   if (!put.logo && !put.people.length && partner.logo && !onRoom(partner, rec, { partners })) {

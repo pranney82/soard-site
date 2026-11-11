@@ -26,7 +26,7 @@ import { adminView, setCompanyAside, settleAccount, linkAccount, syncVendorAcces
 import { reconcileJob } from './_reveal-invites.js';
 import { pickRole } from './_partner-roles.js';
 import { saveContacts, readContacts } from './_sponsors.js';
-import { grantForSponsor } from './_room-credits.js';
+import { grantForSponsor, followRoom, pageOf } from './_room-credits.js';
 import { logAudit } from './_audit.js';
 import { nameKey } from '../../public/admin/partners-shared.js';
 
@@ -86,6 +86,18 @@ export async function onRequestPost(context) {
       const result = body.putBack ? await putBackJob(env, { record, who, logos: list, sha: sha || null, undo: undo === true }, by)
         : body.addToJob ? await addToJob(env, { record, logos: list, account, name: label }, by)
           : await takeOffJob(env, { record, partner, account, name: label, logos: list, sha: sha || null }, by);
+      // Credited means on the makeover: a company taken off loses its Designed By / Monetary Sponsor credits here,
+      // one put back or added gets back what went with it, now (the credits sweep is the backstop). The page's new
+      // version goes back with them, but only to an editor that was in step (it sent the version it had, and got one back)
+      // In step: the version it sent is the page's now (or the change it asked for answered with a new one)
+      const inStep = !!result.sha || (!!sha && (await pageOf(env.DB, record).catch(() => null))?.sha === sha) || !!body.addToJob;
+      const credits = await followRoom(env, { record }, by).catch((e) => ({ changed: [], error: e.message }));
+      if (credits.changed?.length) {
+        result.credits = { changed: credits.changed, page: credits.page || null };
+        if (credits.sha && inStep) result.sha = credits.sha;
+        else delete result.sha;
+        result.behind = !inStep;
+      } else if (credits.error) result.credits = { changed: [], error: credits.error };
       // The sweep's 5-minute check is the backstop
       if (result.jobId) context.waitUntil?.(reconcileJob(env, result.jobId, { wait: false }).catch(() => {}));
       return ok({ result });

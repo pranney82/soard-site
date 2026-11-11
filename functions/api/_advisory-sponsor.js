@@ -82,11 +82,16 @@ export async function clearKid(env, settings, { by = '', now = Date.now(), fetch
   const kid = (await loadAllKids(DB)).find((k) => k.slug === settings.kid);
   // A finished makeover keeps its sponsor, logo and pledge: the group just moves on
   if (kid && kid.data.status !== 'completed') {
-    // The credit first (JobTread's field too), then the group off the room: its logo off the page, its access off the job
-    await setCredit(env, { record: kid.slug, kind: 'sponsored', partner: ADVISORY_PARTNER, on: false }, by || SYNC_BY, { fetchImpl, now })
-      .catch((e) => problems.push(`Couldn’t take the group off as the sponsor: ${e.message}`));
+    // The credit (JobTread's field too), which takes the group off the room with it: its logo off the page, its access
+    // off the job (functions/api/_room-credits.js). The credit not taken off: the group still comes off the room, and
+    // the credits sweep takes the credit away with it
+    let credit = null;
+    try {
+      credit = await setCredit(env, { record: kid.slug, kind: 'sponsored', partner: ADVISORY_PARTNER, on: false }, by || SYNC_BY, { fetchImpl, now });
+    } catch (e) { problems.push(`Couldn’t take the group off as the sponsor: ${e.message}`); }
     await savePledge(DB, { kid: kid.slug, partner: ADVISORY_PARTNER, pledged: null, received: null }, { by: 'Advisory Board', now });
-    const off = await takeOffJob(env, { record: kid.slug, partner: ADVISORY_PARTNER }, by || SYNC_BY, { fetchImpl, now }).catch((e) => ({ pending: [e.message] }));
+    // (a kid with no open job: the logo comes off the page all the same, as it always has)
+    const off = credit?.off || (credit?.stays ? null : await takeOffJob(env, { record: kid.slug, partner: ADVISORY_PARTNER }, by || SYNC_BY, { fetchImpl, now }).catch((e) => ({ pending: [e.message] })));
     problems.push(...(off?.pending || []).map((x) => `Still to come off the job: ${x}`));
   }
   return { settings: await saveSettings(DB, { kid: '' }), problems };

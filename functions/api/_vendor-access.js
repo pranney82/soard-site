@@ -901,8 +901,8 @@ export async function takeOffJob(env, { record, partner = null, account = null, 
     const a = (await fetchVendorAccounts(key, fetchImpl).catch(() => [])).find((x) => x.id === account);
     if (a) companies.get(`a:${account}`).account = a;
   }
-  // A monetary sponsor or design partner comes off like anyone else: being on the room is one thing, the credit
-  // another (./_room-credits.js), and the credit stays until a person changes it
+  // A monetary sponsor or design partner comes off like anyone else, and its credits on this room go with it
+  // (./_room-credits.js followRoom, called after this; Put back brings them back)
   if (partner && !companies.size) return out;
   // Every logo of theirs on the page, however it got there; X on one of two is the company leaving
   const urls = [...new Set([

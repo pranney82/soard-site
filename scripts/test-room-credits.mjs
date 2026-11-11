@@ -12,10 +12,12 @@
  *   - launch's question (JobTread named a sponsor this page didn't have): Use JobTread's
  *   - picking a design partner by keyboard: JobTread's Designed By too, their logo on the page,
  *     the toast says so; Save still works (no conflict)
- *   - Undo of that pick: the credit off, and them off the makeover (it put them on)
+ *   - Undo of that pick: the credit off, and them off the makeover with it (it put them on)
  *   - a name in JobTread that isn't a company: Same as… Link, and Not a company
  *   - credited but not on the makeover: Add them back, then Save puts them on the job
- *   - taking a credit off: the credit only; contacts and pledges for the sponsor
+ *   - credited means on the makeover: the X on a credit asks, then takes them off the makeover with it, and Undo
+ *     puts both back; the X on a credited company's logo says its credit goes too, and the card follows at once
+ *   - contacts and pledges for the sponsor
  *   - a kid with no JobTread job; phone: no sideways scroll, 44px targets; axe on both cards
  *   - Partners → JobTread access: the open credit questions counted on its tile and listed with whose
  *     page they're on, the last run's problem said; Not a company, Same as, Use JobTread's from there
@@ -82,7 +84,7 @@ function makeApi() {
     // JobTread's two fields on the kid's job, and what launch held for a person
     job: { designed: [], sponsored: ['The Voila Foundation', 'SOARF', 'Carlos Fund'] },
     held: { sponsored: { jobtread: ['the-voila-foundation'], website: [] } },
-    notCompanies: [], links: {}, onJob: new Set(),
+    notCompanies: [], links: {}, onJob: new Set(), went: {},
     last: null,
   };
   const shaOf = (slug) => (st.shas[slug] ||= `sha-${slug}-0`);
@@ -185,6 +187,8 @@ function makeApi() {
         const pt = st.partners[partner];
         const field = RECORD[kind];
         let put = null;
+        let off = null;
+        let stays = null;
         if (on) {
           kid[field] = [...new Set([...(kid[field] || []), partner])];
           if (record === KID.slug) {
@@ -199,10 +203,22 @@ function makeApi() {
         } else {
           kid[field] = (kid[field] || []).filter((s) => s !== partner);
           if (record === KID.slug) st.job[kind] = st.job[kind].filter((v) => v !== pt.name);
+          // Credited means on the makeover: its last credit here off takes it off (its logo, its people), unless it's
+          // still credited for the other part, or asked not to (an Undo of a pick that put nobody on)
+          const other = kind === 'designed' ? 'sponsored' : 'designed';
+          if (record === KID.slug && putOn) {
+            if ((kid[RECORD[other]] || []).includes(partner)) stays = other;
+            else {
+              const removed = (kid.partnerLogos || []).filter((l) => l.url === pt.logo || l.name === pt.name);
+              kid.partnerLogos = (kid.partnerLogos || []).filter((l) => !removed.includes(l));
+              const was = st.onJob.delete(partner);
+              off = { taken: [{ name: pt.name, people: was ? [`${pt.name} main contact`] : [] }], removed, pending: [] };
+            }
+          }
         }
         if (st.held[kind]) st.held[kind] = { ...st.held[kind], website: on ? [...new Set([...st.held[kind].website, partner])] : st.held[kind].website.filter((s) => s !== partner) };
         bump(record);
-        return later({ success: true, record, kind, job: record === KID.slug ? JOB : null, put, credits: kid[field], ...page(record, sent, before), view: { room: room(record) } });
+        return later({ success: true, record, kind, job: record === KID.slug ? JOB : null, put, off, stays, followed: [], credits: kid[field], ...page(record, sent, before), view: { room: room(record) } });
       }
       if (b.settle) {
         const { record, kind, use } = b.settle;
@@ -249,11 +265,38 @@ function makeApi() {
       const b = isPost ? body() : {};
       if (b.takeOff) {
         const kid = st.kids[b.takeOff.record];
-        const pt = st.partners[b.takeOff.partner];
+        // A logo X names the company by its logo; Take off this job by its slug
+        const pt = st.partners[b.takeOff.partner] || Object.values(st.partners).find((x) => (b.takeOff.logos || []).some((l) => l.url === x.logo || l.name === x.name));
         const removed = (kid.partnerLogos || []).filter((l) => pt && (l.url === pt.logo || l.name === pt.name));
         kid.partnerLogos = (kid.partnerLogos || []).filter((l) => !removed.includes(l));
         if (pt) st.onJob.delete(pt.slug);
-        return json({ success: true, result: { jobId: JOB, who: pt ? [`p:${pt.slug}`] : [], taken: pt ? [{ name: pt.name, people: ['main contact'] }] : [], removed, skipped: [], left: [], pending: [], sha: bump(b.takeOff.record) } });
+        // As followRoom does: the credits they had here go with them (kept, so Put back brings them back)
+        const changed = [];
+        if (pt) {
+          for (const kind of ['designed', 'sponsored']) {
+            if (!(kid[RECORD[kind]] || []).includes(pt.slug)) continue;
+            kid[RECORD[kind]] = kid[RECORD[kind]].filter((s) => s !== pt.slug);
+            if (b.takeOff.record === KID.slug) st.job[kind] = st.job[kind].filter((v) => v !== pt.name);
+            changed.push({ kind, s: pt.slug, name: pt.name, on: false });
+          }
+          st.went[pt.slug] = { changed, removed };
+        }
+        const sha = bump(b.takeOff.record);
+        return json({ success: true, result: { jobId: JOB, who: pt ? [`p:${pt.slug}`] : [], taken: pt ? [{ name: pt.name, people: ['main contact'] }] : [], removed, skipped: [], left: [], pending: [], sha,
+          ...(changed.length ? { credits: { changed, page: { designers: kid.designers || [], sponsors: kid.sponsors || [], partnerLogos: kid.partnerLogos || [] } } } : {}) } });
+      }
+      if (b.putBack) {
+        const kid = st.kids[b.putBack.record];
+        const slug = (b.putBack.who || [])[0]?.replace(/^p:/, '');
+        const pt = st.partners[slug];
+        const was = st.went[slug] || { changed: [], removed: [] };
+        kid.partnerLogos = [...was.removed, ...(kid.partnerLogos || [])];
+        if (pt) st.onJob.add(slug);
+        const changed = was.changed.map((c) => ({ ...c, on: true }));
+        for (const c of changed) { kid[RECORD[c.kind]] = [...new Set([...(kid[RECORD[c.kind]] || []), c.s])]; if (b.putBack.record === KID.slug) st.job[c.kind] = [...new Set([...st.job[c.kind], c.name])]; }
+        delete st.went[slug];
+        return json({ success: true, result: { jobId: JOB, back: pt ? [`${pt.name} main contact`] : [], logos: was.removed, pending: [], sha: bump(b.putBack.record),
+          ...(changed.length ? { credits: { changed, page: { designers: kid.designers || [], sponsors: kid.sponsors || [], partnerLogos: kid.partnerLogos || [] } } } : {}) } });
       }
       if (b.addToJob) {
         for (const l of b.addToJob.logos || []) { const pt = Object.values(st.partners).find((x) => x.logo === l.url); if (pt) st.onJob.add(pt.slug); }
@@ -281,7 +324,9 @@ async function open(browser, { width, height, mobile }) {
   // A live logo the local server can't fetch (CORS on localhost) is the machine, not the page
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|favicon|net::ERR|blocked by CORS policy/.test(m.text())) errors.push(m.text().slice(0, 300)); });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.slice(0, 300)}`));
-  await answerAsks(page);
+  // Every question the page asks (its title and words), answered yes
+  const asks = [];
+  await answerAsks(page, { onAsk: (t) => asks.push(t) });
   const api = makeApi();
   await page.setRequestInterception(true);
   page.on('request', (req) => {
@@ -293,7 +338,7 @@ async function open(browser, { width, height, mobile }) {
   await page.evaluateOnNewDocument(() => { try { localStorage.clear(); } catch {} });
   await page.goto(`${SITE}/admin/index.html`, { waitUntil: 'networkidle2' });
   await page.waitForSelector('.nav-item, .sidebar', { timeout: 20000 });
-  return { page, api, errors };
+  return { page, api, errors, asks };
 }
 const clickText = (page, sel, text) => page.evaluate((sel, text) => {
   const el = [...document.querySelectorAll(sel)].find((e) => e.textContent.replace(/\s+/g, ' ').trim().startsWith(text));
@@ -325,7 +370,7 @@ const browser = await puppeteer.launch({ headless: 'shell', args: ['--no-sandbox
 try {
   console.log(`\nDesktop 1440 (${KID.name}, awaiting funding, a JobTread job)`);
   {
-    const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false });
+    const { page, api, errors, asks } = await open(browser, { width: 1440, height: 1000, mobile: false });
     await goKids(page, false);
     await openKid(page, KID.name);
     const order = await page.$$eval('.kd-rail > section', (els) => els.map((e) => e.id || e.className.match(/kd-card--(\w+)/)?.[1]));
@@ -387,11 +432,15 @@ try {
     ok(!conflict, 'Save after the pick: no conflict (the editor has the page’s new version)');
     ok(JSON.stringify(api.st.kids[KID.slug].designers) === '["crosby-design-group"]', 'the saved page keeps the credit');
 
-    // Undo the pick: the credit off, and Crosby off the makeover (the pick put them on)
+    // Undo the pick: the credit off, and Crosby off the makeover with it (the pick put them on)
     await page.evaluate(() => [...document.querySelectorAll('.toast button')].find((b) => /Undo/.test(b.textContent) && /Crosby/.test(b.closest('.toast')?.innerText || ''))?.click());
     await page.waitForFunction(() => !/Crosby Design Group/.test(document.querySelector('#kd-sec-designer .kd-sponsors')?.innerText || ''), { timeout: 5000 }).catch(() => {});
     ok(!api.st.job.designed.includes('Crosby Design Group'), 'Undo: Designed By no longer says Crosby');
-    ok(lastCall(api, '/api/vendor-access-admin', (c) => c.body?.takeOff)?.body?.takeOff?.partner === 'crosby-design-group', 'and Crosby is taken off the makeover, since the pick put them on');
+    const undoPick = lastCall(api, '/api/room-credits-admin', (c) => c.body?.set)?.body?.set;
+    ok(undoPick?.on === false && undoPick.put === true, 'one request: the credit off, and Crosby off the makeover with it, since the pick put them on');
+    ok(!api.st.onJob.has('crosby-design-group'), 'Crosby is off the job');
+    await sleep(300);
+    ok(!(await page.$$eval('.kd-logos li input', (els) => els.map((e) => e.value)).catch(() => [])).includes(CROSBY.name), 'and their logo is off the page in the editor too');
 
     // Credited but not on the makeover: Add them back
     api.st.kids[KID.slug].designers = ['crosby-design-group'];
@@ -425,16 +474,41 @@ try {
     const two = api.st.calls.filter((c) => c.path === '/api/room-credits-admin' && c.body?.set).slice(-2).map((c) => c.body.set.sha);
     ok(two.length === 2 && two[0] !== two[1], 'the second pick carried the first one’s new version');
 
-    // Taking a credit off is the credit only
+    // The X on a credit: credited means on the makeover, so it asks, then takes them off it with the credit
+    const asked = asks.length;
+    const xName = await page.$eval('#kd-sec-sponsor .kd-sponsors .kd-sponsor__name', (e) => e.textContent.trim()).catch(() => '');
     await page.evaluate(() => document.querySelector('#kd-sec-sponsor .kd-sponsors .kd-x')?.click());
-    await sleep(700);
+    await sleep(900);
+    ok(asks.length === asked + 1 && /off as the monetary sponsor/.test(asks[asked]) && /off the JobTread job/.test(asks[asked]) && /Undo puts it all back/.test(asks[asked]), `the X asks first, and says they come off the makeover with it (“${(asks[asked] || '').slice(0, 140)}”)`);
     const off = lastCall(api, '/api/room-credits-admin', (c) => c.body?.set && c.body.set.on === false)?.body?.set;
-    ok(off?.kind === 'sponsored', 'the X takes the sponsor credit off');
-    ok(/Their logo and place on the job stay/.test((await toasts(page)).join(' | ')), 'the toast says the logo and place on the job stay');
+    ok(off?.kind === 'sponsored' && off.put === true, 'the X takes the sponsor credit off, and them with it');
+    ok(new RegExp(`${xName.replace(/[&.]/g, '.')} is no longer the monetary sponsor, in JobTread too, and is off this makeover`).test((await toasts(page)).join(' | ')), `the toast says they’re off the makeover (${xName})`);
     await page.evaluate(() => [...document.querySelectorAll('.toast button')].reverse().find((b) => /Undo/.test(b.textContent) && /no longer/.test(b.closest('.toast')?.innerText || ''))?.click());
     await sleep(700);
     const undo = lastCall(api, '/api/room-credits-admin', (c) => c.body?.set)?.body?.set;
-    ok(undo?.on === true && undo.put === false, 'Undo puts the credit back, and only the credit');
+    ok(undo?.on === true && undo.put === true, 'Undo puts the credit back, and them on the makeover with it');
+
+    // The X on a credited company's logo: the question says the credit goes too, and the card follows at once
+    await page.click('#kd-sec-designer-q');
+    await page.type('#kd-sec-designer-q', 'crosby');
+    await page.waitForSelector('#kd-sec-designer-list [role=option]', { timeout: 3000 }).catch(() => {});
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => /Crosby Design Group/.test(document.querySelector('#kd-sec-designer .kd-sponsors')?.innerText || ''), { timeout: 5000 }).catch(() => {});
+    await sleep(400);
+    const logoAsked = asks.length;
+    await page.evaluate((n) => document.querySelector(`.kd-logos button[aria-label="Remove ${n}"]`)?.click(), CROSBY.name);
+    await page.waitForFunction(() => !/Crosby Design Group/.test(document.querySelector('#kd-sec-designer .kd-sponsors')?.innerText || ''), { timeout: 5000 }).catch(() => {});
+    ok(/Their Designed By credit comes off with them, in JobTread too/.test(asks[logoAsked] || ''), `the logo X says their credit goes too (“${(asks[logoAsked] || '').slice(-90)}”)`);
+    ok(!/Crosby Design Group/.test(await cardText(page, '#kd-sec-designer .kd-sponsors')), 'the design card has no Crosby now');
+    ok(/Crosby Design Group’s Designed By credit went with them, in JobTread too/.test((await toasts(page)).join(' | ')), 'the toast says the credit went with them');
+    await page.evaluate(() => [...document.querySelectorAll('.toast button')].reverse().find((b) => /Undo/.test(b.textContent) && /credit went with them/.test(b.closest('.toast')?.innerText || ''))?.click());
+    await page.waitForFunction(() => /Crosby Design Group/.test(document.querySelector('#kd-sec-designer .kd-sponsors')?.innerText || ''), { timeout: 5000 }).catch(() => {});
+    ok(/Crosby Design Group/.test(await cardText(page, '#kd-sec-designer .kd-sponsors')), 'Undo: Crosby is back as the design partner');
+    ok(/Designed By credit is back too/.test((await toasts(page)).join(' | ')), 'and the toast says the credit is back too');
+    await page.type('#kd-short', ' Logo.');
+    await sleep(200);
+    await save(page);
+    ok(!(await toasts(page)).some((t) => /Someone saved this profile/.test(t)), 'Save after the logo X and its Undo: no conflict');
 
     // Someone else saved the page after it was opened: a pick doesn't hide that; Save says so
     api.st.kids[KID.slug] = { ...api.st.kids[KID.slug], status: 'in-progress' };
