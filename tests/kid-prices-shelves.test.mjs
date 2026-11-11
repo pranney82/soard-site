@@ -92,14 +92,17 @@ test('the Order status field brought to the four: Received renamed At the Office
     if (q.organization) return new Response(JSON.stringify({ organization: { customFields: { nodes: [field, ...others] } } }));
     if (q.updateCustomField) {
       updates.push(q.updateCustomField.$.options);
-      field.options = q.updateCustomField.$.options.map((o) => (typeof o === 'string' ? o : o.rename.to));
+      // As JobTread takes them: a name, or a rename { from, to } (anything else it refuses, as it did on Nov 11)
+      const opts = q.updateCustomField.$.options;
+      if (opts.some((o) => typeof o !== 'string' && (typeof o?.from !== 'string' || typeof o?.to !== 'string'))) return new Response('A non-null value is required at "updateCustomField"."$"."options"."2"."from"', { status: 400 });
+      field.options = opts.map((o) => (typeof o === 'string' ? o : o.to));
       return new Response(JSON.stringify({ updateCustomField: {} }));
     }
     return new Response('not faked', { status: 400 });
   };
   const jtEnv = { DB: env.DB, JOBTREAD_GRANT_KEY: 'k' };
   await fieldIds(jtEnv, { fetchImpl });
-  assert.deepEqual(updates[0], ['Not ordered', 'Ordered', { rename: { from: 'Received', to: 'At the Office' } }, 'At the house', 'Partly ordered', 'Partly received']);
+  assert.deepEqual(updates[0], ['Not ordered', 'Ordered', { from: 'Received', to: 'At the Office' }, 'At the house', 'Partly ordered', 'Partly received']);
   // A line still says an old one: they stay
   await env.DB.exec('CREATE TABLE IF NOT EXISTS kid_jt_lines (job_id TEXT NOT NULL, item_id TEXT NOT NULL, kind TEXT, wrote TEXT, hand TEXT, planned TEXT, wrote_at TEXT, error TEXT, PRIMARY KEY (job_id, item_id))');
   await env.DB.prepare("INSERT INTO kid_jt_lines (job_id, item_id, kind, wrote, hand, wrote_at) VALUES ('j-nico', 'n-bed', 'line', ?, '{}', 'x')").bind(JSON.stringify({ status: 'Partly received' })).run();

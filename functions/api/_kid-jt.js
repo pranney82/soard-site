@@ -51,7 +51,7 @@ export const FIELDS = {
   also: { name: 'Also bought', type: 'boolean' },
 };
 export const ALSO_GROUP = 'Also bought';
-export const REHEARSAL_V = 7; // 7: the four statuses (Received renamed At the Office, At the house added); // 6: moved next to an allowance by an update too, and a run cut off half-way cleaned up; 5: a line next to an allowance, the allowance down by it, moved to Also bought (Nov 11 2026); 2: the cost code JobTread requires on a new line; 3: and the cost type; 4: an update asks for nothing back (Nov 10 2026)
+export const REHEARSAL_V = 8; // 8: the rename sent as JobTread takes it; 7: the four statuses (Received renamed At the Office, At the house added); // 6: moved next to an allowance by an update too, and a run cut off half-way cleaned up; 5: a line next to an allowance, the allowance down by it, moved to Also bought (Nov 11 2026); 2: the cost code JobTread requires on a new line; 3: and the cost type; 4: an update asks for nothing back (Nov 10 2026)
 const EVERY_MS = 2 * 60 * 1000;
 const WRITES_A_RUN = 24;
 const RUN_MS = 20 * 1000;
@@ -222,10 +222,11 @@ export async function fieldIds(env, { fetchImpl = fetch } = {}) {
 async function settleOptions(env, field, { fetchImpl = fetch, letGo = false } = {}) {
   const have = (Array.isArray(field.options) ? field.options : []).map((o) => (typeof o === 'string' ? o : o?.name || o?.value)).filter(Boolean);
   const renamed = (to) => Object.keys(OLD_STATUSES).find((from) => OLD_STATUSES[from] === to && have.includes(from) && !have.includes(to));
-  const want = STATUSES.map((s) => (renamed(s) ? { rename: { from: renamed(s), to: s } } : s));
-  const old = letGo ? [] : have.filter((o) => !STATUSES.includes(o) && !want.some((w) => w.rename?.from === o));
+  // A rename is { from, to } itself (JobTread, Nov 11 2026: "A non-null value is required at …options.2.from")
+  const want = STATUSES.map((s) => (renamed(s) ? { from: renamed(s), to: s } : s));
+  const old = letGo ? [] : have.filter((o) => !STATUSES.includes(o) && !want.some((w) => w.from === o));
   const next = [...want, ...old];
-  const plain = next.map((o) => (typeof o === 'string' ? o : o.rename.to));
+  const plain = next.map((o) => (typeof o === 'string' ? o : o.to));
   if (plain.length === have.length && plain.every((o, i) => o === have[i])) return false;
   await pave(env.JOBTREAD_GRANT_KEY, { updateCustomField: { $: { id: field.id, options: next } } }, fetchImpl);
   field.options = plain;
