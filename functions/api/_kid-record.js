@@ -51,12 +51,16 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS kid_allowances (
     job_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity REAL, unit_cost REAL, unit_price REAL, spent_cents INTEGER NOT NULL DEFAULT 0,
     written_cost REAL, written_price REAL, at TEXT, PRIMARY KEY (job_id, item_id))`,
+  // Each of a kid's allowance lines, once seen: it stays theirs when no other open makeover has the same words any more
+  'CREATE TABLE IF NOT EXISTS kid_allow_lines (job_id TEXT NOT NULL, item_id TEXT NOT NULL, at TEXT, PRIMARY KEY (job_id, item_id))',
 ];
 // Added Nov 10 2026 with checking out: an "out" names the check-in whose label was scanned. Nov 11: printed_at, when
 // the printer took a check-in's labels (a retry from the phone prints only what never reached it)
 const RECEIPT_COLUMNS = ['ref TEXT', 'box INTEGER', 'printed_at TEXT'];
 // Nov 11 2026: where a bought-on-top line sits (next to an allowance, or Also bought), and how many, for its cost
-const ALSO_COLUMNS = ['allow_item_id TEXT', 'qty INTEGER'];
+const ALSO_COLUMNS = ['allow_item_id TEXT', 'qty INTEGER', 'off_by_hand TEXT'];
+// Nov 11 2026: the amount before a write (a write that never landed is told from a person's change) and why it's left alone
+const ALLOWANCE_COLUMNS = ['prev_cost REAL', 'prev_price REAL', 'skip TEXT'];
 const _ready = new WeakSet();
 export async function ensureRecord(DB) {
   if (_ready.has(DB)) return;
@@ -71,6 +75,7 @@ export async function ensureRecord(DB) {
   };
   await add('kid_receipts', RECEIPT_COLUMNS, have);
   await add('kid_also', ALSO_COLUMNS, new Set(((await DB.prepare('PRAGMA table_info(kid_also)').all()).results || []).map((c) => c.name)));
+  await add('kid_allowances', ALLOWANCE_COLUMNS, new Set(((await DB.prepare('PRAGMA table_info(kid_allowances)').all()).results || []).map((c) => c.name)));
   // One live check-out per box: two phones confirming the same box at once can't both count it
   await DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS kid_receipts_out_box ON kid_receipts (ref, box) WHERE kind = 'out' AND undone_at IS NULL AND box IS NOT NULL").run();
   _ready.add(DB);
@@ -103,20 +108,22 @@ export async function writeState(DB, key, data) {
 /** Everything the page and the JobTread writer need from the record, in one read */
 export async function readRecord(DB) {
   await ensureRecord(DB);
-  const [receipts, decisions, also, shelves, sorts] = await Promise.all([
+  const [receipts, decisions, also, shelves, sorts, allowLines] = await Promise.all([
     all(DB, 'SELECT * FROM kid_receipts ORDER BY at'),
     all(DB, 'SELECT * FROM kid_decisions'),
     all(DB, 'SELECT * FROM kid_also ORDER BY at'),
     all(DB, 'SELECT * FROM kid_shelves'),
     all(DB, 'SELECT * FROM kid_allow_class'),
+    all(DB, 'SELECT job_id, item_id FROM kid_allow_lines'),
   ]);
   return {
     receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null, box: r.box || null })),
     decisions: new Map(decisions.map((d) => [d.key, { ...parse(d.decision, {}), by: d.by_email, at: d.at }])),
-    also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, qty: a.qty || null, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, allowItemId: a.allow_item_id || null, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
+    also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, qty: a.qty || null, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, allowItemId: a.allow_item_id || null, offByHand: a.off_by_hand || null, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
     shelves: new Map(shelves.map((s) => [s.shelf, s.job_id])),
     // Sorted onto an allowance (itemId) or not (null); none yet: not sorted
     sorts: new Map(sorts.map((x) => [x.key, { itemId: x.item_id || null, how: x.how, tries: x.tries || 0 }])),
+    allowLines: new Set(allowLines.map((x) => `${x.job_id}|${x.item_id}`)),
   };
 }
 
@@ -274,18 +281,22 @@ export async function releaseEmpty(DB, jobId) {
   for (const s of mine) if (s !== keep && !used.has(s)) await DB.prepare('DELETE FROM kid_shelves WHERE shelf = ? AND job_id = ?').bind(s, jobId).run();
 }
 
-const DECISIONS = new Set(['line', 'also', 'notKid', 'cancelled']);
+const DECISIONS = new Set(['line', 'also', 'notKid', 'cancelled', 'kid']);
+// A person's answer for a whole order (its item name is this): 'kid' (it's this kid's: the site places each thing as
+// for a PO with their name) or 'notKid'. A thing's own answer stands over it
+export const WHOLE_ORDER = '*';
 /**
  * A person's answer for one ordered item: { orderKey, itemName, decision: { type, kid, itemId, partKey } }
  *   line       it's this kid's, on this line (and part)
  *   also       it's this kid's, bought on top of the selections
  *   notKid     it isn't a kid's (store supplies, the Office)
  *   cancelled  it was cancelled or sent back
+ *   kid        (the whole order, itemName '*') it's this kid's: placed as for a PO with their name
  */
 export async function decide(DB, { orderKey, itemName, decision } = {}, { by = null, now = new Date().toISOString() } = {}) {
   await ensureRecord(DB);
   if (!orderKey || !itemName || !DECISIONS.has(decision?.type)) throw bad('Pick whose it is.');
-  if ((decision.type === 'line' || decision.type === 'also') && !decision.kid) throw bad('Pick the kid.');
+  if (['line', 'also', 'kid'].includes(decision.type) && !decision.kid) throw bad('Pick the kid.');
   if (decision.type === 'line' && (!decision.itemId || !decision.partKey)) throw bad('Pick the line.');
   const clean = { type: decision.type, ...(decision.kid ? { kid: String(decision.kid) } : {}), ...(decision.type === 'line' ? { itemId: String(decision.itemId), partKey: String(decision.partKey) } : {}) };
   await DB.prepare('INSERT OR REPLACE INTO kid_decisions (key, order_key, item_name, decision, by_email, at) VALUES (?, ?, ?, ?, ?, ?)')

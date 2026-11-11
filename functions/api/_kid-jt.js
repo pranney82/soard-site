@@ -46,7 +46,7 @@ export const FIELDS = {
   also: { name: 'Also bought', type: 'boolean' },
 };
 export const ALSO_GROUP = 'Also bought';
-export const REHEARSAL_V = 5; // 5: a line next to an allowance, the allowance down by it, moved to Also bought (Nov 11 2026); 2: the cost code JobTread requires on a new line; 3: and the cost type; 4: an update asks for nothing back (Nov 10 2026)
+export const REHEARSAL_V = 6; // 6: moved next to an allowance by an update too, and a run cut off half-way cleaned up; 5: a line next to an allowance, the allowance down by it, moved to Also bought (Nov 11 2026); 2: the cost code JobTread requires on a new line; 3: and the cost type; 4: an update asks for nothing back (Nov 10 2026)
 const EVERY_MS = 2 * 60 * 1000;
 const WRITES_A_RUN = 24;
 const RUN_MS = 20 * 1000;
@@ -233,6 +233,8 @@ export async function writeLine(env, ids, line, { fetchImpl = fetch, now = new D
   if (!current) {
     await env.DB.prepare('INSERT INTO kid_jt_lines (job_id, item_id, kind, error, wrote_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(job_id, item_id) DO UPDATE SET error = excluded.error')
       .bind(line.jobId, line.itemId, line.also ? 'also' : 'line', 'The line is gone from JobTread', now).run();
+    // A line the site made, deleted by a person in JobTread: off the budget for good, never made again behind their back
+    if (line.also?.key) await env.DB.prepare('UPDATE kid_also SET retired_at = ?, off_by_hand = ? WHERE key = ?').bind(now, now, line.also.key).run();
     return { wrote: false, gone: true };
   }
   const { values, hand } = withHand(computed, last, current, parse(row?.hand, {}));
@@ -304,10 +306,13 @@ export async function makeAlso(env, ids, thing, { fetchImpl = fetch, now = new D
   const DB = env.DB;
   await DB.prepare('INSERT OR IGNORE INTO kid_also (key, job_id, name, cents, qty, donated, store, order_number, typed, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)')
     .bind(thing.key, thing.jobId, String(thing.name).slice(0, 250), thing.cents || null, Math.max(1, thing.qty || 1), thing.donated ? 1 : 0, thing.store || null, thing.orderNumber || null, now).run();
+  // Taken off the budget before (moved to another kid, cancelled, its allowance gone) and the kid's again: made again.
+  // One a person deleted in JobTread stays off
+  await DB.prepare('UPDATE kid_also SET cost_item_id = NULL, retired_at = NULL, allow_item_id = NULL WHERE key = ? AND retired_at IS NOT NULL AND off_by_hand IS NULL').bind(thing.key).run();
   // Claimed for a minute before JobTread is asked: a check-in's write and the heartbeat's can't both make it
   const ms = Date.parse(now) || Date.now();
   const claim = await DB.prepare('UPDATE kid_also SET claim_until = ? WHERE key = ? AND cost_item_id IS NULL AND (claim_until IS NULL OR claim_until < ?)').bind(ms + 60000, thing.key, ms).run();
-  if (!claim.meta?.changes) return (await DB.prepare('SELECT cost_item_id FROM kid_also WHERE key = ?').bind(thing.key).first())?.cost_item_id || null;
+  if (!claim.meta?.changes) { const r = await DB.prepare('SELECT cost_item_id, retired_at FROM kid_also WHERE key = ?').bind(thing.key).first(); return r && !r.retired_at ? r.cost_item_id || null : null; }
   try {
     return await makeClaimed(env, ids, thing, { fetchImpl, now });
   } finally {
@@ -318,11 +323,13 @@ export async function makeAlso(env, ids, thing, { fetchImpl = fetch, now = new D
 /** An allowance line as JobTread has it now (its group and codes, for a line next to it; its amount, to take purchases off) */
 export async function allowanceOf(env, id, { fetchImpl = fetch } = {}) {
   const data = await pave(env.JOBTREAD_GRANT_KEY, {
-    costItem: { $: { id }, id: {}, name: {}, quantity: {}, unitCost: {}, unitPrice: {}, unitCostFormula: {}, unitPriceFormula: {}, costGroup: { id: {} }, costCode: { id: {} }, costType: { id: {} } },
+    costItem: { $: { id }, id: {}, name: {}, quantity: {}, unitCost: {}, unitPrice: {}, unitCostFormula: {}, unitPriceFormula: {}, isSelected: {}, costGroup: { id: {}, name: {}, isSimpleSelection: {}, maxSelectionsAllowed: {}, minSelectionsRequired: {}, parentCostGroup: { id: {} } }, costCode: { id: {} }, costType: { id: {} } },
   }, fetchImpl);
   const c = data?.costItem;
   if (!c?.id) return null;
-  return { id: c.id, name: c.name, quantity: Number(c.quantity) || 1, unitCost: Number(c.unitCost) || 0, unitPrice: Number(c.unitPrice) || 0, formula: Boolean(c.unitCostFormula || c.unitPriceFormula), groupId: c.costGroup?.id || null, costCodeId: c.costCode?.id || null, costTypeId: c.costType?.id || null };
+  const g = c.costGroup || {};
+  return { id: c.id, name: c.name, quantity: Number(c.quantity) || 1, unitCost: Number(c.unitCost) || 0, unitPrice: Number(c.unitPrice) || 0, formula: Boolean(c.unitCostFormula || c.unitPriceFormula), selected: c.isSelected !== false,
+    groupId: g.id || null, groupName: g.name || null, picks: g.maxSelectionsAllowed ?? null, parentId: g.parentCostGroup?.id || null, simple: Boolean(g.isSimpleSelection), costCodeId: c.costCode?.id || null, costTypeId: c.costType?.id || null };
 }
 
 /** A bought-on-top line's name and words: "Decor: Wall Art Print", "Bought for Ava on the Decor allowance (Target, order 12)…" */
@@ -340,6 +347,9 @@ async function placeOf(env, thing, { fetchImpl }) {
     const a = await allowanceOf(env, thing.allowItemId, { fetchImpl });
     if (!a?.groupId) throw new Error(`JobTread doesn’t have ${thing.kid || 'the kid'}’s ${thing.allowLine} allowance line any more`);
     const codes = a.costCodeId && a.costTypeId ? { costCodeId: a.costCodeId, costTypeId: a.costTypeId } : await alsoCodes(env, thing.jobId, { fetchImpl });
+    // A selection group that limits how many are picked (an option to choose): one more picked line would change the
+    // choice, so the line goes right after the group, in the group it's in
+    if (a.picks != null) return { costGroupId: a.parentId, positionAfter: { type: 'costGroup', id: a.groupId }, ...codes };
     return { costGroupId: a.groupId, positionAfter: { type: 'costItem', id: a.id }, ...codes };
   }
   const [costGroupId, codes] = await Promise.all([alsoGroup(env, thing.jobId, { fetchImpl }), alsoCodes(env, thing.jobId, { fetchImpl })]);
@@ -404,24 +414,35 @@ export async function keepAlso(env, ids, thing, row, { fetchImpl = fetch } = {})
  */
 export async function settleAllowance(env, jobId, itemId, spentCents, { fetchImpl = fetch, now = new Date().toISOString() } = {}) {
   await ensure(env.DB);
+  // JobTread first, then the site's record: a write that landed between the two is seen in the record
   const a = await allowanceOf(env, itemId, { fetchImpl });
-  if (!a) return { skipped: 'gone' };
-  if (a.formula) return { skipped: 'formula' };
-  const near = (x, y) => Math.abs((Number(x) || 0) - (Number(y) || 0)) < 0.005;
+  const st = await env.DB.prepare('SELECT * FROM kid_allowances WHERE job_id = ? AND item_id = ?').bind(jobId, itemId).first();
+  const keep = (row) => env.DB.prepare(`INSERT OR REPLACE INTO kid_allowances (job_id, item_id, quantity, unit_cost, unit_price, spent_cents, written_cost, written_price, prev_cost, prev_price, skip, at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(jobId, itemId, row.quantity ?? null, row.unit_cost ?? null, row.unit_price ?? null, spentCents, row.written_cost ?? null, row.written_price ?? null, row.prev_cost ?? null, row.prev_price ?? null, row.skip ?? null, now).run();
+  if (!a || a.formula) {
+    // Gone from JobTread, or set by a formula: left as it is, and not asked about again until what's bought on it changes
+    await keep({ ...(st || {}), skip: a ? 'formula' : 'gone' });
+    return { skipped: a ? 'formula' : 'gone' };
+  }
+  const near = (x, y) => x != null && y != null && Math.abs(Number(x) - Number(y)) < 0.005;
   const r2 = (n) => Math.round(n * 100) / 100;
   const qty = a.quantity || 1;
-  const st = await env.DB.prepare('SELECT * FROM kid_allowances WHERE job_id = ? AND item_id = ?').bind(jobId, itemId).first();
-  const from = !st ? { cost: a.unitCost, price: a.unitPrice }
-    // As the site left it: the same start
-    : near(a.unitCost, st.written_cost) && near(a.unitPrice, st.written_price) && near(qty, st.quantity) ? { cost: st.unit_cost, price: st.unit_price }
-    // A person changed it: what they set is what's left after what was bought then
-    : { cost: a.unitCost + (st.spent_cents || 0) / 100 / qty, price: a.unitPrice + (st.spent_cents || 0) / 100 / qty };
+  const same = st && near(qty, st.quantity);
+  // Each amount on its own: as the site left it (what it wrote, or what it was before a write that never landed) starts
+  // from the same place; changed by a person (in JobTread), what they set is what's left after what was bought then
+  const startOf = (cur, written, prev, start) => (same && (near(cur, written) || near(cur, prev)) ? start : cur + (st.spent_cents || 0) / 100 / qty);
+  const from = st && !st.skip
+    ? { cost: startOf(a.unitCost, st.written_cost, st.prev_cost, st.unit_cost), price: startOf(a.unitPrice, st.written_price, st.prev_price, st.unit_price) }
+    : st?.skip && st.unit_cost != null
+      // Left alone a while (a formula, or gone and back): what it is now is what's left after what was bought then
+      ? { cost: a.unitCost + (st.spent_cents || 0) / 100 / qty, price: a.unitPrice + (st.spent_cents || 0) / 100 / qty }
+      : { cost: a.unitCost, price: a.unitPrice };
   const off = spentCents / 100 / qty;
   const next = { cost: r2(Math.max(0, from.cost - off)), price: r2(Math.max(0, from.price - off)) };
   const wrote = !near(next.cost, a.unitCost) || !near(next.price, a.unitPrice);
+  // Kept before JobTread is written: a run cut off after the write never takes it off twice
+  await keep({ quantity: qty, unit_cost: from.cost, unit_price: from.price, written_cost: next.cost, written_price: next.price, prev_cost: a.unitCost, prev_price: a.unitPrice });
   if (wrote) await pave(env.JOBTREAD_GRANT_KEY, { updateCostItem: { $: { id: itemId, unitCost: next.cost, unitPrice: next.price } } }, fetchImpl);
-  await env.DB.prepare('INSERT OR REPLACE INTO kid_allowances (job_id, item_id, quantity, unit_cost, unit_price, spent_cents, written_cost, written_price, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(jobId, itemId, qty, from.cost, from.price, spentCents, next.cost, next.price, now).run();
   return { wrote, ...next };
 }
 
@@ -480,26 +501,37 @@ export async function rehearse(env, { fetchImpl = fetch, now = new Date().toISOS
     await env.DB.prepare("DELETE FROM kid_jt_lines WHERE job_id = ? AND item_id = ?").bind(SANDBOX_JOB_ID, lineId).run();
     step('put back', true);
     // An allowance ($500 Decor): a thing bought on it gets its own line right after it and the allowance goes down by
-    // it; moved to Also bought, the line moves and the allowance is back; the line taken off, nothing is left behind
+    // it; moved to Also bought, the line moves and the allowance is back; moved next to it again (as the site moves a line
+    // already on a budget), it's there; taken off, nothing is left behind. A rehearsal cut off half-way is cleaned up first
     const allowId = await rehearsalAllowance(env, { fetchImpl });
     const thing = { key: 'soard-rehearsal-allowance-buy', jobId: SANDBOX_JOB_ID, name: 'Rehearsal wall print', qty: 2, cents: 2250, kid: 'the sandbox', allowItemId: allowId, allowLine: 'Rehearsal Decor' };
-    await env.DB.prepare('DELETE FROM kid_also WHERE key = ?').bind(thing.key).run();
-    await env.DB.prepare('DELETE FROM kid_allowances WHERE job_id = ? AND item_id = ?').bind(SANDBOX_JOB_ID, allowId).run();
+    const leftover = (await pave(env.JOBTREAD_GRANT_KEY, { job: { $: { id: SANDBOX_JOB_ID }, costItems: { $: { size: 2, where: ['globalId', '=', thing.key] }, nodes: { id: {} } } } }, fetchImpl))?.job?.costItems?.nodes?.[0]?.id;
+    if (leftover) await pave(env.JOBTREAD_GRANT_KEY, { deleteCostItem: { $: { id: leftover } } }, fetchImpl);
+    const clear = async () => {
+      await env.DB.prepare('DELETE FROM kid_also WHERE key = ?').bind(thing.key).run();
+      await env.DB.prepare('DELETE FROM kid_allowances WHERE job_id = ? AND item_id = ?').bind(SANDBOX_JOB_ID, allowId).run();
+    };
+    await clear();
     const rowId = await makeAlso(env, ids, thing, { fetchImpl, now });
     const [row, allow] = await Promise.all([allowanceOf(env, rowId, { fetchImpl }), allowanceOf(env, allowId, { fetchImpl })]);
     step('a line next to its allowance', row?.groupId && row.groupId === allow?.groupId && row.name === 'Rehearsal Decor: Rehearsal wall print' && row.unitCost === 22.5 && row.quantity === 2, JSON.stringify(row));
     await settleAllowance(env, SANDBOX_JOB_ID, allowId, 4500, { fetchImpl, now });
     const down = await allowanceOf(env, allowId, { fetchImpl });
     step('the allowance down by it', down?.unitCost === 455 && down.unitPrice === 455, JSON.stringify(down));
-    const rec = (await readRecord(env.DB)).also.find((a) => a.key === thing.key);
-    await keepAlso(env, ids, { ...thing, allowItemId: null, allowLine: null }, rec, { fetchImpl });
+    const rec = () => readRecord(env.DB).then((r) => r.also.find((a) => a.key === thing.key));
+    await keepAlso(env, ids, { ...thing, allowItemId: null, allowLine: null }, await rec(), { fetchImpl });
     await settleAllowance(env, SANDBOX_JOB_ID, allowId, 0, { fetchImpl, now });
     const [moved, back] = await Promise.all([allowanceOf(env, rowId, { fetchImpl }), allowanceOf(env, allowId, { fetchImpl })]);
     step('moved to Also bought, the allowance back', moved?.groupId && moved.groupId !== allow.groupId && moved.name === 'Rehearsal wall print' && back?.unitCost === 500, JSON.stringify({ moved, back }));
-    await retireAlso(env, { ...rec, costItemId: rowId }, { fetchImpl, now });
-    await env.DB.prepare('DELETE FROM kid_also WHERE key = ?').bind(thing.key).run();
-    await env.DB.prepare('DELETE FROM kid_allowances WHERE job_id = ? AND item_id = ?').bind(SANDBOX_JOB_ID, allowId).run();
+    await keepAlso(env, ids, thing, await rec(), { fetchImpl });
+    const nextTo = await allowanceOf(env, rowId, { fetchImpl });
+    step('moved next to its allowance again', nextTo?.groupId === allow.groupId && nextTo.name === 'Rehearsal Decor: Rehearsal wall print', JSON.stringify(nextTo));
+    await retireAlso(env, { ...(await rec()), costItemId: rowId }, { fetchImpl, now });
+    await clear();
     step('the allowance put back', true);
+    // A real makeover's allowance, only read (nothing written): how its group is set up, for the record
+    const real = (await checkinView(env, { photos: false })).kids.flatMap((k) => (k.allowances || []).map((a) => a.itemId))[0];
+    if (real) { const a = await allowanceOf(env, real, { fetchImpl }).catch(() => null); step('a real allowance’s group', true, JSON.stringify(a && { group: a.groupName, picks: a.picks, simple: a.simple, parent: Boolean(a.parentId), selected: a.selected, quantity: a.quantity })); }
     return { v: REHEARSAL_V, ok: true, at: now, steps };
   } catch (err) {
     return { v: REHEARSAL_V, ok: false, at: now, steps, error: err.message };
@@ -532,7 +564,7 @@ async function rehearsalAllowance(env, { fetchImpl }) {
 export const MODE = 'on';
 
 /** One pass over the makeovers: Also bought lines made, then each changed line written. → { wrote, made, planned, left, errors } */
-export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISOString(), jobId = null, mode = MODE, budget = WRITES_A_RUN, sort = true } = {}) {
+export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISOString(), jobId = null, mode = MODE, budget = WRITES_A_RUN, sort = true, settle = true } = {}) {
   await ensure(env.DB);
   const started = Date.now();
   const out = { wrote: 0, made: 0, planned: 0, left: 0, errors: [] };
@@ -547,9 +579,13 @@ export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISO
     const unread = new Set(view.unread || []);
     // Each one sorted onto one of the kid's allowances (or none) before its line is made, so it's made in its place
     // (Not while someone waits on a check-in: sorting can take the AI 25 seconds, so the heartbeat does it)
-    const toSort = sort ? kids.filter((k) => !unread.has(k.jobId) && k.items.some((i) => i.also?.pending)) : [];
+    // A kid with lines still unread: only what was typed in (an order may yet fit one of those lines)
+    const sortable = (k, it) => it.also?.pending && (!unread.has(k.jobId) || it.also.typed);
+    const toSort = sort ? kids.filter((k) => k.items.some((i) => sortable(k, i))) : [];
+    // Each kid's allowance lines kept, so they stay theirs whoever else's budget changes
+    if (mode === 'on') for (const k of kids) for (const a of k.allowances || []) await env.DB.prepare('INSERT OR IGNORE INTO kid_allow_lines (job_id, item_id, at) VALUES (?, ?, ?)').bind(k.jobId, a.itemId, now).run();
     if (toSort.length && !late()) {
-      const sorted = await sortAllowances(env, toSort, { now });
+      const sorted = await sortAllowances(env, toSort, { now, only: sortable, until: started + RUN_MS });
       if (sorted.waiting) out.sortWaiting = sorted.waiting;
       if (sorted.sorted) {
         out.sorted = sorted.sorted;
@@ -563,8 +599,9 @@ export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISO
       for (const it of k.items.filter((i) => i.also && !i.also.costItemId)) {
         // Some of the kid's lines aren't read yet: it may belong on one of them, so nothing is added to the budget yet
         if (unread.has(k.jobId) && !it.also.typed) { out.waiting = (out.waiting || 0) + 1; continue; }
-        // Not sorted yet: no line until it's known where it goes
+        // Not sorted yet: no line until it's known where it goes. Deleted in JobTread by a person: stays off
         if (it.also.pending) { out.waiting = (out.waiting || 0) + 1; continue; }
+        if (it.also.offByHand) continue;
         if (late()) { out.left++; continue; }
         try {
           const id = await makeAlso(env, ids, thingOf(k, it), { fetchImpl, now });
@@ -602,7 +639,8 @@ export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISO
       view = await checkinView(env, { photos: false, strict: true });
       kids = view.kids.filter((k) => !jobId || k.jobId === jobId);
     }
-    // Each allowance: its amount less what's bought on it now (its lines on the budget); written only when that changed
+    // Each allowance: its amount less what's bought on it now (its lines on the budget); written only when that changed,
+    // and only by the heartbeat's run (one at a time), never by a check-in's
     const spent = new Map();
     for (const k of kids) {
       for (const it of k.items) {
@@ -614,7 +652,7 @@ export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISO
     }
     const held = new Map((await env.DB.prepare('SELECT job_id, item_id, spent_cents FROM kid_allowances').all()).results.map((r) => [`${r.job_id}|${r.item_id}`, r.spent_cents || 0]));
     const allowanceKeys = [...new Set([...spent.keys(), ...[...held.keys()].filter((k) => open.has(k.split('|')[0]) && kids.some((x) => x.jobId === k.split('|')[0]))])];
-    for (const key of allowanceKeys) {
+    for (const key of settle ? allowanceKeys : []) {
       const cents = spent.get(key) || 0;
       // Nothing taken off it yet and nothing bought on it, or the same as last written: nothing to write
       if ((held.has(key) ? held.get(key) : 0) === cents) continue;
@@ -668,8 +706,9 @@ export async function writeKidNow(env, jobId, { fetchImpl = fetch } = {}) {
   const st = await readState(env.DB, 'jt');
   if (MODE !== 'on' || !(st.rehearsal?.ok && st.rehearsal.v === REHEARSAL_V)) return 'off';
   try {
-    const r = await writeKids(env, { fetchImpl, jobId, budget: 6, sort: false });
-    return r.errors.length || r.left ? 'later' : 'written';
+    const r = await writeKids(env, { fetchImpl, jobId, budget: 6, sort: false, settle: false });
+    // Something still waiting (to be sorted, or a line not read yet) isn't in JobTread yet: never said it is
+    return r.errors.length || r.left || r.waiting ? 'later' : 'written';
   } catch (err) {
     console.error('[kid-jt] now', err.message);
     return 'later';

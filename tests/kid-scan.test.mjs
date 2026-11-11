@@ -95,7 +95,7 @@ test('Nov 11: a shipper’s reference is often the store’s order number; a lab
   assert.equal(findBox(view2, reads2, { trackingNumbers: [], orderNumbers: [], po: '', store: '', items: [], references: ['SO-359672268-01'] })?.short, 'Rowan S.', 'the order number inside the label’s reference');
   // An Amazon box: its label has only Amazon's own tracking number. Delivered lately comes first
   const likely = likelyBoxes(view, reads, { store: 'Amazon', trackingNumbers: ['TBA123456789000'] });
-  assert.deepEqual(likely.map((x) => [x.short, x.why]), [['Ava E.', 'Delivered lately']]);
+  assert.deepEqual(likely.map((x) => [x.short, x.why]), [['Ava E.', 'From Amazon · Delivered lately']]);
   assert.deepEqual(likelyBoxes(view, reads, { store: 'Shop' }).map((x) => x.short), ['Rowan S.', 'Ava E.'], 'the store the label names first, then other deliveries');
 });
 
@@ -123,4 +123,62 @@ test('Nov 11: the product’s own box (its model number or its name), and the ki
   assert.equal(by({ items: ['Delta Raincan 52214 CZ Shower Head Chrome'] })?.short, 'Rowan S.', 'its name on its box');
   assert.equal(by({ names: ['ATTN: ROWAN'] })?.short, 'Rowan S.', '“Attn: Rowan” on the label');
   assert.equal(by({ names: ['Clareece Cunningham'] }), null, 'a staff member’s name isn’t a kid');
+});
+
+// ─── Nov 11 (Peter's labels): a box the emails know is never "nothing found" ───
+
+const nowIso = (daysAgo = 0) => new Date(Date.now() - daysAgo * 86400e3).toISOString();
+/** The Container Store's order: shipping and delivered emails only (no order email, no PO), its things on no selection */
+async function containerStore() {
+  const put = (id, at, read) => env.DB.prepare("INSERT INTO order_mail (mailbox, id, at, store, kind, state, read) VALUES ('pat@soardcharity.com', ?, ?, 'The Container Store', ?, 'read', ?)").bind(id, at, read.kind, JSON.stringify(read)).run();
+  await put('cs1', nowIso(7), { kind: 'shipped', orderNumber: '899120272624', tracking: [{ carrier: 'UPS', number: '1Z12D1R20300649275' }, { carrier: 'UPS', number: '1Z12D1R20300649284' }], items: [], shipTo: 'office' });
+  await put('cs2', nowIso(6), { kind: 'delivered', orderNumber: '899120272624', tracking: [], shipTo: 'office', items: [{ name: 'Elfa 24" 2-Runner Mesh Hanging Drawer Graphite', quantity: 2 }, { name: 'Elfa 24" 1-Runner Mesh Hanging Drawer Graphite', quantity: 1 }] });
+}
+const blank = { trackingNumbers: [], orderNumbers: [], po: '', store: '', items: [], references: [], models: [], names: [] };
+
+test('Peter’s Container Store box: its tracking finds its order, nobody’s yet, and it asks whose; a person’s answer places it', async () => {
+  const { checkinView, orderReads } = await import('../functions/api/_kid-checkin.js');
+  const { decide, WHOLE_ORDER } = await import('../functions/api/_kid-record.js');
+  await containerStore();
+  let view = await checkinView(env);
+  const sh = view.shipments.find((x) => x.key === 'The Container Store|899120272624');
+  assert.deepEqual([sh?.unplaced, sh?.stage, sh?.things.map((t) => t.qty)], [true, 'delivered', [2, 1]], 'a delivered shipment, asking whose it is');
+  const reads = await orderReads(env.DB);
+  // The label: UPS tracking, the shipper's references, Clareece and Liam Agans as who it's to
+  const label = { ...blank, trackingNumbers: ['1Z 12D 1R2 03 0064 9275'], references: ['146890757', 'L210769544'], names: ['CLAREECE CUNNINGHAM', 'LIAM AGANS'] };
+  assert.deepEqual(findBox(view, reads, label), { unplaced: 'The Container Store|899120272624', how: 'Tracking …649275', exact: true });
+  // Clareece: it's Ava's. Its things are Ava's now (bought on top of her selections), and the box finds her shipment
+  await decide(env.DB, { orderKey: sh.key, itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } });
+  view = await checkinView(env);
+  assert.equal(view.shipments.find((x) => x.key === sh.key).unplaced, undefined);
+  const ava = view.kids.find((k) => k.jobId === 'j-ava');
+  assert.deepEqual(ava.items.filter((i) => i.order?.key === sh.key).map((i) => [i.name.slice(0, 26), i.qty, Boolean(i.also)]), [['Elfa 24" 2-Runner Mesh Han', 2, true], ['Elfa 24" 1-Runner Mesh Han', 1, true]]);
+  const found = findBox(view, reads, label);
+  assert.deepEqual([found.short, found.items.length, found.exact], ['Ava E.', 2, true]);
+  // Not a kid's after all: off every list, and its label says so (known, on no list)
+  await decide(env.DB, { orderKey: sh.key, itemName: WHOLE_ORDER, decision: { type: 'notKid' } });
+  view = await checkinView(env);
+  assert.equal(view.shipments.some((x) => x.key === sh.key), false);
+  assert.deepEqual(Object.keys(findBox(view, reads, label)), ['known', 'how']);
+});
+
+test('the store from the tracking number (Amazon’s own, a UPS shipper account another email used), and the label’s words and names rank the likely boxes', async () => {
+  const { checkinView, orderReads } = await import('../functions/api/_kid-checkin.js');
+  const { storeOfTracking, likelyBoxes } = await import('../functions/api/_kid-scan.js');
+  await containerStore();
+  // Ava's shower curtain: on her selections, its order email never read (bought on another account)
+  await line('j-ava', 'Ava Example (2026)', 'a-curtain', 'Shower Curtain', 'Hotel Collection Fabric Shower Curtain', [part('Hotel Collection XL Fabric Shower Curtain')]);
+  const view = await checkinView(env);
+  const reads = await orderReads(env.DB);
+  assert.equal(storeOfTracking(['TBA336325732548'], reads), 'Amazon');
+  assert.equal(storeOfTracking(['1Z12D1R20399999999'], reads), 'The Container Store', 'another box from the same UPS account');
+  assert.equal(storeOfTracking(['1ZK180F30314821221'], reads), null);
+  // Linzi's Amazon box: "SHOWER CURTAIN" printed on it. Ava's curtain (not ordered, as far as the emails say) is the one
+  const likely = likelyBoxes(view, reads, { ...blank, trackingNumbers: ['TBA336325732548'], items: ['SHOWER CURTAIN'], names: ['Linzi Berkowitz'] });
+  assert.equal(likely[0].short, 'Ava E.');
+  assert.equal(view.kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.id === likely[0].item).name, 'Hotel Collection XL Fabric Shower Curtain');
+  assert.match(likely[0].why, /Its name is on the box/);
+  // Another box from the Container Store's UPS account, nothing else on it: its nobody's order is first
+  const cs = likelyBoxes(view, reads, { ...blank, trackingNumbers: ['1Z12D1R20399999999'] });
+  assert.deepEqual([cs[0].order, cs[0].why], ['The Container Store|899120272624', 'From The Container Store · Delivered lately']);
 });

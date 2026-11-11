@@ -579,6 +579,7 @@ function hereSheet(kid, it, { keep = false } = {}) {
   openSheet(`${head(kidTitle(kid), { kid: true })}
     <p class="item-name">${esc(it.name)}</p>
     ${factsHtml(factsOf(it))}
+    ${budgetPick(kid, it)}
     <div class="receipts">${waiting ? '<div class="receipt"><span>Waiting on this phone for the connection</span></div>' : rows}</div>
     ${last?.kind === 'receive' && !last.waiting ? '<button class="btn btn-big" type="button" id="reprint" data-focus>Print again</button>' : ''}
     ${waiting || !last ? '' : '<div class="btn-row"><button class="btn btn-text" type="button" id="undo">Undo the check-in</button></div>'}`, { keep });
@@ -604,6 +605,34 @@ function hereSheet(kid, it, { keep = false } = {}) {
     render();
   };
   bindMoves(kid, it);
+  bindBudget(kid, it);
+}
+
+/**
+ * Something typed in (no order to answer Wrong kid or line about): where its line goes on the kid's budget, next to one
+ * of their allowances or in Also bought. The site sorts it; a person's answer here stands over that
+ */
+function budgetPick(kid, it) {
+  if (!it.also?.typed || !kid.allowances?.length) return '';
+  const now = it.also.pending ? '' : it.also.allowItemId ? `allow:${it.also.allowItemId}` : 'also';
+  const opt = (v, t) => `<option value="${esc(v)}"${v === now ? ' selected' : ''}>${esc(t)}</option>`;
+  return `<div class="field"><label for="budget">On ${esc(kid.short)}’s budget</label><select id="budget">${now ? '' : '<option value="" selected>Being sorted</option>'}${kid.allowances.map((a) => opt(`allow:${a.itemId}`, `Next to the ${a.line} allowance`)).join('')}${opt('also', 'Also bought')}</select></div>`;
+}
+function bindBudget(kid, it) {
+  const sel = $('budget');
+  if (!sel) return;
+  sel.onchange = async () => {
+    if (!sel.value) return;
+    sel.disabled = true;
+    try {
+      await send('allow', { key: it.also.key, jobId: kid.jobId, itemId: sel.value.startsWith('allow:') ? sel.value.slice(6) : null });
+      toast('Its line moves on the budget in a minute');
+    } catch (err) {
+      toast(`Not saved: ${clean(err.message)}`);
+    } finally {
+      sel.disabled = false;
+    }
+  };
 }
 
 /** Say what happened to the labels, in a few words */
@@ -803,7 +832,7 @@ function decisionOf(kid, value) {
 function wrongKidSheet(fromKid, it) {
   let kid = fromKid;
   // Where it is now: a line, the allowance it's bought on, or Also bought
-  const here = (k) => (k === fromKid ? (it.also ? (it.also.allowItemId ? `allow:${it.also.allowItemId}` : 'also') : `line:${it.id}`) : '');
+  const here = (k) => (k === fromKid && !it.also?.pending ? (it.also ? (it.also.allowItemId ? `allow:${it.also.allowItemId}` : 'also') : `line:${it.id}`) : '');
   const draw = () => {
     openSheet(`${head('Where does it go?', { sub: esc(it.name), one: true })}
       <div class="kidpick">${state.kids.map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k === kid}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
@@ -1031,6 +1060,9 @@ async function read(image, preview) {
 }
 
 function showFound({ found, label, likely = [] }, preview) {
+  // Its order is known and nobody's yet: whose is it? (then it checks in like any shipment)
+  if (found?.unplaced) { const sh = state.shipments.find((x) => x.key === found.unplaced); if (sh) { whoseSheet(sh, { how: found.how, keep: true }); return; } }
+  if (found?.known) { knownSheet(found, preview); return; }
   const kid = found && kidById(found.kid);
   const items = kid ? found.items.map((id) => kid.items.find((i) => i.id === id)).filter((i) => i && !isHere(i)) : [];
   state.foundBoxes = Number(label?.boxTotal) || 1;
@@ -1074,14 +1106,78 @@ function showFound({ found, label, likely = [] }, preview) {
   // Nothing on the label ties it to an order (Amazon's and Crate & Barrel's emails never carry the box's tracking
   // number): the shipments it most likely came in (from the store the label names, delivered lately), then the rest
   // that were delivered and wait to be checked in, for one tap; or the packing slip inside
-  const keys = [];
-  // A box at the Office isn't one going to the house, or one checked in already
-  for (const x of likely) { const sh = state.shipments.find((s2) => s2.items.some((i) => i.id === x.item)); if (sh && !['in', 'house'].includes(stageOf(sh)) && !keys.includes(sh.key)) keys.push(sh.key); }
-  for (const sh of state.shipments) if (stageOf(sh) === 'delivered' && !keys.includes(sh.key)) keys.push(sh.key);
-  const cards = keys.slice(0, 8).map((k) => shipCard(state.shipments.find((x) => x.key === k), { compact: true })).join('');
-  openSheet(`${head(cards ? 'Which shipment is it?' : 'Couldn’t match this box', { sub: bits.length ? `Read: ${bits.map(esc).join(' · ')}` : 'Nothing readable on the label' })}
+  // Best first, each with why: a shipment (a kid's, or nobody's yet), or a kid's thing no email has ordered
+  const seen = new Set();
+  const choices = [];
+  for (const x of likely) {
+    if (x.order) { if (!seen.has(x.order)) { seen.add(x.order); choices.push({ html: shipCard(state.shipments.find((s2) => s2.key === x.order), { compact: true }), why: x.why }); } continue; }
+    const k = kidById(x.kid);
+    const it = k?.items.find((i) => i.id === x.item);
+    if (!it) continue;
+    const sh = state.shipments.find((s2) => s2.items.some((i) => i.id === x.item));
+    // A box at the Office isn't one going to the house, or one checked in already
+    if (sh && ['in', 'house'].includes(stageOf(sh))) continue;
+    if (sh) { if (!seen.has(sh.key)) { seen.add(sh.key); choices.push({ html: shipCard(sh, { compact: true }), why: x.why }); } continue; }
+    choices.push({ html: `<button class="row has-face likely-row" type="button" data-kid="${esc(k.jobId)}" data-id="${esc(it.id)}">${face(k, 32)}<span class="row-name">${esc(it.name)}</span><span class="row-sub">${esc(`${k.short} · ${it.line}${it.order ? '' : ' · no order email'}`)}</span></button>`, why: x.why });
+  }
+  // Nothing on the label points anywhere: what was delivered and waits to be checked in
+  if (!choices.length) for (const sh of state.shipments) if (stageOf(sh) === 'delivered' && choices.length < 6) choices.push({ html: shipCard(sh, { compact: true }), why: '' });
+  const cards = choices.slice(0, 6).map((c) => `<div class="likely">${c.why ? `<span class="likely-why">${esc(c.why)}</span>` : ''}${c.html}</div>`).join('');
+  openSheet(`${head(cards ? 'Which is it?' : 'Couldn’t match this box', { sub: bits.length ? `Read: ${bits.map(esc).join(' · ')}` : 'Nothing readable on the label' })}
     ${cards ? `<div class="ship-pick">${cards}</div>` : `<img class="photo" src="${preview}" alt="The photo of the box's label" />`}
     <div class="sheet-foot"><button class="btn ${cards ? '' : 'btn-primary '}btn-big" type="button" data-rescan="1"${cards ? '' : ' data-focus'}>Scan the packing slip or the product’s box</button>
+    <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div></div>`, { keep: true });
+}
+
+/**
+ * An order nobody's placed (no PO, and its things fit no one's selections: bought on an allowance, or for the office):
+ * what's in it, and whose it is. A kid: placed as for a PO with their name (their selections, an allowance, or Also
+ * bought), and its shipment opens, to check in and print. Not a kid's: off the list for good
+ */
+function whoseSheet(sh, { how = '', keep = false } = {}) {
+  const things = sh.things || [];
+  openSheet(`${head(esc(sh.store), { sub: esc([how, sh.orderNumber ? `Order ${sh.orderNumber}` : null, sh.buyer ? `${sh.buyer} ordered it` : null, shipStatus(sh)[1]].filter(Boolean).join(' · ')) })}
+    <div class="pick">${things.map((t) => `<div class="look"><b>${esc(t.name)}</b>${t.qty > 1 ? `<span>${t.qty} of them</span>` : ''}</div>`).join('') || '<div class="look"><span>Its emails name no things</span></div>'}</div>
+    <span class="label-above">Whose is it?</span>
+    <div class="kidpick">${state.kids.map((k) => `<button class="chip has-face" type="button" data-whose="${esc(k.jobId)}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
+    <div class="btn-row"><button class="btn btn-text" type="button" id="notkid">Not a kid’s</button></div>`, { keep, label: `${sh.store}: whose is it?` });
+  const answer = async (decision, btn) => {
+    const buttons = [...document.querySelectorAll('#sheet-root button')];
+    buttons.forEach((b) => { b.disabled = true; });
+    btn.classList.add('working');
+    let r;
+    try {
+      r = await sendOrKeep('decide', { orderKey: sh.key, items: [{ itemName: '*', decision }] });
+    } catch (err) {
+      buttons.forEach((b) => { b.disabled = false; });
+      btn.classList.remove('working');
+      tones.warn();
+      toast(`Not saved: ${clean(err.message)}`);
+      return;
+    }
+    if (decision.type === 'notKid') { tones.undo(); await close(); render(); toast(`${sh.store}: not a kid’s, off the list`); return; }
+    const kid = kidById(decision.kid);
+    if (r.queued) { await close(); toast(`${kid?.short || 'Their'}’s. It goes on their list when the connection is back`); return; }
+    // Placed: its shipment, ready to check in and print
+    const now = state.shipments.find((x) => x.key === sh.key && !x.unplaced);
+    tones.ok();
+    if (now && waitingOf(now).length) { shipmentSheet(now.key, { keep: true, how: `${kid?.short}’s` }); return; }
+    await close();
+    render();
+    toast(`${sh.store}: ${kid?.short}’s`);
+  };
+  document.querySelectorAll('#sheet-root [data-whose]').forEach((b) => { b.onclick = () => answer({ type: 'kid', kid: b.dataset.whose }, b); });
+  $('notkid').onclick = () => answer({ type: 'notKid' }, $('notkid'));
+}
+
+/** A box whose order the emails know but no list has (marked not a kid's, too old, or no things read): whose it is, or typed in */
+function knownSheet(found, preview) {
+  const k = found.known;
+  if (k.things?.length) { whoseSheet({ key: k.key, store: k.store, orderNumber: k.orderNumber, orderedAt: k.at, things: k.things, items: [], stage: 'ordered', unplaced: true }, { how: `${found.how} · on no list`, keep: true }); return; }
+  openSheet(`${head(esc(k.store), { sub: esc([found.how, k.orderNumber ? `Order ${k.orderNumber}` : null, `ordered ${dayOf(k.at)}`].join(' · ')) })}
+    <p class="why-line">Its emails don’t say what’s in it. Scan the packing slip or the product’s box, or type it in.</p>
+    <img class="photo" src="${preview}" alt="The photo of the box's label" />
+    <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan the packing slip or the product’s box</button>
     <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div></div>`, { keep: true });
 }
 
@@ -2112,7 +2208,7 @@ const waitingOf = (sh) => sh.items.filter((i) => { const it = itemOfId(i.id); re
 // Checked in on this phone and not sent yet: it counts as checked in, and says it's waiting
 const sendingOf = (sh) => sh.items.some((i) => (itemOfId(i.id)?.receipts || []).some((r) => r.waiting));
 /** The stage as the page shows it: a shipment all checked in on this phone is checked in, even before it's sent */
-const stageOf = (sh) => (sh.stage !== 'in' && !waitingOf(sh).length ? 'in' : sh.stage);
+const stageOf = (sh) => (sh.unplaced ? sh.stage : sh.stage !== 'in' && !waitingOf(sh).length ? 'in' : sh.stage);
 // In a section that already says Delivered, the chip says only when
 const shipStatus = (sh) => {
   const st = stageOf(sh);
@@ -2129,6 +2225,17 @@ const shipStatus = (sh) => {
 function shipCard(sh, { compact = false } = {}) {
   if (!sh) return '';
   const [cls, words] = shipStatus(sh);
+  // Nobody's yet (no PO, its things on no one's selections: an allowance buy, or the office's): what's in it, whose is it?
+  if (sh.unplaced) {
+    const things = sh.things || [];
+    const shown = things.slice(0, compact ? 2 : 3);
+    return `<button class="ship card stage-${cls} unplaced" type="button" data-ship="${esc(sh.key)}" aria-label="${esc(`${sh.store}, ${words}, not on a kid’s list: whose is it?`)}">
+    <span class="ship-head"><b class="ship-name">${esc(sh.store)}</b><span class="ship-chip ${cls}">${esc(words)}</span>${sh.orderNumber ? `<span class="ship-order">Order ${esc(sh.orderNumber)}${sh.buyer ? ` · ${esc(sh.buyer)}` : ''}</span>` : ''}</span>
+    <span class="ship-items">${shown.map((t) => `<span class="ship-item"><span class="face ini q" aria-hidden="true">?</span><span class="si-name">${esc(t.name)}${t.qty > 1 ? ` (${t.qty})` : ''}</span></span>`).join('')}
+      ${things.length > shown.length ? `<span class="ship-more">and ${plural(things.length - shown.length, 'more thing')}</span>` : ''}</span>
+    ${compact ? '' : `<span class="ship-go"><span>Whose is it?</span>${ICON.chev}</span>`}
+  </button>`;
+  }
   const waiting = waitingOf(sh);
   const here = sh.items.filter((i) => !waiting.includes(i));
   const kidsWaiting = [...new Set(waiting.map((i) => kidOfItem(i.id)?.jobId).filter(Boolean))].map(kidById);
@@ -2147,7 +2254,9 @@ function shipCard(sh, { compact = false } = {}) {
 /** Check in, All: shipments by stage; Needs a look below what's on the way, so what arrived leads */
 function shipmentsHtml(looks = '') {
   const weekAgo = Date.now() - 7 * DAY;
-  const at = (st) => state.shipments.filter((x) => stageOf(x) === st);
+  // Nobody's orders not here yet wait folded on their own (the list is the kids'); delivered, one asks whose it is with the rest
+  const at = (st) => state.shipments.filter((x) => stageOf(x) === st && (!x.unplaced || st === 'delivered'));
+  const whose = state.shipments.filter((x) => x.unplaced && stageOf(x) !== 'delivered');
   const groups = {
     delivered: at('delivered').filter((x) => Date.parse(x.deliveredAt || 0) >= weekAgo),
     pickup: at('pickup'),
@@ -2169,6 +2278,7 @@ function shipmentsHtml(looks = '') {
     + section('out', 'Out for delivery', groups.out)
     + section('shipped', 'On the way', groups.shipped)
     + looks
+    + section('whose', 'Not on a kid’s list yet', whose, true)
     + section('earlier', 'Delivered more than a week ago', groups.earlier, true)
     + section('ordered', 'Ordered, not shipped yet', groups.ordered, true)
     + section('house', 'Shipped to the house', groups.house, true)
@@ -2184,6 +2294,7 @@ function shipmentsHtml(looks = '') {
 function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = false } = {}) {
   const sh = state.shipments.find((x) => x.key === key);
   if (!sh) return;
+  if (sh.unplaced) { whoseSheet(sh, { how, keep }); return; }
   const [, words] = shipStatus(sh);
   const waiting = waitingOf(sh);
   const done = sh.items.filter((i) => !waiting.includes(i));

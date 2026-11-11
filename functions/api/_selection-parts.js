@@ -311,7 +311,7 @@ async function run(env, st, { fetchImpl, now }) {
     const next = (jobs.findIndex((j) => j.id === job.id) + 1) % jobs.length;
     try {
       const lines = await chosenLines(env, job.id, fetchImpl);
-      const have = new Map(((await env.DB.prepare('SELECT item_id, hash, read_by, read_at, words_key FROM kid_parts WHERE job_id = ?').bind(job.id).all()).results || []).map((r) => [r.item_id, r]));
+      const have = new Map(((await env.DB.prepare('SELECT item_id, hash, read_by, read_at, words_key, cents FROM kid_parts WHERE job_id = ?').bind(job.id).all()).results || []).map((r) => [r.item_id, r]));
       let finished = true;
       for (const line of lines) {
         const hash = lineHash(line);
@@ -326,6 +326,11 @@ async function run(env, st, { fetchImpl, now }) {
           continue;
         }
         if (prev?.hash === hash && (!missed || (now - missedAt < MISS_RETRY_MS && missedAt >= MISSED_BEFORE))) continue;
+        // Only its amount changed (the site takes what's bought on an allowance off it): the amount kept, its reading stands
+        if (prev && prev.hash !== hash && prev.read_by && !String(prev.read_by).startsWith('none') && lineHash({ ...line, cost: (prev.cents ?? 0) / 100 }) === prev.hash) {
+          await env.DB.prepare('UPDATE kid_parts SET cents = ?, hash = ? WHERE job_id = ? AND item_id = ?').bind(cents(line.cost), hash, job.id, line.id).run();
+          continue;
+        }
         let parts = simpleParts(line);
         let by = 'rules';
         if (!parts) {

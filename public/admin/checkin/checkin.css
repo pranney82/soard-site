@@ -588,3 +588,17 @@ body[data-mode="out"] .sheet-head .tag-here { background: #111111; color: #FFFFF
 .refused { background: #18181B; color: #FFFFFF; border-radius: 16px; padding: 14px 16px; display: grid; gap: 12px; }
 .rf-row { display: grid; gap: 3px; }
 .rf-row span { color: rgba(255, 255, 255, 0.82); font-size: 14.5px; }
+
+/* Orders nobody's placed (Nov 11 2026): a shipment that asks whose it is */
+.ship.unplaced { border-style: dashed; }
+.face.ini.q { width: 24px; height: 24px; font-size: 13px; background: var(--chip); color: var(--muted); }
+.ship.unplaced .ship-go span { font-weight: 700; color: var(--ink); }
+/* The scan's likely boxes: each with why it's likely, above it */
+.likely { display: grid; gap: 4px; margin-top: 10px; }
+.likely:first-child { margin-top: 0; }
+.likely-why { font-size: 13px; font-weight: 650; color: var(--muted); padding-left: 4px; }
+.likely .ship.card { margin-top: 0; }
+.likely-row { border: 1px solid var(--line); border-radius: 16px; background: var(--card); grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; }
+.likely-row .face { grid-row: 1 / span 2; }
+.likely-row .row-name, .likely-row .row-sub { grid-column: 2; }
+.kidpick .chip.working { opacity: 0.6; }

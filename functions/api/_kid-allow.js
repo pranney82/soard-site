@@ -35,7 +35,7 @@ const usd = (cents) => (cents ? ` ($${(cents / 100).toFixed(2)})` : '');
  * One kid's things, each to one of their allowances or none → Map of each thing's key → the allowance's line id, or
  * null for none; things the answer left out aren't in it. null: no answer. A spending cap reached throws
  */
-export async function aiSort(env, allowances, things) {
+export async function aiSort(env, allowances, things, { timeoutMs = AI_TIMEOUT_MS } = {}) {
   if (!env.AI?.run || !allowances.length || !things.length) return null;
   const input = [
     'Allowances:',
@@ -51,7 +51,7 @@ export async function aiSort(env, allowances, things) {
         messages: [{ role: 'system', content: SORT_PROMPT }, { role: 'user', content: input }],
         max_tokens: 800, temperature: 0, response_format: { type: 'json_schema', json_schema: SORT_SCHEMA },
       }, viaGateway('kid-allowances')),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), AI_TIMEOUT_MS); }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), timeoutMs); }),
     ]);
     let j = out?.response ?? out;
     if (typeof j === 'string') { try { j = JSON.parse(j.slice(j.indexOf('{'), j.lastIndexOf('}') + 1)); } catch { return null; } }
@@ -80,16 +80,25 @@ export async function keepSort(DB, key, jobId, itemId, how, now = new Date().toI
       ON CONFLICT(key) DO UPDATE SET job_id = excluded.job_id, item_id = excluded.item_id, how = excluded.how, at = excluded.at`).bind(key, jobId, itemId, how, now).run();
 }
 
+// Asked about this many at a time, so a long list (a kid's first sort) is never an answer cut off
+const AT_ONCE = 20;
+
 /**
- * Sort each kid's things waiting to be sorted (also.pending) → { sorted, waiting, capped? }. A thing the answer left
- * out is asked again on the next run; after SORT_TRIES, it's Also bought. Never throws
+ * Sort each kid's things waiting to be sorted (also.pending; only: which of them) → { sorted, waiting, capped? }. A
+ * thing the answer left out is asked again on the next run; after SORT_TRIES, it's Also bought. It stops at until (the
+ * run's time), leaving the rest for the next run. Never throws
  */
-export async function sortAllowances(env, kids, { now = new Date().toISOString() } = {}) {
+export async function sortAllowances(env, kids, { now = new Date().toISOString(), only = () => true, until = Infinity } = {}) {
   await ensureRecord(env.DB);
   const out = { sorted: 0, waiting: 0 };
+  const batches = [];
   for (const k of kids) {
-    const things = k.items.filter((i) => i.also?.pending);
-    if (!things.length) continue;
+    const all = k.items.filter((i) => i.also?.pending && only(k, i));
+    for (let i = 0; i < all.length; i += AT_ONCE) batches.push({ k, things: all.slice(i, i + AT_ONCE) });
+  }
+  for (const { k, things } of batches) {
+    // Out of time: the rest wait for the next run (nothing is counted as a try)
+    if (out.capped || Date.now() > until - 2000) { out.waiting += things.length; continue; }
     // No AI here (a test, a copy of the site without it): nothing to wait for, so Also bought
     if (!env.AI?.run) {
       for (const it of things) await keepSort(env.DB, it.also.key, k.jobId, null, 'unsorted', now);
@@ -98,9 +107,9 @@ export async function sortAllowances(env, kids, { now = new Date().toISOString()
     }
     let answer = null;
     try {
-      answer = await aiSort(env, k.allowances || [], things);
+      answer = await aiSort(env, k.allowances || [], things, { timeoutMs: Math.max(3000, Math.min(AI_TIMEOUT_MS, until - Date.now())) });
     } catch (err) {
-      if (aiCapped(err)) { out.capped = true; out.waiting += things.length; break; }
+      if (aiCapped(err)) { out.capped = true; out.waiting += things.length; continue; }
     }
     for (const it of things) {
       const key = it.also.key;

@@ -252,7 +252,7 @@ test('the rehearsal on the sandbox job passes against JobTread', async () => {
   const r = await rehearse(env, { fetchImpl: jt.fetch, now: '2026-11-09T20:00:00Z' });
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.deepEqual(r.steps.map((s) => s.name), ['fields', 'a line made once though asked twice', 'written', 'nothing new, nothing written', 'a hand edit kept', 'news after a hand edit', 'put back',
-    'a line next to its allowance', 'the allowance down by it', 'moved to Also bought, the allowance back', 'the allowance put back']);
+    'a line next to its allowance', 'the allowance down by it', 'moved to Also bought, the allowance back', 'moved next to its allowance again', 'the allowance put back', 'a real allowance’s group']);
 });
 
 test('POST: check in, print, JobTread; an unknown action is refused', async () => {

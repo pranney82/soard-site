@@ -152,9 +152,10 @@ export function orderGroups(reads) {
  * One order → { decision: 'placed' | 'not-kid' | 'look' | 'skip', kid, how, items: [{ name, line, part, score, how } | { name, look }], why }
  * jobs: [{ id, name }], lines: [{ jobId, itemId, lineName, words, wordsKey, parts }], staff: Set of lower-case names
  */
-export function matchOrder(order, { jobs, lines, staff = new Set(), templates = templateLines(lines) }) {
+export function matchOrder(order, { jobs, lines, staff = new Set(), templates = templateLines(lines), kid = null }) {
   if (!order.items.length) return { decision: 'skip', why: 'no items read' };
-  const po = kidFromPo(order.po, jobs, staff);
+  // A person said whose the whole order is: as a PO with the kid's name
+  const po = kid ? { kid, said: true } : kidFromPo(order.po, jobs, staff);
   if (po?.notKid) return { decision: 'not-kid', why: `PO "${order.po}"` };
   const per = order.items.map((it) => ({ it, c: candidates(it, lines, templates) }));
   const jobName = (id) => String(jobs.find((j) => j.id === id)?.name || id).replace(/\s*\(\d{4}\)\s*$/, '');
@@ -175,7 +176,7 @@ export function matchOrder(order, { jobs, lines, staff = new Set(), templates = 
       if (loose) return { name: it.name, itemId: loose.itemId, line: loose.line, part: loose.part, score: 2, how: 'title words' };
       return { name: it.name, alsoBought: true };
     });
-    return { decision: items.some((i) => i.look) ? 'look' : 'placed', kid: po.kid, how: `PO "${order.po}"`, items };
+    return { decision: items.some((i) => i.look) ? 'look' : 'placed', kid: po.kid, how: po.said ? 'a person said whose' : `PO "${order.po}"`, items };
   }
   // No PO name: the items say which kid, when they all point at one and nothing else comes close
   const strong = per.map(({ it, c }) => ({ it, best: c[0], next: c.find((x) => x.jobId !== c[0]?.jobId) }));

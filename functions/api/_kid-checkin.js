@@ -14,9 +14,11 @@
 import { matchOrder, orderGroups, templateLines, namesOf, fit, tokensOf, groupKey } from './_kid-match.js';
 import { loadCostRecords } from './_makeover-costs.js';
 import { matchProject } from './_reveals.js';
-import { readRecord, readState, decisionKey, alsoKey, shelfName, SHELVES, FLOOR, outState } from './_kid-record.js';
+import { readRecord, readState, decisionKey, alsoKey, shelfName, SHELVES, FLOOR, outState, WHOLE_ORDER } from './_kid-record.js';
 
 const ORDER_KINDS = new Set(['order', 'shipped', 'out', 'delivered', 'pickup']);
+// An order nobody's placed shows (asking whose it is) this long after it was ordered
+const UNPLACED_DAYS = 30;
 const UNDO_KINDS = new Set(['cancelled', 'refund', 'return']);
 // Where a shipment is: the order kinds, and a delay email (its new expected day, never a sign it shipped)
 const SHIP_KINDS = new Set([...ORDER_KINDS, 'delayed']);
@@ -107,6 +109,10 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   // Who ordered, by first name: "Clareece", not her mailbox
   const firstOf = new Map((dir.accounts || []).map((a) => [String(a.email || '').toLowerCase(), String(a.name || '').split(/\s+/)[0]]));
   const templates = templateLines(lines);
+  // An allowance seen once stays the kid's (its words alike on another open makeover made it one): it isn't matched to
+  // orders as a selection, whoever else's budget changes
+  const allowanceAt = (l) => /allowance/i.test(l.groupName) && (templates.has(`${l.jobId}|${l.itemId}`) || record.allowLines.has(`${l.jobId}|${l.itemId}`));
+  for (const l of lines) if (allowanceAt(l)) templates.add(`${l.jobId}|${l.itemId}`);
   const live = await readState(DB, 'live');
   // Each makeover's Project Manager (the selection reader keeps it): they load out, so the page opens on Check out for them
   const jobState = new Map((parse((await rows(DB, "SELECT data FROM kid_parts_state WHERE key = 'state'"))[0]?.data, {}).jobs || []).map((j) => [j.id, j]));
@@ -127,7 +133,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     if (templates.has(`${l.jobId}|${l.itemId}`)) {
       // An allowance: a sum set aside for a kind of thing ("Decor: Books, wall art, shelves, decorative objects"), in a
       // Selection & Allowance group. A labor line that's alike on every makeover ("Plumbing Final") is a template too, not one
-      if (/allowance/i.test(l.groupName)) kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120), cents: l.cents });
+      if (allowanceAt(l)) kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120), cents: l.cents });
       continue;
     }
     const seen = new Map();
@@ -162,9 +168,12 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const alsoItem = (kid, key, name, { qty = 1, cents = null, order = null, donated = false, typed = false, allow = null, pending = false } = {}) => {
     let it = itemById(kid, key, 'also');
     if (!it) {
-      const made = record.also.find((a) => a.key === key && a.jobId === kid.jobId && !a.retiredAt);
+      const rec = record.also.find((a) => a.key === key && a.jobId === kid.jobId);
+      const made = rec && !rec.retiredAt ? rec : null;
       it = { id: `${key}|also`, itemId: key, partKey: 'also', name, line: allow ? `${allow.line} allowance` : 'Also bought', qty, cents, source: donated ? 'donated' : 'buy', order, receipts: [],
-        also: { key, typed, costItemId: made?.costItemId || null, allowItemId: allow?.itemId || null, allowLine: allow?.line || null, rowAllow: made ? made.allowItemId || null : undefined, ...(pending ? { pending: true } : {}) } };
+        also: { key, typed, costItemId: made?.costItemId || null, allowItemId: allow?.itemId || null, allowLine: allow?.line || null, rowAllow: made ? made.allowItemId || null : undefined,
+          // A person deleted its line in JobTread: it stays off the budget (it's still the kid's to check in)
+          ...(rec?.offByHand ? { offByHand: true } : {}), ...(pending ? { pending: true } : {}) } };
       kid.items.push(it);
     }
     return it;
@@ -187,8 +196,14 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const elsewhere = new Set(reads.filter((r) => r.read.shipTo === 'elsewhere').map((r) => `${r.store}|${r.read.orderNumber}`));
   const needsLook = [];
   let orders = 0;
+  // Orders nobody's placed (no PO, and nothing in them fits a selection): bought on an allowance, or for the office.
+  // Each shows as a shipment asking whose it is, until a person says (a kid, or not a kid's)
+  const unplaced = [];
   for (const g of orderGroups(reads)) {
-    const m = matchOrder(g, { jobs, lines, staff, templates });
+    // A person's answer for the whole order: not a kid's (it's gone from the list), or whose (as a PO with their name)
+    const said = record.decisions.get(decisionKey(g.key, WHOLE_ORDER));
+    if (said?.type === 'notKid' || said?.type === 'cancelled') continue;
+    const m = matchOrder(g, { jobs, lines, staff, templates, kid: said?.type === 'kid' && kidOf.has(said.kid) ? said.kid : null });
     const undo = undoes.get(g.key);
     const whole = undo && undo.items.length && g.items.every((it) => undo.items.some((u) => lower(u.name) === lower(it.name)));
     if (whole) continue;
@@ -203,7 +218,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
       // The reader keeps an item's price in cents; an older read had it as written
       const cents = Number.isFinite(Number(it.cents)) && Number(it.cents) > 0 ? Math.round(Number(it.cents)) : priceCents(it.price);
       const d = record.decisions.get(decisionKey(g.key, it.name));
-      const put = (kid, target) => { Object.assign(target, { order: { ...order, cents }, orderedAs: it.name, before }); current.set(it.name, target.also ? 'also' : `line:${target.id}`); placed++; };
+      const put = (kid, target) => { Object.assign(target, { order: { ...order, cents }, orderedAs: it.name, before }); current.set(it.name, target.also ? (target.also.allowItemId ? `allow:${target.also.allowItemId}` : 'also') : `line:${target.id}`); placed++; };
       if (d) {
         // A person said: that answer stands over the matcher's
         const kid = d.kid && kidOf.get(d.kid);
@@ -251,6 +266,11 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
         if (!asked.has(it.name) && !record.decisions.get(decisionKey(g.key, it.name))) looks.push({ name: it.name, look: `part of the order was ${partly}: is this one?`, current: current.get(it.name) || null });
       }
     }
+    // Nobody's: no thing in it placed by an answer, nothing to ask item by item, not going to a house, and recent
+    if (m.decision === 'unplaced' && !placed && !looks.length && !order.elsewhere && Date.now() - Date.parse(g.at) < UNPLACED_DAYS * 86400e3) {
+      unplaced.push({ key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: order.buyer,
+        things: g.items.map((it) => ({ name: it.name, qty: Math.max(1, Math.round(Number(it.quantity) || 1)), cents: Number.isFinite(Number(it.cents)) && Number(it.cents) > 0 ? Math.round(Number(it.cents)) : priceCents(it.price) })) });
+    }
     if (looks.length) {
       // Kids by the short names the page uses ("Peter R.")
       const shortly = (s) => kids.reduce((t, k) => t.split(String(k.name).replace(/\s*\(\d{4}\)\s*$/, '')).join(k.short), String(s || ''));
@@ -273,7 +293,9 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     if (!kid) continue;
     let it = itemById(kid, r.itemId, r.partKey) || kid.items.find((x) => x.itemId === r.itemId && lower(x.name) === lower(r.name))
       // Checked in as Also bought, and since found on one of the kid's lines (their lines were read later): it follows
-      || (r.partKey === 'also' && !record.also.some((a) => a.key === r.itemId && a.typed) ? kid.items.find((x) => lower(x.orderedAs) === lower(r.name)) : null);
+      || (r.partKey === 'also' && !record.also.some((a) => a.key === r.itemId && a.typed) ? kid.items.find((x) => lower(x.orderedAs) === lower(r.name)) : null)
+      // Checked in on an allowance by the page before Nov 11 2026 (a part "allow:…" of the allowance line): the thing bought on it now
+      || (String(r.partKey).startsWith('allow:') ? kid.items.find((x) => x.also?.allowItemId === r.itemId && (lower(x.orderedAs) === lower(r.name) || lower(x.name) === lower(r.name))) : null);
     if (!it) {
       const l = r.partKey === 'also' ? null : lineOf.get(`${r.jobId}|${r.itemId}`);
       it = { id: `${r.itemId}|${r.partKey}`, itemId: r.itemId, partKey: r.partKey, name: r.name || 'Checked in', line: l?.lineName || r.line || 'A line that changed', qty: 0, cents: null, source: 'buy', order: null, receipts: [], gone: !l };
@@ -296,7 +318,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     const here = kids.flatMap((k) => k.items.filter((i) => (i.status === 'here' || i.status === 'partly') && (i.shelves || [i.shelf]).includes(s)).map(() => k.jobId));
     return { shelf: s, name: shelfName(s), kid: kid?.jobId || (s === FLOOR ? null : record.shelves.get(s) || null), things: here.length };
   });
-  return { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, await orderReads(DB, SHIP_KINDS, strict)) };
+  return { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, await orderReads(DB, SHIP_KINDS, strict), unplaced) };
 }
 
 /** For an item a person places: each kid's likeliest open part ({ [jobId]: item id }), by the designer's words */
@@ -341,11 +363,15 @@ const sameThing = (named, it) => {
  * joins its order by its tracking number.
  * → [{ key, store, orderNumber, orderedAt, stage, shippedAt, outAt, deliveredAt, expected, checkedAt, house, items: [{ kid, id, delivered }] }]
  */
-export function shipmentsOf(kids, reads) {
-  // A shipping email with no order number ("store|email:…") belongs to the order with the same tracking number
+/** An email's order: its own, or (a shipping email with no order number, "store|email:…") the order with the same tracking number */
+export function orderKeyOf(reads) {
   const byTracking = new Map();
   for (const r of reads) if (r.read.orderNumber) for (const t of r.read.tracking || []) byTracking.set(t.number, groupKey(r));
-  const keyOf = (r) => { const k = groupKey(r); if (!k.includes('|email:')) return k; return (r.read.tracking || []).map((t) => byTracking.get(t.number)).find(Boolean) || k; };
+  return (r) => { const k = groupKey(r); if (!k.includes('|email:')) return k; return (r.read.tracking || []).map((t) => byTracking.get(t.number)).find(Boolean) || k; };
+}
+
+export function shipmentsOf(kids, reads, unplaced = []) {
+  const keyOf = orderKeyOf(reads);
   const mail = new Map();
   for (const r of [...reads].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
     const k = keyOf(r);
@@ -389,6 +415,13 @@ export function shipmentsOf(kids, reads) {
     const stage = !waiting.length ? 'in' : t.house ? 'house' : waiting.some((i) => i.delivered) ? 'delivered' : t.pickupAt ? 'pickup' : t.outAt ? 'out' : t.shippedAt ? 'shipped' : 'ordered';
     const lastIn = kids.flatMap((k) => k.items.filter((i) => i.order?.key === sh.key)).flatMap((i) => i.receipts || []).filter((r) => r.kind === 'receive' && !r.undone).map((r) => r.at).sort().pop() || null;
     out.push({ ...sh, stage, house: Boolean(t.house), shippedAt: t.shippedAt || null, outAt: t.outAt || null, pickupAt: t.pickupAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null, checkedAt: stage === 'in' ? lastIn : null, items: sh.items.map(({ here, ...i }) => i) });
+  }
+  // Nobody's orders: a shipment like any other (delivered, on the way), its things by name, asking whose it is
+  for (const u of unplaced) {
+    const t = mail.get(u.key) || {};
+    const stage = t.house ? 'house' : t.deliveredAt ? 'delivered' : t.pickupAt ? 'pickup' : t.outAt ? 'out' : t.shippedAt ? 'shipped' : 'ordered';
+    if (stage === 'house') continue;
+    out.push({ key: u.key, store: u.store, orderNumber: u.orderNumber || null, orderedAt: u.at, buyer: u.buyer, unplaced: true, things: u.things, items: [], stage, house: false, shippedAt: t.shippedAt || null, outAt: t.outAt || null, pickupAt: t.pickupAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null, checkedAt: null });
   }
   const rank = { delivered: 0, pickup: 1, out: 2, shipped: 3, ordered: 4, house: 5, in: 6 };
   const when = (x) => x.stage === 'delivered' ? x.deliveredAt : x.stage === 'pickup' ? x.pickupAt : x.stage === 'out' ? x.outAt : x.stage === 'in' ? x.checkedAt : x.orderedAt;

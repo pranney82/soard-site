@@ -14,6 +14,7 @@
  *   ?reprint=1 { tap }                                             a check-in's labels again
  *   ?decide=1  { orderKey, items: [{ itemName, decision }] }      Needs a look and Wrong kid answers
  *   ?other=1   { tap, jobId, name, cents, donated, units, boxes } something else that came, typed in
+ *   ?allow=1   { key, jobId, itemId? }                             a person's answer: on that allowance, or (none) Also bought
  *   ?shelf-labels=1 { shelves: ['1', …] }                          the shelves' own signs
  *   ?out=1     { items: [{ tap, ref, box }] } a load (Confirm), each one box of one check-in, out to the house
  *              → { results: [{ tap, repeat } | { tap, error, status }] } (or one { tap, ref, box })
@@ -26,6 +27,7 @@ import { readLabel, findBox, likelyBoxes } from './_kid-scan.js';
 import { receive, undoMany, moveShelf, decide, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { shelfLabel } from './_kid-labels.js';
+import { keepSort } from './_kid-allow.js';
 import { printLabels, printReceipts, labelsOf, printerStatus, printerSetup, PRINTER_URL, PRINTER_USER } from './_kid-print.js';
 import { verifyJwt } from './_middleware.js';
 
@@ -200,6 +202,12 @@ export async function onRequestPost(context) {
       }
       // Whoever had it before is written too (Wrong kid moves it off them)
       for (const k of [...kids, ...(body.from ? [String(body.from)] : [])]) context.waitUntil?.(writeKidNow(env, k));
+    } else if (q.get('allow')) {
+      // A person's answer for something bought on top (typed in): on this allowance, or Also bought (no itemId). It stands
+      // over the site's sorting, and its line moves on the next run
+      if (!body.key || !body.jobId) return Response.json({ success: false, error: 'Which thing? Reload the page.' }, { status: 400, headers });
+      await keepSort(env.DB, String(body.key), String(body.jobId), body.itemId ? String(body.itemId) : null, 'person');
+      jobId = String(body.jobId);
     } else if (q.get('shelf-labels')) {
       const shelves = (Array.isArray(body.shelves) ? body.shelves : SHELVES).map(String).filter((s) => SHELVES.includes(s)).slice(0, 29);
       const r = await printLabels(env, shelves.map((s) => shelfLabel({ shelf: s, name: shelfName(s) })));
