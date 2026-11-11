@@ -176,7 +176,8 @@ export async function onRequestPost(context) {
       action,
       entityType,
       entitySlug,
-      entityName: getEntityName(data, entityType),
+      // A save through the SOARD connection for Claude says so (./_mcp/pages.js)
+      entityName: `${getEntityName(data, entityType) || ''}${context.data?.via || ''}` || null,
       changes: isCreate ? null : diffJson(oldData, data),
       path,
       gitStatus,

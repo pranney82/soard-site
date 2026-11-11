@@ -123,6 +123,10 @@
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
 
+## The SOARD connection's email preview script (functions/api/_mcp/preview.js), its version in its name
+/mcp-app/*
+  Cache-Control: public, max-age=31536000, immutable
+
 /images/*
   Cache-Control: public, max-age=31536000, immutable
 
