@@ -9,8 +9,9 @@
  *   the kid → the room today (before photos, drifting) → the floor plan today
  *   → the new plan, wiped in over it → the design boards
  *
- * A chip names each one ("BEFORE · Dylan's room today", "THE PLAN · The new
- * floor plan") and a row of steps shows where it is in the story. Nothing is
+ * The line above the frame names each one ("BEFORE · Dylan's room today",
+ * "THE PLAN · The new floor plan") and a row of steps at its end shows where
+ * it is in the story; nothing is written on the pictures. Nothing is
  * shown before it has loaded; a picture that can't load is skipped. The
  * screen asks again every few minutes, so a change made in Admin → Kids
  * arrives on its own.
@@ -30,8 +31,8 @@ const ASK_FAILED_MS = 2 * 60_000;
 interface Options {
   body: HTMLElement;
   photoBox: HTMLElement;     // .photo: holds the kid's picture; the slides go on top of it
-  chip: HTMLElement;         // the caption chip (kicker + text)
-  steps: HTMLElement;        // the row of steps
+  chip: HTMLElement;         // the words in the line above the frame (kicker + text)
+  steps: HTMLElement;        // the row of steps at its end
   kidChip: { kicker: string; caption: string } | null; // "TODAY · Therapy Room", on the kid's slide
   kidSlug: string;
   preview: boolean;
@@ -158,7 +159,6 @@ export function startSlateDesign(o: Options) {
     }
   }
 
-  let firstApply = true;
   async function apply(slides: DesignSlide[]) {
     const next = designSignature(slides);
     if (next === sig) return;
@@ -167,13 +167,8 @@ export function startSlateDesign(o: Options) {
     clearTimeout(timer);
     show.replaceChildren();
     built = [{ slide: null, layer: null, ready: true, failed: false }];
-    // The first time, it's where it belongs at once (the server usually marked it already): the frame's move is for a
-    // design that opens while someone watches, never a screen settling as it loads
-    const settling = firstApply;
-    firstApply = false;
-    if (settling) body.classList.add('settling');
+    // The frame is the same with or without the design (SlateScreen.astro): this swaps the words above it, nothing moves
     body.toggleAttribute('data-design', slides.length > 0);
-    if (settling) { void body.offsetHeight; requestAnimationFrame(() => body.classList.remove('settling')); }
     if (!slides.length) { at = 0; steps.replaceChildren(); steps.hidden = true; chipFor(null); return; }
     for (const s of slides) {
       const layer = document.createElement('div');
