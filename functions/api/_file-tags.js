@@ -34,18 +34,21 @@ import { LEVEL_ROLES, TRADE_ROLE, DESIGN_ROLE } from './_partner-roles.js';
 export const PHOTOGRAPHER_ROLE = 'Photographer';
 const FAMILY_ROLE = 'Makeover Family';
 const PHOTOS_SEEN_BY = [...LEVEL_ROLES, TRADE_ROLE, DESIGN_ROLE, PHOTOGRAPHER_ROLE];
+// Staff roles that see the old tags' files today (each old tag's own entries, Nov 11 2026), given the new ones too,
+// so nobody on staff loses sight of a file when it moves. Staff roles are added, never taken off.
+const STAFF_SEE = ['Admin', 'Application Reviewer', 'Designer', 'Plan Design', 'Production Manager', 'Project Manager'];
 
 /** The five tags: name (≤25), description (≤256), colour, and the roles outside staff that see them */
 export const TAGS = [
-  { name: 'Before', color: '#3b82f6', roles: PHOTOS_SEEN_BY,
+  { name: 'Before', color: '#3b82f6', roles: PHOTOS_SEEN_BY, staff: STAFF_SEE,
     description: 'Photos and videos from before the build, and room scans. Set by the website from when each was taken. Seen by partners, trades, design partners and photographers on the job.' },
-  { name: 'During', color: '#f59e0b', roles: PHOTOS_SEEN_BY,
+  { name: 'During', color: '#f59e0b', roles: PHOTOS_SEEN_BY, staff: STAFF_SEE,
     description: 'Photos and videos from the Demo date until reveal day. Set by the website from when each was taken. Seen by partners, trades, design partners and photographers on the job.' },
-  { name: 'After', color: '#22c55e', roles: PHOTOS_SEEN_BY,
+  { name: 'After', color: '#22c55e', roles: PHOTOS_SEEN_BY, staff: STAFF_SEE,
     description: 'Photos and videos from reveal day on. Set by the website from when each was taken. Seen by partners, trades, design partners and photographers on the job.' },
-  { name: 'Design', color: '#a855f7', roles: [...LEVEL_ROLES, DESIGN_ROLE],
+  { name: 'Design', color: '#a855f7', roles: [...LEVEL_ROLES, DESIGN_ROLE], staff: STAFF_SEE,
     description: 'Layouts, 3Ds, presentations, inspiration and renderings. Seen by partners and design partners on the job. Never a family paper.' },
-  { name: 'Plans', color: '#0ea5e9', roles: [...LEVEL_ROLES, TRADE_ROLE, DESIGN_ROLE],
+  { name: 'Plans', color: '#0ea5e9', roles: [...LEVEL_ROLES, TRADE_ROLE, DESIGN_ROLE], staff: STAFF_SEE,
     description: 'The current build set, specs and templates. Seen by partners, trades and design partners on the job. Never a family paper.' },
 ];
 /** Old tags whose audience loses the family, by Peter's rule (no photos for families) */
@@ -100,6 +103,7 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
   await ensureSchema(DB);
   const { roles, tags } = await readOrg(key, fetchImpl);
   const roleByName = new Map(roles.filter((r) => r.type !== 'internal').map((r) => [low(r.name), r]));
+  const staffByName = new Map(roles.filter((r) => r.type === 'internal').map((r) => [low(r.name), r]));
   const roleName = new Map(roles.map((r) => [r.id, r.name]));
   // Staff roles are never touched: an entry staff gave their own role stays (it may be how that role sees the files)
   const staffRole = new Set(roles.filter((r) => r.type === 'internal').map((r) => r.id));
@@ -108,8 +112,14 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
   const removed = [];
   const missingRoles = new Set();
 
-  const setAudience = async (tag, wanted) => {
+  const setAudience = async (tag, wanted, staffWanted = []) => {
     const aces = tag.aces ?? await tagAces(key, tag.id, fetchImpl);
+    const anyHave = new Set(aces.map((a) => a.role?.id).filter(Boolean));
+    for (const roleId of staffWanted) {
+      if (anyHave.has(roleId)) continue;
+      await pave(key, { createAce: { $: { assignee: { roleId }, notify: false, targetType: 'fileTag', targetId: tag.id } } }, fetchImpl);
+      added.push(`${tag.name}: ${roleName.get(roleId)}`);
+    }
     const have = new Map(aces.filter((a) => a.role?.id && !staffRole.has(a.role.id)).map((a) => [a.role.id, a.id]));
     for (const roleId of wanted) {
       if (have.has(roleId)) continue;
@@ -141,7 +151,8 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
       const r = roleByName.get(low(n));
       if (r) wanted.push(r.id); else missingRoles.add(n);
     }
-    await setAudience(tag, wanted);
+    const staffWanted = (spec.staff || []).map((n) => staffByName.get(low(n))?.id).filter(Boolean);
+    await setAudience(tag, wanted, staffWanted);
   }
 
   // Families off the old photo tag: only the Makeover Family role's entry goes
@@ -175,10 +186,13 @@ export async function tagInventory(env, { fetchImpl = fetch } = {}) {
       all: { _: 'files', $: { size: 1 }, count: {} },
       img: { _: 'files', $: { size: 1, where: ['type', 'like', 'image/%'] }, count: {} },
       vid: { _: 'files', $: { size: 1, where: ['type', 'like', 'video/%'] }, count: {} },
+      first: { _: 'files', $: { size: 1, sortBy: [{ field: ['createdAt'], order: 'asc' }] }, nodes: { createdAt: {} } },
+      last: { _: 'files', $: { size: 1, sortBy: [{ field: ['createdAt'], order: 'desc' }] }, nodes: { createdAt: {} } },
       aces: { $: { size: 50 }, nodes: { role: { id: {} } } } } }, fetchImpl);
     const f = body?.fileTag;
     out.push({ name: t.name, roles: (f?.aces?.nodes || []).map((a) => roleName.get(a.role?.id)).filter(Boolean).sort(),
-      files: f?.all?.count ?? null, photos: f?.img?.count ?? null, videos: f?.vid?.count ?? null });
+      files: f?.all?.count ?? null, photos: f?.img?.count ?? null, videos: f?.vid?.count ?? null,
+      oldest: f?.first?.nodes?.[0]?.createdAt?.slice(0, 10) || null, newest: f?.last?.nodes?.[0]?.createdAt?.slice(0, 10) || null });
   }
   return out.sort((a, b) => (b.files || 0) - (a.files || 0));
 }

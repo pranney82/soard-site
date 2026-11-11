@@ -26,7 +26,8 @@ function world({ tags = [], roles = ROLES } = {}) {
     if (q.fileTag) {
       const t = w.tags.find((x) => x.id === q.fileTag.$.id);
       const n = t.files || { all: 0, img: 0, vid: 0 };
-      return Response.json({ fileTag: { aces: { nodes: t.aces.map((a) => ({ id: a.id, role: { id: a.roleId } })) }, all: { count: n.all }, img: { count: n.img }, vid: { count: n.vid } } });
+      return Response.json({ fileTag: { aces: { nodes: t.aces.map((a) => ({ id: a.id, role: { id: a.roleId } })) }, all: { count: n.all }, img: { count: n.img }, vid: { count: n.vid },
+        first: { nodes: n.first ? [{ createdAt: n.first }] : [] }, last: { nodes: n.last ? [{ createdAt: n.last }] : [] } } });
     }
     w.writes.push(q);
     if (q.createFileTag) { const t = { id: `t${w.next++}`, name: q.createFileTag.$.name, description: q.createFileTag.$.description, color: q.createFileTag.$.color, aces: [] }; w.tags.push(t); return Response.json({ createFileTag: { createdFileTag: { id: t.id, name: t.name } } }); }
@@ -40,7 +41,8 @@ function world({ tags = [], roles = ROLES } = {}) {
   };
   return w;
 }
-const audience = (w, name) => w.tags.find((t) => t.name === name).aces.map((a) => ROLES.find((r) => r.id === a.roleId).name).sort();
+// Who outside staff sees a tag (staff roles are checked on their own)
+const audience = (w, name) => w.tags.find((t) => t.name === name).aces.map((a) => ROLES.find((r) => r.id === a.roleId)).filter((r) => r.type !== 'internal').map((r) => r.name).sort();
 const env = async () => ({ DB: await createD1({ schemaFiles: ['scripts/schema.sql'] }), JOBTREAD_GRANT_KEY: 'k' });
 
 test('the five tags are made with their audiences, notify off, and their ids kept', async () => {
@@ -52,7 +54,8 @@ test('the five tags are made with their audiences, notify off, and their ids kep
   assert.deepEqual(audience(w, 'Design'), ['Builder', 'Champion', 'Design Partner', 'Friend', 'Signature']);
   assert.deepEqual(audience(w, 'Plans'), ['Builder', 'Champion', 'Design Partner', 'Friend', 'Signature', 'Trade Partner']);
   assert.ok(w.writes.filter((q) => q.createAce).every((q) => q.createAce.$.notify === false), 'nobody is notified');
-  assert.ok(!w.tags.some((t) => t.aces.some((a) => ['r-family', 'r-board', 'r-pm'].includes(a.roleId))), 'never families, the board or staff roles');
+  assert.ok(!w.tags.some((t) => t.aces.some((a) => ['r-family', 'r-board'].includes(a.roleId))), 'never families or the board');
+  assert.ok(w.tags.filter((t) => TAGS.some((s) => s.name === t.name)).every((t) => t.aces.some((a) => a.roleId === 'r-pm')), 'staff who see the old tags see the new ones');
   assert.ok(TAGS.every((t) => t.name.length <= 25 && t.description.length <= 256 && /^#[0-9a-f]{6}$/.test(t.color)));
   const ids = await tagIds(e.DB);
   assert.deepEqual([...ids.keys()].sort(), ['After', 'Before', 'Design', 'During', 'Plans']);
@@ -113,13 +116,13 @@ test('hourly on the heartbeat, one run at a time; the last result kept for Site 
 test('the inventory: every tag, who sees it, and how many photos, videos and files it holds', async () => {
   const e = await env();
   const w = world({ tags: [
-    { id: 'bp', name: '.BeforePics', aces: [{ id: 'b2', roleId: 'r-design' }], files: { all: 120, img: 118, vid: 2 } },
+    { id: 'bp', name: '.BeforePics', aces: [{ id: 'b2', roleId: 'r-design' }], files: { all: 120, img: 118, vid: 2, first: '2023-04-01T10:00:00Z', last: '2026-11-01T10:00:00Z' } },
     { id: 'fp', name: '.FinalPlans', aces: [], files: { all: 14, img: 0, vid: 0 } },
   ] });
   const inv = await tagInventory(e, { fetchImpl: w.fetchImpl });
   assert.deepEqual(inv, [
-    { name: '.BeforePics', roles: ['Design Partner (vendor)'], files: 120, photos: 118, videos: 2 },
-    { name: '.FinalPlans', roles: [], files: 14, photos: 0, videos: 0 },
+    { name: '.BeforePics', roles: ['Design Partner (vendor)'], files: 120, photos: 118, videos: 2, oldest: '2023-04-01', newest: '2026-11-01' },
+    { name: '.FinalPlans', roles: [], files: 14, photos: 0, videos: 0, oldest: null, newest: null },
   ]);
 });
 
@@ -127,7 +130,7 @@ test('staff roles on a tag are never touched: only outside roles are kept to the
   const e = await env();
   const w = world({ tags: [{ id: 'tb', name: 'Before', aces: [{ id: 's1', roleId: 'r-pm' }, { id: 'x1', roleId: 'r-family' }] }] });
   const r = await ensureTags(e, { fetchImpl: w.fetchImpl });
-  assert.ok(audience(w, 'Before').includes('Project Manager'), 'the staff role staff gave stays');
+  assert.ok(w.tags.find((x) => x.name === 'Before').aces.some((a) => a.roleId === 'r-pm'), 'the staff role staff gave stays');
   assert.ok(!audience(w, 'Before').includes('Makeover Family'));
   assert.ok(!r.removed.some((x) => /Project Manager/.test(x)));
 });
