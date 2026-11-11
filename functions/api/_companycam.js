@@ -122,15 +122,13 @@ export function photoImageUrl(photo) {
 const CC_V2 = 'https://api.companycam.com/v2';
 /**
  * A project's videos, newest first: [{ id, status, playback_url, captured_at, duration, … }].
- * CompanyCam documents the list on its v2 API (a bare array, page by page),
- * so that's where it's asked when v1 has no such list.
+ * Asked of CompanyCam's v2 API first: it gives each processed video's stream
+ * on Mux, whose whole-video MP4 fits JobTread (all 75 together 1.36 GB, the
+ * largest 106 MB, on Nov 11 2026). v1, which the site uses for everything
+ * else, gives only the original upload (on CompanyCam's own storage, a phone's
+ * full-size file), so it's the fallback when v2 won't answer this key.
  */
 export async function projectVideos(env, projectId, { max = 500, fetchImpl = fetch } = {}) {
-  try {
-    return await ccAll(env, `/projects/${id(projectId)}/videos`, { max, fetchImpl });
-  } catch (e) {
-    if (!(e instanceof CompanyCamError) || e.status !== 404) throw e;
-  }
   const token = String(env?.COMPANYCAM_TOKEN || '').trim();
   if (!token) throw new CompanyCamError('COMPANYCAM_TOKEN is not set', { code: 'no_token' });
   const out = [];
@@ -138,10 +136,13 @@ export async function projectVideos(env, projectId, { max = 500, fetchImpl = fet
     const res = await fetchImpl(`${CC_V2}/projects/${id(projectId)}/videos?page=${page}&per_page=${PAGE}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+    if ([401, 403, 404].includes(res.status) && page === 1) return ccAll(env, `/projects/${id(projectId)}/videos`, { max, fetchImpl });
     if (res.status === 404) break;
     if (!res.ok) throw new CompanyCamError(`CompanyCam returned ${res.status} listing videos`, { status: res.status, retryAfter: Number(res.headers.get('Retry-After')) || null });
     const body = await res.json().catch(() => null);
-    const list = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [];
+    const list = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : null;
+    // Never "no videos" from an answer that isn't a list
+    if (!list) throw new CompanyCamError('CompanyCam’s v2 answered without a list of videos', { status: res.status });
     out.push(...list);
     if (list.length < PAGE) break;
   }
@@ -150,22 +151,23 @@ export async function projectVideos(env, projectId, { max = 500, fetchImpl = fet
 
 const NOT_READY = new Set(['pending', 'processing', 'processing_error', 'failed', 'uploading', 'deleted']);
 const MUX = /^https:\/\/stream\.mux\.com\/([A-Za-z0-9]+)\.m3u8(?:\?|$)/;
+const ORIGINAL = /^https:\/\/companycam-video\.s3\.amazonaws\.com\/[^?#]+\.(mp4|mov|m4v)(?:[?#]|$)/i;
 /**
- * A ready video as one MP4 file, or null. CompanyCam's videos live on Mux,
- * which plays them as a stream (…/<id>.m3u8) and also hands out the whole
- * video at its best quality (…/<id>/highest.mp4). Ready is said two ways:
- * v2's status "processed", or v1's status "active" with processing_status
- * "processed" (as its photos are); anything still on its way, or deleted, waits.
+ * A ready video as one file, or null. CompanyCam's videos live on Mux, which
+ * plays them as a stream (…/<id>.m3u8) and also hands out the whole video at
+ * its best quality (…/<id>/highest.mp4); v1 gives only the original upload
+ * on CompanyCam's own storage (status "active"), used as it is. Anything
+ * still on its way, or deleted, waits.
  */
 export function videoFileUrl(video) {
   const states = [video?.status, video?.processing_status].map((s) => String(s || '').toLowerCase());
   if (states.some((s) => NOT_READY.has(s))) return null;
-  const urls = [video?.playback_url, video?.url, ...(Array.isArray(video?.uris) ? video.uris.map((u) => u?.url || u?.uri) : [])];
+  const urls = [video?.playback_url, video?.url, ...(Array.isArray(video?.uris) ? video.uris.map((u) => u?.url || u?.uri) : [])].map((u) => String(u || ''));
   for (const u of urls) {
-    const m = String(u || '').match(MUX);
+    const m = u.match(MUX);
     if (m) return `https://stream.mux.com/${m[1]}/highest.mp4`;
   }
-  return null;
+  return urls.find((u) => ORIGINAL.test(u)) || null;
 }
 
 /** What CompanyCam said about a video that gave no file, for the record: its fields and states, never a link */

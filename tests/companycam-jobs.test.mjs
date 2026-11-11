@@ -61,9 +61,10 @@ function companycam(url) {
   const page = (data) => json({ data, errors: [], meta: { has_next: false } });
   if (path === '/projects') return page([...w.projects.values()].filter((p) => !!p.archived === (url.searchParams.get('archived') === 'true')));
   if ((m = path.match(/^\/projects\/(\d+)\/photos$/))) return w.gone.has(m[1]) ? json({ data: null, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404) : page([...w.photos.values()].filter((p) => p.project_id === m[1]));
-  // Videos are listed only on CompanyCam's v2 API: a bare array, page by page
-  if ((m = path.match(/^\/projects\/(\d+)\/videos$/))) return json({ data: null, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404);
+  // v1 lists a video by its original upload; v2 (a bare array, page by page) by its stream on Mux
+  if ((m = path.match(/^\/projects\/(\d+)\/videos$/))) return page([...w.videos.values()].filter((v) => v.project_id === m[1]).map((v) => ({ ...v, status: v.status === 'processed' ? 'active' : v.status, playback_url: `https://companycam-video.s3.amazonaws.com/uploads/${v.id}.mov`, format: 'mov' })));
   if ((m = path.match(/^\/v2\/projects\/(\d+)\/videos$/))) {
+    if (w.v2Refused) return json({ errors: ['Unauthorized'] }, 401);
     const all = [...w.videos.values()].filter((v) => v.project_id === m[1]);
     const pg = Number(url.searchParams.get('page') || 1);
     const per = Number(url.searchParams.get('per_page') || 50);
@@ -435,6 +436,20 @@ test('a video’s file is Mux’s whole MP4, only once CompanyCam has processed 
   assert.equal(videoFileUrl({ status: 'active', processing_status: 'processing', playback_url: 'https://stream.mux.com/AbC012xyz.m3u8' }), null);
   assert.equal(videoFileUrl({ status: 'deleted', processing_status: 'processed', playback_url: 'https://stream.mux.com/AbC012xyz.m3u8' }), null);
   assert.equal(videoFileUrl({ status: 'active', uris: [{ type: 'hls', url: 'https://stream.mux.com/Zz9.m3u8' }] }), 'https://stream.mux.com/Zz9/highest.mp4');
+  // v1's original upload, used as it is when there's no stream
+  assert.equal(videoFileUrl({ status: 'active', playback_url: 'https://companycam-video.s3.amazonaws.com/uploads/abc/IMG_1.MOV?X-Amz-Expires=600' }), 'https://companycam-video.s3.amazonaws.com/uploads/abc/IMG_1.MOV?X-Amz-Expires=600');
+  assert.equal(videoFileUrl({ status: 'active', playback_url: 'https://companycam-video.s3.amazonaws.com/uploads/abc/notes.txt' }), null);
+});
+
+test('when CompanyCam’s v2 won’t answer the key, each video’s original upload goes to JobTread instead', async () => {
+  w.v2Refused = true;
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  video('7700160', '500');
+  await run(0);
+  assert.deepEqual(w.writes.filter((x) => x.op === 'createUploadRequest').map((x) => x.args.url), ['https://companycam-video.s3.amazonaws.com/uploads/7700160.mov']);
+  assert.deepEqual(names('j1'), ['CompanyCam 7700160']);
+  assert.equal((await row('j1')).videos_missing, 0);
 });
 
 test('a video that gives no file is noted on its job (how CompanyCam described it), not counted as a problem', async () => {
