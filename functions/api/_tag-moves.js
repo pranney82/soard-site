@@ -25,7 +25,7 @@ import { SOARD_ORG_ID } from './_reveals.js';
 import { pave } from './_jt-access.js';
 import { tagIds } from './_file-tags.js';
 import { fetchTaken, jobDates, stageOf } from './_photo-stages.js';
-import { docPick, oldStage, moveFor, isRetiring } from './_tag-rules.js';
+import { docPick, oldStage, moveFor, isRetiring, isPrivateName } from './_tag-rules.js';
 
 export const WRITE = false; // Nov 11 2026: moves recorded, nothing written, until they're checked
 const TURN_MS = 2 * 60 * 1000;
@@ -82,6 +82,8 @@ export async function decide(f, ctx) {
     pick = docPick({ name: f.name, createdBy: f.createdByUser?.name, documentType: f.document?.type }, oldNames);
     // A file on a document is seen with the document: only Costs (staff only) goes on it
     if (f.document?.id && pick.tag && pick.tag !== 'Costs') pick = { tag: null, why: 'on a document' };
+  } else if (isPrivateName(f.name)) {
+    pick = { tag: null, why: 'a picture of a private paper' };
   } else {
     const staged = ctx.staged.get(f.id);
     if (staged) pick = { tag: staged, why: 'the sorter’s pick' };

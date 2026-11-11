@@ -148,3 +148,11 @@ test('documents on an open job get Costs, Design or Plans by name; a private pap
   assert.equal(got.d8, undefined, 'a file on an old tag is the move’s');
   assert.deepEqual(w.writes.map((x) => [x.id, x.fileTagIds]).sort(), [['d1', ['tC']], ['d2', ['tG']], ['d3', ['tP']], ['d5', ['tC']]]);
 });
+
+test('a photo named like a paper (a signed layout, a consent) gets no Before, During or After', async () => {
+  const e = await env();
+  const w = world({ files: [photo('s1', '2026:02:20 10:00:00', { name: 'Leland_Signed Layout.jpg' })] });
+  await sortJob(e, { id: 'j1' }, { fetchImpl: w.fetchImpl, now: T, write: true });
+  assert.deepEqual((await rows(e.DB)).s1, [null, 'a picture of a private paper']);
+  assert.deepEqual(w.writes, []);
+});

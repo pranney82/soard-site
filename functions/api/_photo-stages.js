@@ -36,7 +36,7 @@ import { pave } from './_jt-access.js';
 import { FIELD_STATUS, REVEAL_TASK_TYPE, loadAllProjects, linkJobs } from './_kid-status.js';
 import { heicExifPlace } from '../../public/admin/kid-guess.js';
 import { tagIds } from './_file-tags.js';
-import { docPick, isRetiring } from './_tag-rules.js';
+import { docPick, isRetiring, isPrivateName } from './_tag-rules.js';
 
 export const WRITE = false; // Nov 11 2026: picks recorded, nothing written, until they're checked
 const TURN_MS = 2 * 60 * 1000;
@@ -267,6 +267,7 @@ export async function sortJob(env, job, { fetchImpl = fetch, now = Date.now(), c
     const tagged = f.tags.map((t) => stageIds.get(t.id)).find(Boolean) || null;
     let pick;
     if (tagged) pick = { stage: tagged, why: 'already tagged' };
+    else if (isPrivateName(f.name)) pick = { stage: null, why: 'a picture of a private paper' };
     else if (kind === 'video') pick = { stage: null, why: 'a video (no time read yet)' };
     // camera: null = not read (yet, or the link failed READ_TRIES times), 0 = read and no camera time, 1 = a camera photo
     else if (camera == null) pick = { stage: null, why: reads >= READ_TRIES ? 'couldn’t be read' : 'not read yet' };

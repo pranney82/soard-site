@@ -85,8 +85,15 @@ export function oldStage(oldTags = []) {
 export function moveFor(file, pick) {
   const retiring = file.tags.filter((t) => isRetiring(t.name));
   const isFamily = (t) => low(t.name) === low(FAMILY_TAG);
-  // Families keep their papers; every photo, video, design or cost comes off their tag
-  const familyPaper = file.kind === 'doc' && FAMILY_PAPER.test(words(file.name));
-  const remove = retiring.filter((t) => (isFamily(t) ? !familyPaper : !!pick.tag || PRIVATE.test(words(file.name)))).map((t) => t.id);
-  return { add: pick.tag || null, remove, keepFamily: familyPaper };
+  const w = words(file.name);
+  // A family paper stays the family's, a PDF or a picture of one ("Signed Layout.jpg")
+  const familyPaper = FAMILY_PAPER.test(w);
+  // Off the family's tag: a photo or video that isn't a paper, and anything placed in Design, Plans or Costs.
+  // A document nothing places keeps the family's access (it may be theirs), and is listed.
+  const offFamily = !familyPaper && (file.kind !== 'doc' || ['Design', 'Plans', 'Costs'].includes(pick.tag));
+  const remove = retiring.filter((t) => (isFamily(t) ? offFamily : !!pick.tag || PRIVATE.test(w))).map((t) => t.id);
+  return { add: pick.tag || null, remove, keepFamily: !offFamily };
 }
+
+/** A photo or video named like a paper ("Signed Layout.jpg", "Consent.heic"): never on a sharing tag */
+export const isPrivateName = (name) => PRIVATE.test(words(name));

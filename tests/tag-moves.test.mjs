@@ -105,3 +105,12 @@ test('writing on: files move, a private paper comes off the sharing tag, and an 
   assert.ok(!w.deleted.includes('bp'), '.BeforePics still has the daily log’s file');
   assert.ok(!w.deleted.includes('ik'), 'In Kind is never touched');
 });
+
+test('the family keeps any paper, a picture of one too, and any document nothing places; photos and placed files come off their tag', () => {
+  const mf = { id: 'mf', name: '_MakeoverFamily' };
+  assert.deepEqual(moveFor({ name: 'Leland 2025_Signed Layout.jpg', kind: 'photo', tags: [mf] }, { tag: null }).remove, [], 'a picture of a signed paper stays theirs');
+  assert.deepEqual(moveFor({ name: 'XLX5wNrp.pdf', kind: 'doc', tags: [mf] }, { tag: null }).remove, [], 'a document nothing places keeps their access');
+  assert.deepEqual(moveFor({ name: 'Final Layout.pdf', kind: 'doc', tags: [mf] }, { tag: 'Design' }).remove, ['mf'], 'a design comes off');
+  assert.deepEqual(moveFor({ name: 'IMG_44.HEIC', kind: 'photo', tags: [mf] }, { tag: null }).remove, ['mf'], 'a photo comes off even undated');
+  assert.deepEqual(moveFor({ name: 'Scope of Work.pdf', kind: 'doc', tags: [mf, { id: 'sp', name: '_Sponsor' }] }, { tag: null }).remove, ['sp'], 'the scope stays theirs, off _Sponsor');
+});
