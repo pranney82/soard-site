@@ -401,32 +401,24 @@ test('every job whose videos were never looked at is due at once, closed ones to
   assert.ok(names('j4').includes('CompanyCam 7700121'), 'the closed job didn’t wait its week');
 });
 
-test('a placed project someone deleted in CompanyCam has its photos and videos copied to its job; a living one’s deleted photos are not', async () => {
-  project('700', 'Max Family (2026) (022)', { street: '4 Race Dr' }); // deleted in CompanyCam, still listed
-  job('j7', 'Max Family (2026)', { street: '4 Race Dr' });
-  for (const id of ['3007001', '3007002']) { photo(id, '700'); w.photos.get(id).status = 'deleted'; }
-  video('7700130', '700');
+test('a placed project’s videos go to its home with its photos; a photo deleted in CompanyCam stays out', async () => {
   project('710', 'Repair visit', { street: '2 Fix St' });
   photo('3007101', '710');
   photo('3007102', '710');
-  w.photos.get('3007102').status = 'deleted'; // a person deleted this one: it stays out
+  w.photos.get('3007102').status = 'deleted'; // deleted on purpose in CompanyCam
+  video('7700130', '710');
   job('j8', 'Repair Family (2025)', { street: '2 Fix St', closedOn: '2025-02-01', createdAt: '2024-12-01T00:00:00Z' });
-  const placed = [
-    { project: '700', targetType: 'job', targetId: 'j7', folder: null, deletedProject: true },
-    { project: '710', targetType: 'job', targetId: 'j8', folder: null },
-  ];
+  const placed = [{ project: '710', targetType: 'job', targetId: 'j8', folder: null }];
   await run(0, { placed });
-  assert.deepEqual(names('j7').filter((n) => /3007|7700130/.test(n)), ['CompanyCam 3007001', 'CompanyCam 3007002', 'CompanyCam 7700130']);
-  assert.deepEqual(names('j8').filter((n) => /3007/.test(n)), ['CompanyCam 3007101']);
+  assert.deepEqual(names('j8').filter((n) => /3007|7700130/.test(n)), ['CompanyCam 3007101', 'CompanyCam 7700130']);
   const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_jobs_state WHERE key = 'placed'").first('value'));
-  assert.deepEqual([st['700'].missing, st['700'].videos, st['700'].videosMissing, st['700'].error], [0, 1, 0, null]);
-  const facts = await jobsFacts(env);
-  assert.equal(facts.placed.videosMissing, 0);
+  assert.deepEqual([st['710'].missing, st['710'].videos, st['710'].videosMissing, st['710'].error], [0, 1, 0, null]);
+  assert.equal((await jobsFacts(env)).placed.videosMissing, 0);
 });
 
 test('a placed project CompanyCam no longer shows is an error, not taken as empty', async () => {
   w.gone.add('730');
-  await run(0, { placed: [{ project: '730', targetType: 'job', targetId: 'j7', folder: null, deletedProject: true }] });
+  await run(0, { placed: [{ project: '730', targetType: 'job', targetId: 'j7', folder: null }] });
   const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_jobs_state WHERE key = 'placed'").first('value'));
   assert.match(st['730'].error, /doesn’t show this project any more/);
   assert.equal((await jobsFacts(env)).placed.errors, 1);

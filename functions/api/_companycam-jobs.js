@@ -70,12 +70,8 @@ export const CLOSED_TOO = true; // closed jobs as well, before CompanyCam closes
  * and one repair visit on its closed job. Every photo is copied under
  * JobTread's own name ("CompanyCam <id>") with no tag, so only staff see it.
  * Ids only: names stay out of the public repo.
- *
- * deletedProject: a project someone deleted in CompanyCam while photos in it
- * were in no job (found Nov 11 2026: 48 of a 2026 makeover's build photos,
- * Sept 10 to Nov 6, in a second project for the family deleted on Nov 5;
- * CompanyCam still lists them). Its photos are copied even though CompanyCam
- * marks them deleted with it.
+ * A project or photo deleted in CompanyCam stays out: the team deletes on
+ * purpose (Peter, Nov 11 2026).
  */
 export const PLACED = [
   { project: '97580948', targetType: 'account', targetId: '22PJy2BVt2GX', folder: 'Home visit' },
@@ -84,7 +80,6 @@ export const PLACED = [
   { project: '109213462', targetType: 'account', targetId: '22PhpQqN4PVh', folder: 'Warranty' },
   { project: '78103101', targetType: 'account', targetId: '22P6JrA6rpAs', folder: 'Warranty' },
   { project: '76845081', targetType: 'job', targetId: '22NxBnwu4Sku', folder: null },
-  { project: '98771400', targetType: 'job', targetId: '22PRvFFPZsEA', folder: null, deletedProject: true },
 ];
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -438,7 +433,7 @@ export async function placeProjects(env, { fetchImpl = fetch, now = Date.now(), 
     try {
       // A placed project CompanyCam no longer shows is said so, not taken as empty
       const photos = (await projectPhotos(env, p.project, { max: MAX_PHOTOS, fetchImpl }).catch((e) => { if (e.status === 404) throw new Error('CompanyCam doesn’t show this project any more (404)'); throw e; }))
-        .filter((ph) => (p.deletedProject || ph?.status !== 'deleted') && ph?.processing_status === 'processed');
+        .filter((ph) => ph?.status !== 'deleted' && ph?.processing_status === 'processed');
       const have = await placedHave(env, p, fetchImpl);
       let missing = photos.filter((ph) => !have.has(String(ph.id)));
       let copiedNow = 0;
