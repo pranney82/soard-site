@@ -13,14 +13,16 @@
  *   Close     next year's date when it's set, else donate / all events
  *
  * Themes keep each series in its own colors: 'gala' (Havana sunset),
- * 'golf' (fairway green), 'default' (the site's cream and yellow).
+ * 'golf' (fairway green), 'default' (the site's cream and yellow). A series'
+ * colors come from RECAP_LOOKS in public/admin/events-shared.js, the list its
+ * recap email reads too; the default ones are the site's own, below.
  */
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import RecapPhotos from './RecapPhotos.astro';
 import RecapSponsors from './RecapSponsors.astro';
 import {
   seriesOf, seriesEvents, isOver, yearOf, fmtDay, displayName, recapLead,
-  recapPhotos, recapSponsors, cleanHighlights,
+  recapPhotos, recapSponsors, cleanHighlights, recapStyle,
 } from '../../../public/admin/events-shared.js';
 
 interface Props {
@@ -69,7 +71,7 @@ const streamId: string | null = !series ? ev.streamVideoId || null : null;
 const ytId: string | null = !series && !streamId && ev.videoUrl ? youTubeId(ev.videoUrl) : null;
 ---
 
-<div class={`rc rc--${theme}`}>
+<div class={`rc rc--${theme}`} style={recapStyle(theme)}>
   <!-- ═══ HERO ═══ -->
   <section class="rh" aria-labelledby="rh-title">
     <div class="rh-inner">
@@ -276,34 +278,6 @@ const ytId: string | null = !series && !streamId && ev.videoUrl ? youTubeId(ev.v
     --rc-line: rgba(0, 0, 0, 0.09);
     --rc-close: var(--c-dark-deep);
     background: var(--rc-paper);
-  }
-  .rc--gala {
-    --rc-paper: #faf3e0;
-    --rc-paper-2: #fffaf0;
-    --rc-ink: #0d2f3f;
-    --rc-muted: #4b5d63;
-    --rc-eyebrow: #b04f3d;
-    --rc-accent: #d4a017;
-    --rc-highlight: rgba(232, 152, 112, 0.42);
-    --rc-band: linear-gradient(150deg, #0d2f3f 0%, #1a4759 60%, #24586a 100%);
-    --rc-band-accent: #f0c35a;
-    --rc-tile: #efe2c6;
-    --rc-line: rgba(13, 47, 63, 0.12);
-    --rc-close: linear-gradient(150deg, #0d2f3f 0%, #1a4759 100%);
-  }
-  .rc--golf {
-    --rc-paper: #f7f8f2;
-    --rc-paper-2: #fff;
-    --rc-ink: #12301f;
-    --rc-muted: #4f5b52;
-    --rc-eyebrow: #2e7d32;
-    --rc-accent: var(--c-yellow);
-    --rc-highlight: rgba(255, 218, 36, 0.38);
-    --rc-band: linear-gradient(150deg, #0d2818 0%, #1a472a 55%, #2e7d32 100%);
-    --rc-band-accent: var(--c-yellow);
-    --rc-tile: #e3e8dc;
-    --rc-line: rgba(18, 48, 31, 0.1);
-    --rc-close: linear-gradient(150deg, #0d2818 0%, #1a472a 100%);
   }
 
   /* ─── Hero (the site's editorial split, apply.astro is the reference) ─── */

@@ -248,6 +248,31 @@ export const href = (url) => escapeHtml(safeHref(url));
 /** The email's colors and fonts */
 export const BRAND = Object.freeze({ Y, D, DD, CR, WG, BD, TL, TM, SANS, SERIF });
 
+/**
+ * How an email looks. Every email is SOARD's own; an event's recap wears its
+ * recap page's look instead (recapLook in ./_newsletter-email.js, from the
+ * page's own list, RECAP_LOOKS in public/admin/events-shared.js). The pieces
+ * that an event's recap shares take one; left out, it's SOARD's.
+ *   page          false: SOARD's dark cover, yellow band and labels behind a yellow bar;
+ *                 true: the page's: the cover on the paper with a marker behind its key
+ *                 word, the ask in a dark card, labels behind a thin rule
+ *   outside       around the email
+ *   paper, ink, muted, line        the page, its words, its quiet words, its rules
+ *   eyebrow, eyebrowBar            a label's words and bar on the paper
+ *   highlight     the marker behind the cover's key word (page only)
+ *   dark          the header, the sponsor band, the ask's card and the footer
+ *   onDark, faintOnDark, ruleOnDark          words, small print and dots on the dark
+ *   accentOnDark, labelOnDark      a key word and a label on the dark
+ * Buttons are the site's own yellow in every look, as on every page.
+ */
+export const SOARD_LOOK = Object.freeze({
+  page: false,
+  outside: WG, paper: CR, ink: D, muted: TM, line: BD,
+  eyebrow: D, eyebrowBar: Y, highlight: null,
+  dark: DD, onDark: '#C9CACC', faintOnDark: '#8E8F93', ruleOnDark: '#5A5B61',
+  accentOnDark: Y, labelOnDark: '#C9CACC',
+});
+
 /** A Cloudflare Images URL (any variant) → the same image with these transforms */
 export function cfImg(src, transforms) {
   const s = String(src || '');
@@ -332,11 +357,16 @@ function shortDay(date) {
   return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-/** A small caps label with the brand's bar in front of it */
-export function label(text, bar = Y, color = D) {
+/**
+ * A small caps label with the brand's bar in front of it. rule: a recap page's
+ * thin line instead (EventRecap.astro .rh-eyebrow), centered on the first line.
+ */
+export function label(text, bar = Y, color = D, { rule = false } = {}) {
   // The bar is its own small block at the first line's height, so a label that wraps ("TYRECE & MADDIE’S / STORY") keeps a bar, not a slab
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-    <td valign="top" width="28" style="width:28px;padding-top:4px;"><div style="width:28px;height:10px;background:${bar};border-radius:2px;font-size:0;line-height:0;">&nbsp;</div></td>
+    ${rule
+    ? `<td valign="top" width="28" style="width:28px;padding-top:8px;"><div style="width:28px;height:2px;background:${bar};font-size:0;line-height:0;">&nbsp;</div></td>`
+    : `<td valign="top" width="28" style="width:28px;padding-top:4px;"><div style="width:28px;height:10px;background:${bar};border-radius:2px;font-size:0;line-height:0;">&nbsp;</div></td>`}
     <td valign="top" style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${(String(text).trim().split(/\s+/).length > 2 || String(text).length > 20 ? noWidow(escapeHtml(text)) : escapeHtml(text)).replace(/ (&amp;|and) /g, ' $1&nbsp;')}</td>
   </tr></table>`;
 }
@@ -368,7 +398,7 @@ export function pinCells(html) {
 }
 
 /** The email around its rows: the width, the phone rules and the hidden preview line. Fluid, so a phone that drops the style block still fits it; Outlook's ghost table holds the width there. */
-export function emailFrame(preview, rows) {
+export function emailFrame(preview, rows, look = SOARD_LOOK) {
   return pinCells(`<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preview)}${'&#847;&zwnj;&nbsp;'.repeat(90)}</div>
 <style>
   a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font-size:inherit!important;font-family:inherit!important;font-weight:inherit!important;line-height:inherit!important}
@@ -384,7 +414,7 @@ export function emailFrame(preview, rows) {
     .ld{font-size:18px!important}
   }
 </style>
-<center style="width:100%;background:${WG};padding:24px 0;">
+<center style="width:100%;background:${look.outside};padding:24px 0;">
 <!--[if mso]><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" align="center"><tr><td><![endif]-->
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="ec" style="margin:0 auto;width:100%;max-width:600px;">
 ${rows}
@@ -393,36 +423,36 @@ ${rows}
 </center>`);
 }
 
-export function emailHeader(site = SITE_URL, { rounded = false, logoWidth = 124, pad = 20, mark = false } = {}) {
+export function emailHeader(site = SITE_URL, { rounded = false, logoWidth = 124, pad = 20, mark = false, look = SOARD_LOOK } = {}) {
   // mark: the trimmed logo, as much space above it as below it before the cover's first line
   const width = mark ? 96 : logoWidth;
-  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:${mark ? '28px 0 14px' : `${pad}px 0`};${SIDE}text-align:center;${rounded ? 'border-radius:16px 16px 0 0;' : ''}" class="pd${rounded ? ' band' : ''}">
+  return `<tr><td bgcolor="${look.dark}" style="background:${look.dark};padding:${mark ? '28px 0 14px' : `${pad}px 0`};${SIDE}text-align:center;${rounded ? 'border-radius:16px 16px 0 0;' : ''}" class="pd${rounded ? ' band' : ''}">
     <a href="${href(site)}" target="_blank" style="display:inline-block;color:#FFFFFF;text-decoration:none;"><img src="${escapeHtml(mark ? LOGO_MARK : LOGO)}" width="${width}" alt="Sunshine on a Ranney Day" style="display:block;width:${width}px;height:auto;font-family:${SANS};font-size:13px;line-height:18px;color:#FFFFFF;" /></a>
   </td></tr>`;
 }
 
-export function emailFooter(site = SITE_URL, { mark = false } = {}) {
+export function emailFooter(site = SITE_URL, { mark = false, look = SOARD_LOOK } = {}) {
   // mark: the trimmed logo (LOGO_MARK), the same size on the page as the untrimmed one at 120px
-  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:${mark ? '40px 0 36px' : '36px 0'};${SIDE}text-align:center;" class="pd">
+  return `<tr><td bgcolor="${look.dark}" style="background:${look.dark};padding:${mark ? '40px 0 36px' : '36px 0'};${SIDE}text-align:center;" class="pd">
     <a href="${href(site)}" target="_blank" style="display:inline-block;margin-bottom:${mark ? 22 : 16}px;"><img src="${escapeHtml(mark ? LOGO_MARK : LOGO)}" width="${mark ? 84 : 120}" alt="Sunshine on a Ranney Day" style="display:block;width:${mark ? 84 : 120}px;height:auto;" /></a>
-    <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;color:#8E8F93;">501(c)(3) Nonprofit &middot; EIN 45-4773997</p>
+    <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;color:${look.faintOnDark};">501(c)(3) Nonprofit &middot; EIN 45-4773997</p>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;">
       ${[['Facebook', 'https://www.facebook.com/sunshineonaranneyday'], ['Instagram', 'https://www.instagram.com/sunshineonaranneyday'], ['YouTube', 'https://www.youtube.com/@sunshineonaranneyday'], ['TikTok', 'https://www.tiktok.com/@sunshineonaranneyday']]
     // A plain space on each side of a dot, so a narrow phone can wrap the row between links
-    .map(([name, url]) => `<a href="${url}" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;white-space:nowrap;">${name}</a>`)
-    .join(' <span style="color:#5A5B61;">&middot;</span> ')}
+    .map(([name, url]) => `<a href="${url}" target="_blank" style="color:${look.onDark};text-decoration:underline;text-underline-offset:3px;white-space:nowrap;">${name}</a>`)
+    .join(` <span style="color:${look.ruleOnDark};">&middot;</span> `)}
     </p>
-    <p style="margin:0;font-family:${SANS};font-size:11px;color:#8E8F93;">You’re receiving this because you’re a valued partner or supporter of SOARD.</p>
+    <p style="margin:0;font-family:${SANS};font-size:11px;color:${look.faintOnDark};">You’re receiving this because you’re a valued partner or supporter of SOARD.</p>
   </td></tr>`;
 }
 
 /** The closing line, the team picture and who it's from */
-export function signOff(line, teamPicture = true) {
-  return `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 40px;${SIDE}" class="pd">
-    <p style="margin:0 0 18px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${noWidow(escapeHtml(line))}</p>
+export function signOff(line, teamPicture = true, look = SOARD_LOOK) {
+  return `<tr><td bgcolor="${look.paper}" style="background:${look.paper};padding:36px 0 40px;${SIDE}" class="pd">
+    <p style="margin:0 0 18px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${look.ink};">${noWidow(escapeHtml(line))}</p>
     ${teamPicture ? `<img src="${escapeHtml(TEAM_PICTURE)}" width="504" alt="The SOARD team" class="fl" style="width:100%;height:auto;display:block;border-radius:16px;margin:0 0 18px;" />` : ''}
-    <p style="margin:0;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">The SOARD Team</p>
-    <p style="margin:4px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Sunshine on a Ranney Day</p>
+    <p style="margin:0;font-family:${SANS};font-size:14px;font-weight:700;color:${look.ink};">The SOARD Team</p>
+    <p style="margin:4px 0 0;font-family:${SANS};font-size:13px;color:${look.muted};">Sunshine on a Ranney Day</p>
   </td></tr>`;
 }
 
@@ -444,20 +474,44 @@ export function textLink(text, url, color = D) {
   return `<a href="${href(url)}" target="_blank" style="font-family:${SANS};font-size:15px;font-weight:700;color:${color};text-decoration:underline;text-underline-offset:4px;">${escapeHtml(text).replace(/ (&amp;|and) /g, ' $1&nbsp;').replace(/ (\S+ →)$/, '&nbsp;$1').replace(/ →$/, '&nbsp;→')}</a>`;
 }
 
-/** The dark cover all three emails open with: the kicker, the name large, the lead photo, then whatever comes first */
-export function cover({ kicker, headline, size, phone, lead, alt, url, action = '' }) {
-  return `<tr><td bgcolor="${DD}" align="center" style="background:${DD};padding:14px 0 44px;${SIDE}text-align:center;" class="pd">
-    <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${Y};">${escapeHtml(kicker)}</p>
-    <h1 class="${phone}" style="margin:0 0 ${lead ? 30 : 0}px;font-family:${SERIF};font-size:${size}px;font-weight:700;line-height:1.14;letter-spacing:-0.01em;color:#FFFFFF;">${headline}</h1>
-    ${lead ? `<a href="${href(url)}" target="_blank" style="display:block;text-decoration:none;"><img src="${escapeHtml(cfImg(lead, COVER_TRANSFORM))}" width="504" alt="${escapeHtml(alt)}" class="fl" style="width:100%;height:auto;display:block;border-radius:20px;" /></a>` : ''}
+/**
+ * The cover every email opens with: the kicker, the headline large, the lead photo, then whatever comes
+ * first. SOARD's is dark and centered. A recap page's look (look.page) has it as the page's top
+ * (EventRecap.astro .rh): on the paper, the kicker behind a thin rule in the eyebrow color, the headline in
+ * the ink, sub under it in italic (the gala's theme for the year), then the photo. keyWord() styles the
+ * headline's key word for the look.
+ */
+export function cover({ kicker, headline, size, phone, lead, alt, url, action = '', sub = '', look = SOARD_LOOK }) {
+  const photo = (top) => (lead ? `<a href="${href(url)}" target="_blank" style="display:block;${top ? `margin-top:${top}px;` : ''}text-decoration:none;"><img src="${escapeHtml(cfImg(lead, COVER_TRANSFORM))}" width="504" alt="${escapeHtml(alt)}" class="fl" style="width:100%;height:auto;display:block;border-radius:20px;" /></a>` : '');
+  if (look.page) {
+    return `<tr><td bgcolor="${look.paper}" style="background:${look.paper};padding:34px 0 4px;${SIDE}" class="pd">
+    ${label(kicker, look.eyebrowBar, look.eyebrow, { rule: true })}
+    <h1 class="${phone}" style="margin:16px 0 0;font-family:${SERIF};font-size:${size}px;font-weight:700;line-height:1.1;letter-spacing:-0.02em;color:${look.ink};">${headline}</h1>
+    ${sub ? `<p style="margin:10px 0 0;font-family:${SERIF};font-size:21px;font-style:italic;line-height:1.35;color:${look.eyebrow};">${escapeHtml(sub)}</p>` : ''}
+    ${photo(26)}
+    ${action ? `<div style="height:26px;line-height:26px;font-size:0;">&nbsp;</div>${action}` : ''}
+  </td></tr>`;
+  }
+  return `<tr><td bgcolor="${look.dark}" align="center" style="background:${look.dark};padding:14px 0 44px;${SIDE}text-align:center;" class="pd">
+    <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${look.accentOnDark};">${escapeHtml(kicker)}</p>
+    <h1 class="${phone}" style="margin:0 0 ${lead || sub ? (sub ? 10 : 30) : 0}px;font-family:${SERIF};font-size:${size}px;font-weight:700;line-height:1.14;letter-spacing:-0.01em;color:#FFFFFF;">${headline}</h1>${sub ? `
+    <p style="margin:0 0 ${lead ? 30 : 0}px;font-family:${SERIF};font-size:21px;font-style:italic;line-height:1.35;color:${look.onDark};">${escapeHtml(sub)}</p>` : ''}
+    ${photo(0)}
     ${action ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>${action}` : ''}
   </td></tr>`;
 }
 
+/** The cover headline's key word, as the look marks it: in the accent on SOARD's dark cover, over the page's marker on a recap page's (solid: email can't draw the page's half-height one) */
+export function keyWord(html, look = SOARD_LOOK) {
+  return look.page
+    ? `<em style="font-style:italic;background:${look.highlight};padding:0 6px;border-radius:4px;">${html}</em>`
+    : `<em style="font-style:italic;color:${look.accentOnDark};">${html}</em>`;
+}
+
 /** The first words after the cover, a size up from the rest */
-export function lede(text, after = '') {
-  return `<tr><td bgcolor="${CR}" style="background:${CR};padding:40px 0 0;${SIDE}" class="pd">
-    <p class="ld" style="margin:0;font-family:${SERIF};font-size:19px;line-height:1.65;color:${D};">${noWidow(escapeHtml(text))}</p>
+export function lede(text, after = '', look = SOARD_LOOK) {
+  return `<tr><td bgcolor="${look.paper}" style="background:${look.paper};padding:40px 0 0;${SIDE}" class="pd">
+    <p class="ld" style="margin:0;font-family:${SERIF};font-size:19px;line-height:1.65;color:${look.ink};">${noWidow(escapeHtml(text))}</p>
     ${after}
   </td></tr>`;
 }
@@ -625,7 +679,7 @@ export function nameCard(label) {
 }
 
 /** The partner logos on their dark band. '' with none to show. noun: 'sponsor' for an event's thank-you. */
-export function partnerCards(kid, brokenLogos = new Set(), { noun = 'partner' } = {}) {
+export function partnerCards(kid, brokenLogos = new Set(), { noun = 'partner', look = SOARD_LOOK } = {}) {
   const logos = shownPartners(kid, brokenLogos);
   // Every tile the same height, whatever the logo's shape; a short last row sits centered
   const tile = (inner) => `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="table-layout:fixed;"><tr><td align="center" valign="middle" height="66" bgcolor="#FFFFFF" class="lt" style="height:66px;background:#FFFFFF;border-radius:10px;padding:0 8px;text-align:center;">${inner}</td></tr></table>`;
@@ -638,7 +692,7 @@ export function partnerCards(kid, brokenLogos = new Set(), { noun = 'partner' } 
     const pad = (k) => (row.length === 1 ? '4px 2px' : k === 0 ? '4px 4px 4px 0' : '4px 0 4px 4px');
     const cells = row.map((l, k) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:${pad(k)};">${l.text
       // A logo that doesn't load reads as the partner's name instead of a broken picture, in even lines (nameCard)
-      ? ((c) => tile(`<span style="display:block;font-family:${SANS};font-size:${c.size}px;font-weight:700;line-height:1.25;color:${D};word-break:normal;overflow-wrap:break-word;">${c.lines.map((t) => escapeHtml(t).replace(/ /g, '&nbsp;')).join('<br>')}</span>`))(nameCard(l.label))
+      ? ((c) => tile(`<span style="display:block;font-family:${SANS};font-size:${c.size}px;font-weight:700;line-height:1.25;color:${look.ink};word-break:normal;overflow-wrap:break-word;">${c.lines.map((t) => escapeHtml(t).replace(/ /g, '&nbsp;')).join('<br>')}</span>`))(nameCard(l.label))
       : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="116" alt="${escapeHtml(l.label || 'Partner logo')}" style="display:block;width:100%;max-width:104px;height:auto;margin:0 auto;" />`)}</td>`);
     // Fixed layout keeps the columns equal, whatever is in them
     logoRows.push(`<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${row.length === 1 ? '50%' : '100%'}" align="center" style="margin:0 auto;table-layout:fixed;"><tr>${cells.join('')}</tr></table>`);
@@ -648,11 +702,11 @@ export function partnerCards(kid, brokenLogos = new Set(), { noun = 'partner' } 
   const word = one ? noun : `${noun}s`;
   const heading = headlineFit(['Thank', 'you', 'to', 'our', `incredible ${word}.`], 22, { phones: [[20, 'h2m']] });
   return logoRows.length ? `
-  <tr><td style="background:${CR};padding:36px 0 0;">
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
+  <tr><td style="background:${look.paper};padding:36px 0 0;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${look.dark};"><tr>
       <td style="padding:40px 0 34px;${SIDE}" class="pd">
-        ${label(`Our ${word}`, Y, '#C9CACC')}
-        <h2 class="${heading.phone}" style="margin:18px 0 20px;font-family:${SERIF};font-size:${heading.size}px;font-weight:700;line-height:1.3;color:#FFFFFF;">Thank you to our <em style="font-style:italic;color:${Y};">incredible</em>&nbsp;${word}.</h2>
+        ${label(`Our ${word}`, look.accentOnDark, look.labelOnDark, { rule: look.page })}
+        <h2 class="${heading.phone}" style="margin:18px 0 20px;font-family:${SERIF};font-size:${heading.size}px;font-weight:700;line-height:1.3;color:#FFFFFF;">Thank you to our <em style="font-style:italic;color:${look.accentOnDark};">incredible</em>&nbsp;${word}.</h2>
         ${logoRows.join('\n        ')}
       </td>
     </tr></table>

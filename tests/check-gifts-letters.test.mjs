@@ -82,7 +82,7 @@ test('a check waits for 7 PM, then goes in with the address printed on it, which
   await runs(T0, T0 + 60 * MIN);
   assert.equal((await rowOf()).state, 'read');
   assert.equal(world().posts.length, 0, 'nothing is saved before 7 PM');
-  const view = (await CG.checksView(env())).list[0];
+  const view = (await CG.checksView(env(), { now: T0 + 60 * MIN })).list[0];
   assert.ok(view.waitsUntil, 'the page says it goes in at 7 PM');
   assert.equal(view.address.line, '12 Oak St, Roswell, GA 30075');
   await runs(EVENING, EVENING + 10 * MIN);

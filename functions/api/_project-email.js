@@ -12,7 +12,7 @@
  */
 
 import {
-  SITE_URL, HERO_TRANSFORM, PHOTO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
+  SITE_URL, HERO_TRANSFORM, PHOTO_TRANSFORM, SIDE, BRAND, SOARD_LOOK, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
   listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, makeoverWord, shortStory, tidy, kidName, shownPartners, leadPhoto,
 } from './_reveal-invite-email.js';
@@ -122,7 +122,7 @@ export const revealChecks = (kid) => [...beforeAfterUrls(kid), streamCheckUrl(ki
 export const beforeAfterUrls = (kid) => (kid?.beforeAfterPhotos || []).filter((p) => p?.before && p?.after)
   .flatMap((p) => [cfImg(p.before, PAIR_TRANSFORM), cfImg(p.after, PAIR_TRANSFORM)]);
 
-export const gap = (px) => `<tr><td bgcolor="${CR}" style="background:${CR};height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</td></tr>`;
+export const gap = (px, look = SOARD_LOOK) => `<tr><td bgcolor="${look.paper}" style="background:${look.paper};height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</td></tr>`;
 
 /**
  * Facts in a ruled row, in the sans font: Georgia's old-style numerals turn "11" into two small strokes.
@@ -201,8 +201,24 @@ function roomList(counts) {
     </table>`;
 }
 
-/** The one yellow band: what we're asking, and the button. fit: the headline's size, from headlineFit. */
-export function askBand({ kicker, headline, words, action, url, fit = { size: 30, phone: 'h2b' } }) {
+/**
+ * The one yellow band: what we're asking, and the button. fit: the headline's size, from headlineFit.
+ * A recap page's look (look.page) asks as the page closes instead (EventRecap.astro .rc-close__card): a
+ * card of its dark on the paper, the kicker in its accent, white words and the site's yellow button.
+ */
+export function askBand({ kicker, headline, words, action, url, fit = { size: 30, phone: 'h2b' }, look = SOARD_LOOK }) {
+  if (look.page) {
+    return `<tr><td bgcolor="${look.paper}" style="background:${look.paper};padding:0;${SIDE}" class="pd">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" bgcolor="${look.dark}" style="background:${look.dark};border-radius:22px;"><tr>
+      <td align="center" style="padding:40px 26px 42px;text-align:center;">
+        <p style="margin:0 0 12px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${look.labelOnDark};">${escapeHtml(kicker)}</p>
+        <h2 class="${fit.phone}" style="margin:0 0 12px;font-family:${SERIF};font-size:${fit.size}px;font-weight:700;line-height:1.22;color:#FFFFFF;">${headline}</h2>
+        <p style="margin:0 0 24px;font-family:${SANS};font-size:16px;line-height:1.6;color:${look.onDark};">${noWidow(escapeHtml(words))}</p>
+        ${button(action, url, { center: true })}
+      </td>
+    </tr></table>
+  </td></tr>`;
+  }
   return `<tr><td bgcolor="${Y}" style="background:${Y};padding:44px 0 48px;${SIDE}" class="pd">
     ${label(kicker, D)}
     <h2 class="${fit.phone}" style="margin:18px 0 12px;font-family:${SERIF};font-size:${fit.size}px;font-weight:700;line-height:1.22;color:${D};">${headline}</h2>

@@ -2624,7 +2624,8 @@ async function scoreOf(DB) {
 }
 
 /** Everything the Checks tab shows, and how Watch is doing */
-export async function checksView(env) {
+/** The Checks page. now: the time it's seen at, for tests and replays; the page's own is the clock's */
+export async function checksView(env, { now = Date.now() } = {}) {
   await ensureChecks(env.DB);
   const cfg = await readState(env.DB, KEY);
   // What waits on someone comes first, so the limit can never push it off the page
@@ -2633,11 +2634,11 @@ export async function checksView(env) {
   const all = (await env.DB.prepare('SELECT COUNT(*) AS n FROM check_gifts').first())?.n || 0;
   // What turning it on would do, counted over every check, not only the ones listed
   const w = await env.DB.prepare(`SELECT SUM(CASE WHEN COALESCE(posted_at, deposited_at) >= ? THEN 1 ELSE 0 END) AS fresh, SUM(CASE WHEN COALESCE(posted_at, deposited_at) < ? THEN 1 ELSE 0 END) AS old FROM check_gifts WHERE state = 'would'`)
-    .bind(new Date(Date.now() - OLD_CHECK_MS).toISOString(), new Date(Date.now() - OLD_CHECK_MS).toISOString()).first();
+    .bind(new Date(now - OLD_CHECK_MS).toISOString(), new Date(now - OLD_CHECK_MS).toISOString()).first();
   const claimed = await claimedIds(env.DB);
   // Each check's Category in Mercury, as last mirrored
   const cats = new Map(((await env.DB.prepare("SELECT id, category_name FROM mercury_txns WHERE kind = 'checkDeposit' AND category_name IS NOT NULL").all().catch(() => null))?.results || []).map((t) => [t.id, t.category_name]));
-  const list = rows.map((r) => viewOf({ ...r, category: cats.get(r.id) || null }, claimed, mode));
+  const list = rows.map((r) => viewOf({ ...r, category: cats.get(r.id) || null }, claimed, mode, now));
   return {
     mode,
     onBy: cfg.onBy || null, onAt: cfg.onAt || null,

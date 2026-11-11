@@ -8,7 +8,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { eventRecapEmail, monthlyImpactEmail, monthlyHasNews, recapUrl } from '../functions/api/_newsletter-email.js';
+import { eventRecapEmail, monthlyImpactEmail, monthlyHasNews, recapUrl, recapLook, recapMark, recapImageUrls, onto } from '../functions/api/_newsletter-email.js';
 import {
   runNewsletterDrafts, maybeRunNewsletterDrafts, draftNewsletterNow, newsletterStatus, readNewsletterRow, recapKey, monthlyKey, monthBefore, newsletterNote,
 } from '../functions/api/_newsletter-drafts.js';
@@ -559,29 +559,67 @@ test('the reviewers by default: Linzi and Peter; whoever drafts it by hand isn�
 });
 
 
-test('the recap wears its event’s colors, the same as its page: the gala’s, golf’s, else SOARD’s', async () => {
-  const { RECAP_COLORS } = await import('../public/admin/events-shared.js');
+test('a recap page and its email read one list of colors: the page sets its colors from it, the email takes its own from it', async () => {
+  const { RECAP_LOOKS, recapStyle } = await import('../public/admin/events-shared.js');
   const { readFileSync } = await import('node:fs');
   const page = readFileSync(new URL('../src/components/events/EventRecap.astro', import.meta.url), 'utf8');
-  // The page's own colors: if it changes them, this fails until RECAP_COLORS follows
-  for (const [key, c] of Object.entries(RECAP_COLORS)) {
-    const block = page.match(new RegExp(`\\.rc--${key} \\{[\\s\\S]*?\\n  \\}`))?.[0] || '';
-    for (const hex of [c.paper, c.ink, c.muted, c.dark]) assert.ok(block.toLowerCase().includes(hex.toLowerCase()), `${key} ${hex} is the page’s`);
-    if (key === 'gala') assert.ok(block.toLowerCase().includes(c.accent.toLowerCase()));
+  // The page keeps no copy of a series' colors: it sets them from the list
+  assert.ok(!/\.rc--(gala|golf)\s*\{/.test(page), 'no series colors written into the page');
+  assert.match(page, /style=\{recapStyle\(theme\)\}/);
+  assert.equal(recapStyle('gala').split(';').find((d) => d.startsWith('--rc-paper:')), '--rc-paper:#faf3e0');
+  assert.ok(!/--rc-accent/.test(recapStyle('golf')), 'what the list leaves to the site (null) the page leaves to the site');
+  assert.equal(recapStyle('default'), undefined);
+  for (const key of ['gala', 'golf']) {
+    const list = RECAP_LOOKS[key];
+    const ev = key === 'gala' ? GALA : GOLF;
+    const look = recapLook(ev);
+    for (const k of ['paper', 'ink', 'muted', 'eyebrow', 'dark']) assert.equal(look[k], list[k], `${key} ${k}`);
+    assert.equal(look.outside, list.tile);
+    // The page's see-through marker and rules, as they show on its paper
+    assert.equal(look.highlight, onto(list.highlight, list.paper));
+    assert.equal(look.line, onto(list.line, list.paper));
   }
-  const gala = eventRecapEmail({ event: { ...GALA, slug: '2026-evening-of-sunshine', date: '2026-08-22' }, events: [], pageDoc: { ...GALA_DOC, galleryPhotos: [{ id: 'gallery/gala/1787400000000-a.jpg' }, { id: 'gallery/gala/1787400000001-b.jpg' }] } });
-  assert.match(gala.html, /#0d2f3f/);
-  assert.match(gala.html, /#f0c35a/);
-  assert.ok(!/#1E1F25|#FFDA24|#FEFCF5/i.test(gala.html), 'no SOARD dark, yellow or cream left in it');
-  assert.match(gala.html, /Havana Nights · Evening\u00A0of\u00A0Sunshine\u00A0·\u00A02026/, 'the year’s theme on top, the name in one piece');
+  assert.equal(recapLook(GALA).highlight, '#f2cdb1');
+  assert.equal(recapLook(GOLF).highlight, '#faeda4');
+  assert.equal(recapLook(GALA).accentOnDark, '#f0c35a', 'the gala page’s gold on its dark');
+  assert.equal(recapLook(GOLF).accentOnDark, '#FFDA24', 'golf leaves it to the site: SOARD’s yellow');
+  assert.equal(onto('#0d2f3f', '#ffffff'), '#0d2f3f');
+  assert.equal(onto('rgba(255, 255, 255, 0.5)', '#000000'), '#808080');
+});
+
+test('the gala recap is its page: the cream top, the teal headline with the peach marker, the theme, the teal card that asks; golf in its own; any other event SOARD’s', () => {
+  const gala = eventRecapEmail({ event: { ...GALA, slug: '2026-evening-of-sunshine', date: '2026-08-22', theme: 'Havana Nights' }, events: [], pageDoc: { ...GALA_DOC, galleryPhotos: [{ id: 'gallery/gala/1787400000000-a.jpg' }, { id: 'gallery/gala/1787400000001-b.jpg' }] } });
+  // No SOARD dark, cream or greys anywhere; SOARD's ink only on the buttons, which are the site's own yellow on every page
+  assert.ok(!/#1E1F25|#FEFCF5|#F5F4F0|#C9CACC|#8E8F93|#5A5B61/i.test(gala.html));
+  assert.ok(!/#373A36/i.test(gala.html.replace(/color:#373A36;text-decoration:none;border-radius:100px;/g, '')));
+  const top = gala.html.slice(gala.html.indexOf('recap-gala-palms'), gala.html.indexOf('Thank you to everyone'));
+  assert.match(top, /background:#faf3e0;padding:34px/);
+  assert.match(top, /height:2px;background:#b04f3d;/, 'the page’s thin rule, not the yellow bar');
+  assert.match(top, /color:#b04f3d;">Evening of Sunshine · 2026</);
+  assert.match(top, /<h1[^>]*color:#0d2f3f;">What a <em style="font-style:italic;background:#f2cdb1;/);
+  assert.match(top, /color:#b04f3d;">Havana Nights<\/p>/);
+  assert.ok(top.indexOf('Havana Nights') < top.indexOf('<img src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/gallery'), 'the theme under the headline, over the photo');
+  const ask = gala.html.slice(gala.html.indexOf('Keep the sunshine going') - 900, gala.html.indexOf('Give Now'));
+  assert.match(ask, /bgcolor="#0d2f3f" style="[^"]*background:#0d2f3f;border-radius:22px;"/);
+  assert.match(ask, /color:#f0c35a;">Keep the sunshine going/);
+  assert.ok(!/bgcolor="#FFDA24" style="[^"]*background:#FFDA24;padding:44px/i.test(gala.html), 'no yellow band');
+  // The sponsors' band and the footer in the teal
+  assert.match(gala.html, /background:#0d2f3f;"><tr>\s*<td[^>]*>\s*<table[^>]*><tr>\s*<td[^>]*><div style="width:28px;height:2px;background:#f0c35a;/);
+  // The theme is the event's, as staff set it: none set, none shown
   const own = eventRecapEmail({ event: { ...GALA, theme: 'Moulin Rouge' }, events: [GALA], pageDoc: GALA_DOC });
-  assert.match(own.html, /Moulin Rouge · Evening\u00A0of\u00A0Sunshine/);
+  assert.match(own.html, />Moulin Rouge<\/p>/);
+  const none = eventRecapEmail({ event: { ...GALA, slug: '2026-evening-of-sunshine', date: '2026-08-22' }, events: [], pageDoc: GALA_DOC });
+  assert.ok(!/Havana/.test(none.html), 'no theme typed in, none made up');
   const golf = eventRecapEmail({ event: { ...GOLF, photos: [{ id: 'events/golf/a.jpg' }, { id: 'events/golf/b.jpg' }] }, events: [GOLF] });
   assert.match(golf.html, /#1a472a/);
-  assert.ok(!/#1E1F25/i.test(golf.html));
+  assert.ok(!/#1E1F25|#FEFCF5/i.test(golf.html));
   assert.ok(!/Havana/.test(golf.html));
+  assert.match(golf.html, /color:#2e7d32;">Sunshine on a Ranney Fairway · 20\d\d</);
+  assert.match(golf.html, /<h1[^>]*color:#12301f;">What a <em style="font-style:italic;background:#faeda4;/);
   const fest = eventRecapEmail({ event: { slug: 'kids-fest-2027', title: 'Kids Fest', date: '2027-04-06', photos: [{ id: 'events/kf/a.jpg' }, { id: 'events/kf/b.jpg' }] }, events: [] });
   assert.match(fest.html, /#1E1F25/, 'any other event keeps SOARD’s colors');
+  assert.ok(!/padding:34px 0 4px/.test(fest.html) && !/border-radius:22px/.test(fest.html), 'and SOARD’s dark cover and yellow band');
+  assert.match(fest.html, /bgcolor="#FFDA24" style="[^"]*background:#FFDA24;padding:44px/);
   // The monthly is SOARD’s own
   assert.match(monthlyImpactEmail({ month: '2027-09', today: '2027-10-01', building: [KIDS[2]] }).html, /#1E1F25/);
 });
@@ -600,14 +638,23 @@ test('a draft written in an older design is rebuilt on the next hourly look, not
 });
 
 
-test('each series’ mark from its event page: golf’s wave under the cover, the gala’s palms; any other event none', () => {
-  const golf = eventRecapEmail({ event: { ...GOLF, photos: [{ id: 'events/golf/a.jpg' }, { id: 'events/golf/b.jpg' }] }, events: [GOLF] });
+test('each series’ mark from its event page, under the header: golf’s wave, the gala’s palms; any other event none; never a seam or a broken picture', () => {
+  const golfEv = { ...GOLF, photos: [{ id: 'events/golf/a.jpg' }, { id: 'events/golf/b.jpg' }] };
+  const golf = eventRecapEmail({ event: golfEv, events: [GOLF] });
   assert.match(golf.html, /emails\/recap-golf-wave\/w=1200,q=90/);
   assert.ok(!/recap-gala-palms/.test(golf.html));
-  // Straight after the cover, before the opening words
-  assert.ok(golf.html.indexOf('recap-golf-wave') < golf.html.indexOf('Thank you to everyone'));
+  // Between the header and the cover
+  assert.ok(golf.html.indexOf('recap-golf-wave') < golf.html.indexOf('What a '));
   const gala = eventRecapEmail({ event: GALA, events: [GALA], pageDoc: GALA_DOC });
   assert.match(gala.html, /emails\/recap-gala-palms/);
   const fest = eventRecapEmail({ event: { slug: 'kids-fest-2027', title: 'Kids Fest', date: '2027-04-06', photos: [{ id: 'events/kf/a.jpg' }, { id: 'events/kf/b.jpg' }] }, events: [] });
   assert.ok(!/recap-golf-wave|recap-gala-palms/.test(fest.html));
+  // Each picture was drawn in its look's colors
+  assert.ok(recapMark(GALA) && recapMark(golfEv));
+  // Drawn in other colors than the look's: left out, never a seam
+  assert.equal(recapMark(GALA, { ...recapLook(GALA), dark: '#000000' }), null);
+  // The drafter checks it loads; one that doesn't is left out
+  const url = recapImageUrls(golfEv, [GOLF]).find((u) => /recap-golf-wave/.test(u));
+  assert.ok(url);
+  assert.ok(!/recap-golf-wave/.test(eventRecapEmail({ event: golfEv, events: [GOLF], brokenLogos: new Set([url]) }).html));
 });

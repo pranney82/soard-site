@@ -207,23 +207,58 @@ export function cleanHighlights(list) {
 }
 
 // ── Look ─────────────────────────────────────────────────────────────────
+const GALA_TEAL = '#0d2f3f';
+const GOLF_GREEN = '#1a472a';
 /**
- * Each series' recap colors, the same as the recap page's (.rc--gala and
- * .rc--golf in src/components/events/EventRecap.astro), for the recap email:
- * solid where the page fades, since email clients can't be trusted with a
- * gradient. dark: the cover, sponsor band and footer; accent: on the dark and
- * the give band; paper: the page; ink and muted: the words; line: rules;
- * outside: around the email. Any other event keeps SOARD's own colors.
- * tests/newsletter-drafts.test.mjs checks these against the page.
+ * Each series' recap colors, the one list for its recap page and its recap
+ * email: EventRecap.astro sets the page's --rc-* variables from it
+ * (recapStyle), and the email takes its colors from it (recapLook in
+ * functions/api/_newsletter-email.js). Values are as CSS writes them; null
+ * keeps the site's own (EventRecap.astro's .rc, the site's yellow), and so
+ * does any event outside a series.
+ *   paper, paper2   the page, and its white cards
+ *   ink, muted      words, quiet words
+ *   eyebrow         the small line over a heading, and the gala's theme
+ *   accent          focus rings and the shape behind the cover photo
+ *   highlight       the marker behind a heading's key word
+ *   dark            the series' own dark: the bands below fade from it, and the
+ *                   email, which can't fade, has it solid
+ *   band, bandAccent   the dark tile and its numbers
+ *   tile            behind a photo while it loads
+ *   line            rules
+ *   close           the card the page closes on
  */
-export const RECAP_COLORS = Object.freeze({
-  gala: Object.freeze({ dark: '#0d2f3f', accent: '#f0c35a', paper: '#faf3e0', ink: '#0d2f3f', muted: '#4b5d63', line: '#e6dcc3', outside: '#efe2c6' }),
-  golf: Object.freeze({ dark: '#1a472a', accent: '#FFDA24', paper: '#f7f8f2', ink: '#12301f', muted: '#4f5b52', line: '#dde3d6', outside: '#e3e8dc' }),
+export const RECAP_LOOKS = Object.freeze({
+  gala: Object.freeze({
+    paper: '#faf3e0', paper2: '#fffaf0', ink: GALA_TEAL, muted: '#4b5d63', eyebrow: '#b04f3d', accent: '#d4a017',
+    highlight: 'rgba(232, 152, 112, 0.42)', dark: GALA_TEAL,
+    band: `linear-gradient(150deg, ${GALA_TEAL} 0%, #1a4759 60%, #24586a 100%)`, bandAccent: '#f0c35a',
+    tile: '#efe2c6', line: 'rgba(13, 47, 63, 0.12)', close: `linear-gradient(150deg, ${GALA_TEAL} 0%, #1a4759 100%)`,
+  }),
+  golf: Object.freeze({
+    paper: '#f7f8f2', paper2: '#fff', ink: '#12301f', muted: '#4f5b52', eyebrow: '#2e7d32', accent: null,
+    highlight: 'rgba(255, 218, 36, 0.38)', dark: GOLF_GREEN,
+    band: `linear-gradient(150deg, #0d2818 0%, ${GOLF_GREEN} 55%, #2e7d32 100%)`, bandAccent: null,
+    tile: '#e3e8dc', line: 'rgba(18, 48, 31, 0.1)', close: `linear-gradient(150deg, #0d2818 0%, ${GOLF_GREEN} 100%)`,
+  }),
 });
-/** The gala's theme for its year ("Havana Nights"): the event's own, else 2026's, which the page was written for */
+
+/** The page's names for them */
+const RC_VARS = Object.freeze({
+  paper: 'paper', paper2: 'paper-2', ink: 'ink', muted: 'muted', eyebrow: 'eyebrow', accent: 'accent',
+  highlight: 'highlight', band: 'band', bandAccent: 'band-accent', tile: 'tile', line: 'line', close: 'close',
+});
+
+/** A recap page's colors as its style ("--rc-paper:#faf3e0;…"); undefined for the site's own */
+export function recapStyle(key) {
+  const look = RECAP_LOOKS[key];
+  if (!look) return undefined;
+  return Object.entries(RC_VARS).filter(([k]) => look[k] != null).map(([k, name]) => `--rc-${name}:${look[k]}`).join(';');
+}
+
+/** The gala's theme for its year ("Havana Nights"), as staff set it on the event (Events → Gala → Theme) */
 export function recapThemeName(ev) {
-  if (ev?.theme) return String(ev.theme).trim();
-  return seriesOf(ev)?.key === 'gala' && yearOf(ev) === '2026' ? 'Havana Nights' : '';
+  return String(ev?.theme || '').trim();
 }
 
 // ── Words ────────────────────────────────────────────────────────────────
