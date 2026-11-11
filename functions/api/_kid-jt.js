@@ -76,11 +76,17 @@ export function partLine(it) {
   const last = got[got.length - 1];
   const lastOut = outs[outs.length - 1];
   const by = (r) => (r?.who ? ` (${r.who})` : '');
+  const boxesIn = got.reduce((t, r) => t + Math.max(1, r.boxes || 1), 0);
+  // Boxes still at the Office: the view's count (a line read without one: all out once every unit went)
+  const boxesOut = Math.max(0, boxesIn - (it.boxesLeft ?? (it.got && (it.sent || 0) >= it.got ? 0 : boxesIn)));
+  const where = it.shelf && boxesOut < boxesIn ? `, ${shelfName(it.shelf)}` : '';
   if (it.status === 'house') bits.push('went to the house, not the Office');
-  else if (it.status === 'here' || it.status === 'out') bits.push(`${it.qty > 1 ? `all ${it.qty} here` : 'here'} ${day(last?.at)}${by(last)}${it.shelf && it.status === 'here' && (it.sent || 0) < it.got ? `, ${shelfName(it.shelf)}` : ''}`);
-  else if (it.status === 'partly') bits.push(`${it.got} of ${it.qty} here ${day(last?.at)}${by(last)}${it.shelf && (it.sent || 0) < it.got ? `, ${shelfName(it.shelf)}` : ''}`);
+  else if (it.house && it.got < it.qty) bits.push(`${it.got} of ${it.qty} here ${day(last?.at)}${by(last)}${where}; the rest went to the house`);
+  else if (it.status === 'here' || it.status === 'out') bits.push(`${it.qty > 1 ? `all ${it.qty} here` : 'here'} ${day(last?.at)}${by(last)}${it.status === 'here' ? where : ''}`);
+  else if (it.status === 'partly') bits.push(`${it.got} of ${it.qty} here ${day(last?.at)}${by(last)}${where}`);
   else if (!bits.length) bits.push('not ordered yet');
-  if (it.sent) bits.push(`${it.sent >= it.got ? 'out to the house' : `${it.sent} of ${it.got} out to the house`} ${day(lastOut?.at)}${by(lastOut)}`);
+  // By the boxes, as they're loaded: 2 of a vanity's 3 boxes on the truck is said before the whole vanity is
+  if (boxesOut) bits.push(`${boxesOut >= boxesIn ? 'out to the house' : `${boxesOut} of ${boxesIn} boxes out to the house`} ${day(lastOut?.at)}${by(lastOut)}`);
   return `${it.qty > 1 ? `${it.name} (${it.qty})` : it.name}: ${bits.join('; ')}`;
 }
 
@@ -100,7 +106,7 @@ export function lineStatus(items, { allowance = false } = {}) {
 /** What a line's three fields should say → { status, details, shelf } */
 export function lineValues(items, { allowance = false } = {}) {
   // Where it is: the shelves holding what's still at the Office; once all of it went out, the house
-  const atOffice = items.filter((i) => i.shelf && (i.status === 'here' || i.status === 'partly') && (i.sent || 0) < i.got);
+  const atOffice = items.filter((i) => i.shelf && (i.status === 'here' || i.status === 'partly') && (i.boxesLeft ?? (i.got - (i.sent || 0))) > 0);
   const shelves = [...new Set(atOffice.flatMap((i) => (i.shelves?.length ? i.shelves : [i.shelf])))].sort((a, b) => SHELVES.indexOf(a) - SHELVES.indexOf(b));
   const allOut = !atOffice.length && items.some((i) => i.sent);
   let details = items.map(partLine).join('\n');

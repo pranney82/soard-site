@@ -439,7 +439,7 @@ test('check-out: a scanned label sends its check-in to the house once; when all 
   let vals = lineValues(l.items);
   assert.equal(vals.shelf, 'Shelf 1');
   assert.match(vals.details, /Raincan Shower Head: ordered Oct 30.*; here Nov \d+ \(Pat\); out to the house Nov \d+ \(Sam\)/);
-  assert.match(vals.details, /Shower Valve \(2\): all 2 here .*\(Pat\), Shelf 1; 1 of 2 out to the house/);
+  assert.match(vals.details, /Shower Valve \(2\): all 2 here .*\(Pat\), Shelf 1; 1 of 2 boxes out to the house/);
   await checkOut(env.DB, { tap: tap(), ref: c }, { by: 'sam@soardcharity.com' });
   v = await view();
   assert.deepEqual(kidOf(v, 'Rowan S.').shelves, [], 'everything out: the shelf is free for the next kid');
@@ -810,4 +810,101 @@ test('round 3, H: a thing on two shelves is where its boxes still at the Office 
   it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
   assert.deepEqual([it.shelf, it.shelves, it.boxesLeft], ['1', ['1'], 2]);
   assert.equal(lineValues(linesOf(await view()).find((x) => x.itemId === 'r-shower').items).shelf, 'Shelf 1');
+});
+
+// ─── Round 4 (Nov 11 2026) ───
+
+/** A pretend print hub: on or off, how many labels it takes a request (the real one: 40), what it was sent */
+function pretendHub({ online = true, take = 40 } = {}) {
+  const hub = { online, sent: [], statusAsked: 0 };
+  env.PRINT_HUB = { idFromName: () => 'office', get: () => ({ fetch: async (url, init) => {
+    if (String(url).endsWith('/status')) { hub.statusAsked++; return Response.json({ seenAt: Date.now(), online: hub.online, problems: [], waiting: 0 }); }
+    const labels = JSON.parse(init.body).labels.slice(0, take);
+    if (!hub.online) return Response.json({ sent: 0, queued: labels.length, online: false, problems: [] });
+    hub.sent.push(labels.length);
+    return Response.json({ sent: labels.length, online: true, problems: [] });
+  } }) };
+  return hub;
+}
+
+test('round 4: a thing partly in, the rest "Not coming here": what came is at the Office until it’s loaded, and JobTread says both', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  await env.DB.prepare("UPDATE kid_parts SET parts = ? WHERE item_id = 'r-shower'").bind(JSON.stringify([part('Raincan Shower Head', { model: '52214-CZ' }), part('Shower Valve', { quantity: 2 })])).run();
+  const valve = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 1, boxes: 1 });
+  await receive(env.DB, { tap: tap(), kind: 'house', jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name });
+  let it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  assert.deepEqual([it.status, it.house, it.boxesLeft, it.shelf], ['here', true, 1, '1'], 'here, on its shelf, to be loaded');
+  let line = lineValues(linesOf(await view()).find((x) => x.itemId === 'r-shower').items);
+  assert.match(line.details, /Shower Valve \(2\): 1 of 2 here .*, Shelf 1; the rest went to the house/);
+  assert.equal(line.shelf, 'Shelf 1');
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 1 });
+  it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  assert.equal(it.status, 'out');
+  line = lineValues(linesOf(await view()).find((x) => x.itemId === 'r-shower').items);
+  assert.match(line.details, /the rest went to the house; out to the house/);
+});
+
+test('round 4: JobTread says boxes on the truck before a whole unit is ("2 of 3 boxes out to the house")', async () => {
+  const { checkOutMany } = await import('../functions/api/_kid-record.js');
+  const lamp = itemOf(await view(), 'Rowan S.', 'Cloud Pendant Light');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: lamp.itemId, partKey: lamp.partKey, name: lamp.name, units: 1, boxes: 3 });
+  await checkOutMany(env.DB, [{ tap: tap(), ref: a, box: 1 }, { tap: tap(), ref: a, box: 2 }]);
+  const line = lineValues(linesOf(await view()).find((x) => x.itemId === 'r-lamp').items);
+  assert.match(line.details, /Cloud Pendant Light: here .*, Shelf 1; 2 of 3 boxes out to the house/);
+});
+
+test('round 4: labels go in parts the hub takes (40); each check-in is printed once, however the tries overlap', async () => {
+  const hub = pretendHub();
+  const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  const post = (body) => onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin?receive=1', { method: 'POST', body: JSON.stringify(body) }), waitUntil: () => {} }).then((r) => r.json());
+  const items = Array.from({ length: 5 }, () => ({ tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 9 }));
+  const first = await post({ items });
+  assert.deepEqual(hub.sent, [36, 9], 'all 45, in parts of 40 or fewer, never a check-in split');
+  assert.equal(first.print.printed, 45);
+  // Two tries of the same shipment at once (the phone's retry overlapping its first): one prints
+  const more = Array.from({ length: 2 }, () => ({ tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 2 }));
+  await Promise.all([post({ items: more }), post({ items: more })]);
+  assert.deepEqual(hub.sent, [36, 9, 4]);
+  delete env.PRINT_HUB;
+});
+
+test('round 4: the printer off, labels wait on the site (never dropped by the hub) and print once when it’s back, if recent', async () => {
+  const { maybePrintWaiting } = await import('../functions/api/_kid-print.js');
+  const hub = pretendHub({ online: false });
+  const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  const post = (body) => onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin?receive=1', { method: 'POST', body: JSON.stringify(body) }), waitUntil: () => {} }).then((r) => r.json());
+  const old = tap();
+  await receive(env.DB, { tap: old, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 1 }, { now: new Date(Date.now() - 3 * 3600e3).toISOString() });
+  const many = Array.from({ length: 8 }, () => ({ tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 10 }));
+  const r = await post({ items: many });
+  assert.equal(r.print.queued, 80, 'said: they print when it’s back on');
+  assert.deepEqual(hub.sent, [], 'nothing handed to a hub that holds only 60');
+  assert.equal(await maybePrintWaiting(env), null, 'still off: nothing');
+  hub.online = true;
+  const p = await maybePrintWaiting(env);
+  assert.equal(p.printed, 80, 'all 80 once it’s back');
+  assert.deepEqual(hub.sent, [40, 40]);
+  assert.equal(await maybePrintWaiting(env), null, 'and only once');
+  const left = await env.DB.prepare("SELECT id FROM kid_receipts WHERE printed_at IS NULL AND kind = 'receive'").all();
+  assert.deepEqual(left.results.map((x) => x.id), [old], 'a check-in from hours ago isn’t printed out of the blue (Print again is there)');
+  delete env.PRINT_HUB;
+});
+
+test('round 4: a box back from the truck whose shelf is another kid’s now goes on a new one, and its label prints again', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const hub = pretendHub();
+  const lamp = itemOf(await view(), 'Rowan S.', 'Cloud Pendant Light');
+  const L = tap();
+  await receive(env.DB, { tap: L, jobId: 'j-rowan', itemId: lamp.itemId, partKey: lamp.partKey, name: lamp.name, units: 1, boxes: 2, shelf: '1' });
+  const outs = [(await checkOut(env.DB, { tap: tap(), ref: L, box: 1 })).receipt.id, (await checkOut(env.DB, { tap: tap(), ref: L, box: 2 })).receipt.id];
+  const rug = itemOf(await view(), 'Ava E.', 'Round Rainbow Rug');
+  await receive(env.DB, { tap: tap(), jobId: 'j-ava', itemId: rug.itemId, partKey: rug.partKey, name: rug.name, units: 1, boxes: 1, shelf: '1' });
+  hub.sent.length = 0;
+  const res = await onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin?undo=1', { method: 'POST', body: JSON.stringify({ taps: [outs[1]] }) }), waitUntil: () => {} }).then((r) => r.json());
+  assert.deepEqual([res.results[0].shelf, res.results[0].moved], ['2', true]);
+  assert.deepEqual(hub.sent, [1], 'box 2’s label, with its new shelf');
+  delete env.PRINT_HUB;
 });

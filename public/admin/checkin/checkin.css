@@ -530,3 +530,61 @@ h1 { white-space: normal; min-width: 0; }
 /* The done sheet: where the rest is, under the count it belongs to */
 .done-kids .sc-items { padding-left: 0; }
 .done-kids .shelf-callout + .shelf-callout { margin-top: 10px; }
+
+/* Check-out, round 4 (Nov 11 2026) */
+/* Toasts: the whole width to wrap in, every word shown */
+.toast { left: 16px; right: 16px; margin-inline: auto; width: fit-content; max-width: 520px; transform: none; display: block; -webkit-line-clamp: unset; overflow: visible; animation-name: toast-in-y; }
+.toast.out { animation-name: toast-out-y; }
+@keyframes toast-in-y { from { opacity: 0; transform: translateY(-12px); } }
+@keyframes toast-out-y { to { opacity: 0; transform: translateY(-12px); } }
+/* The waiting chip is a button: send now, or sign in again */
+button.chip-wait { border: 0; font-family: inherit; cursor: pointer; }
+/* The scanner's colours mean what the list's do: yellow is "in this load", green only "saved"; a stop is dark */
+.cam-said.ok, .cam-said.ok.end { background: #FFFFFF; color: var(--ink); }
+.cam-said.ok span { color: var(--muted); }
+.cam-said .in-chip { grid-column: 2; justify-self: start; display: inline-flex; align-items: center; gap: 4px; background: var(--primary); color: var(--ink); font-weight: 700; font-size: 13.5px; padding: 3px 10px 3px 4px; border-radius: 999px; }
+.in-chip .tick, .cam-count .tick { --after: 0ms; width: 18px; height: 18px; background: transparent; color: var(--ink); }
+.cam-said .warn-line { color: var(--warn-fg); font-weight: 650; }
+.cam-said.stop, .cam-said.warn { background: #18181B; color: #FFFFFF; }
+.cam-said.stop { grid-template-columns: auto minmax(0, 1fr); }
+.cam-said.stop > b { font-size: 19px; grid-column: 2; }
+.cam-said.stop > span, .cam-said.warn > span { color: rgba(255, 255, 255, 0.82); grid-column: 2; }
+.cam-said.warn > span, .cam-said.warn > b { grid-column: 1; }
+.cam-said.stop .cam-undo, .cam-said.warn .cam-undo { background: rgba(255, 255, 255, 0.14); color: #FFFFFF; }
+.cam .frame.square.hit { background: rgba(255, 213, 0, 0.42); border-color: var(--primary); }
+.frame-tick { color: var(--ink); }
+.cam .frame.square.stop { border-color: #FFFFFF; border-width: 7px; background: rgba(24, 24, 27, 0.35); }
+.cam-top .cam-count.done { background: var(--primary); color: var(--ink); }
+/* The last read: the box number never cut off, only the name */
+.cam-said.last { display: flex; align-items: baseline; gap: 6px; }
+.cam-said.last .lb { flex: none; white-space: nowrap; font-weight: 700; font-size: 15px; }
+.cam-said.last .ln { min-width: 0; flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 600; }
+/* Check out's sheets: the shelf tag a neutral block like the list's (green there means saved) */
+body[data-mode="out"] .sheet-head .tag-here { background: #111111; color: #FFFFFF; }
+/* A sheet's answer first, as its headline; another kid's box is a stop */
+.sheet-lead { margin: 0; font-size: 17px; font-weight: 750; color: var(--ink); }
+.sheet-lead.stop { background: #18181B; color: #FFFFFF; padding: 12px 14px; border-radius: 14px; }
+/* The kid's count in its own column, its "in this load" line always there: the first tick moves nothing */
+.load-head .card-title { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; }
+.load-head .who { min-width: 0; }
+.load-head .who h2 { overflow: hidden; text-overflow: ellipsis; }
+.count.big .in-load.none { visibility: hidden; }
+/* Rows: the sub-line wraps (two lines at most) rather than cutting off "1 on the truck" */
+.lrow .row-sub { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.kt-body .kt-line em { white-space: nowrap; }
+/* The review: what stays and what isn't here yet, one under the other; a kid taken out, dimmed in place */
+.look.still { display: grid; }
+.pick.dim { opacity: 0.55; }
+/* A small Take back, working: the spinner and its word, never squeezed */
+.tag-here.as-btn { white-space: nowrap; flex: none; }
+.as-btn.working { display: inline-flex; align-items: center; gap: 6px; }
+.as-btn .spin { width: 14px; height: 14px; border-width: 2px; }
+/* The done sheet: how saving went, with its sign (a tick: saved; a phone: kept on this phone) */
+.sheet-sub:has(svg), .sheet-sub:has(.tick) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.sheet-sub .tick { --after: 0ms; width: 20px; height: 20px; }
+.sheet-sub .btn-text.inline { height: auto; padding: 0; }
+.sc-items .quiet { color: var(--faint); }
+/* Boxes the site refused (they're on the truck and shouldn't be): what, and what to do */
+.refused { background: #18181B; color: #FFFFFF; border-radius: 16px; padding: 14px 16px; display: grid; gap: 12px; }
+.rf-row { display: grid; gap: 3px; }
+.rf-row span { color: rgba(255, 255, 255, 0.82); font-size: 14.5px; }

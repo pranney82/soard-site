@@ -9,24 +9,24 @@
  *   ?receive=1 { tap, jobId, itemId, partKey, name, line, units, boxes, shelf? } → { receipt, shelf, jt, print };
  *              { items: [those] } a whole shipment at once → { results: [{ tap, jobId, shelf, repeat } | { tap, error, status }], print, jt }
  *   ?house=1   { tap, jobId, itemId, partKey, name, line }        "Not coming here" (it went to the house)
- *   ?undo=1    { tap }                                             a check-in taken back
+ *   ?undo=1    { taps: [...] } (or one { tap })                     check-ins or boxes out taken back → { results: [{ tap, shelf, moved? }] }
  *   ?shelf=1   { tap, shelf }                                      a check-in moved to another shelf (or the Floor)
  *   ?reprint=1 { tap }                                             a check-in's labels again
  *   ?decide=1  { orderKey, items: [{ itemName, decision }] }      Needs a look and Wrong kid answers
  *   ?other=1   { tap, jobId, name, cents, donated, units, boxes } something else that came, typed in
  *   ?shelf-labels=1 { shelves: ['1', …] }                          the shelves' own signs
- *   ?out=1     { tap, ref, box } (a scanned label) or { tap, jobId, itemId, partKey, units, name, line }   checked out to the house;
- *              { items: [those] } a whole load at once (Confirm) → { results: [{ tap, repeat } | { tap, error, status }] }
+ *   ?out=1     { items: [{ tap, ref, box }] } a load (Confirm), each one box of one check-in, out to the house
+ *              → { results: [{ tap, repeat } | { tap, error, status }] } (or one { tap, ref, box })
  * Every check-in is saved first, then its kid's lines are written to JobTread (./_kid-jt.js) and its labels printed.
  */
 import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
 import { checkinView, orderReads } from './_kid-checkin.js';
 import { readLabel, findBox, likelyBoxes } from './_kid-scan.js';
-import { receive, undo, undoMany, moveShelf, decide, typedIn, checkOut, checkOutMany, OUT_BATCH, markPrinted, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
+import { receive, undoMany, moveShelf, decide, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
-import { receiptLabels, shelfLabel } from './_kid-labels.js';
-import { printLabels, printerStatus, printerSetup, PRINTER_URL, PRINTER_USER } from './_kid-print.js';
+import { shelfLabel } from './_kid-labels.js';
+import { printLabels, printReceipts, labelsOf, printerStatus, printerSetup, PRINTER_URL, PRINTER_USER } from './_kid-print.js';
 import { verifyJwt } from './_middleware.js';
 
 const headers = { 'Cache-Control': 'no-store' };
@@ -75,22 +75,15 @@ export async function onRequestGet({ env, request }) {
 }
 
 /** One check-in's labels: one a box, the kid's name, the item, the shelf, a QR to it */
-function labelsFor(view, receipt) {
-  const kid = view.kids.find((k) => k.jobId === receipt.job_id);
-  return receiptLabels({ kid: kid?.short || 'SOARD', item: receipt.name, line: receipt.line_name, boxes: receipt.boxes, shelf: receipt.shelf ? shelfName(receipt.shelf) : '', at: receipt.at, tap: receipt.id });
-}
+const labelsFor = (view, receipt) => labelsOf(view.kids.find((k) => k.jobId === receipt.job_id)?.short, receipt);
 
 /**
- * Check-ins' labels to the printer, each marked printed once the printer has them. It carries on if the phone hangs
- * up first (Cloudflare stops a request's unfinished work when its caller leaves; waitUntil keeps it): a check-in saved
- * always gets its labels, and the phone's retry prints only what never reached the printer, so nothing prints twice
+ * Check-ins' labels to the printer (./_kid-print.js printReceipts: each printed once, in parts the hub takes, held
+ * here while the printer is off). It carries on if the phone hangs up first: Cloudflare stops a request's unfinished
+ * work when its caller leaves, and waitUntil keeps it, so a check-in saved always gets its labels
  */
-function printFor(context, receipts, view) {
-  const run = (async () => {
-    const p = await printLabels(context.env, receipts.flatMap((r) => labelsFor(view, r)));
-    if (p.setUp && !p.error && (p.printed || p.queued)) await markPrinted(context.env.DB, receipts.map((r) => r.id));
-    return p;
-  })();
+function printFor(context, receipts, view, opts = {}) {
+  const run = printReceipts(context.env, receipts, (r) => labelsFor(view, r), opts);
   context.waitUntil?.(run.catch(() => {}));
   return run;
 }
@@ -168,16 +161,28 @@ export async function onRequestPost(context) {
       const r = await receive(env.DB, { ...body, kind: 'house' }, { by });
       jobId = r.receipt.job_id;
       out.receipt = r.receipt.id;
-    } else if (q.get('undo') && Array.isArray(body.taps)) {
-      // Take back off the truck: every box of a thing in one go; JobTread in the background
-      const results = await undoMany(env.DB, body.taps.slice(0, OUT_BATCH).map(String), { by });
-      out.results = results.map(({ tap, shelf, error, status }) => (error ? { tap, error, status } : { tap, shelf }));
+    } else if (q.get('undo') && (Array.isArray(body.taps) || body.tap)) {
+      // An undo (a check-in, Take back off the truck: every box of a thing in one go); JobTread in the background.
+      // One tap (an older copy of the page) answers as it always did: an error is the answer's own
+      const single = !Array.isArray(body.taps);
+      const results = await undoMany(env.DB, (single ? [body.tap] : body.taps.slice(0, OUT_BATCH)).map(String), { by });
+      if (single && results[0].error) return Response.json({ success: false, error: results[0].error }, { status: results[0].status, headers });
+      out.results = results.map(({ tap, shelf, moved, error, status }) => (error ? { tap, error, status } : { tap, shelf, ...(moved ? { moved } : {}) }));
+      // A box back from the truck whose shelf is another kid's by now goes on a new one: its label is printed again with it
+      const moved = results.filter((x) => x.moved);
+      if (moved.length) {
+        const view = await checkinView(env);
+        const labels = [];
+        for (const m of moved) {
+          const r = await env.DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(m.ref).first();
+          if (r) labels.push(...(m.box ? labelsFor(view, r).slice(m.box - 1, m.box) : labelsFor(view, r)));
+        }
+        if (labels.length) out.print = await printLabels(env, labels);
+      }
       const jobs = new Set(results.filter((x) => !x.error && !x.repeat).map((x) => x.jobId));
       const write = (async () => { for (const j of jobs) await writeKidNow(env, j); })();
       if (context.waitUntil) context.waitUntil(write); else await write;
       out.jt = 'later';
-    } else if (q.get('undo')) {
-      jobId = (await undo(env.DB, body.tap, { by })).jobId;
     } else if (q.get('shelf')) {
       jobId = (await moveShelf(env.DB, body.tap, String(body.shelf || ''))).jobId;
       out.shelf = String(body.shelf);
@@ -203,7 +208,7 @@ export async function onRequestPost(context) {
       return Response.json({ success: false, error: 'Nothing to do' }, { status: 400, headers });
     }
     const view = await checkinView(env);
-    if (print) out.print = await printFor(context, [print], view);
+    if (print) out.print = await printFor(context, [print], view, { again: Boolean(q.get('reprint')) });
     // JobTread now, for the kid it changed: the answer says whether it's there
     if (jobId) out.jt = await writeKidNow(env, jobId);
     return Response.json({ success: true, ...out, view: { ...(out.jt === 'written' ? await checkinView(env) : view), printer: await printerStatus(env) } }, { headers });

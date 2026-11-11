@@ -11,9 +11,9 @@
  * needs to trust the site.
  */
 
-import { readState, writeState } from './_kid-record.js';
+import { readState, writeState, claimPrint, releasePrint, ensureRecord, shelfName } from './_kid-record.js';
 import { PRINTER_ROOTS } from './_printer-roots.js';
-import { SITE } from './_kid-labels.js';
+import { SITE, receiptLabels } from './_kid-labels.js';
 
 export const PRINTER_USER = 'soard';
 export const PRINTER_URL = `${SITE}/api/printer-ws/`;
@@ -95,5 +95,68 @@ export async function printerStatus(env) {
     return { bound: true, setUp: Boolean(s.seenAt), online: Boolean(s.online), seenAt: s.seenAt ? new Date(s.seenAt).toISOString() : null, printedAt: s.printedAt ? new Date(s.printedAt).toISOString() : null, problems: s.problems || [], waiting: s.waiting || 0 };
   } catch {
     return { bound: true, setUp: false, online: false, problems: [] };
+  }
+}
+
+// ─── Check-ins' labels: each printed once, none lost ───────────────────
+
+// The hub takes this many labels a request
+const PART = 40;
+// While the printer is off, check-ins' labels wait on the site; once it's back they print, if they're this recent
+export const PRINT_WAIT_MS = 2 * 60 * 60 * 1000;
+
+/** A check-in's labels, one a box (kid: the kid's short name) */
+export const labelsOf = (kid, r) => receiptLabels({ kid: kid || 'SOARD', item: r.name, line: r.line_name, boxes: r.boxes, shelf: r.shelf ? shelfName(r.shelf) : '', at: r.at, tap: r.id });
+
+/**
+ * Check-ins' labels to the printer, each check-in printed once. Each is claimed first (./_kid-record.js claimPrint), so
+ * a retry overlapping the first try prints nothing twice; a claim whose labels the printer didn't take is let go. They
+ * go in parts the hub takes at once (40). The printer off: nothing is sent (the hub would hold only 60, for two hours,
+ * and drop the rest without a word): they wait here as check-ins not printed yet, and print when it's back on
+ * (maybePrintWaiting, on the heartbeat). again: Print again (prints what was printed before).
+ * labelsFor(receipt) → its labels. → { printed, queued (waiting for the printer), online, setUp, problems, error? }
+ */
+export async function printReceipts(env, receipts, labelsFor, { again = false, now = new Date().toISOString() } = {}) {
+  if (!hub(env)) return { printed: 0, online: false, setUp: false, problems: [] };
+  const status = await printerStatus(env);
+  if (!status.online) return { printed: 0, queued: receipts.reduce((t, r) => t + labelsFor(r).length, 0), online: false, setUp: status.setUp, problems: status.problems };
+  const ids = new Set(again ? receipts.map((r) => r.id) : await claimPrint(env.DB, receipts.map((r) => r.id), now));
+  const mine = receipts.filter((r) => ids.has(r.id));
+  const parts = [];
+  for (const r of mine) {
+    const last = parts[parts.length - 1];
+    if (last && last.labels.length + labelsFor(r).length <= PART) { last.receipts.push(r); last.labels.push(...labelsFor(r)); } else parts.push({ receipts: [r], labels: [...labelsFor(r)] });
+  }
+  let printed = 0, queued = 0, problems = status.problems, error = null;
+  for (let i = 0; i < parts.length; i++) {
+    const p = await printLabels(env, parts[i].labels);
+    problems = p.problems || problems;
+    if (p.error || (p.printed || 0) + (p.queued || 0) < parts[i].labels.length) {
+      // Not taken: this part and the rest aren't printed after all
+      error = p.error || 'The printer didn’t take every label';
+      if (!again) await releasePrint(env.DB, parts.slice(i).flatMap((x) => x.receipts.map((r) => r.id)), now);
+      break;
+    }
+    printed += p.printed || 0;
+    // The printer went off between the check and the send: the hub holds these few until it's back
+    queued += p.queued || 0;
+  }
+  return { printed, queued, online: true, setUp: true, problems, ...(error ? { error } : {}) };
+}
+
+/** On the heartbeat: check-ins from the last two hours whose labels never printed, printed once the printer is on. Never throws */
+export async function maybePrintWaiting(env, { now = Date.now() } = {}) {
+  if (!env?.DB || !hub(env)) return null;
+  try {
+    await ensureRecord(env.DB);
+    const rows = (await env.DB.prepare("SELECT * FROM kid_receipts WHERE kind = 'receive' AND undone_at IS NULL AND printed_at IS NULL AND at > ? ORDER BY at LIMIT 200")
+      .bind(new Date(now - PRINT_WAIT_MS).toISOString()).all()).results || [];
+    if (!rows.length || !(await printerStatus(env)).online) return null;
+    const { checkinView } = await import('./_kid-checkin.js');
+    const short = new Map((await checkinView(env, { photos: false })).kids.map((k) => [k.jobId, k.short]));
+    return await printReceipts(env, rows, (r) => labelsOf(short.get(r.job_id), r));
+  } catch (err) {
+    console.error('[kid-print] waiting labels', err.message);
+    return null;
   }
 }

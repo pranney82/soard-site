@@ -51,8 +51,10 @@ const ICON = {
 const QUEUE_KEY = 'soard-checkin-queue';
 const clean = (m) => String(m || '').replace(/[.\s]+$/, '');
 const readQueue = () => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; } };
-const writeQueue = (q) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch { /* private window: it can't wait, it's sent now or said */ } };
+// → false when this phone can't keep anything (private browsing with storage off, or it's full)
+const writeQueue = (q) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); return true; } catch { return false; } };
 const QUEUEABLE = new Set(['receive', 'other', 'house', 'undo', 'shelf', 'decide', 'out']);
+const CANT_KEEP = 'No connection, and this phone can’t keep it for later (its storage is off). Try again with signal';
 // What one waiting request holds: a load's boxes, a shipment's check-ins, a take-back's boxes, or one thing
 const partsOf = (q) => (Array.isArray(q.body?.items) ? q.body.items.map((x) => x.tap) : Array.isArray(q.body?.taps) ? q.body.taps : [q.body?.tap || q.id]);
 // How what landed is said: boxes out, check-ins, anything else a change
@@ -60,19 +62,24 @@ const nounOf = (action) => (action === 'out' ? 'box' : ['receive', 'other', 'hou
 const NOUNS = { box: 'boxes', 'check-in': 'check-ins', change: 'changes' };
 
 class Offline extends Error {}
+const timedOut = (err) => ['AbortError', 'TimeoutError'].includes(err?.name);
 
-/** POST an action → the site's answer (its fresh view is applied); no connection → Offline */
+/** POST an action → the site's answer (its fresh view is applied); no connection → Offline; the sign-in ran out → 403 */
 async function send(action, body) {
   let res;
   try {
-    // Poor signal can hang a request for a minute: one that could wait on the phone stops at 10 seconds and does
+    // Poor signal can hang a request for a minute: one that could wait on the phone stops at 10 seconds and does.
+    // A sign-in that ran out answers with a redirect to Access's sign-in page: seen as that, never as "no connection"
     const signal = QUEUEABLE.has(action) && AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined;
-    res = await fetch(`/api/kid-items-admin?${action}=1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+    res = await fetch(`/api/kid-items-admin?${action}=1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal, redirect: 'manual' });
   } catch {
     throw new Offline('No connection');
   }
+  if (res.type === 'opaqueredirect' || [301, 302, 303, 307].includes(res.status)) throw Object.assign(new Error('Your sign-in ran out'), { status: 403 });
   if ([502, 503, 504].includes(res.status) && QUEUEABLE.has(action)) throw new Offline('The site didn’t answer');
-  const out = await res.json().catch(() => ({}));
+  // The 10 seconds can run out while the answer is still arriving: that's no connection too (it waits and goes again)
+  let out;
+  try { out = await res.json(); } catch (err) { if (timedOut(err) && QUEUEABLE.has(action)) throw new Offline('No connection'); out = {}; }
   if (!res.ok || !out.success) throw Object.assign(new Error(out.error || `The site answered ${res.status}`), { status: res.status });
   if (out.view) apply(out.view);
   return out;
@@ -84,7 +91,8 @@ async function sendOrKeep(action, body) {
     return { out: await send(action, body) };
   } catch (err) {
     if (!(err instanceof Offline) || !QUEUEABLE.has(action)) throw err;
-    writeQueue([...readQueue(), { id: body.tap || newTap(), action, body, at: Date.now() }]);
+    // Tried once already: if the site did get it (only its answer was lost), an undo of it goes to the site too
+    if (!writeQueue([...readQueue(), { id: body.tap || newTap(), action, body, at: Date.now(), tried: true }])) throw new Error(CANT_KEEP);
     showQueue();
     overlayQueue();
     return { queued: true };
@@ -97,105 +105,181 @@ const FOR_GOOD = new Set([400, 404, 409]);
 let flushChain = Promise.resolve();
 /**
  * Send what's waiting on this phone, oldest first, one run at a time (a run asked for while one is going runs after
- * it, so nothing waits 15 seconds for no reason) → { landed: Set of ids, refused: Map id → why, signIn }.
- * What the caller will say itself (mine) isn't said here.
+ * it, so nothing waits 15 seconds for no reason) → { landed: Set, refused: Map id → { why, status }, answers: Map
+ * id → the site's answer, signIn }. What the caller says itself (mine) isn't said here.
  */
 function flush(opts = {}) {
   const run = flushChain.then(() => flushOnce(opts));
   flushChain = run.catch(() => {});
   return run;
 }
+/** What a waiting thing is, in words, for a refusal: "Cloud Pendant Light (2 boxes)" */
+function whatOf(q, taps) {
+  const items = Array.isArray(q.body?.items) ? q.body.items.filter((x) => taps.includes(x.tap)) : [q.body || {}];
+  const names = new Map();
+  // By its check-in, undone or not (a refusal is often that it was undone)
+  const byRef = (ref) => state.kids.flatMap((k) => k.items).find((i) => (i.receipts || []).some((r) => r.id === ref))?.name;
+  for (const x of items) { const name = x.ref ? byRef(x.ref) : x.name; if (name) names.set(name, (names.get(name) || 0) + 1); }
+  return [...names].map(([name, n]) => (q.action === 'out' && n > 1 ? `${name} (${n} boxes)` : name)).join(', ');
+}
 async function flushOnce({ mine = new Set() } = {}) {
   const landed = new Set();
   const refused = new Map();
+  const answers = new Map();
   let signIn = false;
-  if (!readQueue().length) { showQueue(); return { landed, refused, signIn }; }
+  if (!readQueue().length) { showQueue(); return { landed, refused, answers, signIn }; }
   const done = new Set();
   const saidNot = [];
   const savedBy = new Map();
+  const notSaved = (q, taps, why) => { const w = whatOf(q, taps); if (!taps.some((t) => mine.has(t))) saidNot.push(w ? `${w}: ${why}` : why); };
+  const count = (q, taps) => { const n = taps.filter((t) => !mine.has(t)).length; if (n) savedBy.set(nounOf(q.action), (savedBy.get(nounOf(q.action)) || 0) + n); };
   try {
     for (const q of readQueue()) {
       const parts = partsOf(q);
+      // Marked before it goes: if its answer is lost, an undo of it is sent to the site too
+      if (!q.tried) writeQueue(readQueue().map((e) => (e.id === q.id ? { ...e, tried: true } : e)));
+      let out;
       try {
-        const out = await send(q.action, q.body);
-        done.add(q.id);
-        const many = Array.isArray(q.body?.items) || Array.isArray(q.body?.taps);
-        const byTap = new Map((out.results || []).map((x) => [x.tap, x]));
-        const retry = [];
-        for (const t of parts) {
-          const x = many ? byTap.get(t) : { };
-          if (x && !x.error) landed.add(t);
-          else if (x && FOR_GOOD.has(x.status)) { refused.set(t, clean(x.error)); if (!mine.has(t)) saidNot.push(clean(x.error)); }
-          // No answer for it, or the site failed on it: it goes again, with its own id (never counted twice)
-          else retry.push(t);
-        }
-        if (retry.length) {
-          const body = Array.isArray(q.body?.items) ? { items: q.body.items.filter((x) => retry.includes(x.tap)) } : { taps: retry };
-          writeQueue([...readQueue(), { id: newTap(), action: q.action, body, at: Date.now() }]);
-        }
-        const n = parts.filter((t) => landed.has(t) && !mine.has(t)).length;
-        if (n) savedBy.set(nounOf(q.action), (savedBy.get(nounOf(q.action)) || 0) + n);
+        out = await send(q.action, q.body);
       } catch (err) {
         if (FOR_GOOD.has(err.status)) {
           done.add(q.id);
-          for (const t of parts) refused.set(t, clean(err.message));
-          if (!parts.some((t) => mine.has(t))) saidNot.push(clean(err.message));
+          // An undo of what the site never saved: nothing to undo, so it's done
+          if (q.action === 'undo' && err.status === 404) { parts.forEach((t) => landed.add(t)); continue; }
+          for (const t of parts) refused.set(t, { why: clean(err.message), status: err.status });
+          notSaved(q, parts, clean(err.message));
           continue;
         }
-        if (err.status === 403) { signIn = true; toast('Your sign-in ran out. Reload the page to sign in, and what’s waiting will save.'); }
+        if (err.status === 403) { signIn = true; state.signedOut = true; if (!parts.some((t) => mine.has(t))) toast('Your sign-in ran out. Tap “to save” up top to sign in again.'); }
         break;
       }
+      state.signedOut = false;
+      const many = Array.isArray(q.body?.items) || Array.isArray(q.body?.taps);
+      const byTap = new Map((out.results || []).map((x) => [x.tap, x]));
+      const retry = [];
+      const why = new Map();
+      for (const t of parts) {
+        const x = many ? byTap.get(t) : out;
+        if (x && !x.error) { landed.add(t); answers.set(t, x); }
+        else if (x && q.action === 'undo' && x.status === 404) landed.add(t);
+        else if (x && FOR_GOOD.has(x.status)) { refused.set(t, { why: clean(x.error), status: x.status }); why.set(clean(x.error), [...(why.get(clean(x.error)) || []), t]); }
+        // No answer for it, or the site failed on it: it goes again, with its own id (never counted twice)
+        else retry.push(t);
+      }
+      for (const [w, taps] of why) notSaved(q, taps, w);
+      count(q, parts.filter((t) => landed.has(t)));
+      if (retry.length) {
+        // It keeps its place: what follows may need it first (a box's check-in before the box)
+        const body = Array.isArray(q.body?.items) ? { ...q.body, items: q.body.items.filter((x) => retry.includes(x.tap)) } : { taps: retry };
+        writeQueue(readQueue().map((e) => (e.id === q.id ? { ...e, body, tried: true } : e)));
+        break;
+      }
+      done.add(q.id);
     }
   } finally {
     // What was added while this ran stays: only what was sent (or refused for good) comes off
     writeQueue(readQueue().filter((q) => !done.has(q.id)));
     showQueue();
-    if (done.size) { overlayQueue(); render(); }
-    // What waited on the phone has landed: said once, on one line, with anything the site refused
+    if (done.size) {
+      overlayQueue();
+      // A sheet that will draw the list as it closes (the done sheet) does it then, so its rows can fade
+      if (!state.renderOnClose) render();
+    }
+    // What waited on the phone has landed: said once, with anything the site refused, by name
     const said = [...savedBy].map(([k, n]) => `${plural(n, k, NOUNS[k])} saved`);
     if (said.length || saidNot.length) toast([said.join(' · '), saidNot.length ? `Not saved: ${saidNot.join('; ')}` : ''].filter(Boolean).join('. '));
   }
-  return { landed, refused, signIn };
+  return { landed, refused, answers, signIn };
 }
 
-/** Undo: what's still waiting on this phone just comes off it; the rest is sent (or waits) in one request */
+/**
+ * Undo (a check-in, a box out, a "Not coming here"), through the queue and behind anything still being sent, so an
+ * undo can't overtake what it undoes. Waiting on this phone and never sent: it just comes off. Sent at least once (its
+ * answer lost, so the site may have it): undone on the site too. → { ok: Set of undone, refused: Map id → why,
+ * waiting: Set kept on the phone for the connection, answers: Map id → the site's answer, signIn }
+ */
 async function undoTaps(taps) {
   const want = new Set(taps);
   const local = new Set();
+  const tried = new Set();
   const q = [];
   for (const x of readQueue()) {
-    if (want.has(x.body?.tap)) { local.add(x.body.tap); continue; }
-    if (Array.isArray(x.body?.items)) {
-      const keep = x.body.items.filter((it) => { if (want.has(it.tap)) { local.add(it.tap); return false; } return true; });
-      if (keep.length) q.push({ ...x, body: { ...x.body, items: keep } });
+    const items = Array.isArray(x.body?.items) ? x.body.items : null;
+    if (!items) {
+      if (want.has(x.body?.tap)) { local.add(x.body.tap); if (x.tried) tried.add(x.body.tap); continue; }
+      q.push(x);
       continue;
     }
-    q.push(x);
+    const keep = items.filter((it) => { if (!want.has(it.tap)) return true; local.add(it.tap); if (x.tried) tried.add(it.tap); return false; });
+    if (keep.length) q.push(keep.length === items.length ? x : { ...x, body: { ...x.body, items: keep } });
   }
-  if (local.size) { writeQueue(q); showQueue(); }
-  const rest = taps.filter((t) => !local.has(t));
-  if (!rest.length) return { local: true };
-  return sendOrKeep('undo', taps.length === 1 ? { tap: rest[0] } : { taps: rest });
+  const res = { ok: new Set(), refused: new Map(), waiting: new Set(), answers: new Map(), signIn: false };
+  if (local.size && writeQueue(q)) {
+    // Off the phone: off the list too
+    for (const k of state.kids) for (const i of k.items) {
+      const before = (i.receipts || []).length;
+      i.receipts = (i.receipts || []).filter((r) => !(r.waiting && local.has(r.id)));
+      if (i.receipts.length !== before) settleLocal(i);
+    }
+    for (const t of local) if (!tried.has(t)) res.ok.add(t);
+  }
+  const toSite = taps.filter((t) => !res.ok.has(t));
+  if (!toSite.length) { showQueue(); return res; }
+  if (!writeQueue([...readQueue(), { id: newTap(), action: 'undo', body: { taps: toSite }, at: Date.now() }])) {
+    // This phone can't keep it: sent now, or said
+    let out;
+    try { out = await send('undo', { taps: toSite }); } catch (err) { throw err instanceof Offline ? new Error(CANT_KEEP) : err; }
+    for (const x of out.results || []) {
+      if (!x.error || x.status === 404) { res.ok.add(x.tap); res.answers.set(x.tap, x); } else res.refused.set(x.tap, clean(x.error));
+    }
+    return res;
+  }
+  showQueue();
+  overlayQueue();
+  const f = await flush({ mine: new Set(toSite) });
+  for (const t of toSite) {
+    if (f.landed.has(t)) { res.ok.add(t); if (f.answers.has(t)) res.answers.set(t, f.answers.get(t)); } else if (f.refused.has(t)) res.refused.set(t, f.refused.get(t).why); else res.waiting.add(t);
+  }
+  res.signIn = f.signIn;
+  return res;
 }
-const undoTap = (tap) => undoTaps([tap]);
 
 function showQueue() {
   const n = readQueue().reduce((t, q) => t + partsOf(q).length, 0);
-  const boxes = readQueue().every((q) => q.action === 'out');
   const el = $('queue');
   el.hidden = !n;
-  el.textContent = n ? `${boxes ? boxWord(n) : n} to save` : '';
-  el.setAttribute('aria-label', n ? `${boxes ? boxWord(n) : n} waiting for the connection` : '');
+  // Short, so the title row never wraps and the page never jumps; tapping it sends now (or signs in again)
+  el.textContent = n ? (state.signedOut ? `Sign in · ${n}` : `${n} to save`) : '';
+  el.setAttribute('aria-label', n ? (state.signedOut ? `${n} waiting: your sign-in ran out. Sign in again` : `${n} waiting for the connection. Send now`) : '');
   // One chip up top at a time: what's waiting matters more than Practice
   $('mode').hidden = Boolean(n) || !state.practice;
 }
 window.addEventListener('online', () => flush());
 setInterval(() => flush(), 15000);
 
+/** A load waiting from an older copy of this page (whole things, not boxes) is put in boxes, so it can go */
+function upgradeQueue() {
+  let changed = false;
+  const q = readQueue().map((x) => {
+    if (x.action !== 'out') return x;
+    const items = Array.isArray(x.body?.items) ? x.body.items : [x.body || {}];
+    if (items.every((it) => it.ref && it.box)) return x;
+    changed = true;
+    const boxes = items.flatMap((it) => {
+      if (it.ref && it.box) return [it];
+      const k = kidById(it.jobId);
+      const f = it.ref ? findByRef(it.ref) : (() => { const i = k?.items.find((y) => y.itemId === it.itemId && y.partKey === it.partKey); return i ? { k, i } : null; })();
+      return f ? boxesHere(f.i).filter((b) => !it.ref || b.ref === it.ref).map((b, n) => ({ tap: `${String(it.tap).slice(0, 58)}-b${n + 1}`, ref: b.ref, box: b.box })) : [];
+    });
+    return boxes.length ? { ...x, body: { items: boxes } } : null;
+  }).filter(Boolean);
+  if (changed) writeQueue(q);
+}
+
 /**
  * What's waiting on this phone, drawn onto the list (the site's answers don't know it yet): a box out shows as out,
  * a take-back as back, a check-in as here. Every view from the site is drawn over again, so nothing waiting ever
- * shows as undone
+ * shows as undone; a box the site has as out already (another phone loaded it) isn't drawn twice
  */
 function overlayQueue() {
   const touched = new Set();
@@ -206,6 +290,8 @@ function overlayQueue() {
       for (const b of bodies) {
         const f = b.ref ? findByRef(b.ref) : null;
         if (!f || f.i.receipts.some((r) => r.id === b.tap)) continue;
+        const p = outStateOf(f.i).per.get(b.ref);
+        if (!p || p.full || (b.box && p.boxes.has(Number(b.box)))) continue;
         f.i.receipts.push({ id: b.tap, kind: 'out', ref: b.ref, box: b.box ?? null, units: 0, at: new Date(q.at || Date.now()).toISOString(), waiting: true });
         touched.add(f.i);
       }
@@ -231,9 +317,10 @@ function settleLocal(it) {
   it.sent = st.sent;
   it.boxesLeft = st.boxesLeft;
   const live = (it.receipts || []).filter((r) => !r.undone);
-  if (live.some((r) => r.kind === 'house')) it.status = 'house';
-  else if (st.allOut && it.got >= it.qty) it.status = 'out';
-  else if (it.got >= it.qty) it.status = 'here';
+  it.house = live.some((r) => r.kind === 'house');
+  if (it.house && !it.got) it.status = 'house';
+  else if (st.allOut && (it.got >= it.qty || it.house)) it.status = 'out';
+  else if (it.got >= it.qty || it.house) it.status = 'here';
   else if (it.got > 0) it.status = 'partly';
   else it.status = it.order ? 'ordered' : 'not';
 }
@@ -283,11 +370,12 @@ function rowHtml(kid, it) {
 function render() {
   document.body.dataset.mode = state.mode;
   document.querySelector('h1').textContent = state.mode === 'out' ? 'Check out' : 'Check in';
-  document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode)));
+  document.querySelectorAll('.seg [data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode)));
   $('q').placeholder = state.mode === 'out' ? 'Find a kid or a thing' : 'Find an item, a kid or a store';
   if (state.mode === 'out') { renderOut(); return; }
   $('scan').classList.remove('confirming');
   $('other2').hidden = true;
+  paintTabs();
   $('scan').querySelector('span').textContent = 'Scan a box';
   $('other').textContent = 'Something else';
   $('chips').innerHTML = ['All', ...state.kids.map((k) => k.short)]
@@ -496,7 +584,9 @@ function hereSheet(kid, it, { keep = false } = {}) {
     ${waiting || !last ? '' : '<div class="btn-row"><button class="btn btn-text" type="button" id="undo">Undo the check-in</button></div>'}`, { keep });
   document.querySelectorAll('#sheet-root [data-takeback]').forEach((b) => {
     b.onclick = async () => {
-      try { await undoTap(b.dataset.takeback); } catch (err) { toast(err.message); return; }
+      let r;
+      try { r = await undoTaps([b.dataset.takeback]); } catch (err) { toast(err.message); return; }
+      if (r.refused.size) { toast(`Not taken back: ${[...r.refused.values()][0]}`); return; }
       tones.undo();
       await close();
       render();
@@ -507,10 +597,9 @@ function hereSheet(kid, it, { keep = false } = {}) {
     try { const out = await send('reprint', { tap: last.id }); toast(printSaid(out.print).text); } catch (err) { toast(err.message); }
   };
   if ($('undo')) $('undo').onclick = async () => {
-    const r = await undoTap(last.id).catch((err) => { toast(err.message); return null; });
+    const r = await undoTaps([last.id]).catch((err) => { toast(err.message); return null; });
     if (!r) return;
-    if (r.local) last.undone = true;
-    if (r.queued || r.local) settleLocal(it);
+    if (r.refused.size) { toast(`Not undone: ${[...r.refused.values()][0]}`); return; }
     await close();
     render();
   };
@@ -520,7 +609,7 @@ function hereSheet(kid, it, { keep = false } = {}) {
 /** Say what happened to the labels, in a few words */
 function printSaid(p) {
   if (!p) return { ok: false, text: 'Saved. The labels print when it’s sent.' };
-  if (p.printed) return { ok: true, text: p.printed === 1 ? 'Printed' : `${p.printed} printed` };
+  if (p.printed) return p.error ? { ok: false, text: `${p.printed} printed, the rest didn’t: ${p.error}` } : { ok: true, text: p.printed === 1 ? 'Printed' : `${p.printed} printed` };
   if (!p.setUp) return { ok: false, text: 'The printer isn’t set up yet' };
   if (p.problems?.length) return { ok: false, text: `Printer: ${p.problems.join(', ')}` };
   if (p.queued) return { ok: false, text: 'The printer is off. They print when it’s back on.' };
@@ -589,9 +678,9 @@ async function printed(kid, it, { units = 1, boxes = 1, other = null, tap = newT
   $('done').onclick = () => finish(false);
   $('next').onclick = () => finish(true);
   $('undo').onclick = async () => {
-    try { await undoTap(tap); } catch (err) { toast(err.message); return; }
-    // Still waiting on the phone: it came off the queue, so it comes off the list too
-    if (res.queued) { it.receipts = (it.receipts || []).filter((x) => x.id !== tap); settleLocal(it); }
+    let r;
+    try { r = await undoTaps([tap]); } catch (err) { toast(err.message); return; }
+    if (r.refused.size) { toast(`Not taken back: ${[...r.refused.values()][0]}`); return; }
     await close();
     render();
     toast('Taken back');
@@ -1040,7 +1129,7 @@ $('scan').addEventListener('click', () => {
   if (load.size) confirmLoad(); else scanLabels(kidById(state.loadKid) || null);
 });
 
-document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
+document.querySelectorAll('.seg [data-mode]').forEach((b) => b.addEventListener('click', () => {
   if (state.mode === b.dataset.mode) return;
   state.mode = b.dataset.mode;
   state.openHere.clear();
@@ -1048,6 +1137,7 @@ document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('clic
   window.scrollTo({ top: 0 });
 }));
 $('printer').addEventListener('click', () => shelvesSheet());
+$('queue').addEventListener('click', () => { if (state.signedOut) location.reload(); else flush(); });
 $('camera').addEventListener('change', async (e) => {
   const f = e.target.files?.[0];
   e.target.value = '';
@@ -1082,6 +1172,8 @@ async function loadPage() {
     if (!state.loadedOnce) state.mode = state.me?.pm || load.size ? 'out' : 'in';
     state.loadedOnce = true;
     state.printerUrl = body.printerUrl || '';
+    upgradeQueue();
+    overlayQueue();
     render();
     showQueue();
     openFromLink();
@@ -1231,8 +1323,14 @@ function renderDock() {
   $('scan').classList.toggle('confirming', Boolean(n));
   $('scan').querySelector('span').textContent = n ? reviewWords(n) : 'Scan boxes';
   $('other').textContent = n ? 'Scan more' : rest ? (rest === 1 ? 'Load 1 box' : `Load ${allOf(rest)} boxes`) : '';
-  $('other2').textContent = n && rest ? `Load the other ${rest}` : '';
+  $('other2').textContent = n && rest ? (l.inLoad ? `Load the other ${rest}` : rest === 1 ? 'Load 1 box' : `Load ${allOf(rest)} boxes`) : '';
   $('other2').hidden = !(n && rest);
+  paintTabs();
+}
+/** The Check out tab carries what's in the load (so it's seen from Check in too) */
+function paintTabs() {
+  const b = document.querySelector('.seg [data-mode="out"]');
+  if (b) b.textContent = load.size ? `Check out · ${load.size}` : 'Check out';
 }
 
 /** Check out: scan any box straight away; or pick a kid to see their boxes and tick them off. Kids with nothing at the Office fold into one line */
@@ -1248,7 +1346,7 @@ function renderOutHome() {
     <button class="kid-tile" type="button" data-loadkid="${esc(k.jobId)}">
       ${face(k, 56)}
       <span class="kt-body"><span class="kt-name"><b>${esc(k.short)}</b>${k.stage ? `<span class="kt-stage">${esc(k.stage)}</span>` : ''}</span>
-        <span class="kt-line">${l.left ? `${boxWord(l.left)} at the Office` : l.done ? 'All loaded' : 'Nothing at the Office yet'}${l.inLoad ? ` · <em>${l.inLoad} in this load</em>` : ''}</span>
+        <span class="kt-line">${l.left ? `${boxWord(l.left)} at the Office` : l.done ? `${l.done === 1 ? '1 box' : `${allOf(l.done, true)} boxes`} loaded` : 'Nothing at the Office yet'}${l.inLoad ? ` · <em>${l.inLoad} in this load</em>` : ''}</span>
         ${l.left ? `<span class="kt-line">On ${esc(placesWords(l.places) || 'a shelf')}</span>` : ''}
         ${l.missing.length ? `<span class="kt-line">${notHereYet(l.missing.length)}</span>` : ''}</span>
       ${ICON.chev}
@@ -1265,8 +1363,8 @@ function renderOutHome() {
 
 /** The count by a kid's name: loaded of all, and what's in this load (the bar's yellow part) */
 const headCount = (l) => (!l.left && l.done && !l.inLoad
-  ? '<span class="chip-ok">All loaded</span>'
-  : `<b>${l.done}</b> of ${l.total}<br><span>loaded${l.inLoad ? `</span><br><span class="in-load">${l.inLoad} in this load` : ''}</span>`);
+  ? `<span class="chip-ok">${l.done === 1 ? '1 box' : `${allOf(l.done, true)} boxes`} loaded</span>`
+  : `<b>${l.done}</b> of ${l.total}<br><span>loaded</span><br><span class="in-load${l.inLoad ? '' : ' none'}">${l.inLoad ? `${l.inLoad} in this load` : 'none in this load'}</span>`);
 const barHtml = (kid, l) => `<div class="bar" aria-hidden="true"><i data-bar="${esc(kid.jobId)}" style="transform:scaleX(${l.total ? l.done / l.total : 0})"></i><b class="bar-load" style="left:${l.total ? (100 * l.done) / l.total : 0}%;width:${l.total ? (100 * l.inLoad) / l.total : 0}%"></b></div>`;
 function paintKidHead(kid) {
   const l = kidLoad(kid);
@@ -1314,30 +1412,46 @@ function renderLoad(kid) {
   }
   if (out.length) {
     html += `<section class="card">${state.openLoaded?.has(kid.jobId) || q
-      ? `<div class="group-h"><span>Loaded</span><span>${out.length}</span></div>${out.map((i) => loadRow(kid, i)).join('')}`
+      ? `<div class="group-h"><span>Loaded</span><span>${plural(out.length, 'thing')}</span></div>${out.map((i) => loadRow(kid, i)).join('')}`
       : `<button class="more" type="button" data-loaded="${esc(kid.jobId)}"><span>${plural(out.length, 'thing')} loaded</span>${ICON.chev}</button>`}</section>`;
   }
   $('list').innerHTML = html;
   showPrinter();
 }
 
+/**
+ * Boxes in words, the way the labels say them: "Box 2 of 3", "Boxes 2 and 3 of 3" when the thing came in once in
+ * three boxes or fewer (a label's own number is the quickest check); else a count. list: [{ box, of, n? }]
+ */
+function boxesSaid(it, list, { cap = true } = {}) {
+  const n = list.reduce((t, b) => t + (b.n || 1), 0);
+  const of = list[0]?.of || 1;
+  const nums = list.map((b) => b.box).filter(Boolean).sort((a, b) => a - b);
+  if (outStateOf(it).per.size === 1 && of > 1 && of <= 3 && nums.length === list.length) return `${cap ? 'B' : 'b'}ox${nums.length > 1 ? 'es' : ''} ${andList(nums)} of ${of}`;
+  return boxWord(n);
+}
+
 /** A row's state: its circle empty, half (some of its boxes in this load), yellow (all of them), green (loaded) */
 function rowState(it) {
   const done = it.status === 'out' || it.status === 'house';
   const { here, n, all } = inLoadOf(it);
-  const onTruck = boxesOut(it).reduce((t, o) => t + o.n, 0);
+  const outs = boxesOut(it);
+  const onTruck = outs.reduce((t, o) => t + o.n, 0);
+  const inLoadNow = here.filter((b) => load.has(boxKey(b.ref, b.box)));
+  const rest = here.filter((b) => !load.has(boxKey(b.ref, b.box)));
   const places = [...new Set(here.map((b) => b.shelf))];
+  const named = outStateOf(it).per.size === 1 && (here[0]?.of || outs[0]?.of || 1) <= 3;
   let sub;
   if (it.status === 'house') sub = 'Went straight to the house';
   else if (done) sub = onTruck > 1 ? `${allOf(onTruck, true)} boxes loaded` : 'Loaded';
   else if (all) sub = here.length === 1 ? 'In this load' : `${allOf(here.length, true)} in this load`;
-  else if (n) sub = `${n} of ${here.length} in this load`;
-  else sub = `${boxWord(here.length)}${places.length > 1 ? ` on ${placesWords(places)}` : ''}`;
-  if (!done && onTruck) sub += ` · ${onTruck} on the truck`;
+  else if (n) sub = named ? `${boxesSaid(it, inLoadNow)} in this load · ${boxesSaid(it, rest, { cap: false })} still here` : `${n} in this load · ${rest.length} still here`;
+  else sub = `${named && onTruck ? boxesSaid(it, here) : boxWord(here.length)}${places.length > 1 ? ` on ${placesWords(places)}` : ''}`;
+  if (!done && onTruck) sub += ` · ${named ? boxesSaid(it, outs, { cap: false }) : onTruck} on the truck`;
   return {
     done, pending: !done && n > 0, part: !done && n > 0 && !all,
     pressed: done ? 'true' : n ? 'mixed' : 'false',
-    label: done ? `Take back: ${it.name}` : all ? `Take out of this load: ${it.name}` : n ? `Add the other ${here.length - n} to this load: ${it.name}` : `Add to this load: ${it.name}`,
+    label: done ? `Take back: ${it.name}` : all ? `Take out of this load: ${it.name}` : n ? `Add ${named ? boxesSaid(it, rest, { cap: false }) : `the other ${rest.length}`} to this load: ${it.name}` : `Add to this load: ${it.name}`,
     sub: [it.line, sub].filter(Boolean).join(' · '),
   };
 }
@@ -1376,29 +1490,22 @@ function tick(jobId, id) {
   renderDock();
 }
 
-/** On the truck, in words: "Boxes 1, 4 and 6 · Nov 11 · Christian", by day and who (box numbers when it came in once) */
-function truckLines(it, outs) {
-  const oneIn = outStateOf(it).per.size === 1;
-  const groups = new Map();
-  for (const o of outs) { const k = `${o.waiting ? 'waiting' : dayOf(o.at)}|${o.who || ''}`; groups.set(k, [...(groups.get(k) || []), o]); }
-  return [...groups].map(([k, os]) => {
-    const [day, who] = k.split('|');
-    const n = os.reduce((t, o) => t + o.n, 0);
-    const nums = os.filter((o) => o.box).map((o) => o.box).sort((a, b) => a - b);
-    const what = oneIn && os[0].of > 1 && nums.length === os.length ? (nums.length === 1 ? `Box ${nums[0]} of ${os[0].of}` : `Boxes ${andList(nums)}`) : boxWord(n);
-    return [what, day === 'waiting' ? 'waiting to send' : day, who].filter(Boolean).join(' · ');
-  });
-}
+/** One box (or an older label's whole check-in) on the truck, in words: "Box 1 of 3 · Nov 11 · Christian" */
+const truckLine = (it, o) => [o.box && o.of > 1 ? `Box ${o.box} of ${o.of}` : o.n > 1 ? boxWord(o.n) : '1 box', o.waiting ? 'waiting to send' : dayOf(o.at), o.who].filter(Boolean).join(' · ');
+/** On the truck, a box a row, each with its own Take back (one box that won't fit comes off by itself) */
+const truckRows = (it, outs) => (outs.length ? `<div class="label-above">On the truck</div><div class="receipts">${outs.map((o) => `<div class="receipt"><span>${esc(truckLine(it, o))}</span><button class="tag-here as-btn" type="button" data-takeone="${esc(o.id)}" aria-label="Take ${esc(o.box && o.of > 1 ? `box ${o.box}` : 'it')} back off the truck">Take back</button></div>`).join('')}</div>` : '');
+const bindTakeOne = (it, outs) => document.querySelectorAll('#sheet-root [data-takeone]').forEach((b) => { b.onclick = () => takeBack(it, outs.filter((o) => o.id === b.dataset.takeone), b); });
 
-/** Loaded: which boxes, when, who; Take back (every box of it) in one go, never by a stray tap */
+/** Loaded: its boxes on the truck, each can come back by itself, or all of them in one go; never by a stray tap */
 function takeBackSheet(kid, it, { keep = false } = {}) {
   const outs = boxesOut(it);
   const n = outs.reduce((t, o) => t + o.n, 0);
   openSheet(`${head(kidTitle(kid), { kid: true })}
     <p class="item-name">${esc(it.name)}</p>
-    <div class="receipts">${truckLines(it, outs).map((t) => `<div class="receipt"><span>${esc(t)}</span></div>`).join('')}</div>
+    ${n > 1 ? truckRows(it, outs) : `<div class="receipts"><div class="receipt"><span>${esc(truckLine(it, outs[0]))}</span></div></div>`}
     <div class="sheet-foot"><button class="btn btn-big" type="button" id="takeback" data-focus>${n === 1 ? 'Take it back off the truck' : `Take ${allOf(n)} boxes back`}</button></div>`, { keep });
   $('takeback').onclick = () => takeBack(it, outs, $('takeback'));
+  bindTakeOne(it, outs);
 }
 
 /** Back off the truck: one request for every box, the button says it's working, and the phone shows it at once */
@@ -1409,32 +1516,30 @@ async function takeBack(it, outs, btn) {
   const placesBefore = outs.map((o) => per.get(o.ref)?.shelf);
   const buttons = [...document.querySelectorAll('#sheet-root button')];
   buttons.forEach((b) => { b.disabled = true; });
-  const words = btn.textContent;
-  btn.innerHTML = `<span class="spin" aria-hidden="true"></span>Taking back ${boxWord(n)}`;
+  const words = btn.innerHTML;
+  btn.classList.add('working');
+  btn.innerHTML = `<span class="spin" aria-hidden="true"></span>${btn.classList.contains('as-btn') ? 'Taking back' : `Taking back ${boxWord(n)}`}`;
   let r;
+  const undo = () => { buttons.forEach((b) => { b.disabled = false; }); btn.classList.remove('working'); btn.innerHTML = words; tones.warn(); };
   try {
     r = await undoTaps(outs.map((o) => o.id));
   } catch (err) {
-    buttons.forEach((b) => { b.disabled = false; });
-    btn.textContent = words;
-    tones.warn();
+    undo();
     toast(`Not taken back: ${clean(err.message)}`);
     return;
   }
-  if (r.queued || r.local) {
-    for (const o of outs) { const x = (it.receipts || []).find((y) => y.id === o.id); if (x) x.undone = true; }
-    settleLocal(it);
-  }
-  const results = r.out?.results || [];
-  const failed = results.filter((x) => x.error);
-  const back = n - failed.reduce((t, x) => t + (outs.find((o) => o.id === x.tap)?.n || 1), 0);
-  const where = placesWords(results.some((x) => x.shelf) ? results.map((x) => x.shelf) : placesBefore);
+  const failed = [...r.refused];
+  if (failed.length === outs.length) { undo(); toast(`Not taken back: ${failed[0][1]}`); return; }
+  const answers = [...r.answers.values()];
+  const back = n - failed.reduce((t, [tap]) => t + (outs.find((o) => o.id === tap)?.n || 1), 0);
+  const where = placesWords(answers.some((x) => x?.shelf) ? answers.map((x) => x?.shelf) : placesBefore);
+  const moved = answers.some((x) => x?.moved);
   tones.undo();
   await close();
   render();
   toast(failed.length
-    ? `${boxWord(back)} back. Not taken back: ${clean(failed[0].error)}`
-    : `${n === 1 ? 'Back' : `${n} boxes back`} at the Office${where ? `. Put ${n === 1 ? 'it' : 'them'} on ${where}` : ''}`);
+    ? `${boxWord(back)} back. Not taken back: ${failed[0][1]}`
+    : `${n === 1 ? 'Back' : `${n} boxes back`} at the Office${where ? `. Put ${n === 1 ? 'it' : 'them'} on ${where}` : ''}${moved ? '. A new label is printing' : ''}`);
 }
 
 /** A label read (by the scanner, or opened by the phone's own camera): whose box, and can it go in this load */
@@ -1445,7 +1550,7 @@ function boxVerdict(ref, box) {
   if (box && !(box >= 1 && box <= p.total)) return { v: 'gone' };
   const boxes = box ? [box] : Array.from({ length: p.total }, (_, n) => n + 1).filter((x) => !p.boxes.has(x));
   const base = { found, ref, of: p.total, boxes };
-  if (!boxes.length || (box && p.boxes.has(box))) return { ...base, v: 'out' };
+  if (!boxes.length || (box && p.boxes.has(box))) return { ...base, v: 'out', outs: boxesOut(found.i).filter((o) => o.ref === ref && (!box || !o.box || o.box === box)) };
   if (boxes.every((x) => load.has(boxKey(ref, x)))) return { ...base, v: 'inLoad' };
   const scoped = scopeKid();
   if (scoped && scoped.jobId !== found.k.jobId) return { ...base, v: 'otherKid', scoped };
@@ -1459,41 +1564,63 @@ const boxName = (v) => (v.of > 1 ? (v.boxes.length === 1 ? `Box ${v.boxes[0]} of
 
 /**
  * One thing at the Office: where its boxes are, who checked it in, what's on the truck already (each can come back),
- * into this load or out of it. Opened from its label by the phone's own camera: that box, checked as a scan is
+ * into this load or out of it. Opened from its label by the phone's own camera: that box, checked as a scan is, the
+ * answer as the sheet's headline (another kid's box is a stop, as in the scanner)
  */
 function outSheet(kid, it, { keep = false, ref = null, box = null } = {}) {
   const came = (it.receipts || []).filter((r) => !r.undone && r.kind === 'receive');
   const last = came[came.length - 1];
   const { here, n, all } = inLoadOf(it);
-  const outs = boxesOut(it);
+  const rest = here.filter((b) => !load.has(boxKey(b.ref, b.box)));
+  let outs = boxesOut(it);
   const v = ref ? boxVerdict(ref, box) : null;
-  let sub = '', button = '', act = null;
+  let lead = '', stop = false, button = '', primary = true, act = null;
   if (v?.v === 'out') {
-    const o = outs.filter((x) => x.ref === ref && (!box || !x.box || x.box === box));
-    sub = `${boxName(v)} is loaded already`;
-    if (o.length) { button = 'Take it back off the truck'; act = (b) => takeBack(it, o, b); }
+    lead = `${boxName(v)} ${v.boxes.length > 1 ? 'are' : 'is'} on the truck`;
+    if (v.outs.length) {
+      button = v.outs.length === 1 && v.outs[0].n === 1 ? 'Take it back off the truck' : `Take ${allOf(v.outs.reduce((t, o) => t + o.n, 0))} boxes back`;
+      primary = false;
+      act = (b) => takeBack(it, v.outs, b);
+      // The big button covers this box: the list below is the rest of what's on the truck
+      outs = outs.filter((o) => !v.outs.includes(o));
+    }
   } else if (v?.v === 'inLoad') {
-    sub = `${boxName(v)}: in this load`;
+    lead = `${boxName(v)}: in this load`;
     button = 'Take it out of this load';
+    primary = false;
     act = async () => { for (const x of v.boxes) load.delete(boxKey(ref, x)); saveLoad(); tones.undo(); await close(); render(); };
-  } else if (v?.v === 'ok' || v?.v === 'otherKid') {
-    sub = v.v === 'otherKid' ? `Not ${v.scoped.short}’s. Leave it here, unless it’s going` : '';
-    button = v.v === 'otherKid' ? 'Add it anyway' : `Add ${v.of > 1 ? `box ${v.boxes.join(', ')} of ${v.of}` : 'it'} to this load`;
+  } else if (v?.v === 'otherKid') {
+    lead = `Not ${v.scoped.short}’s box. Leave it here.`;
+    stop = true;
+    button = 'Add it to this load anyway';
+    primary = false;
+    act = async () => { addBoxes(v); tones.ok(); await close(); render(); };
+  } else if (v?.v === 'ok') {
+    button = `Add ${v.of > 1 ? `box ${v.boxes.join(', ')} of ${v.of}` : 'it'} to this load`;
     act = async () => { addBoxes(v); tones.ok(); await close(); render(); };
   } else if (v?.v === 'gone') {
-    sub = 'That label’s check-in was undone';
+    lead = 'That label’s check-in was undone';
   }
   if (!button && here.length && (!v || v.v === 'gone')) {
-    button = all ? 'Take out of this load' : n ? `Add the other ${here.length - n}` : here.length === 1 ? 'Add to this load' : `Add ${allOf(here.length)} to this load`;
+    const named = outStateOf(it).per.size === 1 && here[0].of <= 3 && here[0].of > 1;
+    button = all ? 'Take out of this load' : n ? `Add ${named ? boxesSaid(it, rest, { cap: false }) : `the other ${rest.length}`}` : here.length === 1 ? 'Add to this load' : `Add ${allOf(here.length)} to this load`;
+    primary = !all;
     act = async () => { if (all) { dropItem(kid, it); tones.undo(); } else { addItem(kid, it); tones.ok(); } await close(); render(); };
   }
-  openSheet(`${head(kidTitle(kid), { kid: true, sub: sub ? esc(sub) : '' })}
+  openSheet(`${head(kidTitle(kid), { kid: true })}
+    ${lead ? `<p class="sheet-lead${stop ? ' stop' : ''}">${esc(lead)}</p>` : ''}
     <p class="item-name">${esc(it.name)}</p>
     ${factsHtml([['Where', placesWords(here.map((b) => b.shelf)) || (here.length ? 'At the Office' : '')], ['At the Office', here.length ? boxWord(here.length) : ''], ['Came in', last ? `${dayOf(last.at)}${byWho(last)}` : ''], ['Line', it.line]].filter((f) => f[1]))}
-    ${outs.length ? `<div class="label-above">On the truck</div><div class="receipts">${outs.map((o) => `<div class="receipt"><span>${esc(truckLines(it, [o])[0])}</span><button class="tag-here as-btn" type="button" data-takeone="${esc(o.id)}" aria-label="Take ${esc(o.box && o.of > 1 ? `box ${o.box}` : 'it')} back off the truck">Take back</button></div>`).join('')}</div>` : ''}
-    ${button ? `<button class="btn ${v?.v === 'out' ? '' : 'btn-primary '}btn-big" type="button" id="sendout" data-focus>${esc(button)}</button>` : ''}`, { keep });
-  if ($('sendout')) $('sendout').onclick = () => act($('sendout'));
-  document.querySelectorAll('#sheet-root [data-takeone]').forEach((b) => { b.onclick = () => takeBack(it, outs.filter((o) => o.id === b.dataset.takeone), b); });
+    ${truckRows(it, outs)}
+    ${button ? `<button class="btn ${primary ? 'btn-primary ' : ''}btn-big" type="button" id="sendout"${ref ? '' : ' data-focus'}>${esc(button)}</button>` : ''}`, { keep });
+  if ($('sendout')) {
+    $('sendout').onclick = () => act($('sendout'));
+    // Another kid's box: the way past the stop waits a moment, so a thumb on its way can't take it
+    if (stop) { $('sendout').disabled = true; setTimeout(() => { if ($('sendout')) $('sendout').disabled = false; }, 900); }
+  }
+  bindTakeOne(it, outs);
+  // Opened by a label: the answer is read first, and no button is lit up for a thumb
+  if (ref) { const h = sheetEl()?.querySelector('h3'); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } }
 }
 
 /** Check out, a thing that isn't at the Office: what's known about it, and nothing to press (checking in is Check in's) */
@@ -1513,7 +1640,7 @@ function addAll(kid) {
   confirmLoad();
 }
 
-/** Under each kid in the review: what stays (where), and what isn't here yet (quieter) */
+/** Under each kid in the review: what stays at the Office and where (it stands out), what isn't here yet (quieter) */
 function stillHtml(kid) {
   if (!kid) return '';
   const rest = kidLoad(kid).load.flatMap(boxesHere).filter((b) => !load.has(boxKey(b.ref, b.box)));
@@ -1523,16 +1650,16 @@ function stillHtml(kid) {
 const groupBy = (list, key) => { const m = new Map(); for (const x of list) m.set(key(x), [...(m.get(key(x)) || []), x]); return m; };
 
 /**
- * The review: this load by kid and thing (each box a chip to take out, with Put back for five seconds), two kids in
- * one load said with one chip, what each kid still has at the Office and what isn't here yet. Every number follows
- * the load as chips come out. Confirm saves it on the phone at once and sends it; Scan more stays in reach
+ * The review: this load by kid and thing (each box a chip to take out; taken out, it says Put back where it was until
+ * the sheet closes, so nothing moves under a thumb), two kids in one load said with one chip, what each kid still has
+ * at the Office and what isn't here yet. Every number follows the load. Confirm saves it; Scan more stays in reach
  */
-function confirmLoad({ keep = false } = {}) {
+function confirmLoad({ keep = false, said = '' } = {}) {
   if (!load.size) { close(); render(); return; }
   const byKid = groupBy([...load.values()], (e) => e.jobId);
   const n = load.size;
   const chip = (e) => `<button class="box-chip" type="button" data-unload="${esc(e.key)}" aria-label="Take ${esc(e.name)}${e.of > 1 ? `, box ${e.box} of ${e.of},` : ''} out of this load">${esc(e.of > 1 ? `Box ${e.box} of ${e.of}` : '1 box')}${ICON.x}</button>`;
-  openSheet(`<div class="sheet-head"><div><h3 tabindex="-1" data-focus><span id="load-n">This load: ${boxWord(n)}</span> <span class="chip-mode warn-chip" id="load-kids"${byKid.size > 1 ? '' : ' hidden'}>${byKid.size > 1 ? `${byKid.size} kids` : ''}</span></h3></div>
+  openSheet(`<div class="sheet-head"><div><h3 tabindex="-1" data-focus><span id="load-n">This load: ${boxWord(n)}</span> <span class="chip-mode warn-chip" id="load-kids"${byKid.size > 1 ? '' : ' hidden'}>${byKid.size > 1 ? `${byKid.size} kids` : ''}</span></h3>${said ? `<div class="sheet-sub said">${esc(said)}</div>` : ''}</div>
       <button class="x" type="button" data-close="1" aria-label="Close">${ICON.x}</button></div>
     ${[...byKid].map(([jobId, list]) => {
       const kid = kidById(jobId);
@@ -1542,89 +1669,127 @@ function confirmLoad({ keep = false } = {}) {
         <div class="look still" data-still>${stillHtml(kid)}</div>
       </div>`;
     }).join('')}
-    <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="confirm">${confirmWords(n)}</button>
+    <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="confirm">${said ? `Try again: ${confirmWords(n).toLowerCase()}` : confirmWords(n)}</button>
       <button class="btn btn-text" type="button" id="more">Scan more</button></div>`, { keep: keep || Boolean(sheetEl()) });
-  document.querySelectorAll('#sheet-root [data-unload]').forEach((b) => {
+  const bindChip = (b) => {
     b.onclick = () => {
       const e = load.get(b.dataset.unload);
       if (!e) return;
       load.delete(e.key);
       saveLoad();
       tones.undo();
-      // Taken out where it was: the chip becomes Put back for five seconds, nothing else moves
-      b.outerHTML = `<button class="box-chip put-back" type="button" data-putback="${esc(e.key)}">Put back</button>`;
+      b.outerHTML = `<button class="box-chip put-back" type="button" data-putback="${esc(e.key)}" aria-label="Put ${esc(e.name)} back in this load">Put back</button>`;
       const pb = document.querySelector(`#sheet-root [data-putback="${CSS.escape(e.key)}"]`);
-      pb.onclick = () => { load.set(e.key, e); saveLoad(); tones.ok(); confirmLoad({ keep: true }); };
-      setTimeout(() => {
-        if (!document.body.contains(pb) || load.has(e.key)) return;
-        const line = pb.closest('.load-line');
-        const group = pb.closest('[data-kidgroup]');
-        pb.remove();
-        if (line && !line.querySelector('.box-chip')) line.remove();
-        if (group && !group.querySelector('.box-chip')) group.remove();
+      pb.onclick = () => {
+        load.set(e.key, e);
+        saveLoad();
+        tones.ok();
+        pb.outerHTML = chip(e);
+        bindChip(document.querySelector(`#sheet-root [data-unload="${CSS.escape(e.key)}"]`));
         repaintReview();
-      }, 5000);
+        render();
+      };
       repaintReview();
       render();
     };
-  });
+  };
+  document.querySelectorAll('#sheet-root [data-unload]').forEach(bindChip);
   $('more').onclick = async () => { await close(); scanLabels(kidById(state.loadKid) || null); };
   $('confirm').onclick = () => confirmNow();
 }
-/** The review's numbers, from the load as it is now */
+/** The review's numbers, from the load as it is now; a kid with every box taken out says so, dimmed, in place */
 function repaintReview() {
   const n = load.size;
   if ($('load-n')) $('load-n').textContent = `This load: ${boxWord(n)}`;
   const kids = new Set([...load.values()].map((e) => e.jobId));
   if ($('load-kids')) { $('load-kids').hidden = kids.size < 2; $('load-kids').textContent = kids.size < 2 ? '' : `${kids.size} kids`; }
   document.querySelectorAll('#sheet-root [data-kidgroup]').forEach((g) => {
-    g.querySelector('[data-kidn]').textContent = boxWord([...load.values()].filter((e) => e.jobId === g.dataset.kidgroup).length);
+    const mine = [...load.values()].filter((e) => e.jobId === g.dataset.kidgroup).length;
+    g.querySelector('[data-kidn]').textContent = mine ? boxWord(mine) : 'Taken out';
+    g.classList.toggle('dim', !mine);
     g.querySelector('[data-still]').innerHTML = stillHtml(kidById(g.dataset.kidgroup));
   });
   if ($('confirm')) { $('confirm').textContent = n ? confirmWords(n) : 'Nothing in this load'; $('confirm').disabled = !n; }
 }
 
 /**
- * Confirm: the load is kept on the phone first (in parts the site takes at once), so closing the page now loses
- * nothing; the boxes show as out at once and the done sheet rises; then it's sent, and the sheet says Saved, or Saved
- * on this phone, or names a box the site refused (its check-in was undone, say)
+ * Confirm: the load is kept on the phone first (in parts the site takes at once), so closing the page loses nothing;
+ * the boxes show as out at once and the done sheet rises; then it's sent, and the sheet says Saved, or Saved on this
+ * phone, or which boxes the site refused and what to do. Another load can be confirmed while one is still sending
  */
 async function confirmNow() {
   const entries = [...load.values()];
-  if (!entries.length || state.saving) return;
-  state.saving = true;
+  if (!entries.length) return;
   for (const e of entries) e.tap ||= newTap();
   const items = entries.map((e) => ({ tap: e.tap, ref: e.ref, box: e.box }));
   const q = readQueue();
   for (let i = 0; i < items.length; i += 50) q.push({ id: newTap(), action: 'out', body: { items: items.slice(i, i + 50) }, at: Date.now() });
-  writeQueue(q);
+  // This phone can't keep anything: sent now, or kept in the load to try again
+  if (!writeQueue(q)) { confirmDirect(entries); return; }
   load.clear();
   saveLoad();
   overlayQueue();
   showQueue();
   tones.ok();
-  loadDone(entries);
-  let res;
-  try { res = await flush({ mine: new Set(items.map((x) => x.tap)) }); } finally { state.saving = false; }
+  const token = newTap();
+  loadDone(entries, token);
+  const res = await flush({ mine: new Set(items.map((x) => x.tap)) });
   const refused = entries.filter((e) => res.refused.has(e.tap));
   const landed = entries.filter((e) => res.landed.has(e.tap)).length;
-  loadSaved(entries, { landed, waiting: entries.length - landed - refused.length, refused, why: res.refused, signIn: res.signIn });
+  loadSaved(entries, { token, landed, waiting: entries.length - landed - refused.length, refused, why: (e) => res.refused.get(e.tap)?.why, signIn: res.signIn });
+}
+/** On a phone that can't keep anything: the load goes now; without a connection it stays in the load, and it's said */
+async function confirmDirect(entries) {
+  const btn = $('confirm');
+  if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spin" aria-hidden="true"></span>Saving ${boxWord(entries.length)}`; }
+  const items = entries.map((e) => ({ tap: e.tap, ref: e.ref, box: e.box }));
+  const landed = new Set();
+  const why = new Map();
+  try {
+    for (let i = 0; i < items.length; i += 50) {
+      const out = await send('out', { items: items.slice(i, i + 50) });
+      for (const x of out.results || []) { if (!x.error) landed.add(x.tap); else if (FOR_GOOD.has(x.status)) why.set(x.tap, clean(x.error)); }
+    }
+  } catch (err) {
+    for (const e of entries) if (landed.has(e.tap) || why.has(e.tap)) load.delete(e.key);
+    saveLoad();
+    tones.warn();
+    confirmLoad({ keep: true, said: `${landed.size ? `${boxWord(landed.size)} saved. ` : ''}Not saved: ${err instanceof Offline ? CANT_KEEP : clean(err.message)}` });
+    return;
+  }
+  for (const e of entries) load.delete(e.key);
+  saveLoad();
+  tones.ok();
+  const token = newTap();
+  loadDone(entries, token);
+  const refused = entries.filter((e) => why.has(e.tap));
+  loadSaved(entries, { token, landed: landed.size, waiting: 0, refused, why: (e) => why.get(e.tap) });
 }
 
-/** The done sheet: each kid's boxes that went, what's still at the Office and where; it says how the saving went */
-function doneKids(went) {
-  return [...groupBy(went, (e) => e.jobId)].map(([jobId, es]) => {
+/** What to do about a box the site refused: it's on the truck, and it shouldn't be */
+const refusedStep = (why) => (/taken back|undone/i.test(why) ? 'Its check-in was undone. Take it off the truck until it’s checked in again.'
+  : /isn’t one of SOARD’s/i.test(why) ? 'That label isn’t one of SOARD’s check-ins. Take it off the truck.'
+  : `${why}. Take it off the truck.`);
+const PHONE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>';
+
+/** The done sheet: each kid's boxes that went, what's still at the Office and where, what isn't here yet; how saving went */
+function doneKids(went, refused = []) {
+  const no = groupBy(refused, (e) => e.jobId);
+  return [...groupBy([...went, ...refused], (e) => e.jobId)].map(([jobId, es]) => {
     const k = kidById(jobId);
     const l = k ? kidLoad(k) : null;
-    return `<div class="shelf-callout static"><span class="who">${face(k, 36)}${esc(k?.short || es[0].kid)} · ${boxWord(es.length)}</span><b>${l?.left ? esc(`${l.left} still at the Office`) : 'All out'}</b>
-      ${l?.left ? `<span class="sc-items"><span>${esc(`On ${placesWords(l.places) || 'the shelf'}`)}</span></span>` : ''}</div>`;
+    const out = es.filter((e) => !refused.includes(e)).length;
+    const not = (no.get(jobId) || []).length;
+    return `<div class="shelf-callout static"><span class="who">${face(k, 36)}${esc(k?.short || es[0].kid)} · ${esc(not ? `${out} out · ${not} not loaded` : boxWord(out))}</span><b>${l?.left ? esc(`${l.left} still at the Office`) : 'All out'}</b>
+      <span class="sc-items">${l?.left ? `<span>${esc(`On ${placesWords(l.places) || 'the shelf'}`)}</span>` : ''}${l?.missing.length ? `<span class="quiet">${esc(notHereYet(l.missing.length))}</span>` : ''}</span></div>`;
   }).join('');
 }
-function loadDone(went) {
+function loadDone(went, token) {
+  state.doneToken = token;
   openSheet(`<div class="sheet-head"><div><h3 tabindex="-1" data-focus id="done-h">${esc(`${boxWord(went.length)} out`)}</h3><div class="sheet-sub saving" id="done-sub" role="status"><span class="spin" aria-hidden="true"></span>Saving</div></div>
       <button class="x" type="button" data-close="1" aria-label="Close">${ICON.x}</button></div>
+    <div id="done-not" hidden></div>
     <div class="done-kids" id="done-kids">${doneKids(went)}</div>
-    <p class="why-line" id="done-why" hidden></p>
     <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-close="1">Done</button></div>`, { keep: true });
   // Behind the sheet: the rows, the count and the dock are as they are now; loaded rows fade and close up once it's down
   state.afterLoad = [...new Set(went.map((e) => e.row))];
@@ -1634,27 +1799,32 @@ function loadDone(went) {
   if (kid) paintKidHead(kid);
   renderDock();
 }
-function loadSaved(went, { landed, waiting, refused, why, signIn }) {
+function loadSaved(went, { token, landed, waiting, refused, why, signIn = false }) {
   const ok = went.filter((e) => !refused.includes(e));
-  const words = !ok.length ? 'Nothing saved'
-    : waiting ? (signIn ? 'Saved on this phone. Reload the page to sign in, and it goes.' : 'Saved on this phone. It goes when the connection is back.')
-    : landed ? 'Saved. In JobTread in a minute.' : '';
-  const not = refused.map((e) => `${e.name}${e.of > 1 ? ` (box ${e.box})` : ''}: ${why.get(e.tap)}`);
+  // Refused, by thing and reason, with what to do: those boxes are on the truck
+  const cards = [...groupBy(refused, (e) => `${e.row}|${why(e)}`).values()].map((es) => ({ name: es[0].name, boxes: es.length === es[0].of && es.length > 1 ? `${allOf(es.length)} boxes` : es[0].of > 1 ? es.map((e) => `box ${e.box}`).join(', ') : '1 box', step: refusedStep(why(es[0])) }));
   if (refused.length) tones.warn();
-  if (!$('done-sub')) {
-    // The sheet was closed before the answer came: only what went wrong is said
-    if (not.length) toast(`Not loaded: ${not.join('; ')}`);
-    else if (waiting) toast(`${boxWord(ok.length)} saved on this phone`);
-    render();
+  if (state.doneToken !== token || !$('done-sub')) {
+    // The sheet was closed (or another load's is up) before the answer came: only what went wrong is said
+    if (cards.length) toast(`Not loaded: ${cards.map((c) => `${c.name} (${c.boxes})`).join('; ')}. Take ${refused.length === 1 ? 'it' : 'them'} off the truck`);
+    else if (signIn) toast('Saved on this phone. Your sign-in ran out: tap “Sign in” up top');
+    if (!state.renderOnClose) render();
     return;
   }
-  $('done-sub').classList.remove('saving');
-  $('done-sub').textContent = words;
+  const sub = $('done-sub');
+  sub.classList.remove('saving');
+  const notWords = refused.length ? ` ${boxWord(refused.length)} not loaded.` : '';
+  if (!ok.length) sub.textContent = 'Nothing saved';
+  else if (waiting && signIn) sub.innerHTML = `${PHONE_ICON}<span>Saved on this phone. Your sign-in ran out.${esc(notWords)}</span><button class="btn btn-text inline" type="button" id="signin">Sign in again</button>`;
+  else if (waiting) sub.innerHTML = `${PHONE_ICON}<span>Saved on this phone. It goes when the connection is back.${esc(notWords)}</span>`;
+  else sub.innerHTML = `${ICON.tick}<span>Saved.${esc(notWords || ' In JobTread in a minute.')}</span>`;
+  sub.style.setProperty('--after', '0ms');
+  if ($('signin')) $('signin').onclick = () => location.reload();
   if (refused.length) {
-    $('done-h').textContent = ok.length ? `${boxWord(ok.length)} out` : 'Nothing loaded';
-    $('done-kids').innerHTML = doneKids(ok);
-    $('done-why').hidden = false;
-    $('done-why').textContent = `Not loaded: ${not.join('; ')}`;
+    $('done-h').textContent = ok.length ? `${ok.length} of ${boxWord(went.length)} out` : 'Nothing loaded';
+    $('done-not').hidden = false;
+    $('done-not').innerHTML = `<div class="refused">${cards.map((c) => `<div class="rf-row"><b>${esc(c.name)} · ${esc(c.boxes)}</b><span>${esc(c.step)}</span></div>`).join('')}</div>`;
+    $('done-kids').innerHTML = doneKids(ok, refused);
   }
 }
 
@@ -1786,7 +1956,7 @@ async function openLabels(scope) {
     if (k) {
       const l = kidLoad(k);
       end = l.total > 0 && l.inLoad > 0 && l.done + l.inLoad >= l.total;
-      pill.innerHTML = `${face(k, 28)}<span>${esc(k.short)}${l.total ? ` · ${l.done + l.inLoad} of ${l.total}` : ''}</span>${end ? ICON.tick : ''}`;
+      pill.innerHTML = `${face(k, 28)}<span>${esc(k.short)}${l.total ? ` · ${l.done + l.inLoad} of ${boxWord(l.total)}` : ''}</span>${end ? ICON.tick : ''}`;
     } else pill.textContent = n ? `${boxWord(n)} in this load` : 'Point at a label';
     pill.classList.toggle('done', end);
     cam.querySelector('.cam-done').textContent = n ? (end ? 'Review and confirm' : reviewWords(n)) : 'Done';
@@ -1795,12 +1965,13 @@ async function openLabels(scope) {
   count();
   let flashTimer;
   const flash = (cls) => { clearTimeout(flashTimer); frameEl.classList.remove('hit', 'stop'); void frameEl.offsetWidth; frameEl.classList.add(cls); flashTimer = setTimeout(() => frameEl.classList.remove(cls), cls === 'hit' ? 350 : 600); };
-  // After a few seconds a read shrinks to one line, "Last: …", until the next one
+  // After a few seconds a read shrinks to one line until the next: "Last: Box 2 of 3 · Wayfair Louis…" (the box
+  // number never cut off: on a thing in boxes it's the check that the right one was read)
   const showLast = () => {
     const el = cam.querySelector('.cam-said');
     if (!lastRead) { el.hidden = true; return; }
     el.className = 'cam-said last';
-    el.innerHTML = `<span>Last: ${esc(lastRead)}</span>`;
+    el.innerHTML = `<span class="lb">Last:${lastRead.box ? ` ${esc(lastRead.box)} ·` : ''}</span><span class="ln">${esc(lastRead.name)}</span>`;
     el.hidden = false;
   };
   const say = (cls, html, { stay = false } = {}) => {
@@ -1852,11 +2023,12 @@ async function openLabels(scope) {
     flash('hit');
     const { k, end } = count();
     const what = v.of > 1 ? (v.boxes.length === 1 ? `box ${v.boxes[0]} of ${v.of}` : `${allOf(v.boxes.length)} boxes`) : '';
-    lastRead = `${v.found.i.name}${what ? ` · ${what}` : ''}`;
+    lastRead = { box: what ? what[0].toUpperCase() + what.slice(1) : '', name: v.found.i.name };
     const l = k ? kidLoad(k) : null;
+    // The end: every box at the Office is in; what hasn't come yet is said there, where the truck is called done
     const el = say(end ? 'ok end' : 'ok', end
-      ? `${face(v.found.k, 40)}<b>That’s all ${l.total} of ${esc(k.short)}’s boxes</b><span>${esc(lastRead)}</span><span class="dim">Review and confirm</span><button class="cam-undo" type="button">Take it out</button>`
-      : `${face(v.found.k, 40)}<b>${esc(v.found.i.name)}</b><span>${esc(v.found.k.short)}${what ? ` · ${what}` : ''}</span><span class="dim">In this load</span><button class="cam-undo" type="button">Take it out</button>`, { stay: end });
+      ? `${face(v.found.k, 40)}<b>${l.missing.length ? 'Every box at the Office is in' : `That’s all ${l.total} of ${esc(k.short)}’s boxes`}</b><span>${esc(v.found.i.name)}${what ? ` · ${what}` : ''}</span>${l.missing.length ? `<span class="warn-line">${esc(notHereYet(l.missing.length))}</span>` : ''}<button class="cam-undo" type="button">Take it out</button>`
+      : `${face(v.found.k, 40)}<b>${esc(v.found.i.name)}</b><span>${esc(v.found.k.short)}${what ? ` · ${what}` : ''}</span><span class="in-chip">${ICON.tick}In this load</span><button class="cam-undo" type="button">Take it out</button>`, { stay: end });
     el.querySelector('.cam-undo').onclick = () => {
       for (const x of v.boxes) load.delete(boxKey(v.ref, x));
       saveLoad();
@@ -1892,13 +2064,13 @@ async function openLabels(scope) {
     if (!ref) { tones.warn(); flash('stop'); say('warn', '<b>Not a SOARD label</b>'); return; }
     const v = boxVerdict(ref, box);
     if (v.v === 'gone') { tones.warn(); flash('stop'); say('warn', '<b>That label isn’t on the list</b><span>Its makeover may be finished, or the check-in was undone.</span>'); return; }
-    if (v.v === 'out') { tones.seen(); say('seen', `<b>Already loaded</b><span>${esc(v.found.k.short)}: ${esc(v.found.i.name)}</span>`); return; }
+    if (v.v === 'out') { tones.seen(); const o = v.outs?.[0]; say('seen', `<b>${esc(boxName(v))} ${v.boxes.length > 1 ? 'are' : 'is'} on the truck</b><span>${esc(v.found.k.short)}: ${esc(v.found.i.name)}${o ? ` · ${esc(o.waiting ? 'waiting to send' : dayOf(o.at))}` : ''}</span>`); return; }
     if (v.v === 'inLoad') { tones.seen(); say('seen', `<b>Already in this load</b><span>${esc(v.found.k.short)}: ${esc(v.found.i.name)}</span>`); return; }
     if (v.v === 'otherKid') {
       // Another kid's box, while loading this one: stopped, unless it really is going
       tones.warn();
       flash('stop');
-      const el = say('warn stop', `${face(v.found.k, 40)}<b>${esc(v.found.k.short)}’s box</b><span>${esc(v.found.i.name)}</span><span>Not ${esc(v.scoped.short)}’s. Leave it here.</span><button class="cam-undo" type="button">Add it anyway</button>`, { stay: true });
+      const el = say('stop', `${face(v.found.k, 40)}<b>Leave it here</b><span>${esc(v.found.k.short)}’s box · ${esc(v.found.i.name)}</span><span>This load is ${esc(v.scoped.short)}’s</span><button class="cam-undo" type="button">Add it anyway</button>`, { stay: true });
       // Not in reach of a thumb on its way to the last box's Take it out: it waits a moment, on the other side
       const anyway = el.querySelector('.cam-undo');
       anyway.disabled = true;
@@ -2124,7 +2296,9 @@ async function shipDone(sh, items) {
   const undo = $('shipundo');
   undo.hidden = !ok.length;
   undo.onclick = async () => {
-    for (const it of ok) { try { await undoTap(it.tap); } catch (err) { toast(err.message); return; } }
+    let r;
+    try { r = await undoTaps(ok.map((it) => it.tap)); } catch (err) { toast(err.message); return; }
+    if (r.refused.size) { toast(`Not taken back: ${[...r.refused.values()][0]}`); return; }
     tones.undo();
     await close();
     render();

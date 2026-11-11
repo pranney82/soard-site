@@ -53,6 +53,7 @@ import { maybeSweepMail } from './_mail-sweep.js';
 import { maybeSweepOrders } from './_order-sweep.js';
 import { maybeReadSelections } from './_selection-parts.js';
 import { maybeWriteKidItems } from './_kid-jt.js';
+import { maybePrintWaiting } from './_kid-print.js';
 import { maybeRunQuiet } from './_kit-quiet.js';
 import { syncSignups } from './_reveal-signups.js';
 import { maybeGuardAudiences } from './_kit-audience-guard.js';
@@ -165,7 +166,8 @@ export async function onRequestPost(context) {
     // Kid items, read only for now: store order emails in every SOARD inbox (every 3 minutes), then each open makeover's
     // chosen selections as parts (every 30 minutes); nothing goes to JobTread yet (see _order-sweep.js, _selection-parts.js)
     // Side by side, so neither waits on the other's time
-    context.waitUntil(Promise.all([maybeSweepOrders(env), maybeReadSelections(env), maybeWriteKidItems(env)]));
+    // and check-ins' labels that waited for the printer, printed once it's back on (see _kid-print.js)
+    context.waitUntil(Promise.all([maybeSweepOrders(env), maybeReadSelections(env), maybeWriteKidItems(env), maybePrintWaiting(env)]));
     // The certificates and W-9s SOARD already had (staff email, JobTread, Ramp): found, read and filed on their JobTread vendor (see _coi-backfill.js)
     context.waitUntil(maybeRunBackfill(env));
     // Hourly: SOARD's process Docs in Drive, so Site → Automations knows if Drive stops answering (see _process-docs.js)

@@ -75,9 +75,11 @@ function settle(it, whoOf = () => null) {
   // where the rest is); all of it out, the last shelf it was on
   it.shelves = [...new Set(ins.filter((r) => r.shelf && !st.per.get(r.id)?.full).reverse().map((r) => r.shelf))];
   it.shelf = it.shelves[0] || [...ins].reverse().find((r) => r.shelf)?.shelf || null;
-  if (live.some((r) => r.kind === 'house')) it.status = 'house';
-  else if (st.allOut && it.got >= it.qty) it.status = 'out';
-  else if (it.got >= it.qty) it.status = 'here';
+  // "Not coming here" is the rest of it: what came is at the Office (and loaded from there) like anything else
+  it.house = live.some((r) => r.kind === 'house');
+  if (it.house && !it.got) it.status = 'house';
+  else if (st.allOut && (it.got >= it.qty || it.house)) it.status = 'out';
+  else if (it.got >= it.qty || it.house) it.status = 'here';
   else if (it.got > 0) it.status = 'partly';
   else it.status = it.order ? 'ordered' : 'not';
   it.receipts = it.receipts.map(({ id, kind, units, boxes, shelf, at, undoneAt, by, ref, box }) => ({ id, kind, units, boxes, shelf, at, who: whoOf(by), ...(ref ? { ref } : {}), ...(box ? { box } : {}), undone: Boolean(undoneAt) }));

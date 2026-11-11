@@ -159,11 +159,24 @@ export async function receive(DB, input, { by = null, now = new Date().toISOStri
   return { receipt, shelf: receipt?.shelf ?? shelf, repeat: false };
 }
 
-/** The printer has these check-ins' labels (sent, or held until it's back on) */
-export async function markPrinted(DB, ids, now = new Date().toISOString()) {
+/**
+ * Check-ins' labels, claimed for printing: each one not printed yet is marked now, and only those come back, so two
+ * requests at once (a phone's retry overlapping its first try) can't both print it. → the ids claimed
+ */
+export async function claimPrint(DB, ids, now = new Date().toISOString()) {
+  await ensureRecord(DB);
+  const got = [];
   for (let i = 0; i < ids.length; i += 90) {
     const part = ids.slice(i, i + 90);
-    await DB.prepare(`UPDATE kid_receipts SET printed_at = ? WHERE id IN (${part.map(() => '?').join(', ')})`).bind(now, ...part).run();
+    got.push(...(await all(DB, `UPDATE kid_receipts SET printed_at = ? WHERE id IN (${part.map(() => '?').join(', ')}) AND printed_at IS NULL RETURNING id`, now, ...part)).map((r) => r.id));
+  }
+  return got;
+}
+/** The printer didn't take them: they're not printed after all (and the next try, or the printer coming back, prints them) */
+export async function releasePrint(DB, ids, claimedAt) {
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
+    await DB.prepare(`UPDATE kid_receipts SET printed_at = NULL WHERE id IN (${part.map(() => '?').join(', ')}) AND printed_at = ?`).bind(...part, claimedAt).run();
   }
 }
 
@@ -205,6 +218,8 @@ export async function undoMany(DB, taps, { by = null, now = new Date().toISOStri
         if (owner?.job_id !== r.job_id) {
           shelf = await shelfFor(DB, r.job_id, now);
           await DB.prepare('UPDATE kid_receipts SET shelf = ? WHERE id = ?').bind(shelf, c.id).run();
+          // Its label says the old shelf: the caller prints that box's label again
+          Object.assign(done, { moved: true, ref: c.id, box: r.box || null });
         }
       }
       done.shelf = shelf;
