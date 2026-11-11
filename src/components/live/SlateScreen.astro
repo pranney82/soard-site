@@ -134,7 +134,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       </div>
     </div>
 
-    <div class="frame" data-kid-kicker="Today" data-kid-text={rooms.join(' · ')}>
+    <div class="frame" data-kid-text={rooms.join(' · ')}>
       <div class="accent" aria-hidden="true"></div>
       <div class="photo" style={`background-image:url(${cfLqip(photo)})`}>
         <img id="photo" data-landscape={photoSrc.landscape} data-portrait={photoSrc.portrait} alt={kid?.name || 'A child in a newly built room'} />
@@ -142,7 +142,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
         <script is:inline>(function(){var i=document.getElementById('photo');i.src=(document.body.dataset.o==='portrait'?i.dataset.portrait:i.dataset.landscape)||i.dataset.landscape;})();</script>
       </div>
       {rooms.length > 0 && (
-        <div class="rooms"><span class="rooms-label">Today</span>{rooms.join(' · ')}</div>
+        <div class="rooms"><span class="rooms-label" data-rooms-today>Today</span>{rooms.join(' · ')}</div>
       )}
       <!-- The design's own chip and steps (slate-design.ts); the rooms chip above steps aside for them -->
       <div class="design-steps" data-design-steps hidden></div>
@@ -197,6 +197,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     import { cfRaw } from '../../utils/cf-image';
     import { loadUpcoming, windowTitle, revealDay } from '../../utils/reveals-client';
     import { startSlateDesign } from '../../utils/slate-design';
+    import { daysUntil, dayWords } from '../../utils/live-when';
 
     const body = document.body;
     const canvas = document.getElementById('canvas')!;
@@ -250,15 +251,23 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     fit();
     if (photoOverride) setPhoto(photoOverride);
 
+    // "Today" over the rooms (and on the kid's slide of the design) only on the reveal's own day (renderWhen)
+    const roomsToday = document.querySelector<HTMLElement>('[data-rooms-today]');
+    const frameEl = document.querySelector<HTMLElement>('.frame')!;
+    const kidChip = frameEl.dataset.kidText ? { kicker: 'Today', caption: frameEl.dataset.kidText } : null;
+    function markDay(today: boolean) {
+      if (roomsToday) roomsToday.hidden = !today;
+      if (kidChip) kidChip.kicker = today ? 'Today' : '';
+    }
+
     {
-      const frameEl = document.querySelector<HTMLElement>('.frame')!;
       const slideParam = params.get('slide');
       design = startSlateDesign({
         body,
         photoBox: document.querySelector<HTMLElement>('.photo')!,
         chip: document.querySelector<HTMLElement>('[data-design-chip]')!,
         steps: document.querySelector<HTMLElement>('[data-design-steps]')!,
-        kidChip: frameEl.dataset.kidText ? { kicker: frameEl.dataset.kidKicker || 'Today', caption: frameEl.dataset.kidText } : null,
+        kidChip,
         kidSlug,
         preview: designPreview,
         pinned: slideParam && /^\d{1,2}$/.test(slideParam) ? Number(slideParam) : null,
@@ -290,13 +299,19 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
         if (rel.textContent !== r) rel.textContent = r;
         rel.hidden = !r;
       };
-      if (!startAt) return set('soon', 'Starting', 'In just a few minutes', '');
+      const say = (line: string) => { if (el('line').textContent !== line) el('line').textContent = line; };
+      // No time known: the screen is up because the reveal is close
+      if (!startAt) { markDay(true); say('Starting soon'); return set('soon', 'Starting', 'In just a few minutes', ''); }
       const left = startAt - Date.now();
+      const iso = new Date(startAt).toISOString();
+      // The reveal's own day in the reveal's zone (or its last hour, should that cross midnight). Before it, the screen is a
+      // preview (the crew's phone follows a reveal from the moment it's scheduled): no "Today", no "Starting soon"
+      const today = left <= 3600e3 || daysUntil(iso, tz) === 0;
+      markDay(today);
       // RUNNING_LATE_MS in live-banner: past this, "any moment" stops being true
       const late = left < -30 * 60e3;
-      const line = late ? 'Running late' : 'Starting soon';
-      if (el('line').textContent !== line) el('line').textContent = line;
-      if (left <= 0) return late ? set('now', 'Stay right here', 'Running a little late', '') : set('now', 'Starting', 'Any moment now', '');
+      say(late ? 'Running late' : today ? 'Starting soon' : 'Coming up');
+      if (left <= 0) return set('now', late ? 'Thanks for waiting' : 'Starting', 'Any moment now', '');
       const d = new Date(startAt);
       if (left <= 3600e3) {
         // Final hour: a running clock, with the wall-clock time underneath
@@ -304,11 +319,10 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
         const mm = Math.floor(secs / 60), ss = secs % 60;
         return set('count', 'Starting in', `${mm}:${String(ss).padStart(2, '0')}`, `Live at ${fmtClock(d)}`);
       }
-      const fmtDay = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' });
+      // The day in the live page's words: "tomorrow", "Wednesday, November 18"
       const hours = left / 3600e3;
-      const sameDay = fmtDay.format(d) === fmtDay.format(new Date()) && hours < 18;
-      set('timed', sameDay ? 'Live at' : `Live ${fmtDay.format(d)} at`, fmtClock(d),
-        hours < 2 ? 'in about an hour' : hours < 18 ? `in about ${Math.round(hours)} hours` : '');
+      set('timed', today ? 'Live at' : `Live ${dayWords(iso, tz)} at`, fmtClock(d),
+        !today ? '' : hours < 2 ? 'in about an hour' : `in about ${Math.round(hours)} hours`);
     }
     renderWhen();
     setInterval(() => { renderWhen(); syncMusic(); }, 1000);
@@ -611,6 +625,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       opacity: 0; transform: translateY(-6px); transition: opacity 0.26s ease, transform 0.26s ease;
     }
     .design-chip.is-on { opacity: 1; transform: none; }
+    .design-chip__kicker:empty { display: none; }
     .design-chip__kicker { flex-shrink: 0; color: var(--c-yellow); font-size: 16px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
     .design-chip__text { overflow: hidden; text-overflow: ellipsis; }
 

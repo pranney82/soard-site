@@ -2,7 +2,8 @@
  * live-when.ts — the live page's time words, in any zone
  * =======================================================
  * "Wednesday, November 18 at 4:00 PM EST", "in 8 days", "Reveal day". The
- * live page writes them in the viewer's own zone (tz left out: the browser's);
+ * starting-soon screen (SlateScreen.astro) takes its day words from here too.
+ * The live page writes them in the viewer's own zone (tz left out: the browser's);
  * the server writes the same words into the page before it goes out, in the
  * zone Cloudflare places the visitor in (functions/live/[[path]].js), so
  * nothing changes when the page script takes over. Plain functions, nothing
@@ -33,15 +34,23 @@ export function revealLabel(iso: string | null, tz?: string, now = Date.now()): 
   return iso && dayKey(Date.parse(iso), tz) === dayKey(now, tz) ? 'Reveal day' : 'Coming up';
 }
 
+/** Calendar days from today to a moment's day, in a zone: 0 today, 1 tomorrow, -1 yesterday */
+export function daysUntil(iso: string, tz?: string, now = Date.now()): number {
+  return Math.round(dayNumber(Date.parse(iso), tz) - dayNumber(now, tz));
+}
+
+/** "today", "tomorrow", "Wednesday, November 18": the day in formatWhen's words */
+export function dayWords(iso: string, tz?: string, now = Date.now()): string {
+  const days = daysUntil(iso, tz, now);
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' }).format(Date.parse(iso));
+}
+
 /** "today at 4:00 PM EST", "tomorrow at …", "Wednesday, November 18 at …" */
 export function formatWhen(iso: string | null, tz?: string, now = Date.now()): string {
   if (!iso) return '';
-  const t = Date.parse(iso);
-  const days = Math.round(dayNumber(t, tz) - dayNumber(now, tz));
   // English sentences, whatever the browser's language. The zone says these are the viewer's own hours; the emails are in Eastern.
-  const time = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(t);
-  if (days === 0) return `today at ${time}`;
-  if (days === 1) return `tomorrow at ${time}`;
-  const day = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' }).format(t);
-  return `${day} at ${time}`;
+  const time = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(Date.parse(iso));
+  return `${dayWords(iso, tz, now)} at ${time}`;
 }

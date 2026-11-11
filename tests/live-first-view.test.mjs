@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { buildSync } from 'esbuild';
 
 const load = (entry) => import(`data:text/javascript,${encodeURIComponent(buildSync({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent', packages: 'external' }).outputFiles[0].text)}`);
-const { formatWhen, relativeUntil, revealLabel } = await load('src/utils/live-when.ts');
+const { formatWhen, relativeUntil, revealLabel, daysUntil, dayWords } = await load('src/utils/live-when.ts');
 const { plannedText, betweenText, ctasThatApply, ctaPicks } = await load('src/utils/live-hero-text.ts');
 const { firstView, messagesInSection, messageHtml, pastFirst, musicThere, MUSIC_KEY } = await load('functions/live/[[path]].js');
 
@@ -28,6 +28,17 @@ test('the time words in a zone: the same sentence the browser writes there', () 
   assert.equal(formatWhen(late, 'America/Los_Angeles', Date.parse('2026-11-17T20:00:00Z')), 'tomorrow at 7:30 PM PST');
   assert.equal(relativeUntil('2026-11-10T15:20:00Z', NOW, 'America/New_York'), 'in 20 minutes');
   assert.equal(relativeUntil('2026-11-11T09:00:00Z', NOW, 'America/New_York'), 'in 18 hours');
+});
+
+test('the starting-soon screen says the day as the live page does: "Today" only on the day itself', () => {
+  const tz = 'America/New_York';
+  assert.equal(daysUntil(DYLAN, tz, NOW), 8);
+  assert.equal(dayWords(DYLAN, tz, NOW), 'Wednesday, November 18', 'eight days out: the date, not "Live Wednesday", which reads as this week');
+  assert.equal(dayWords(DYLAN, tz, Date.parse('2026-11-17T13:00:00Z')), 'tomorrow');
+  assert.equal(daysUntil(DYLAN, tz, Date.parse('2026-11-18T05:30:00Z')), 0, '12:30 AM on the day is the day');
+  assert.equal(daysUntil(DYLAN, tz, Date.parse('2026-11-18T04:30:00Z')), 1, '11:30 PM the night before is not');
+  // formatWhen is built from the same words
+  assert.equal(formatWhen(DYLAN, tz, Date.parse('2026-11-17T13:00:00Z')), `${dayWords(DYLAN, tz, Date.parse('2026-11-17T13:00:00Z'))} at 4:00 PM EST`);
 });
 
 test('the hero before a reveal and between reveals', () => {
