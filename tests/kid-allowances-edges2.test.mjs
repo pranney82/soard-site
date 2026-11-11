@@ -269,3 +269,18 @@ test('part of an order cancelled: a thing on an allowance shows as on that allow
   assert.equal(look.items[0].current, 'allow:r-decor', 'it is on the Decor allowance now; the sheet pre-selects `current`');
   delete env.AI;
 });
+
+// ─── Nov 11 (review): a Selection & Allowance line with picks in it stays a selection after a JobTread run ───
+test('after a JobTread run, a Selection & Allowance line with the designer’s picks is still matched to orders (only lines alike on every makeover are kept as allowances)', async () => {
+  const jt = fakeJobTread();
+  env.AI = sortingAi();
+  await line('j-ava', 'Ava Example (2026)', 'a-bed', 'Bedding', 'Stripe Duvet Cover = $129', [part('Stripe Duvet Cover')], ALLOWANCE);
+  await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  const kept = (await env.DB.prepare("SELECT item_id FROM kid_allow_lines WHERE job_id = 'j-ava' ORDER BY item_id").all()).results.map((r) => r.item_id);
+  assert.deepEqual(kept, ['a-decor'], 'Decor (alike on both makeovers) is kept; Bedding (with a pick) isn’t');
+  const v = await view();
+  assert.ok(itemOf(v, 'Ava E.', 'Stripe Duvet Cover'), 'its pick is still a thing to order and check in');
+  assert.deepEqual(kidOf(v, 'Ava E.').allowances.map((a) => a.line).sort(), ['Bedding', 'Decor'], 'and both are allowances for things bought on top');
+  delete env.AI;
+});

@@ -622,7 +622,9 @@ export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISO
     const sortable = (k, it) => it.also?.pending && (!unread.has(k.jobId) || it.also.typed);
     const toSort = sort ? kids.filter((k) => k.items.some((i) => sortable(k, i))) : [];
     // Each kid's allowance lines kept, so they stay theirs whoever else's budget changes
-    if (mode === 'on') for (const k of kids) for (const a of k.allowances || []) await env.DB.prepare('INSERT OR IGNORE INTO kid_allow_lines (job_id, item_id, at) VALUES (?, ?, ?)').bind(k.jobId, a.itemId, now).run();
+    // Only a line that's an allowance and nothing else (alike on every makeover) is kept as one: a Selection & Allowance
+    // line with the designer's picks in it stays theirs to match orders to
+    if (mode === 'on') for (const k of kids) for (const a of (k.allowances || []).filter((x) => x.template)) await env.DB.prepare('INSERT OR IGNORE INTO kid_allow_lines (job_id, item_id, at) VALUES (?, ?, ?)').bind(k.jobId, a.itemId, now).run();
     if (toSort.length && !late()) {
       const sorted = await sortAllowances(env, toSort, { now, only: sortable, until: started + RUN_MS });
       if (sorted.waiting) out.sortWaiting = sorted.waiting;

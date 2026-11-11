@@ -147,7 +147,8 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
     // something bought on top of those for that kind of thing goes next to it, the line down by it (Peter, Nov 11 2026:
     // the Container Store's drawers "were not in JT yet since only an allowance was in"). A labor line that's alike on
     // every makeover ("Plumbing Final") is in no such group, and never one
-    if (/allowance/i.test(l.groupName)) kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120), cents: l.cents });
+    // template: a line alike on every makeover (its words name only the kind of thing), so an allowance and nothing else
+    if (/allowance/i.test(l.groupName)) kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120), cents: l.cents, ...(templates.has(`${l.jobId}|${l.itemId}`) ? { template: true } : {}) });
     if (templates.has(`${l.jobId}|${l.itemId}`)) continue;
     const seen = new Map();
     l.parts.forEach((p) => {
