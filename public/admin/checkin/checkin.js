@@ -60,7 +60,9 @@ const writeQueue = (q) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify
 const QUEUEABLE = new Set(['receive', 'other', 'house', 'undo', 'shelf', 'decide', 'out']);
 const CANT_KEEP = 'No connection, and this phone can’t keep it for later (its storage is off). Try again with signal';
 // What one waiting request holds: a load's boxes, a shipment's check-ins, a take-back's boxes, or one thing
-const partsOf = (q) => (Array.isArray(q.body?.items) ? q.body.items.map((x) => x.tap) : Array.isArray(q.body?.taps) ? q.body.taps : [q.body?.tap || q.id]);
+// (a decide's items are answers, not check-ins: it's one thing, sent and settled whole)
+const tapsIn = (q) => Array.isArray(q.body?.items) && q.body.items.length > 0 && q.body.items.every((x) => x.tap);
+const partsOf = (q) => (tapsIn(q) ? q.body.items.map((x) => x.tap) : Array.isArray(q.body?.taps) ? q.body.taps : [q.body?.tap || q.id]);
 // How what landed is said: boxes out, check-ins, anything else a change
 const nounOf = (action) => (action === 'out' ? 'box' : ['receive', 'other', 'house'].includes(action) ? 'check-in' : 'change');
 const NOUNS = { box: 'boxes', 'check-in': 'check-ins', change: 'changes' };
@@ -91,6 +93,8 @@ async function send(action, body) {
 
 /** Send now, or keep it for when the connection is back → { out } | { queued: true } */
 async function sendOrKeep(action, body) {
+  // An answer says when it was given: sent later from a phone with no connection, it's still as new as it was
+  if (action === 'decide' && !body.at) body = { ...body, at: new Date().toISOString() };
   try {
     return { out: await send(action, body) };
   } catch (err) {
@@ -160,7 +164,7 @@ async function flushOnce({ mine = new Set() } = {}) {
         break;
       }
       state.signedOut = false;
-      const many = Array.isArray(q.body?.items) || Array.isArray(q.body?.taps);
+      const many = tapsIn(q) || Array.isArray(q.body?.taps);
       const byTap = new Map((out.results || []).map((x) => [x.tap, x]));
       const retry = [];
       const why = new Map();
@@ -176,7 +180,7 @@ async function flushOnce({ mine = new Set() } = {}) {
       count(q, parts.filter((t) => landed.has(t)));
       if (retry.length) {
         // It keeps its place: what follows may need it first (a box's check-in before the box)
-        const body = Array.isArray(q.body?.items) ? { ...q.body, items: q.body.items.filter((x) => retry.includes(x.tap)) } : { taps: retry };
+        const body = tapsIn(q) ? { ...q.body, items: q.body.items.filter((x) => retry.includes(x.tap)) } : { ...q.body, taps: retry };
         writeQueue(readQueue().map((e) => (e.id === q.id ? { ...e, body, tried: true } : e)));
         break;
       }
@@ -305,9 +309,12 @@ function overlayQueue() {
       const taps = new Set(q.body?.taps || [q.body?.tap]);
       for (const k of state.kids) for (const i of k.items) for (const r of i.receipts || []) if (taps.has(r.id) && !r.undone) { r.undone = true; touched.add(i); }
     } else if (q.action === 'decide' && (q.body?.items || []).some((x) => x.itemName === '*')) {
-      // Whose it is, said on this phone: its card stops asking (the site puts it on the kid's list when it gets it)
+      // Whose it is, said on this phone: its card stops asking (the site puts it on the kid's list when it gets it), and
+      // what Wrong kid takes back off the first kid's shelf is off it here already
       state.shipments = state.shipments.filter((x) => !(x.unplaced && x.key === q.body.orderKey));
       state.needsLook = state.needsLook.filter((x) => x.key !== q.body.orderKey);
+      const back = new Set(q.body.undo || []);
+      for (const k of state.kids) for (const i of k.items) for (const r of i.receipts || []) if (back.has(r.id) && !r.undone) { r.undone = true; touched.add(i); }
     } else if (q.action === 'receive' || q.action === 'house') {
       for (const b of bodies) {
         const i = kidById(b.jobId)?.items.find((x) => x.itemId === b.itemId && x.partKey === b.partKey);
@@ -1074,6 +1081,16 @@ async function read(image, preview) {
 }
 
 function showFound({ found, label, likely = [] }, preview) {
+  // Its email is about one of several orders (the same thing on each, and no order number): which one, by a tap
+  if (found?.which) {
+    const cards = found.which.map((k) => state.shipments.find((x) => x.key === k)).filter(Boolean).map((x) => shipCard(x, { compact: true })).join('');
+    if (cards) {
+      openSheet(`${head('Which order is it?', { sub: esc(`${found.how} · its email has no order number`) })}
+        <div class="ship-pick">${cards}</div>
+        <button class="btn btn-text" type="button" data-rescan="1">Scan the packing slip or the product’s box</button>`, { keep: true });
+      return;
+    }
+  }
   // Its order is in Needs a look (its things fit more than one kid, or its PO names none): each thing to its kid
   if (found?.look) { const n = state.needsLook.findIndex((x) => x.key === found.look); if (n >= 0) { lookSheet(n); return; } }
   // Its order is known and nobody's yet: whose is it? (then it checks in like any shipment)
@@ -1162,28 +1179,25 @@ function whoseSheet(sh, { how = '', keep = false, from = null } = {}) {
   const ins = was ? sh.items.flatMap((i) => (itemOfId(i.id)?.receipts || []).filter((r) => r.kind === 'receive' && !r.undone)) : [];
   const boxes = ins.reduce((t, r) => t + Math.max(1, r.boxes || 1), 0);
   openSheet(`${head(esc(sh.store), { sub: esc([how, sh.orderNumber ? `Order ${sh.orderNumber}` : null, sh.buyer ? `${sh.buyer} ordered it` : null, was ? null : shipStatus(sh)[1]].filter(Boolean).join(' · ')) })}
-    <div class="pick">${things.map((t) => `<div class="look"><b>${esc(t.name)}</b>${t.qty > 1 ? `<span>${t.qty} of them</span>` : ''}</div>`).join('') || '<div class="look"><span>Its emails name no things</span></div>'}</div>
+    ${sh.undo && !was ? `<p class="why-line">${esc(sh.undo === 'cancelled' ? 'The store’s emails say part of it was cancelled.' : 'The store’s emails say part of it was refunded or sent back.')}</p>` : ''}
+    <div class="pick">${things.map((t) => `<div class="look"><b>${esc(t.name)}</b>${t.qty > 1 || t.undone ? `<span>${esc([t.qty > 1 ? `${t.qty} of them` : null, t.undone ? (sh.undo === 'cancelled' ? 'Cancelled, the store says' : 'Refunded, the store says') : null].filter(Boolean).join(' · '))}</span>` : ''}</div>`).join('') || '<div class="look"><span>Its emails name no things</span></div>'}</div>
     <span class="label-above">Whose is it?</span>
     <div class="kidpick">${pickKids().map((k) => `<button class="chip has-face" type="button" data-whose="${esc(k.jobId)}"${was ? ` aria-pressed="${k.jobId === was.jobId}"` : ''}>${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
     ${boxes ? `<p class="why-line">${esc(`${plural(boxes, 'box', 'boxes')} of it ${boxes === 1 ? 'is' : 'are'} on ${was.short}’s shelf. Another kid takes ${boxes === 1 ? 'it' : 'them'} off, to check in again with new labels.`)}</p>` : ''}
-    <div class="btn-row"><button class="btn btn-text" type="button" id="notkid">Not a kid’s</button></div>`, { keep, label: `${sh.store}: whose is it?` });
+    <div class="btn-row"><button class="btn btn-text" type="button" id="notkid">Not a kid’s</button>${sh.undo && !was ? '<button class="btn btn-text" type="button" id="wascancelled">Cancelled</button>' : ''}</div>`, { keep, label: `${sh.store}: whose is it?` });
   const answer = async (decision, btn) => {
     if (was && decision.kid === was.jobId) { await close(); return; }
     const buttons = [...document.querySelectorAll('#sheet-root button')];
     const stop = (why) => { buttons.forEach((b) => { b.disabled = false; }); btn.classList.remove('working'); tones.warn(); toast(`Not saved: ${clean(why)}`); };
     buttons.forEach((b) => { b.disabled = true; });
     btn.classList.add('working');
-    // What was checked in for the wrong kid comes back first (behind anything still waiting to be sent)
-    if (ins.length) {
-      let u;
-      try { u = await undoTaps(ins.map((r) => r.id)); } catch (err) { stop(err.message); return; }
-      if (u.refused.size) { stop([...u.refused.values()][0]); return; }
-    }
+    // One step: whose it is, for the things shown, and (Wrong kid) the first kid's check-ins taken back off their shelf.
+    // Sent together, kept together with no connection: they never land apart
     let r;
     try {
-      r = await sendOrKeep('decide', { orderKey: sh.key, ...(was ? { from: was.jobId } : {}), items: [{ itemName: '*', decision }] });
+      r = await sendOrKeep('decide', { tap: newTap(), orderKey: sh.key, things: things.map((t) => t.name), ...(was ? { from: was.jobId } : {}), ...(ins.length ? { undo: ins.map((x) => x.id) } : {}), items: [{ itemName: '*', decision }] });
     } catch (err) { stop(err.message); return; }
-    if (decision.type === 'notKid') { tones.undo(); await close(); render(); toast(`${sh.store}: not a kid’s, off the list`); return; }
+    if (decision.type === 'notKid' || decision.type === 'cancelled') { tones.undo(); await close(); render(); toast(`${sh.store}: ${decision.type === 'cancelled' ? 'cancelled' : 'not a kid’s'}, off the list`); return; }
     const kid = anyKid(decision.kid);
     if (r.queued) { await close(); render(); toast(`${kid?.short || 'Their'}’s. It goes on their list when the connection is back`); return; }
     // What the site placed: its shipment, ready to check in and print; anything it couldn't place is asked about
@@ -1199,6 +1213,7 @@ function whoseSheet(sh, { how = '', keep = false, from = null } = {}) {
   };
   document.querySelectorAll('#sheet-root [data-whose]').forEach((b) => { b.onclick = () => answer({ type: 'kid', kid: b.dataset.whose }, b); });
   $('notkid').onclick = () => answer({ type: 'notKid' }, $('notkid'));
+  if ($('wascancelled')) $('wascancelled').onclick = () => answer({ type: 'cancelled' }, $('wascancelled'));
 }
 
 /** A box whose order the emails know but no list has (marked not a kid's, too old, or no things read): whose it is, or typed in */

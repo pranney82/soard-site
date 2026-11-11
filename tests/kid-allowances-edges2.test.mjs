@@ -264,7 +264,8 @@ test('part of an order cancelled: a thing on an allowance shows as on that allow
   await order('m11', 'Target', '2026-11-05T15:00:00Z', { kind: 'cancelled', orderNumber: 'T9', items: [{ name: 'Picture Frame' }] });
   const v = await view();
   const look = v.needsLook.find((o) => o.orderNumber === 'T9');
-  const print = look.items.find((i) => i.name === 'Framed Wall Print');
-  assert.equal(print.current, 'allow:r-decor', 'it is on the Decor allowance now; the sheet pre-selects `current`');
+  // The cancel names the frame: it's what's asked about (the print, not named, stays on the allowance unasked)
+  assert.deepEqual(look.items.map((i) => i.name), ['Picture Frame']);
+  assert.equal(look.items[0].current, 'allow:r-decor', 'it is on the Decor allowance now; the sheet pre-selects `current`');
   delete env.AI;
 });

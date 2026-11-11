@@ -138,7 +138,8 @@ test('cancelled: the whole order puts its items back; part of it asks a person',
   v = await view();
   const look = v.needsLook.find((o) => o.orderNumber === 'A1');
   assert.equal(look.undo, 'cancelled');
-  assert.equal(look.items.length, 2);
+  // The cancel names the bean bag chair: that's what's asked about (the shower head the store didn't name stays Rowan's)
+  assert.deepEqual(look.items.map((i) => i.name), ['Bean Bag Chair']);
   await decide(env.DB, { orderKey: look.key, itemName: 'Bean Bag Chair', decision: { type: 'cancelled' } });
   const head = itemOf(v, 'Rowan S.', 'Raincan Shower Head');
   await decide(env.DB, { orderKey: look.key, itemName: 'Raincan Shower Head 52214-CZ', decision: { type: 'line', kid: 'j-rowan', itemId: head.itemId, partKey: head.partKey } });

@@ -138,20 +138,23 @@ const trackNo = (t) => String(t?.number || t || '').toUpperCase().replace(/[^A-Z
 
 /**
  * One key for each order, whichever of its emails is read: emails are about one order when they share the store and
- * its number ("#8MK7RPPS5F" and "8MK7RPPS5F" alike), or a tracking number (a carrier's own email included), or, an
- * email with no number of its own, the store and a thing they both name. The key is the one the order always had (its
- * store's email with an order number), so answers kept by it still find it; keep(members) names the email whose key
- * something is kept by already (a person's answer, a budget line), when one of the order's other emails has it.
- * reads: every kind (orders, shipping, cancellations) → (read) → its order's key; .storeOf, .numberOf alike
+ * its number ("#8MK7RPPS5F" and "8MK7RPPS5F" alike), or a tracking number (a carrier's own email included), or, a
+ * shipping or delivered email with no number of its own, the one order of that store before it that names a thing it
+ * names. Two numbered orders are never one (Amazon sends two orders in one box), an order email is never taken into
+ * another (a PO-only order is an order), and a thing two orders name joins neither (the same garland for two kids).
+ * The key is the one the order always had: its store's email with an order number. settled(key, emails): something is
+ * kept by that key already (a person's answer, a budget line). One of an order's emails with its own settled key keeps
+ * it, and the order is called by it; two or more stay apart as they were, so nothing answered or made moves.
+ * reads: every kind (orders, shipping, cancellations) → (read) → its order's key; .storeOf, .numberOf: the order's store
+ * and number as its store's own email says them
  */
-export function orderKeys(reads, { keep = null } = {}) {
+export function orderKeys(reads, { settled = null } = {}) {
   const id = (r) => `${r.mailbox}|${r.id}`;
   const parent = new Map(reads.map((r) => [id(r), id(r)]));
   const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
   const numbered = (r) => orderNo(r.read.orderNumber).length >= 4 && !CARRIER.test(String(r.store || '').trim());
   const numberOf = (r) => `${storeNo(r.store)}|${orderNo(r.read.orderNumber)}`;
-  // Each order's own numbers: a tracking number or a thing's name never makes two numbered orders one (Amazon sends
-  // two orders in one box; the same lamp is bought twice for two kids)
+  // Each order's own numbers: a tracking number or a thing's name never makes two numbered orders one
   const nums = new Map(reads.map((r) => [id(r), new Set(numbered(r) ? [numberOf(r)] : [])]));
   const join = (a, b, loose = false) => {
     const x = find(a), y = find(b);
@@ -165,65 +168,84 @@ export function orderKeys(reads, { keep = null } = {}) {
   const link = (k, r, loose) => { if (firstBy.has(k)) join(firstBy.get(k), id(r), loose); else firstBy.set(k, id(r)); };
   for (const r of reads) if (numbered(r)) link(`n|${numberOf(r)}`, r, false);
   for (const r of reads) for (const t of r.read.tracking || []) { const c = trackNo(t); if (c.length >= 8) link(`t|${c}`, r, true); }
-  // Still on its own with no number: the same store's numbered order that names the same thing, the latest one before
-  // it (a shipping email follows its order), else the first one after
+  // A shipping or delivered email still with no number (Faire's carry none): the one numbered order of that store, from
+  // before it, that names a thing it names (and no other PO). Two or more: it's about one of them, and which is for a
+  // person (the box's scan offers those orders); it's no order of its own
+  const HOUR = 3600e3;
+  const maybe = new Map();
   for (const r of reads) {
-    if (nums.get(find(id(r))).size) continue;
+    if (r.read.kind === 'order' || nums.get(find(id(r))).size) continue;
     const names = new Set((r.read.items || []).map((i) => lower(i.name)).filter(Boolean));
     if (!names.size) continue;
-    const same = reads.filter((x) => numbered(x) && storeNo(x.store) === storeNo(r.store) && (x.read.items || []).some((i) => names.has(lower(i.name))));
-    const before = same.filter((x) => String(x.at) <= String(r.at)).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
-    const other = before || same.sort((a, b) => String(a.at).localeCompare(String(b.at)))[0];
-    if (other) join(id(other), id(r), true);
+    const fits = reads.filter((x) => x.read.kind === 'order' && numbered(x) && storeNo(x.store) === storeNo(r.store)
+      && Date.parse(x.at) <= Date.parse(r.at) + HOUR && !(r.read.jobPo && x.read.jobPo && lower(r.read.jobPo) !== lower(x.read.jobPo))
+      && (x.read.items || []).some((i) => names.has(lower(i.name))));
+    const orders = new Set(fits.map((x) => numberOf(x)));
+    if (orders.size === 1) join(id(fits[0]), id(r), true);
+    else if (orders.size > 1) maybe.set(id(r), fits);
   }
-  // The order's own key: its store's email with an order number (the oldest); else its oldest email's. One of its
-  // emails whose key something is kept by already keeps it
+  // Each order's emails, and the one that names it: its store's email with an order number (the oldest)
   const rank = (x) => (CARRIER.test(String(x.store || '').trim()) ? 2 : 0) + (numbered(x) ? 0 : 1);
-  const rep = new Map();
+  const best = (list) => list.reduce((b, r) => (!b || rank(r) < rank(b) || (rank(r) === rank(b) && String(r.at) < String(b.at)) ? r : b), null);
   const members = new Map();
-  for (const r of [...reads].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
-    const root = find(id(r));
-    if (!rep.has(root) || rank(r) < rank(rep.get(root))) rep.set(root, r);
-    members.set(root, [...(members.get(root) || []), r]);
-  }
-  if (keep) {
-    for (const [root, list] of members) {
-      const keys = [...new Map([rep.get(root), ...list].map((r) => [groupKey(r), r])).values()];
-      if (keys.length < 2) continue;
-      const kept = keep(keys);
-      if (kept) rep.set(root, kept);
+  for (const r of reads) members.set(find(id(r)), [...(members.get(find(id(r))) || []), r]);
+  const keys = new Map(), names = new Map();
+  for (const list of members.values()) {
+    const byOwn = new Map();
+    for (const r of list) byOwn.set(groupKey(r), [...(byOwn.get(groupKey(r)) || []), r]);
+    const repKey = groupKey(best(list));
+    const kept = settled && byOwn.size > 1 ? [...byOwn].filter(([k, rs]) => settled(k, rs)).map(([k]) => k) : [];
+    // The rest of the order goes with the key it's called by: its own, or the one answer kept it by
+    const home = kept.length === 0 ? repKey : kept.includes(repKey) ? repKey : kept.sort((a, b) => rank(best(byOwn.get(a))) - rank(best(byOwn.get(b))))[0];
+    const parts = new Map([[home, []]]);
+    for (const [k, rs] of byOwn) (kept.includes(k) && k !== home ? parts.set(k, rs) : parts.get(home).push(...rs));
+    for (const [k, rs] of parts) {
+      const shown = best(rs);
+      for (const r of rs) { keys.set(id(r), k); names.set(id(r), shown); }
     }
   }
-  const keys = new Map(reads.map((r) => [id(r), groupKey(rep.get(find(id(r))))]));
-  const stores = new Map(reads.map((r) => [id(r), rep.get(find(id(r))).store]));
-  const numbers = new Map(reads.map((r) => [id(r), rep.get(find(id(r))).read.orderNumber || null]));
   const keyOf = (r) => keys.get(id(r)) || groupKey(r);
-  keyOf.storeOf = (r) => stores.get(id(r)) || r.store;
-  keyOf.numberOf = (r) => (numbers.has(id(r)) ? numbers.get(id(r)) : r.read.orderNumber || null);
+  // An email about one of several orders (and joined to nothing since): their keys, else null
+  const uses = new Map();
+  for (const k of keys.values()) uses.set(k, (uses.get(k) || 0) + 1);
+  keyOf.maybe = (r) => {
+    const fits = maybe.get(id(r));
+    if (!fits || uses.get(keys.get(id(r))) > 1) return null;
+    return [...new Set(fits.map((x) => keys.get(id(x))))];
+  };
+  keyOf.storeOf = (r) => names.get(id(r))?.store || r.store;
+  keyOf.numberOf = (r) => (names.has(id(r)) ? names.get(id(r)).read.orderNumber || null : r.read.orderNumber || null);
   return keyOf;
 }
 
-/** The emails about one order, together (keyOf: orderKeys over every email read, so an order's emails are one order) */
+/**
+ * The emails about one order, together (keyOf: orderKeys over every email read, so an order's emails are one order).
+ * What was ordered: as the emails the order is called by name it (the answers about it were given for those names),
+ * else its order email's, else its shipping and delivered emails'
+ */
 export function orderGroups(reads, keyOf = null) {
   const groups = new Map();
   const of = keyOf || orderKeys(reads);
+  const add = (list, it) => { if (!list.some((x) => x.name === it.name)) list.push(it); };
   for (const r of reads) {
     const key = of(r);
-    const g = groups.get(key) || { key, store: of.storeOf ? of.storeOf(r) : r.store, orderNumber: of.numberOf ? of.numberOf(r) : r.read.orderNumber || null, po: null, at: r.at, lastAt: r.at, kinds: [], items: [], later: [], buyer: r.mailbox };
+    const g = groups.get(key) || { key, store: of.storeOf ? of.storeOf(r) : r.store, orderNumber: of.numberOf ? of.numberOf(r) : r.read.orderNumber || null, po: null, at: r.at, lastAt: r.at, kinds: [], items: [], ownOrder: [], ownLater: [], later: [], buyer: r.mailbox };
     g.kinds.push(r.read.kind);
     g.po ||= r.read.jobPo || null;
     if (r.at < g.at) g.at = r.at;
     if (r.at > g.lastAt) g.lastAt = r.at;
     // The buyer is whoever got the store's own email (a carrier's might have gone to anyone)
     if (!CARRIER.test(String(r.store || '').trim()) && r.read.kind === 'order') g.buyer = r.mailbox;
-    // What was ordered comes from the order email; a shipping or delivered email names the same things its own way
-    // ("Raincan Showerhead…"), and counted again they'd be things nobody ordered
-    const into = r.read.kind === 'order' ? g.items : g.later;
-    for (const it of r.read.items || []) if (!into.some((x) => x.name === it.name)) into.push(it);
+    // A shipping or delivered email names the same things its own way ("Raincan Showerhead…"): counted again they'd
+    // be things nobody ordered, so one list is the order's
+    const own = groupKey(r) === key;
+    for (const it of r.read.items || []) add(r.read.kind === 'order' ? (own ? g.ownOrder : g.items) : (own ? g.ownLater : g.later), it);
     groups.set(key, g);
   }
-  // No order email read (Crate & Barrel sends only shipped ones): the shipping and delivered emails' items are the order
-  for (const g of groups.values()) { if (!g.items.length) g.items = g.later; delete g.later; }
+  for (const g of groups.values()) {
+    g.items = [g.ownOrder, g.ownLater, g.items, g.later].find((l) => l.length) || [];
+    delete g.ownOrder; delete g.ownLater; delete g.later;
+  }
   return [...groups.values()].sort((a, b) => (a.at < b.at ? 1 : -1));
 }
 

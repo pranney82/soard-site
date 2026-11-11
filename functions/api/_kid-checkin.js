@@ -199,39 +199,61 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
   };
 
   // Which emails are one order (its number, a tracking number, a thing both name), each order by the key it's always
-  // had; one whose answers or budget lines are kept by another of its emails' keys keeps that one
+  // had. An email whose own key a person's answer or a budget line is kept by keeps it (./_kid-match.js orderKeys)
   const all = await orderReads(DB, ALL_KINDS, strict);
   const said = new Set([...record.decisions.values()].map((d) => d.orderKey).filter(Boolean));
   const alsoKeys = new Set(record.also.filter((a) => !a.typed).map((a) => a.key));
   const keyOf = orderKeys(all, {
-    keep: (members) => members.find((r) => said.has(groupKey(r)))
-      || members.find((r) => (r.read.items || []).some((i) => kids.some((k) => alsoKeys.has(alsoKey(groupKey(r), i.name, k.jobId))))) || null,
+    settled: (key, emails) => said.has(key) || emails.some((r) => (r.read.items || []).some((i) => kids.some((k) => alsoKeys.has(alsoKey(key, i.name, k.jobId))))),
   });
-  // Cancelled, refunded or sent back: the whole order (every item named) undoes it; anything less is for a person
-  const undoes = new Map();
-  for (const g of orderGroups(all.filter((r) => UNDO_KINDS.has(r.read.kind)), keyOf)) undoes.set(g.key, g);
+  // Cancelled, refunded or sent back, by the store's emails: what they name (none named: it may be any of it), and
+  // when they first named all of the order
+  const moved = new Map();
+  for (const r of all.filter((x) => ['shipped', 'out', 'delivered', 'pickup'].includes(x.read.kind))) moved.set(keyOf(r), [...(moved.get(keyOf(r)) || []), r.at]);
+  const undoes = undoneBy(all.filter((r) => UNDO_KINDS.has(r.read.kind)), keyOf, moved);
 
-  const reads = all.filter((r) => ORDER_KINDS.has(r.read.kind));
-  const elsewhere = new Set(reads.filter((r) => r.read.shipTo === 'elsewhere').map(keyOf));
+  // An email that's about one of several orders (the same thing on two orders, and no number of its own) is no order:
+  // which one is for a person, when its box is scanned
+  const reads = all.filter((r) => ORDER_KINDS.has(r.read.kind) && !keyOf.maybe?.(r));
+  // Shipped to a house (not the Office): the things those emails name, or (naming none) all of the order
+  const houseBound = new Map();
+  for (const r of reads.filter((x) => x.read.shipTo === 'elsewhere')) {
+    const h = houseBound.get(keyOf(r)) || { all: false, names: new Set() };
+    const named = (r.read.items || []).map((i) => lower(i.name)).filter(Boolean);
+    if (!named.length) h.all = true;
+    for (const n of named) h.names.add(n);
+    houseBound.set(keyOf(r), h);
+  }
   const needsLook = [];
   let orders = 0;
   // Orders nobody's placed (no PO, and nothing in them fits a selection): bought on an allowance, or for the office.
   // Each shows as a shipment asking whose it is, until a person says (a kid, or not a kid's)
   const unplaced = [];
   for (const g of orderGroups(reads, keyOf)) {
-    // A person's answer for the whole order (not a kid's, cancelled, or whose: as a PO with their name), and for each
-    // thing in it: the newer one stands (Whose is it? after Needs a look, or Wrong kid after Whose is it?)
+    // A person's answers: for the whole order (whose it is, or not a kid's, or cancelled) and for each thing in it.
+    // Whose a thing is (a line, Also bought) stands until a newer whole-order answer says another kid (Whose is it? after
+    // Needs a look, Wrong kid after Whose is it?). That a thing isn't a kid's, or was cancelled, is about the thing,
+    // not whose: it stands whatever is said of the order later
     const whole = record.decisions.get(decisionKey(g.key, WHOLE_ORDER));
     const wholeKid = whole?.type === 'kid' && kidOf.has(whole.kid) ? whole.kid : null;
     const dropped = whole?.type === 'notKid' || whole?.type === 'cancelled';
-    const answerOf = (name) => { const d = record.decisions.get(decisionKey(g.key, name)); return d && (!whole || String(d.at || '') >= String(whole.at || '')) ? d : null; };
-    if (dropped && !g.items.some((it) => answerOf(it.name))) continue;
+    const newer = (d) => !whole || String(d.at || '') >= String(whole.at || '');
+    const answerOf = (name) => {
+      const d = record.decisions.get(decisionKey(g.key, name));
+      if (!d) return null;
+      if (d.type === 'notKid' || d.type === 'cancelled') return dropped && !newer(d) ? null : d;
+      return newer(d) ? d : null;
+    };
+    if (dropped && !g.items.some((it) => answerOf(it.name) && newer(answerOf(it.name)))) continue;
     const m = matchOrder(g, { jobs, lines, staff, templates, kid: wholeKid });
-    // Cancelled whole by the store: off the list, unless a person said whose it is after that (the box came anyway)
+    // Cancelled whole by the store: off the list, unless a person said whose it is after the emails first said all of
+    // it was (the box came anyway; a refund for that same cancel says nothing new)
     const undo = undoes.get(g.key);
-    const allUndone = undo && undo.items.length && g.items.every((it) => undo.items.some((u) => lower(u.name) === lower(it.name)));
-    if (allUndone && !(wholeKid && String(whole.at || '') > String(undo.lastAt || ''))) continue;
-    const order = { key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: firstOf.get(String(g.buyer || '').toLowerCase()) || String(g.buyer || '').split('@')[0], ...(elsewhere.has(g.key) ? { elsewhere: true } : {}) };
+    const allAt = undo?.allAt(g.items);
+    if (allAt && !(wholeKid && String(whole.at || '') > allAt)) continue;
+    const house = houseBound.get(g.key);
+    const toHouse = (name) => Boolean(house && (house.all || house.names.has(lower(name))));
+    const order = { key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: firstOf.get(String(g.buyer || '').toLowerCase()) || String(g.buyer || '').split('@')[0], ...(g.items.length && g.items.every((it) => toHouse(it.name)) ? { elsewhere: true } : {}) };
     const before = Boolean(since && g.at < since);
     const byName = new Map((m.items || []).map((x) => [x.name, x]));
     const looks = [];
@@ -282,19 +304,20 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
       }
     }
     if (placed || looks.length) orders++;
-    // Part of the order cancelled or refunded: each item nobody has answered for is asked about ("Cancelled" is an answer)
-    const partly = undo && !allUndone && (placed || looks.length) ? (undo.kinds.includes('cancelled') ? 'cancelled' : 'refunded') : null;
+    // Part of the order cancelled or refunded: each thing the emails name (naming none, any of it) that nobody has
+    // answered for is asked about ("Cancelled" is an answer; one placed by a person's answer was looked at already)
+    const partly = undo && (placed || looks.length) ? (undo.kinds.includes('cancelled') ? 'cancelled' : 'refunded') : null;
     const asked = new Set(looks.map((x) => x.name));
     if (partly) {
       for (const it of g.items) {
-        if (!asked.has(it.name) && !answerOf(it.name)) looks.push({ name: it.name, look: `part of the order was ${partly}: is this one?`, current: current.get(it.name) || null });
+        if (!asked.has(it.name) && undo.names(it.name) && !record.decisions.get(decisionKey(g.key, it.name))) looks.push({ name: it.name, look: `part of the order was ${partly}: is this one?`, current: current.get(it.name) || null });
       }
     }
-    // Nobody's: no thing in it placed by an answer, nothing to ask item by item, not going to a house, not cancelled or
-    // sent back (any of it: the rest is asked about once it's someone's), and recent
-    if (m.decision === 'unplaced' && !placed && !looks.length && !order.elsewhere && !undo && Date.now() - Date.parse(g.at) < UNPLACED_DAYS * 86400e3) {
-      unplaced.push({ key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: order.buyer,
-        things: g.items.map((it) => ({ name: it.name, qty: Math.max(1, Math.round(Number(it.quantity) || 1)), cents: Number.isFinite(Number(it.cents)) && Number(it.cents) > 0 ? Math.round(Number(it.cents)) : priceCents(it.price) })) });
+    // Nobody's: no thing in it placed by an answer, nothing to ask item by item, not going to a house, and recent. Part
+    // of it cancelled or refunded: asked all the same, saying so (and "Cancelled" is an answer)
+    if (m.decision === 'unplaced' && !placed && !looks.length && !order.elsewhere && Date.now() - Date.parse(g.at) < UNPLACED_DAYS * 86400e3) {
+      unplaced.push({ key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: order.buyer, ...(undo ? { undo: undo.kinds.includes('cancelled') ? 'cancelled' : 'refunded' } : {}),
+        things: g.items.filter((it) => !toHouse(it.name)).map((it) => ({ name: it.name, qty: Math.max(1, Math.round(Number(it.quantity) || 1)), cents: Number.isFinite(Number(it.cents)) && Number(it.cents) > 0 ? Math.round(Number(it.cents)) : priceCents(it.price), ...(undo?.named(it.name) ? { undone: true } : {}) })) });
     }
     if (looks.length) {
       // Kids by the short names the page uses ("Peter R.")
@@ -348,7 +371,7 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
   // Every open makeover's kid, for "whose is it?": a kid whose budget has only allowances yet is who an allowance buy is for
   const everyKid = kids.map(({ jobId, name, short, photo, shelf, shelves: s, allowances }) => ({ jobId, name, short, photo, shelf, shelves: s, allowances }))
     .sort((a, b) => String(a.short).localeCompare(String(b.short)));
-  const view = { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), everyKid, open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, all.filter((r) => SHIP_KINDS.has(r.read.kind)), unplaced, keyOf) };
+  const view = { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), everyKid, open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, all.filter((r) => SHIP_KINDS.has(r.read.kind) && !keyOf.maybe?.(r)), unplaced, keyOf) };
   // Who ordered, as the page says it ("Clareece")
   const nameOf = (email) => firstOf.get(String(email || '').toLowerCase()) || String(email || '').split('@')[0] || null;
   return { view, reads: all, keyOf, nameOf };
@@ -396,16 +419,54 @@ const sameThing = (named, it) => {
  * joins its order by its tracking number.
  * → [{ key, store, orderNumber, orderedAt, stage, shippedAt, outAt, deliveredAt, expected, checkedAt, house, items: [{ kid, id, delivered }] }]
  */
+/**
+ * What the store's cancel, refund and return emails say of each order → key → { kinds, names(name): could it be this
+ * thing (an email naming none could be any), named(name): an email names it, allAt(items): when they first said all of
+ * it (null: not yet) }. A cancel naming nothing ("Your order has been cancelled") is all of it, unless the order shipped
+ * or came after it (a store that cancels part of an order that way: Faire's sellers); a refund or return naming
+ * nothing could be part. moved: key → the times its shipping, delivered and pickup emails came
+ */
+export function undoneBy(reads, keyOf = orderKeys(reads), moved = new Map()) {
+  const by = new Map();
+  for (const r of [...reads].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
+    const k = keyOf(r);
+    const u = by.get(k) || { kinds: [], emails: [] };
+    u.kinds.push(r.read.kind);
+    const names = (r.read.items || []).map((i) => lower(i.name)).filter(Boolean);
+    const wentOn = (moved.get(k) || []).some((at) => String(at) > String(r.at));
+    u.emails.push({ at: r.at, names, all: !names.length && r.read.kind === 'cancelled' && !wentOn });
+    by.set(k, u);
+  }
+  for (const u of by.values()) {
+    const named = new Set(u.emails.flatMap((e) => e.names));
+    const unnamed = u.emails.some((e) => !e.names.length);
+    u.named = (name) => named.has(lower(name));
+    u.names = (name) => unnamed || named.has(lower(name));
+    u.allAt = (items) => {
+      if (!items.length) return null;
+      const seen = new Set();
+      for (const e of u.emails) {
+        if (e.all) return e.at;
+        for (const n of e.names) seen.add(n);
+        if (items.every((it) => seen.has(lower(it.name)))) return e.at;
+      }
+      return null;
+    };
+  }
+  return by;
+}
+
 /** Where each order is by its emails: key → { shippedAt, outAt, deliveredAt, pickupAt, expected, deliveredNames, deliveredAll, house } */
 export function orderMail(reads, keyOf = orderKeys(reads)) {
   const mail = new Map();
   for (const r of [...reads].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
     const k = keyOf(r);
-    const t = mail.get(k) || { shippedAt: null, outAt: null, deliveredAt: null, pickupAt: null, expected: null, deliveredNames: [], deliveredAll: false, house: false };
+    const t = mail.get(k) || { shippedAt: null, outAt: null, deliveredAt: null, pickupAt: null, expected: null, deliveredNames: [], deliveredAll: false, house: false, houseNames: [] };
     const later = (a, b) => (!a || b > a ? b : a);
     // Oldest first, so the newest email's expected day is the one that stands
     if (r.read.expected) t.expected = r.read.expected;
-    if (r.read.shipTo === 'elsewhere') t.house = true;
+    // Shipped to a house: the things it names (a store can send part of an order there), or naming none, all of it
+    if (r.read.shipTo === 'elsewhere') { const n = (r.read.items || []).map((i) => i.name).filter(Boolean); if (n.length) t.houseNames.push(...n); else t.house = true; }
     if (r.read.kind === 'shipped') t.shippedAt = later(t.shippedAt, r.at);
     if (r.read.kind === 'out') t.outAt = later(t.outAt, r.at);
     if (r.read.kind === 'pickup') t.pickupAt = later(t.pickupAt, r.at);
@@ -424,6 +485,7 @@ export const mailStage = (t = {}) => (t.house ? 'house' : t.deliveredAt ? 'deliv
 
 export function shipmentsOf(kids, reads, unplaced = [], keyOf = orderKeys(reads)) {
   const mail = orderMail(reads, keyOf);
+  const itemOf = new Map(kids.flatMap((k) => k.items.map((i) => [i.id, i])));
   // A delivered email whose names match none of the order's things: it's about this order, so all of it
   const anyNamed = new Map();
   for (const k of kids) for (const it of k.items) {
@@ -446,16 +508,17 @@ export function shipmentsOf(kids, reads, unplaced = [], keyOf = orderKeys(reads)
     const t = mail.get(sh.key) || {};
     const waiting = sh.items.filter((i) => !i.here);
     // A delivered email that named only some items: the order is delivered as far as those go
-    const stage = !waiting.length ? 'in' : t.house ? 'house' : waiting.some((i) => i.delivered) ? 'delivered' : t.pickupAt ? 'pickup' : t.outAt ? 'out' : t.shippedAt ? 'shipped' : 'ordered';
+    const houseAll = Boolean(t.house || (t.houseNames?.length && waiting.length && waiting.every((i) => { const it = itemOf.get(i.id); return it && t.houseNames.some((n) => sameThing(n, it)); })));
+    const stage = !waiting.length ? 'in' : houseAll ? 'house' : waiting.some((i) => i.delivered) ? 'delivered' : t.pickupAt ? 'pickup' : t.outAt ? 'out' : t.shippedAt ? 'shipped' : 'ordered';
     const lastIn = kids.flatMap((k) => k.items.filter((i) => i.order?.key === sh.key)).flatMap((i) => i.receipts || []).filter((r) => r.kind === 'receive' && !r.undone).map((r) => r.at).sort().pop() || null;
-    out.push({ ...sh, stage, house: Boolean(t.house), shippedAt: t.shippedAt || null, outAt: t.outAt || null, pickupAt: t.pickupAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null, checkedAt: stage === 'in' ? lastIn : null, items: sh.items.map(({ here, ...i }) => i) });
+    out.push({ ...sh, stage, house: houseAll, shippedAt: t.shippedAt || null, outAt: t.outAt || null, pickupAt: t.pickupAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null, checkedAt: stage === 'in' ? lastIn : null, items: sh.items.map(({ here, ...i }) => i) });
   }
   // Nobody's orders: a shipment like any other (delivered, on the way), its things by name, asking whose it is
   for (const u of unplaced) {
     const t = mail.get(u.key) || {};
     const stage = mailStage(t);
     if (stage === 'house') continue;
-    out.push({ key: u.key, store: u.store, orderNumber: u.orderNumber || null, orderedAt: u.at, buyer: u.buyer, unplaced: true, things: u.things, items: [], stage, house: false, shippedAt: t.shippedAt || null, outAt: t.outAt || null, pickupAt: t.pickupAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null, checkedAt: null });
+    out.push({ key: u.key, store: u.store, orderNumber: u.orderNumber || null, orderedAt: u.at, buyer: u.buyer, unplaced: true, ...(u.undo ? { undo: u.undo } : {}), things: u.things, items: [], stage, house: false, shippedAt: t.shippedAt || null, outAt: t.outAt || null, pickupAt: t.pickupAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null, checkedAt: null });
   }
   const rank = { delivered: 0, pickup: 1, out: 2, shipped: 3, ordered: 4, house: 5, in: 6 };
   const when = (x) => x.stage === 'delivered' ? x.deliveredAt : x.stage === 'pickup' ? x.pickupAt : x.stage === 'out' ? x.outAt : x.stage === 'in' ? x.checkedAt : x.orderedAt;

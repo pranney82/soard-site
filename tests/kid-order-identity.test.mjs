@@ -101,7 +101,7 @@ test('an order whose answer was kept by its shipping email’s key keeps that ke
   v = await view();
   const now = v.kids.find((k) => k.jobId === 'j-ava').items.filter((i) => /Elfa/.test(i.name));
   assert.deepEqual(now.map((i) => [i.order.key, i.also.key]), [['Shop|email:s1', before.also.key]], 'the same thing, by the same key: the answer stands and its budget line is the same one');
-  assert.equal(now[0].order.orderNumber, null);
+  assert.equal(now[0].order.orderNumber, '899120', 'shown by the order’s number, from its order email');
 });
 
 test('the scan matches the way the view was made (checkinData), and a stale page gets the list with the answer', async () => {
@@ -123,7 +123,8 @@ test('things answered “Not a kid’s” one by one, then “Whose is it?” sa
   const label = { ...blank, trackingNumbers: ['1ZAAA1110300000001'] };
   const f = findBox(v, reads, label);
   assert.equal(f.known.things.length, 2);
-  await decide(env.DB, { orderKey: f.known.key, itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } });
+  // The sheet shows its things and sends them with the answer
+  await decide(env.DB, { orderKey: f.known.key, itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' }, things: f.known.things.map((t) => t.name) });
   v = await view();
   assert.equal(v.kids.find((k) => k.jobId === 'j-ava').items.filter((i) => i.order?.key === 'Shop|Q77001').length, 2);
   assert.equal(findBox(v, reads, label)?.short, 'Ava E.');
@@ -257,4 +258,114 @@ test('groupKey is the key a lone email always had (answers saved by it still fin
   assert.equal(groupKey({ id: 'x1', store: 'Shop', read: { orderNumber: null, items: [] } }), 'Shop|email:x1');
   assert.ok(alsoKey('Shop|1', 'Lamp', 'j-ava').startsWith('soard-also-'));
   assert.ok(later(1) > daysAgo(0));
+});
+
+// ─── Review of f5ee1a0b (Nov 11 2026): what was answered or made before stays as it was ───
+
+const thingsOf = (v, jobId) => (v.kids.find((k) => k.jobId === jobId)?.items || []).filter((i) => i.order).map((i) => i.name).sort();
+/** A budget line the JobTread writer made for an Also bought thing (as the live record keeps it) */
+const madeAlso = (key, jobId, name) => env.DB.prepare("INSERT INTO kid_also (key, job_id, name, at, cost_item_id) VALUES (?, ?, ?, '2026-11-01', ?)").bind(key, jobId, name, `ci-${key}`).run();
+
+test('a freight carrier’s email answered on its own before (its own things’ names): joined to the store’s order, the answer and its budget line stay, shown under the store', async () => {
+  await mail('o1', 'Plank Hardware', daysAgo(35), { kind: 'order', orderNumber: '55120', items: [{ name: 'Oak Wall Shelf 36in Natural', quantity: 1, cents: 8900 }], tracking: [] });
+  await mail('s1', 'Plank Hardware', daysAgo(33), { kind: 'shipped', orderNumber: '55120', items: [{ name: 'Oak Wall Shelf 36in Natural' }], tracking: [{ carrier: 'LTL', number: 'PRO7766554433' }] });
+  await mail('c1', 'LTL Select', daysAgo(33), { kind: 'shipped', orderNumber: null, jobPo: '55120', items: [{ name: 'SHELF OAK KD/36 NAT' }], tracking: [{ carrier: 'LTL', number: 'PRO7766554433' }] });
+  const old = 'LTL Select|po:55120|SHELF OAK KD/36 NAT';
+  await decide(env.DB, { orderKey: old, itemName: 'SHELF OAK KD/36 NAT', decision: { type: 'also', kid: 'j-ava' } });
+  await madeAlso(alsoKey(old, 'SHELF OAK KD/36 NAT', 'j-ava'), 'j-ava', 'SHELF OAK KD/36 NAT');
+  const v = await view();
+  const it = v.kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.name === 'SHELF OAK KD/36 NAT');
+  assert.deepEqual([it?.also.key, it?.also.costItemId, it?.order.store, it?.order.orderNumber], [alsoKey(old, 'SHELF OAK KD/36 NAT', 'j-ava'), `ci-${alsoKey(old, 'SHELF OAK KD/36 NAT', 'j-ava')}`, 'Plank Hardware', '55120']);
+  assert.deepEqual(v.needsLook, [], 'nothing asked again');
+});
+
+test('two cards for one order answered differently before (the shipped one Ava’s, the order email’s “Not a kid’s”): they stay apart as they were, Ava keeps hers', async () => {
+  const bins = [{ name: 'Canvas Toy Bin Set of 3', quantity: 1, cents: 3600 }];
+  await mail('o1', 'Shop Co', daysAgo(5), { kind: 'order', orderNumber: '899120', items: bins, tracking: [] });
+  await mail('s1', 'Shop Co', daysAgo(2), { kind: 'shipped', orderNumber: null, items: bins, tracking: [{ carrier: 'UPS', number: '1Z12D1R20300649275' }] });
+  await decide(env.DB, { orderKey: 'Shop Co|email:s1', itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } });
+  await decide(env.DB, { orderKey: 'Shop Co|899120', itemName: WHOLE_ORDER, decision: { type: 'notKid' } });
+  await madeAlso(alsoKey('Shop Co|email:s1', 'Canvas Toy Bin Set of 3', 'j-ava'), 'j-ava', 'Canvas Toy Bin Set of 3');
+  const v = await view();
+  const ava = v.kids.find((k) => k.jobId === 'j-ava').items.filter((i) => /Toy Bin/.test(i.name));
+  assert.deepEqual(ava.map((i) => i.also.key), [alsoKey('Shop Co|email:s1', 'Canvas Toy Bin Set of 3', 'j-ava')]);
+  assert.equal(v.shipments.filter((s) => s.unplaced).length, 0);
+});
+
+test('Wrong kid moves whose the order is, not what was said of a thing: the office’s tape and the cancelled pillow stay off Rowan’s list, nothing asked again', async () => {
+  await mail('o1', 'Pine Supply', daysAgo(4), { kind: 'order', orderNumber: 'PS-40021', jobPo: 'AVA', items: [{ name: 'Cloud Pendant Light', cents: 4500 }, { name: 'Packing Tape 6-Roll', cents: 1800 }, { name: 'Linen Throw Pillow', cents: 2500 }], tracking: [] });
+  await mail('x1', 'Pine Supply', daysAgo(3), { kind: 'cancelled', orderNumber: 'PS-40021', items: [{ name: 'Linen Throw Pillow' }], tracking: [] });
+  const key = 'Pine Supply|PS-40021';
+  let v = await view();
+  const lamp = v.kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.itemId === 'a-lamp');
+  await decide(env.DB, { orderKey: key, itemName: 'Packing Tape 6-Roll', decision: { type: 'notKid' } }, { now: daysAgo(2) });
+  await decide(env.DB, { orderKey: key, itemName: 'Linen Throw Pillow', decision: { type: 'cancelled' } }, { now: daysAgo(2) });
+  await decide(env.DB, { orderKey: key, itemName: 'Cloud Pendant Light', decision: { type: 'line', kid: 'j-ava', itemId: lamp.itemId, partKey: lamp.partKey } }, { now: daysAgo(2) });
+  v = await view();
+  assert.deepEqual([thingsOf(v, 'j-ava'), v.needsLook.length], [['Cloud Pendant Light'], 0]);
+  // The shipment sheet's Wrong kid: its things (what's on Ava's list) go with the answer
+  const r = await (await post('decide', { orderKey: key, from: 'j-ava', things: ['Cloud Pendant Light'], items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-rowan' } }] })).json();
+  assert.equal(r.success, true);
+  v = await view();
+  assert.deepEqual([thingsOf(v, 'j-rowan'), thingsOf(v, 'j-ava'), v.needsLook.length], [['Cloud Pendant Light'], [], 0]);
+});
+
+test('the same thing on two orders: a shipping email with no number joins neither, makes no card, and its box offers both orders to pick', async () => {
+  const g = [{ name: 'Felt Star Garland', quantity: 1, cents: 2200 }];
+  await mail('o1', 'Juniper Gifts', daysAgo(9), { kind: 'order', orderNumber: '#JG10001', jobPo: 'AVA', items: g, tracking: [] });
+  await mail('o2', 'Juniper Gifts', daysAgo(6), { kind: 'order', orderNumber: '#JG10002', jobPo: 'ROWAN', items: g, tracking: [] });
+  await mail('s1', 'Juniper Gifts', daysAgo(4), { kind: 'shipped', orderNumber: null, items: g, tracking: [{ carrier: 'USPS', number: '9400111899223344556677' }] });
+  const { view: v, reads, keyOf } = await checkinData(env, { photos: false });
+  const sh = (who) => v.shipments.find((s) => s.items.some((i) => i.kid === who));
+  assert.deepEqual([sh('j-ava').stage, sh('j-rowan').stage, v.shipments.filter((s) => s.unplaced).length], ['ordered', 'ordered', 0]);
+  const found = findBox(v, reads, { ...blank, trackingNumbers: ['9400111899223344556677'] }, { keyOf });
+  assert.deepEqual([found.which?.sort(), found.how], [['Juniper Gifts|#JG10001', 'Juniper Gifts|#JG10002'], 'Tracking …556677']);
+});
+
+test('an order email with no number (a PO-only order) is an order of its own, never taken into another that names the same thing', async () => {
+  await mail('o1', 'Plank Hardware', daysAgo(8), { kind: 'order', orderNumber: '77001', jobPo: 'ROWAN', items: [{ name: 'Oak Wall Shelf 36in', cents: 8900 }], tracking: [] });
+  await mail('o2', 'Plank Hardware', daysAgo(3), { kind: 'order', orderNumber: null, jobPo: 'AVA', items: [{ name: 'Oak Wall Shelf 36in', cents: 8900 }, { name: 'Brass Hook Set', cents: 1500 }], tracking: [] });
+  const v = await view();
+  assert.deepEqual([thingsOf(v, 'j-rowan'), thingsOf(v, 'j-ava')], [['Oak Wall Shelf 36in'], ['Brass Hook Set', 'Oak Wall Shelf 36in']]);
+});
+
+test('part of an order nobody placed refunded: it still asks whose it is, saying so, and the refunded thing is marked', async () => {
+  const things = [{ name: 'Velvet Storage Bin', cents: 2400 }, { name: 'Rope Basket Large', cents: 3100 }, { name: 'Mini Desk Fan', cents: 1900 }];
+  await mail('o1', 'Hollow Home', daysAgo(6), { kind: 'order', orderNumber: 'HH-88231', items: things, tracking: [] });
+  await mail('d1', 'Hollow Home', daysAgo(2), { kind: 'delivered', orderNumber: 'HH-88231', items: [], tracking: [] });
+  await mail('r1', 'Hollow Home', daysAgo(1), { kind: 'refund', orderNumber: 'HH-88231', items: [{ name: 'Mini Desk Fan' }], tracking: [] });
+  const v = await view();
+  const card = v.shipments.find((s) => s.unplaced);
+  assert.deepEqual([card?.key, card?.undo, card?.things.filter((t) => t.undone).map((t) => t.name)], ['Hollow Home|HH-88231', 'refunded', ['Mini Desk Fan']]);
+  // Ava's: the refunded fan is asked about, the rest is hers
+  await decide(env.DB, { orderKey: card.key, itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' }, things: card.things.map((t) => t.name) });
+  const v2 = await view();
+  assert.deepEqual(thingsOf(v2, 'j-ava'), ['Mini Desk Fan', 'Rope Basket Large', 'Velvet Storage Bin']);
+  assert.deepEqual(v2.needsLook.map((o) => o.items.map((i) => i.name)), [['Mini Desk Fan']]);
+});
+
+test('cancelled, then a person said Ava’s (the box came anyway), then the refund for that same cancel: it stays Ava’s', async () => {
+  const things = [{ name: 'Rattan Wall Mirror', cents: 6400 }];
+  await mail('o1', 'Hollow Home', daysAgo(6), { kind: 'order', orderNumber: 'HH-90001', items: things, tracking: [] });
+  await mail('x1', 'Hollow Home', daysAgo(3), { kind: 'cancelled', orderNumber: 'HH-90001', items: things, tracking: [] });
+  await decide(env.DB, { orderKey: 'Hollow Home|HH-90001', itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }, { now: daysAgo(2) });
+  await mail('r1', 'Hollow Home', daysAgo(1), { kind: 'refund', orderNumber: 'HH-90001', items: things, tracking: [] });
+  assert.deepEqual(thingsOf(await view(), 'j-ava'), ['Rattan Wall Mirror']);
+});
+
+test('a cancel naming nothing is all of the order, unless it shipped after it (part cancelled)', async () => {
+  await mail('o1', 'Faire', daysAgo(10), { kind: 'order', orderNumber: '#FA10001', items: [{ name: 'Ceramic Mug' }, { name: 'Tea Towel' }] });
+  await mail('x1', 'Faire', daysAgo(8), { kind: 'cancelled', orderNumber: 'FA10001', items: [] });
+  await mail('s1', 'Faire', daysAgo(5), { kind: 'shipped', orderNumber: '#FA10001', items: [], tracking: [{ carrier: 'UPS', number: '1ZFFF6660300000006' }] });
+  const v = await view();
+  const card = v.shipments.find((s) => s.unplaced);
+  assert.deepEqual([card?.key, card?.undo], ['Faire|#FA10001', 'cancelled'], 'it shipped after the cancel: part of it, and asked');
+});
+
+test('one email to the house naming some of an order’s things: the rest still asks whose it is', async () => {
+  await mail('o1', 'Faire', daysAgo(10), { kind: 'order', orderNumber: '#FB20001', items: [{ name: 'Ceramic Mug' }, { name: 'Tea Towel' }, { name: 'Wool Throw' }] });
+  await mail('s1', 'Faire', daysAgo(5), { kind: 'shipped', orderNumber: null, shipTo: 'elsewhere', items: [{ name: 'Ceramic Mug' }, { name: 'Tea Towel' }], tracking: [{ carrier: 'FedEx', number: '533392600001' }] });
+  const v = await view();
+  const card = v.shipments.find((s) => s.unplaced);
+  assert.deepEqual([card?.key, card?.things.map((t) => t.name)], ['Faire|#FB20001', ['Wool Throw']]);
 });

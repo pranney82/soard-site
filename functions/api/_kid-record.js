@@ -285,6 +285,13 @@ const DECISIONS = new Set(['line', 'also', 'notKid', 'cancelled', 'kid']);
 // A person's answer for a whole order (its item name is this): 'kid' (it's this kid's: the site places each thing as
 // for a PO with their name) or 'notKid'. A thing's own answer stands over it
 export const WHOLE_ORDER = '*';
+
+/** When an answer was given: the phone's time (one with no connection sends it later), if it's a real one from the last
+ * two weeks and not ahead; else now */
+export function answeredAt(at, now = Date.now()) {
+  const t = Date.parse(String(at || ''));
+  return Number.isFinite(t) && t <= now && t > now - 14 * 86400e3 ? new Date(t).toISOString() : new Date(now).toISOString();
+}
 /**
  * A person's answer for one ordered item: { orderKey, itemName, decision: { type, kid, itemId, partKey } }
  *   line       it's this kid's, on this line (and part)
@@ -293,7 +300,7 @@ export const WHOLE_ORDER = '*';
  *   cancelled  it was cancelled or sent back
  *   kid        (the whole order, itemName '*') it's this kid's: placed as for a PO with their name
  */
-export async function decide(DB, { orderKey, itemName, decision } = {}, { by = null, now = new Date().toISOString() } = {}) {
+export async function decide(DB, { orderKey, itemName, decision, things = null } = {}, { by = null, now = new Date().toISOString() } = {}) {
   await ensureRecord(DB);
   if (!orderKey || !itemName || !DECISIONS.has(decision?.type)) throw bad('Pick whose it is.');
   if (['line', 'also', 'kid'].includes(decision.type) && !decision.kid) throw bad('Pick the kid.');
@@ -303,6 +310,12 @@ export async function decide(DB, { orderKey, itemName, decision } = {}, { by = n
   const before = parse((await DB.prepare('SELECT decision FROM kid_decisions WHERE key = ?').bind(decisionKey(orderKey, itemName)).first())?.decision, {});
   await DB.prepare('INSERT OR REPLACE INTO kid_decisions (key, order_key, item_name, decision, by_email, at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(decisionKey(orderKey, itemName), String(orderKey), String(itemName).slice(0, 300), JSON.stringify(clean), by, now).run();
+  // Whose the whole order is, said with its things in front of the person (Whose is it?): those things are that kid's,
+  // whatever was said of them before ("Not a kid's" one by one in Needs a look, then the box came and it's Ava's).
+  // Wrong kid shows only what's on the list, so a thing that's the office's or was cancelled stays so
+  if (itemName === WHOLE_ORDER && clean.type === 'kid' && Array.isArray(things)) {
+    for (const name of things.slice(0, 60)) await DB.prepare('DELETE FROM kid_decisions WHERE key = ?').bind(decisionKey(orderKey, String(name))).run();
+  }
   return { ...clean, ...(before?.kid && before.kid !== clean.kid ? { was: String(before.kid) } : {}) };
 }
 

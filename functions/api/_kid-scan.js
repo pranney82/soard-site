@@ -153,6 +153,7 @@ export function storeOfTracking(numbers, reads) {
  *   { kid, short, items: [item ids], how, exact? }   the kid's (exact: its own order, by tracking, order or model number)
  *   { kid, short, items: [], done, exact, order }     its order is all checked in already
  *   { look: order key, how, exact }                  its order is in Needs a look: each thing in it to its kid
+ *   { which: [order keys], how }                     its email is about one of these orders (the same thing on each)
  *   { unplaced: order key, how, exact, known }        its order is known and nobody's: whose is it?
  *   { known: { key, store, orderNumber, at, buyer, things, stage, …when }, how }   its order is in the emails but on no list
  *   null
@@ -200,8 +201,13 @@ export function findBox(view, reads, label, { keyOf = orderKeys(reads), nameOf =
   };
   const keysOf = (hit) => [...new Set(reads.filter(hit).map(keyOf))];
   for (const t of label.trackingNumbers || []) {
-    const keys = keysOf((x) => (x.read.tracking || []).some((tr) => sameTracking(tr.number, t)));
-    if (keys.length) return ofOrders(keys, `Tracking …${clean(t).slice(-6)}`);
+    const hits = reads.filter((x) => (x.read.tracking || []).some((tr) => sameTracking(tr.number, t)));
+    const how = `Tracking …${clean(t).slice(-6)}`;
+    // Its email is about one of several orders (the same thing on each): those orders, for a person to pick
+    const which = hits.length && hits.every((x) => keyOf.maybe?.(x)) ? [...new Set(hits.flatMap((x) => keyOf.maybe(x)))] : null;
+    if (which) return { which, how };
+    const keys = [...new Set(hits.filter((x) => !keyOf.maybe?.(x)).map(keyOf))];
+    if (keys.length) return ofOrders(keys, how);
   }
   for (const o of [...(label.orderNumbers || []), ...(label.references || [])]) {
     const keys = keysOf((x) => !isCarrier(x.store) && (sameOrder(x.read.orderNumber, o) || inOrder(x.read.orderNumber, o)));

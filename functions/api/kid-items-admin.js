@@ -12,7 +12,7 @@
  *   ?undo=1    { taps: [...] } (or one { tap })                     check-ins or boxes out taken back → { results: [{ tap, shelf, moved? }] }
  *   ?shelf=1   { tap, shelf }                                      a check-in moved to another shelf (or the Floor)
  *   ?reprint=1 { tap }                                             a check-in's labels again
- *   ?decide=1  { orderKey, items: [{ itemName, decision }] }      Needs a look and Wrong kid answers
+ *   ?decide=1  { orderKey, items: [{ itemName, decision }], at?, things?, undo?, from? }   Needs a look, Whose is it? and Wrong kid answers
  *   ?other=1   { tap, jobId, name, cents, donated, units, boxes } something else that came, typed in
  *   ?allow=1   { key, jobId, itemId? }                             a person's answer: on that allowance, or (none) Also bought
  *   ?shelf-labels=1 { shelves: ['1', …] }                          the shelves' own signs
@@ -24,7 +24,7 @@ import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
 import { checkinView, checkinData } from './_kid-checkin.js';
 import { readLabel, findBox, likelyBoxes } from './_kid-scan.js';
-import { receive, undoMany, moveShelf, decide, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord, WHOLE_ORDER } from './_kid-record.js';
+import { receive, undoMany, moveShelf, decide, answeredAt, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord, WHOLE_ORDER } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { shelfLabel } from './_kid-labels.js';
 import { keepSort } from './_kid-allow.js';
@@ -197,9 +197,24 @@ export async function onRequestPost(context) {
     } else if (q.get('decide')) {
       const items = Array.isArray(body.items) ? body.items.slice(0, 40) : [];
       if (!items.length) return Response.json({ success: false, error: 'Pick whose it is.' }, { status: 400, headers });
+      // When the person answered (a phone with no connection sends it later): the newest answer stands, so it's theirs
+      const at = answeredAt(body.at);
+      // Wrong kid after things were checked in: those check-ins come back off the first kid's shelf in the same step as
+      // the answer, so the two never land apart. A box of it on the truck stops it before anything changes
+      const undo = Array.isArray(body.undo) ? body.undo.map(String).slice(0, 60) : [];
+      if (undo.length) {
+        for (const tap of undo) {
+          const onTruck = await env.DB.prepare("SELECT 1 FROM kid_receipts WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(tap).first();
+          if (onTruck) return Response.json({ success: false, error: 'A box of it is on the truck. Take it back off first.' }, { status: 409, headers });
+        }
+        const undone = await undoMany(env.DB, undo, { by });
+        // Never saved (it was refused when it was sent): nothing to take back
+        const bad = undone.find((x) => x.error && x.status !== 404);
+        if (bad) return Response.json({ success: false, error: bad.error }, { status: bad.status || 409, headers });
+      }
       const kids = new Set();
       for (const it of items) {
-        const d = await decide(env.DB, { orderKey: body.orderKey, itemName: it.itemName, decision: it.decision }, { by });
+        const d = await decide(env.DB, { orderKey: body.orderKey, itemName: it.itemName, decision: it.decision, things: it.itemName === WHOLE_ORDER && Array.isArray(body.things) ? body.things : null }, { by, now: at });
         if (d.kid) kids.add(d.kid);
         // Whoever it was before (another phone's answer, a whole order moved): their lines come off
         if (d.was) kids.add(d.was);
