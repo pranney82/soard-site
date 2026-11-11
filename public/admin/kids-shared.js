@@ -20,6 +20,8 @@
  *   publishStatus 'draft' keeps the profile off the site
  */
 
+import { zeffyKey } from './zeffy-links.js';
+
 // ── Statuses: the order Meet the Kids shows them in ──────────────────
 import { normalizePlanType } from './reveal-design.js';
 
@@ -245,6 +247,10 @@ export function kidIssues(kid) {
   // Awaiting funding is about finding who pays for the room (Peter, Oct 28 2026)
   if (kid.status === 'needs-funding' && !(kid.sponsors || []).length) add('no-sponsor', 'warn', 'No monetary sponsor yet', 'sponsor', 'Pick who pays for the room, here or in JobTread');
   if (kid.status === 'needs-funding' && !kid.fundraisingUrl) add('no-fund-link', 'warn', 'No fundraising link', 'giving', 'Visitors have no way to give toward this room');
+  // A link that isn't a Zeffy form (saved before the field was a dropdown) still gives the page its button, but it
+  // isn't the room's form, and Profile Health doesn't count it (kidChecks 'fund'): so it's said here too
+  const fundNotZeffy = !!kid.fundraisingUrl && !zeffyKey(kid.fundraisingUrl);
+  if (kid.status === 'needs-funding' && fundNotZeffy) add('fund-not-zeffy', 'warn', 'Fundraising link isn’t a Zeffy form', 'giving', 'Pick the room’s form from SOARD’s Zeffy');
   if (kid.status === 'completed' && photos.length < 3) add('few-photos', 'warn', photos.length ? `Only ${photos.length} photo${photos.length === 1 ? '' : 's'}` : 'No photos', 'photos', 'Completed rooms read best with a full gallery');
   const intro = heroIntro(kid);
   if (kid.heroSummary && intro.cut) add('hook-cut', 'warn', 'Hero summary is cut short', 'story', `The page shows: “${intro.text}”`);
@@ -254,6 +260,7 @@ export function kidIssues(kid) {
   if (noAlt) add('alt', 'quiet', `${noAlt} photo${noAlt === 1 ? '' : 's'} need${noAlt === 1 ? 's' : ''} alt text`, 'photos', 'Screen readers and image search rely on it');
   if (kid.status === 'in-progress' && !(kid.sponsors || []).length) add('no-sponsor', 'quiet', 'No monetary sponsor', 'sponsor', 'Who paid for the room isn’t recorded');
   if (kid.status === 'in-progress' && !kid.fundraisingUrl) add('no-fund-link', 'quiet', 'No fundraising link', 'giving', 'Their page could ask visitors to help fund the room');
+  if (kid.status === 'in-progress' && fundNotZeffy) add('fund-not-zeffy', 'quiet', 'Fundraising link isn’t a Zeffy form', 'giving', 'Pick the room’s form from SOARD’s Zeffy');
   if (kid.status === 'completed' && !kid.streamVideoId && !kid.videoUrl) add('no-video', 'quiet', 'No reveal video', 'video', 'The page has no Reveal chapter');
   const q = quoteState(kid);
   if (!q.shown && q.reason) add('quote-hidden', 'quiet', 'Quote isn’t shown', 'story', 'It repeats the story, so the page leaves it out');
@@ -282,7 +289,7 @@ export function kidChecks(kid) {
     { id: 'photos', label: kid.status === 'completed' ? 'At least 3 photos' : 'A photo', done: photos.length >= (kid.status === 'completed' ? 3 : 1), section: 'photos', key: kid.status === 'completed' },
     shown.length ? { id: 'alt', label: 'Alt text on every photo shown', done: !shown.some(needsAlt), section: 'photos' } : null,
     kid.status === 'completed' ? { id: 'video', label: 'Reveal video', done: !!(kid.streamVideoId || kid.videoUrl), section: 'video' } : null,
-    active ? { id: 'fund', label: 'Fundraising link', done: !!kid.fundraisingUrl, section: 'giving', key: kid.status === 'needs-funding' } : null,
+    active ? { id: 'fund', label: 'Fundraising link', done: !!zeffyKey(kid.fundraisingUrl), section: 'giving', key: kid.status === 'needs-funding' } : null,
     (kid.partnerLogos || []).length ? { id: 'partners', label: 'Partner logos named', done: !(kid.partnerLogos || []).some((p) => !String(p.name || '').trim()), section: 'partners' } : null,
     (kid.plans || []).length ? { id: 'plans', label: 'Plan captions', done: !(kid.plans || []).some((p) => looksLikeFileName(p.label) || !String(p.label || '').trim()), section: 'plans' } : null,
   ];

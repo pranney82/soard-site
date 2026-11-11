@@ -398,7 +398,7 @@ export function SponsorsList({ value, onChange }) {
 }
 
 /** What the tournament page reads from its event: name, date, time, place, registration link */
-export function EventBasics({ event, onEvent }) {
+export function EventBasics({ event, saved, onEvent }) {
   injectStyles();
   const ev = event || {};
   const field = (key, label, attrs = {}) => html`
@@ -415,7 +415,7 @@ export function EventBasics({ event, onEvent }) {
       ${field('address', 'Address', { placeholder: '4001 Clubland Dr. Marietta, GA 30068' })}
       <div class="form-group er-wide">
         <label class="form-label" for="er-ticket-url">Registration link</label>
-        <${ZeffyLink} inputId="er-ticket-url" value=${ev.ticketUrl || ''} prefer=${['tickets']} label="Registration link" onPick=${(f) => onEvent('ticketUrl', f.url)} onChange=${(v) => onEvent('ticketUrl', v)} />
+        <${ZeffyLink} inputId="er-ticket-url" value=${ev.ticketUrl || ''} saved=${saved} prefer=${['tickets']} elsewhere="Registration on another site?" label="Registration link" onPick=${(f) => onEvent('ticketUrl', f ? f.url : '')} onChange=${(v) => onEvent('ticketUrl', v)} />
       </div>
     </div>
     <label class="checkbox-label u-mt-1" style="display: inline-flex; align-items: center; gap: 0.5rem;">

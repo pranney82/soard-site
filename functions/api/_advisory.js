@@ -362,6 +362,17 @@ export async function setHosted(DB, id, { status, note, date, giveUrl }, { by = 
   return { hosted: hostedOf(await DB.prepare('SELECT * FROM advisory_hosted WHERE id = ?').bind(id).first()), changed: row.status !== status };
 }
 
+/** An approved fundraiser's Zeffy page, by itself (Admin → Site Config → Zeffy): its status, date and note stay */
+export async function setHostedLink(DB, id, giveUrl, { by = '', now = Date.now() } = {}) {
+  await ensureAdvisory(DB);
+  const row = await DB.prepare('SELECT * FROM advisory_hosted WHERE id = ?').bind(id).first();
+  if (!row) throw err('That request is gone', 404);
+  if (row.status !== 'approved') throw err('Only an approved fundraiser has a Zeffy page here', 409);
+  const data = { ...parse(row.data), giveUrl: webLink(giveUrl) };
+  await DB.prepare('UPDATE advisory_hosted SET data = ?, updated_at = ?, updated_by = ? WHERE id = ?').bind(JSON.stringify(data), nowIso(now), by, id).run();
+  return hostedOf(await DB.prepare('SELECT * FROM advisory_hosted WHERE id = ?').bind(id).first());
+}
+
 // ─── Terms ──────────────────────────────────────────────────────────
 
 /** Each advisor's term: their row, else the group's dates. { started, ends, renewedOn, left } */

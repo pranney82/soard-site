@@ -1,9 +1,13 @@
 /**
  * Admin → a Zeffy link field (ZeffyLink)
  * ===========================================================================
- * Wherever admin asks for a Zeffy link: a dropdown of the forms in SOARD's Zeffy beside the link box. Pick one and its
- * link fills in. The box stays, so the link is always in view and a link that isn't a Zeffy form (an event's sign-up
- * sheet, say) can still be pasted. The dropdown shows the form the link already goes to.
+ * Wherever admin asks for a Zeffy link: a dropdown of the forms in SOARD's Zeffy, and Open beside it. Picking a form
+ * saves its link, taken from Zeffy: nothing is typed or pasted. An optional field has "No form" to take its link off.
+ * Only an event can sell its tickets on another site instead, and only then is there a box for that site's link.
+ *
+ * What a field says is fieldState()'s, and every page's Save is blocked by the same fieldState(): a link just set that
+ * won't do (or a required one missing) blocks, in red; a link saved earlier that won't do, or a form Zeffy has closed
+ * or deleted, is a warning, in amber, that never blocks the rest of a page's save.
  *
  * Site Config → Zeffy (./site-config.js) has the site's donation forms, each event's tickets and the Advisory Board's
  * campaign together. The same field is on a kid's Giving (a kid's link lives only there), an event's and the gala's
@@ -15,8 +19,8 @@
  * comes back after a minute away, so a form just made in Zeffy in another tab shows up.
  */
 
-import { h, htm, useState, useEffect } from './vendor.js';
-import { zeffyKey, sameForm } from './zeffy-links.js';
+import { h, htm, useState, useEffect, useRef } from './vendor.js';
+import { zeffyKey, sameForm, zeffyLinkProblem, finishLink } from './zeffy-links.js';
 
 const html = htm.bind(h);
 const STALE_MS = 60 * 1000;
@@ -49,11 +53,12 @@ const countOf = (keys) => keys.reduce((m, k) => m.set(k, (m.get(k) || 0) + 1), n
  * the time too when that's the same, and a number when even that is.
  * id: a field that keeps the form's ID as well (the Advisory Board's campaign) passes it, so a link saved without its
  * ID shows nothing chosen and picking the form fills the ID in
+ * only: the kinds a field takes (the Donate page's forms: donations), the others left out
  */
-export function formGroups(forms, { value = '', prefer = [], id } = {}) {
+export function formGroups(forms, { value = '', prefer = [], id, only = null } = {}) {
   const list = Array.isArray(forms) ? forms : [];
   const chosen = list.find((f) => sameForm(f.url, value) && (id === undefined || f.id === id)) || null;
-  const shown = list.filter((f) => KINDS[f.kind] && (f.open || f === chosen)).sort((a, b) => (b.created || 0) - (a.created || 0));
+  const shown = list.filter((f) => KINDS[f.kind] && (!only || only.includes(f.kind) || f === chosen) && (f.open || f === chosen)).sort((a, b) => (b.created || 0) - (a.created || 0));
   const labels = new Map(shown.map((f) => [f, f.title]));
   const clashing = () => { const n = countOf([...labels.values()].map((l) => l.toLowerCase())); return shown.filter((f) => n.get(labels.get(f).toLowerCase()) > 1); };
   for (const time of [false, true]) for (const f of clashing()) if (f.created) labels.set(f, `${f.title} · ${madeOn(f.created, time)}`);
@@ -120,12 +125,15 @@ async function refresh(s, { force = false } = {}) {
   s.subs.forEach((fn) => fn());
 }
 
-/** The list itself, for a field that needs it beyond the dropdown (the Advisory Board's campaign ID); null until it comes */
-export function useZeffyFormList(from = STAFF) {
-  return useZeffyForms(from).forms;
+/**
+ * The list itself, for a page that checks its fields before saving (fieldState wants it): null until it comes.
+ * load: false listens without reading it, for a page that only needs it once a field there has asked for it
+ */
+export function useZeffyFormList(from = STAFF, { load = true } = {}) {
+  return useZeffyForms(from, { load }).forms;
 }
 
-function useZeffyForms(from) {
+function useZeffyForms(from, { load = true } = {}) {
   const s = storeFor(from);
   const [, tick] = useState(0);
   const seen = s.at;
@@ -134,28 +142,80 @@ function useZeffyForms(from) {
     s.subs.add(fn);
     // The list came between drawing and listening (refresh won't tell anyone again while it's fresh): draw it now
     if (s.at !== seen) fn();
-    refresh(s);
+    if (load) refresh(s);
     return () => { s.subs.delete(fn); };
   }, [s]);
   useEffect(() => {
-    if (!s.failed || LASTING.test(s.failed)) return undefined;
+    if (!load || !s.failed || LASTING.test(s.failed)) return undefined;
     const t = setTimeout(() => refresh(s, { force: true }), Math.min(RETRY_MS * 2 ** Math.max(0, s.tries - 1), RETRY_MAX_MS));
     return () => clearTimeout(t);
   }, [s, s.failed, s.at]);
   return s;
 }
 
-// The dropdown beside the link box where there's room for both, under each other where there isn't (the box's own
-// width decides, not the screen's). The spacing is the grid's: a page's own rule for its inputs (the advisors' page
-// zeroes their margins) can't undo it
+const PICK = 'Pick a Zeffy form';
+/**
+ * What a Zeffy field says about its link: { problem, warning }. The field shows exactly this, and a page blocks Save
+ * on `problem` and nothing else, so the two never disagree.
+ *   required   an empty one is a problem (the Donate page's and the live reveal's forms)
+ *   only       the kinds of form it takes (a listed form of another kind won't do)
+ *   elsewhere  an event, which may sell on another site: a link that isn't Zeffy's is that site's, any whole link
+ *   forms      Zeffy's list, when it has come (the kind, closed and deleted checks wait for it)
+ *   saved      the link as last saved. One that won't do blocks only when it isn't that one (or the field is
+ *              required): a link saved earlier is a warning, so an old link never stops the rest of a page from
+ *              saving. Left out, the link counts as just set. Spaces at either end don't make it another link
+ * A form Zeffy has closed or no longer lists is always a warning: Zeffy changed, not the person saving
+ */
+export function fieldState(value, { required = false, only = null, elsewhere = false, forms = null, saved } = {}) {
+  const v = String(value ?? '').trim();
+  const changed = saved === undefined || v !== String(saved ?? '').trim();
+  if (!v) return { problem: required ? PICK : null, warning: null };
+  let wrong = null;
+  let warning = null;
+  // Another site's link, being set now, is judged with the https:// the field puts on it (when the box is left, as
+  // Save starts, or as soon as Discard or History puts it there). One saved earlier is judged as it's saved
+  if (!zeffyKey(v)) wrong = elsewhere ? zeffyLinkProblem(changed ? finishLink(v) : v) : 'What’s saved isn’t a Zeffy form: pick one';
+  else if (zeffyLinkProblem(v)) wrong = 'What’s saved isn’t a whole link: pick the form again';
+  else if (forms) {
+    const listed = forms.find((f) => sameForm(f.url, v));
+    if (!listed) warning = 'That form isn’t in SOARD’s Zeffy any more: pick another';
+    else if (only && !only.includes(listed.kind)) wrong = `Pick a form from “${KINDS[only[0]]}”: this one is in “${KINDS[listed.kind] || listed.kind}”`;
+    else if (!listed.open) warning = `That form has ${listed.ended ? 'ended' : 'closed'} in Zeffy: pick an open one`;
+  }
+  return changed || required ? { problem: wrong, warning } : { problem: null, warning: wrong || warning };
+}
+
+/** What the Advisory Board's campaign field says under itself, on Site Config → Zeffy and on the advisors' page */
+export function campaignNote({ url, id } = {}, saved = {}, forms = null) {
+  const u = String(url || '').trim();
+  if (!u) return 'Not connected: nothing counts toward the goal until a campaign is picked.';
+  const same = u === String(saved.url || '').trim() || sameForm(u, saved.url);
+  if (same && id && id === saved.id) return 'Connected: what it raises counts toward the goal.';
+  if (same && !id) {
+    return forms?.some((f) => sameForm(f.url, u)) ? 'Not connected yet: pick it again to connect it now.'
+      : 'Saved, but Zeffy hasn’t said which campaign this is yet. The site asks again every 15 minutes.';
+  }
+  const form = id && (forms || []).find((f) => f.id === id);
+  return form ? `“${form.title}”: connected when you save.` : 'Save asks Zeffy which campaign this is.';
+}
+
+// The dropdown (or, for an event selling elsewhere, the link box) takes the width; Open sits beside it and keeps its
+// room while it's hidden, so nothing moves when a form is picked. Lines under it: what's wrong (red), a warning
+// (amber), or that Zeffy can't be reached; then, for an event, the switch between a Zeffy form and another site
 const CSS = `
-.zf-link { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .5rem; align-items: center; min-width: 0; }
+.zf-field { min-width: 0; }
+.zf-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; align-items: stretch; min-width: 0; }
 .zf-link > .zf-pick { display: block; min-width: 0; }
-.zf-link .zf-select { width: 100%; margin: 0; }
-.zf-link__box { display: flex; gap: .5rem; align-items: center; min-width: 0; }
-.zf-link__box > input { flex: 1 1 auto; min-width: 0; width: auto; margin: 0; }
-.zf-link__open { flex-shrink: 0; display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; }
-.zf-link__open svg { width: 12px; height: 12px; }`;
+.zf-link .zf-select, .zf-link > input { width: 100%; min-width: 0; margin: 0; }
+.zf-link .zf-link__open { display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; height: auto; min-height: 0; margin: 0; }
+.zf-link .zf-link__open[aria-hidden="true"] { visibility: hidden; }
+.zf-link__open svg { width: 12px; height: 12px; }
+.zf-link__bad, .zf-link__warn, .zf-link__note { margin: .35rem 0 0; font-size: .85em; line-height: 1.35; }
+.zf-link__bad { color: var(--color-danger, #b42318); }
+.zf-link__warn { color: var(--tone-warn-fg, #8a5a00); }
+.zf-link__note { color: var(--color-text-muted, inherit); }
+.zf-link__switch { display: inline-flex; align-items: center; margin: .2rem 0 0; padding: .25rem 0; border: 0; background: none; font: inherit; font-size: .85em; color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+@media (pointer: coarse) { .zf-link__switch { min-height: 44px; } }`;
 function injectStyles() {
   if (typeof document === 'undefined' || document.getElementById('zf-style')) return;
   const el = document.createElement('style');
@@ -164,36 +224,41 @@ function injectStyles() {
   document.head.append(el);
 }
 
-/**
- * The dropdown on its own (ZeffyLink puts it beside the link box, as every field uses it).
- *   value    the link as it stands, so the dropdown shows its form
- *   id       for a field that keeps the form's ID too: the ID as it stands (see formGroups)
- *   onPick   called with the form picked ({ id, title, url, kind }); the field sets its link to form.url
- *   prefer   kinds listed first, e.g. ['tickets'] for an event
- *   label    the field's name, for screen readers
- *   cls      the page's own select class (form-select in the admin, ar-input on the advisors' page)
- *   from     where the list comes from (STAFF unless the page can't reach the staff routes)
- */
-function ZeffyFormSelect({ value = '', id, onPick, prefer = [], label = 'Zeffy link', cls = 'form-select', from = STAFF, disabled = false }) {
-  injectStyles();
-  const s = useZeffyForms(from);
-  const { chosen, groups } = formGroups(s.forms, { value, prefer, id });
-  const none = !!s.forms && !groups.length;
-  // Short enough for a phone's dropdown; the whole reason is in its tooltip
-  const failedAs = /sign-in/i.test(s.failed) ? 'Sign-in ended: reload the page' : LASTING.test(s.failed) ? 'Zeffy isn’t connected yet' : 'Zeffy isn’t answering. Retrying…';
-  const lead = !s.forms ? (s.failed ? failedAs : 'Loading Zeffy forms…') : none ? 'Zeffy has no open forms' : 'Choose a Zeffy form';
+const shortLink = (url) => String(url || '').trim().replace(/^https?:\/\/(www\.)?/i, '');
+const NONE = '__none';
+// Why there's nothing to pick, in words for the person, not the system (the dropdown's tooltip keeps the detail)
+const unreachable = (failed) => (/sign-in/i.test(failed) ? 'Your sign-in ended: reload the page to pick a form.'
+  : LASTING.test(failed) ? 'Zeffy isn’t connected to the site, so its forms can’t be listed.'
+    : 'Zeffy isn’t answering, so forms can’t be picked right now. It tries again on its own.');
+
+/** The dropdown, inside ZeffyLink: the forms store, the saved link and ID, the kinds the field takes, "No form" */
+function ZeffyFormSelect({ s, value = '', id, onPick, prefer = [], only = null, required = false, label, selectId, describedBy, cls, disabled = false }) {
+  const v = String(value || '').trim();
+  // A saved link that isn't a whole link isn't shown as its form, so picking that form again saves it whole
+  const { chosen, groups } = formGroups(s.forms, { value: zeffyLinkProblem(v) ? '' : v, prefer, id, only });
+  const kinds = only ? `${KINDS[only[0]].toLowerCase()}` : 'forms';
+  const lead = v && !chosen ? `Saved: ${shortLink(v)}`
+    : !s.forms ? (s.failed ? (/sign-in/i.test(s.failed) ? 'Sign-in ended: reload the page' : LASTING.test(s.failed) ? 'Zeffy isn’t connected yet' : 'Zeffy isn’t answering. Retrying…') : 'Loading Zeffy forms…')
+      : !groups.length ? `No open ${kinds} in Zeffy` : 'Choose a Zeffy form';
   // A Zeffy link the list doesn't have may be a form made since the list was read: look again
-  const unknown = !!s.forms && !!zeffyKey(value) && !s.forms.some((f) => sameForm(f.url, value));
+  const unknown = !!s.forms && !!zeffyKey(v) && !s.forms.some((f) => sameForm(f.url, v));
   useEffect(() => {
     if (unknown && Date.now() - s.at > UNKNOWN_LINK_MS) refresh(s, { force: true });
-  }, [s, unknown, value]);
+  }, [s, unknown, v]);
   const pick = (e) => {
-    const f = (s.forms || []).find((x) => x.id === e.currentTarget.value);
+    const picked = e.currentTarget.value;
+    if (picked === NONE) return onPick(null);
+    const f = (s.forms || []).find((x) => x.id === picked);
     if (f) onPick(f);
   };
-  return html`<span class="zf-pick"><select class=${`zf-select ${cls}`} aria-label=${`${label}: pick a Zeffy form`} title=${s.failed && !s.forms ? s.failed : undefined}
-    value=${chosen?.id || ''} disabled=${disabled || !s.forms || none} onChange=${pick}>
-    <option value="" disabled selected=${!chosen}>${lead}</option>
+  // Optional: "No form" is a choice, and the one shown while there's no link. Required: a prompt to pick
+  const selected = chosen ? chosen.id : !v && !required ? NONE : '';
+  // The lead line is marked selected itself: with every other line unpickable, setting the select's value alone can
+  // leave it showing nothing
+  return html`<span class="zf-pick"><select id=${selectId} class=${`zf-select ${cls}`} aria-label=${label} aria-describedby=${describedBy}
+    title=${s.failed && !s.forms ? s.failed : undefined} value=${selected} disabled=${disabled || (required && !groups.length)} onChange=${pick}>
+    ${selected === NONE ? null : html`<option value="" disabled selected>${lead}</option>`}
+    ${required ? null : html`<option value=${NONE}>No form</option>`}
     ${groups.map((g) => html`<optgroup key=${g.kind} label=${g.label}>
       ${g.forms.map((f) => html`<option key=${f.id} value=${f.id}>${f.label}</option>`)}
     </optgroup>`)}
@@ -201,31 +266,91 @@ function ZeffyFormSelect({ value = '', id, onPick, prefer = [], label = 'Zeffy l
 }
 
 const EXT = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></svg>`;
+let uid = 0;
 
 /**
- * A Zeffy link field: the dropdown of SOARD's forms, the link box (for a form made since the list was read, or a link
- * that isn't a Zeffy form: an event's sign-up sheet), and Open. Every field that takes a Zeffy link is this; the page
- * puts its own label over it and its own hint or problem under it.
- *   value      the link as it stands
- *   onChange   the text as typed (the page decides what an empty box means for its record)
- *   onPick     the form picked ({ id, title, url, kind }); the page sets its link to form.url
- *   inputId    the link box's id, for the page's <label for>; without one the box is named by `label`
- *   label      the field's name, for screen readers
- *   invalid    marks the box (the page says why under it); describedBy: the id of that line
- *   prefer, id, from, disabled   as the dropdown's
+ * A Zeffy link field. Pick one of SOARD's Zeffy forms: its link comes from Zeffy behind the scenes, and Open shows the
+ * form. An optional field has "No form" to take the link off. An event can sell its tickets on another site instead
+ * (`elsewhere`, the words of that choice): then, and only then, a box for that site's link. A link set there gets
+ * its https:// when the box is left, as Save starts while it's still being typed in (the 'soard-before-save' event),
+ * or at once when Discard or History puts it there, so what's saved is what was checked; a saved link nobody touched
+ * is left exactly as it is. The page puts its label over the field and its hint under it, and blocks Save on
+ * fieldState(value, the same rule and saved).problem.
+ *   value      the saved link;  saved  the link as last saved (without it, every link counts as just set)
+ *   onPick     the form picked ({ id, title, url, kind }), or null for "No form"
+ *   onChange   the other site's link (with `elsewhere`); '' when switching back from one that isn't Zeffy's
+ *   required, only, elsewhere   what the link may be (see fieldState); only also narrows the dropdown
+ *   inputId    the control's id, for the page's <label for>: the dropdown, or the box while it shows
+ *   label      the field's name, for screen readers (the label above may carry a date or a tag)
+ *   describedBy  the id of the page's hint under the field
+ *   prefer, id, from, disabled   for the dropdown (see formGroups)
  *   cls, inputCls, openCls       the page's own classes (form-select / form-input / btn in the admin; ar-input and ar-btn on the advisors' page)
  */
-export function ZeffyLink({ value = '', onChange, onPick, prefer = [], label = 'Zeffy link', inputId, id, from = STAFF, invalid = false, describedBy, disabled = false,
-  placeholder = 'https://www.zeffy.com/…', cls = 'form-select', inputCls = 'form-input', openCls = 'btn btn-ghost btn-sm' }) {
+export function ZeffyLink({ value = '', saved, onChange = () => {}, onPick, prefer = [], only = null, required = false, elsewhere = null, label = 'Zeffy link', inputId, id,
+  from = STAFF, describedBy, disabled = false, placeholder = 'https://', cls = 'form-select', inputCls = 'form-input', openCls = 'btn btn-ghost btn-sm' }) {
   injectStyles();
+  const s = useZeffyForms(from);
   const v = value ?? '';
-  const href = /^https:\/\/[^\s/]+\.\S+$/i.test(v.trim()) ? v.trim() : '';
-  return html`<div class="zf-link">
-    <${ZeffyFormSelect} value=${v} id=${id} onPick=${onPick} prefer=${prefer} label=${label} cls=${cls} from=${from} disabled=${disabled} />
-    <span class="zf-link__box">
-      <input id=${inputId} class=${`${inputCls}${invalid ? ' is-invalid' : ''}`} type="url" inputmode="url" value=${v} placeholder=${placeholder} disabled=${disabled}
-        aria-label=${inputId ? undefined : label} aria-describedby=${describedBy} aria-invalid=${invalid ? 'true' : 'false'} onInput=${(e) => onChange(e.currentTarget.value)} />
-      ${href ? html`<a class=${`zf-link__open ${openCls}`} href=${href} target="_blank" rel="noopener" aria-label=${`Open ${label} in a new tab`}>Open ${EXT}</a>` : null}
-    </span>
+  const now = v.trim();
+  // A link that isn't a Zeffy form is another site's: the box shows it. Otherwise the dropdown, unless someone chose
+  // another site: then the box stays, even for a Zeffy link typed in it, until a link is put here from outside
+  // (Discard, History). It's a text box with a link keyboard, not type=url, which drops a typed space without a word
+  // (it's kept here, and the field says so)
+  const [chose, setChose] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const other = !!elsewhere && (chose || (!!now && !zeffyKey(now)));
+  const [own] = useState(() => `zf-${++uid}`);
+  // What's wrong shows as it's typed, as every other link field in admin does
+  const { problem, warning } = fieldState(v, { required, only, elsewhere: !!elsewhere, forms: s.forms, saved });
+  const changed = saved === undefined || now !== String(saved ?? '').trim();
+
+  // Why there's nothing to pick, unless the dropdown's own top line already says it (a required field with no link)
+  const note = !other && !s.forms && s.failed && (now || !required) ? unreachable(s.failed) : null;
+  // The box's link, whole: when it's left, and as Save starts while it's still being typed in (⌘S). Only a link
+  // typed in or changed: a saved link nobody touched is left as it is, even when the box is tabbed through. The
+  // listener reads the value and the page's onChange as they are now, not as they were when it was added
+  const latest = useRef({ v, onChange, changed });
+  latest.current = { v, onChange, changed };
+  const mine = useRef(v);
+  const typed = useRef(false);
+  const change = (x) => { mine.current = x; latest.current.onChange(x); };
+  const finish = () => {
+    const { v: was, changed: moved } = latest.current;
+    if (!moved && !typed.current) return;
+    const done = finishLink(was);
+    if (done !== was) change(done);
+  };
+  useEffect(() => {
+    if (!other || !focused) return undefined;
+    window.addEventListener('soard-before-save', finish);
+    return () => window.removeEventListener('soard-before-save', finish);
+  }, [other, focused]);
+  // A link put here from outside (Discard, History): box or dropdown by what it is, and one that isn't the saved link
+  // gets its https:// as a typed one does
+  useEffect(() => {
+    if (v === mine.current) return;
+    mine.current = v;
+    if (focused) return;
+    setChose(false);
+    if (elsewhere && changed && now && !zeffyKey(now)) finish();
+  }, [v]);
+  const href = now && !zeffyLinkProblem(now) ? now : '';
+  const described = [problem && `${own}-bad`, warning && `${own}-warn`, note && `${own}-note`, describedBy].filter(Boolean).join(' ') || undefined;
+  // To another site: the box starts from what's there. Back to Zeffy: a link that isn't a Zeffy form goes
+  const switchTo = (toOther) => { setChose(toOther); if (!toOther && now && !zeffyKey(now)) change(''); };
+  return html`<div class="zf-field">
+    <div class="zf-link">
+      ${other
+        ? html`<input id=${inputId} class=${`${inputCls}${problem ? ' is-invalid' : ''}`} type="text" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" value=${v} placeholder=${placeholder} disabled=${disabled}
+            aria-label=${label} aria-describedby=${described} aria-invalid=${problem ? 'true' : 'false'}
+            onFocus=${() => { setChose(true); setFocused(true); typed.current = false; }} onBlur=${() => { setFocused(false); finish(); }} onInput=${(e) => { typed.current = true; change(e.currentTarget.value); }} />`
+        : html`<${ZeffyFormSelect} s=${s} value=${v} id=${id} onPick=${onPick} prefer=${prefer} only=${only} required=${required} label=${label} selectId=${inputId} describedBy=${described} cls=${cls} disabled=${disabled} />`}
+      ${href ? html`<a class=${`zf-link__open ${openCls}`} href=${href} target="_blank" rel="noopener" aria-label=${`Open ${label} in a new tab`}>Open ${EXT}</a>`
+        : html`<span class=${`zf-link__open ${openCls}`} aria-hidden="true">Open ${EXT}</span>`}
+    </div>
+    ${problem ? html`<p class="zf-link__bad" id=${`${own}-bad`}>${problem}</p>` : null}
+    ${warning ? html`<p class="zf-link__warn" id=${`${own}-warn`}>${warning}</p>` : null}
+    ${note ? html`<p class="zf-link__note" id=${`${own}-note`}>${note}</p>` : null}
+    ${elsewhere ? html`<button type="button" class="zf-link__switch" disabled=${disabled} onClick=${() => switchTo(!other)}>${other ? 'Use a Zeffy form instead' : elsewhere}</button>` : null}
   </div>`;
 }

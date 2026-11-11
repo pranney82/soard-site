@@ -68,7 +68,10 @@ test('the endpoint: versions, one version, deleted items, bad input', async () =
   assert.equal(list.cache, 'no-store');
   assert.deepEqual((await call(`collection=kids&slug=ava&id=${list.body.versions[0].id}`)).body.data, { name: 'Ava' });
   assert.deepEqual(await call('collection=kids&slug=ava&id=999').then((r) => [r.status, r.body.error]), [404, 'That version is gone']);
-  assert.equal((await call('collection=events&slug=ava')).status, 400);
+  assert.equal((await call('collection=orders&slug=ava')).status, 400, 'a collection that keeps no versions');
+  // Events keep versions (Site Config → Zeffy's History shows an event's tickets link)
+  await recordVersion(DB, { collection: 'events', slug: 'cookie-swap', data: { title: 'Cookie Swap', ticketUrl: 'https://www.zeffy.com/x' }, now: at(2) });
+  assert.equal((await call('collection=events&slug=cookie-swap')).body.versions.length, 1);
   assert.equal((await call('collection=kids&slug=../x')).status, 400);
   assert.deepEqual((await call('collection=kids&deleted=1')).body, { success: true, deleted: [] });
 });

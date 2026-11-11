@@ -66,9 +66,9 @@ const readDir = (d) => readdirSync(join(ROOT, 'src/content', d)).filter((f) => f
 const EVENTS = readDir('events');
 const PARTNERS = readDir('partners');
 const gala27 = { title: '2027 Evening of Sunshine', slug: '2027-evening-of-sunshine', date: '2027-08-21', location: 'You42 Studios', description: 'Next year.', status: 'upcoming', category: 'fundraiser', photos: [] };
-async function world({ nextYear = false } = {}) {
+async function world({ nextYear = false, extra = [], golfLink = null } = {}) {
   const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
-  const events = nextYear ? [...EVENTS.map((e) => e.content), gala27] : EVENTS.map((e) => e.content);
+  const events = [...EVENTS.map((e) => (golfLink != null && e.content.slug === 'sunshine-on-a-ranney-fairway' ? { ...e.content, ticketUrl: golfLink } : e.content)), ...(nextYear ? [gala27] : []), ...extra];
   for (const e of events) await DB.prepare('INSERT INTO events (slug, title, date, status, data) VALUES (?, ?, ?, ?, ?)').bind(e.slug, e.title, e.date, e.status, JSON.stringify(e)).run();
   for (const k of ['gala', 'golf']) await DB.prepare('INSERT INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(k, readFileSync(join(ROOT, `src/content/site/${k}.json`), 'utf8'), new Date().toISOString()).run();
   return { DB, events };
@@ -107,6 +107,8 @@ function answerer(w) {
       return json({ success: true, items, count: items.length, total: items.length, pages: 1 });
     }
     if (p === '/api/list-images') return json({ success: true, images: [], continuation_token: '' });
+    // SOARD's Zeffy forms, for the registration link's dropdown
+    if (p === '/api/zeffy-forms') return json({ success: true, forms: [{ id: 'f-golf27', title: 'Sunshine on a Ranney Fairway 2027', url: 'https://www.zeffy.com/ticketing/golf-2027', kind: 'tickets', open: true, created: 1 }] });
     if (p.startsWith('/api/pending-changes')) return json({ success: true, changes: [], publish: { live: null, active: null, failed: null } });
     if (p.startsWith('/api/live-ws')) return req.abort();
     return json({ success: true, ok: true, items: [], list: [], entries: [] });
@@ -253,12 +255,15 @@ try {
     await sleep(300);
     const date = await page.$eval('.er-row input[type=date]', (i) => i.value).catch(() => '');
     ok(date === '2026-05-18', `the tournament’s date is there to edit (${date})`);
-    const link = await page.$('.er-row input[type=url]');
-    await typeInto(page, link, 'https://www.zeffy.com/en-US/ticketing/golf-2027');
+    // The registration link: a form picked from SOARD's Zeffy, its link from Zeffy (no box to type into)
+    ok(!(await page.$('.er-row input[type=url]')), 'the registration link is picked, not typed');
+    await page.waitForFunction(() => !document.querySelector('#er-ticket-url')?.disabled, { timeout: 8000 });
+    await page.select('#er-ticket-url', 'f-golf27');
+    await sleep(100);
     await clickText(page, '.editor-save-footer button, button', /^Save$/);
     await sleep(1500);
     const ev = await eventOf(w.DB, 'sunshine-on-a-ranney-fairway');
-    ok(ev.ticketUrl === 'https://www.zeffy.com/en-US/ticketing/golf-2027', 'the registration link saved onto the event');
+    ok(ev.ticketUrl === 'https://www.zeffy.com/ticketing/golf-2027', 'the picked form’s link saved onto the event');
     const golf = await docOf(w.DB, 'golf');
     ok(golf.galleryPhotos.length === 74 && golf.sponsors.length > 5, 'the golf page’s own settings are untouched');
     await shot(page, 'golf-after.png');
@@ -281,6 +286,49 @@ try {
     ok(/Gala page/.test(await o.page.evaluate(() => document.body.innerText)) && /Event details/.test(await text(o.page, '.hub-tab.active')), '2027 opens in the Gala editor, on Event details before it happens');
     ok(!o.errors.length, `no errors${o.errors.length ? `: ${o.errors.slice(0, 3).join(' | ')}` : ''}`);
     await o.page.close();
+  });
+
+  await section('An old link that isn’t a web address doesn’t stop Save; a new one does', async () => {
+    const swap = { title: 'Cookie Swap', slug: 'cookie-swap', date: '2026-12-13', location: 'The SOARD office', description: 'Bring a dozen.', status: 'upcoming', category: 'community', photos: [], ticketUrl: 'Sign up at the front desk' };
+    const w3 = await world({ extra: [swap], golfLink: 'Registration opens in March' });
+    const o = await open(w3);
+    const linkInfo = (pg, id) => pg.evaluate((i) => { const el = document.getElementById(i); const box = el?.closest('.zf-link')?.parentElement || document; return { tag: el?.tagName || '', value: el?.value || '', warn: box.querySelector('.zf-link__warn')?.textContent.trim() || '', bad: box.querySelector('.zf-link__bad')?.textContent.trim() || '' }; }, id);
+    const toasts = (pg) => pg.evaluate(() => [...document.querySelectorAll('.toast')].map((t) => t.textContent.trim()).join(' | '));
+    // The Event editor
+    await openEvent(o.page, '^Cookie Swap');
+    await o.page.waitForSelector('#ev-ticket-url', { timeout: 15000 });
+    const old = await linkInfo(o.page, 'ev-ticket-url');
+    ok(old.tag === 'INPUT' && old.value === 'Sign up at the front desk' && old.warn === 'That isn’t a link: paste the whole link, starting with https://' && !old.bad, `the old words show in their box, as a warning only (${JSON.stringify(old)})`);
+    const place = await o.page.evaluateHandle(() => [...document.querySelectorAll('.form-group')].find((g) => g.querySelector('.form-label')?.textContent.trim() === 'Place')?.querySelector('input'));
+    await typeInto(o.page, place, 'Roswell Library');
+    await clickText(o.page, '.editor-save-footer button, button', /^Save$/);
+    await sleep(1200);
+    const saved = await eventOf(w3.DB, 'cookie-swap');
+    ok(saved.location === 'Roswell Library' && saved.ticketUrl === 'Sign up at the front desk', `a change elsewhere saves, the old link left as it was (${saved.location} / ${saved.ticketUrl})`);
+    await typeInto(o.page, await o.page.$('#ev-ticket-url'), 'ask at the desk');
+    await o.page.evaluate(() => document.getElementById('ev-ticket-url').blur());
+    await sleep(150);
+    ok((await linkInfo(o.page, 'ev-ticket-url')).bad, 'new words that aren’t a link are a problem once typed');
+    await clickText(o.page, '.editor-save-footer button, button', /^Save$/);
+    await sleep(800);
+    ok(/Tickets or sign-up link:/.test(await toasts(o.page)) && (await eventOf(w3.DB, 'cookie-swap')).ticketUrl === 'Sign up at the front desk', `and Save says so, saving nothing (${(await toasts(o.page)).slice(0, 120)})`);
+    ok(!o.errors.length, `no errors${o.errors.length ? `: ${o.errors.slice(0, 3).join(' | ')}` : ''}`);
+    await o.page.close();
+    // The golf editor's registration link (After the tournament → Event details), on a fresh page
+    const g = await open(w3);
+    await openEvent(g.page, 'Sunshine on a Ranney Fairway');
+    await g.page.waitForSelector('.er', { timeout: 15000 });
+    await clickText(g.page, '.hub-tab', /^Event details$/);
+    await sleep(300);
+    const golfOld = await linkInfo(g.page, 'er-ticket-url');
+    ok(golfOld.tag === 'INPUT' && golfOld.value === 'Registration opens in March' && golfOld.warn && !golfOld.bad, `golf’s old words show as a warning only (${JSON.stringify(golfOld)})`);
+    await typeInto(g.page, await g.page.$('.er-row input[type=date]'), '05202027');
+    await clickText(g.page, '.editor-save-footer button, button', /^Save$/);
+    await sleep(1500);
+    const golfSaved = await eventOf(w3.DB, 'sunshine-on-a-ranney-fairway');
+    ok(golfSaved.date === '2027-05-20' && golfSaved.ticketUrl === 'Registration opens in March', `golf saves its new date, the old link left as it was (${golfSaved.date} / ${golfSaved.ticketUrl})`);
+    ok(!g.errors.length, `no errors${g.errors.length ? `: ${g.errors.slice(0, 3).join(' | ')}` : ''}`);
+    await g.page.close();
   });
 
   await section('Phone', async () => {

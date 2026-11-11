@@ -14,6 +14,7 @@ import { getPublishedKids } from '../utils/collections';
 
 import { CF_BASE as CF, cfId as extractCfId, cfRaw, cfSrcset, cfLqip, withFocus } from '../utils/cf-image';
 import { revealDateLine } from '../utils/reveals-client';
+import { ticketsOf } from '../../public/admin/events-shared.js';
 import { upcomingAtBuild } from '../utils/reveals-copy';
 
 /* ── Site settings (all editable from admin) ── */
@@ -168,15 +169,17 @@ if (upNextMode === 'manual' && un.headline) {
       .sort((a, b) => a.data.date.localeCompare(b.data.date))[0];
     if (nextEvent) {
       const e = nextEvent.data;
+      // Its tickets: the event's own link, or none yet
+      const tickets = ticketsOf(e);
       upNext = {
         label: 'Next Event',
         headline: e.title,
         body: e.shortDescription || e.description,
         date: un.dateText || new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
         photoId: extractCfId(e.image || e.photos?.[0]?.id || ''),
-        ctaLabel: e.ticketUrl ? 'Get Tickets' : 'Event Details',
-        ctaLink: e.ticketUrl || '/events/',
-        external: !!e.ticketUrl,
+        ctaLabel: tickets ? 'Get Tickets' : 'Event Details',
+        ctaLink: tickets || '/events/',
+        external: !!tickets,
       };
     }
   }

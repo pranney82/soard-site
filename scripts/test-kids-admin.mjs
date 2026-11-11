@@ -74,6 +74,10 @@ const readDir = (d) => Object.fromEntries(readdirSync(join(ROOT, 'src/content', 
 const PARTNERS = readDir('partners');
 const KIDS0 = readDir('kids');
 for (const [slug, d] of Object.entries(KIDS0)) d.slug ||= slug;
+// Amari's and Anna's pages link to sites that aren't Zeffy, as links saved before every link was picked could:
+// Giving warns, and that never stops the rest of a profile saving
+KIDS0.amari.fundraisingUrl = 'https://example.org/give';
+KIDS0.anna.fundraisingUrl = 'https://www.gofundme.com/f/anna-room';
 const PNG = join(OUT, 'pixel.png');
 // Logos whose file is gone in Cloudflare (as on the live site): their old IDs answer 404
 const BROKEN_IDS = ['partners/real-floors-commercial', 'partners/usa-insulation', 'partners/eclipse-brand-builders'];
@@ -85,6 +89,8 @@ const VID = (n) => n.toString(16).padStart(32, 'c');
 const TUS = 'https://upload.videodelivery.net/tus/';
 
 // ── The fake API ──
+// The link behind the Fundraising link's Open (the picked form's), or '' with none
+const fundLink = (page) => page.evaluate(() => document.querySelector('#kd-sec-giving a.zf-link__open')?.getAttribute('href') || '');
 function makeApi() {
   const kids = structuredClone(KIDS0);
   const st = { kids, calls: [], waiting: new Set(), uploads: 0, versions: {}, vid: 0, videos: 0, tus: {}, conflicts: 0, ids: [], folders: [] };
@@ -180,6 +186,8 @@ function makeApi() {
       answer();
       return true;
     }
+    // SOARD's Zeffy forms, for the Fundraising link's dropdown
+    if (p === '/api/zeffy-forms') return json({ success: true, forms: [{ id: 'f-amari', title: 'Help build Amari’s room', url: 'https://www.zeffy.com/donation-form/amari', kind: 'donation', open: true, created: 1 }] });
     if (p === '/api/kid-homes' && st.slowHomes) { const ms = st.slowHomes; setTimeout(() => Promise.resolve().then(() => json({ success: true, homes: [{ slug: 'axel', lat: 33.749, lng: -84.388 }] })).catch(() => {}), ms); return true; }
     if (p === '/api/kid-homes') return st.homesFail ? json({ success: false, error: 'JobTread is down' }, 500) : json({ success: true, homes: [{ slug: 'axel', lat: 33.749, lng: -84.388 }] });
     if (p === '/api/upload-video') {
@@ -644,15 +652,19 @@ try {
     // Video: the uploaded video plays (Stream says so)
     ok(await page.$eval('.kd-plays strong', (e) => e.textContent) === 'The page plays the uploaded video', 'the Video section says which video the page plays');
 
-    // Validation: a bad fundraising link stops Save and shows where
-    await page.type('#kd-fund', 'zeffy.com/oops');
-    await page.click('.kd-bar__save .kd-save');
-    await sleep(200);
-    await settle(page);
-    ok(callsTo(api, '/api/save-content') === 0, 'a bad link blocks Save');
-    ok(await page.evaluate(() => { const r = document.getElementById('kd-sec-giving').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && document.activeElement?.id === 'kd-sec-giving-h'; }), 'and brings Giving into view');
-    await page.click('#kd-fund', { clickCount: 3 });
-    await page.type('#kd-fund', 'https://www.zeffy.com/en-US/donation-form/amari');
+    // A saved link that isn't a Zeffy form: a warning (never a problem), and "No form" takes it off
+    await page.waitForFunction(() => !document.querySelector('#kd-fund')?.disabled, { timeout: 8000 });
+    ok(await page.$eval('#kd-sec-giving', (e) => /What’s saved isn’t a Zeffy form: pick one/.test(e.querySelector('.zf-link__warn')?.textContent || '') && !e.querySelector('.zf-link__bad')), 'a saved link that isn’t a Zeffy form is a warning');
+    await page.select('#kd-fund', '__none');
+    await sleep(100);
+    ok(await fundLink(page) === '' && !(await page.$('#kd-sec-giving .zf-link__warn')), '“No form” takes the link off');
+
+    // The fundraising link: one of SOARD's Zeffy forms, picked; its link comes from Zeffy, nothing typed
+    ok(await page.$$eval('#kd-fund option', (os) => os.some((o) => o.textContent.trim() === 'Help build Amari’s room')), 'Giving lists SOARD’s Zeffy forms');
+    ok(!(await page.$('#kd-sec-giving input[type="url"]')), 'with no link box to paste into');
+    await page.select('#kd-fund', 'f-amari');
+    await sleep(100);
+    ok(await fundLink(page) === 'https://www.zeffy.com/donation-form/amari', 'picking a form puts its link behind Open');
 
     // Save: the record as the site reads it
     await page.keyboard.down('Meta');
@@ -668,7 +680,7 @@ try {
     ok(saved.photos.filter((p) => /up-\d/.test(p.url)).every((p) => /^Described photo/.test(p.alt)), 'uploaded photos saved with their alt text');
     ok(saved.partnerLogos.every((l) => String(l.name || '').trim()) && saved.partnerLogos.some((l) => l.url === newPartner.logo), 'every partner logo is named, the new one included');
     ok(saved.plans[0].label === 'Floor plan, after' && saved.plans.every((p) => ['as-built', 'proposed'].includes(p.type)), 'plans saved with captions and a valid type');
-    ok(saved.fundraisingUrl === 'https://www.zeffy.com/en-US/donation-form/amari', 'the fundraising link saved');
+    ok(saved.fundraisingUrl === 'https://www.zeffy.com/donation-form/amari', 'the fundraising link saved');
     ok(await page.$('.kd-bar__state.is-saved'), 'after saving nothing is unsaved');
 
     // History: the save and the version before it, and what the save changed
@@ -682,10 +694,10 @@ try {
     ok(await page.evaluate(() => /Fundraising link/.test(document.querySelector('.kd-hist__changes.is-restore')?.textContent || '')), 'the oldest version shows what restoring it would change');
     await clickText(page, '.kd-dialog__foot .btn-primary', 'Restore this version');
     await sleep(300);
-    ok(!(await page.$('.kd-hist')) && await page.$eval('#kd-fund', (e) => e.value) === (amari.fundraisingUrl || '') && await page.$('.kd-bar__state.is-dirty'), 'Restore loads that version into the editor, unsaved');
+    ok(!(await page.$('.kd-hist')) && await fundLink(page) === (amari.fundraisingUrl || '') && await page.$('.kd-bar__state.is-dirty'), 'Restore loads that version into the editor, unsaved');
     await clickToast(page, 'Undo');
     await sleep(250);
-    ok(await page.$eval('#kd-fund', (e) => e.value) === 'https://www.zeffy.com/en-US/donation-form/amari' && await page.$('.kd-bar__state.is-saved'), 'Undo puts the saved version back');
+    ok(await fundLink(page) === 'https://www.zeffy.com/donation-form/amari' && await page.$('.kd-bar__state.is-saved'), 'Undo puts the saved version back');
 
     // A focal point: click the photo where crops should center
     await page.evaluate(() => document.querySelectorAll('.kd-tile__open')[0].click());
@@ -1256,6 +1268,15 @@ try {
     ok(api.st.kids.ayden.photos.length === ayden0 && api.st.uploads - upsAtLeave <= 3, `and nothing more uploads or saves (${api.st.uploads - upsAtLeave} were already on their way; Ayden ${ayden0} → ${api.st.kids.ayden.photos.length})`);
     await goKids(page, false);
     await openKid(page, 'Anna');
+    // Anna's old link (not a Zeffy form) warns, and the rest of her profile still saves, the link left as it was
+    await page.waitForFunction(() => !document.querySelector('#kd-fund')?.disabled, { timeout: 8000 });
+    ok(await page.$eval('#kd-sec-giving', (e) => !!e.querySelector('.zf-link__warn') && !e.querySelector('.zf-link__bad')), 'Anna’s old link is a warning');
+    const annaSaves = callsTo(api, '/api/save-content');
+    await page.type('#kd-photographer', 'Jane Doe');
+    await page.click('.kd-bar__save .kd-save');
+    await sleep(800);
+    const annaSaved = JSON.parse(lastCall(api, '/api/save-content')?.body?.content || '{}');
+    ok(callsTo(api, '/api/save-content') === annaSaves + 1 && /Jane Doe/.test(annaSaved.photographer || '') && annaSaved.fundraisingUrl === 'https://www.gofundme.com/f/anna-room', 'an old link never stops the rest of a profile saving, and stays as it was');
 
     // Broken partner logos: flagged, and switched to the partner's current logo
     await page.evaluate(() => document.querySelector('.breadcrumb button').click());

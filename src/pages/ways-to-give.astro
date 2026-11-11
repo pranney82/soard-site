@@ -18,7 +18,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import CopyChip from '../components/ui/CopyChip.astro';
 import ZeffyPopup from '../components/ui/ZeffyPopup.astro';
 import siteSettings from '../content/site/settings.json';
-import { siteForm, embedOf, dafGiftUrl, DAF_MIN_TEXT } from '../../public/admin/zeffy-links.js';
+import { dafGift, DAF_MIN_TEXT } from '../../public/admin/zeffy-links.js';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfUrl, cfSrcset, cfLqip } from '../utils/cf-image';
 import { heroHtml, type HeroPart } from '../utils/hero-words';
@@ -33,10 +33,10 @@ const email = siteSettings.email;
 const phone = siteSettings.phone;
 const addressLine = `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
 const legalName = 'Sunshine on a Ranney Day, Inc.';
-/* Give from Your DAF opens the donation form (Admin → Site Config → Zeffy) in the pop-up, at the amount Zeffy
-   starts offering "Donor-advised fund" (DAF_MIN) */
-const dafGift = dafGiftUrl(siteSettings);
-const dafGiftEmbed = embedOf(siteForm(siteSettings, 'donateUrl'));
+/* Give from Your DAF opens the donation form (Admin → Site Config → Zeffy) in the pop-up, at the amount Zeffy starts
+   offering "Donor-advised fund" (DAF_MIN), when Site Config says that form takes DAF gifts; otherwise the card is the
+   grant details and Send a Grant, as it always was */
+const daf = dafGift(siteSettings);
 
 /* ── Photos (from admin settings, with fallbacks) ── */
 const wtg = siteSettings.waysToGivePhotos || {};
@@ -234,7 +234,11 @@ const hero = {
               </div>
             </div>
             <h3>Donor-Advised Fund</h3>
-            <p>Give {DAF_MIN_TEXT} or more on our donation form and choose <strong>Donor-advised fund</strong> at checkout, or recommend a grant from Fidelity Charitable, Schwab, Vanguard, or any DAF sponsor.</p>
+            {daf ? (
+              <p>Give {DAF_MIN_TEXT} or more on our donation form and choose <strong>Donor-advised fund</strong> when you pay, or recommend a grant from Fidelity Charitable, Schwab, Vanguard, or any DAF sponsor.</p>
+            ) : (
+              <p>Recommend a grant from Fidelity Charitable, Schwab, Vanguard, or any DAF sponsor.</p>
+            )}
             <div class="wtg-daf-info">
               <div class="wtg-daf-row"><span>Legal Name</span><span class="wtg-daf-val"><strong>{legalName}</strong><CopyChip text={legalName} label="Copy legal name to clipboard" /></span></div>
               <div class="wtg-daf-row"><span>EIN / Tax ID</span><span class="wtg-daf-val"><strong class="wtg-daf-ein">{ein}</strong><CopyChip text={ein} label="Copy EIN to clipboard" /></span></div>
@@ -245,8 +249,8 @@ const hero = {
               <span class="wtg-pill">Grant at your pace</span>
             </div>
             <div class="wtg-method-action">
-              <a href={dafGift} target="_blank" rel="noopener noreferrer" data-zeffy={dafGiftEmbed} class="wtg-method-cta">Give from Your DAF →</a>
-              <span class="wtg-method-hint wtg-method-hint--under">{DAF_MIN_TEXT} or more. Choose Donor-advised fund at checkout.</span>
+              {daf && <a {...daf} target="_blank" rel="noopener noreferrer" class="wtg-method-cta">Give from Your DAF →</a>}
+              <a href={`mailto:${email}?subject=DAF Grant to SOARD`} class:list={['wtg-method-cta', { 'wtg-method-cta--second': daf }]}>Send a Grant →</a>
             </div>
           </div>
         </div>
@@ -537,7 +541,8 @@ const hero = {
     </div>
   </section>
 
-  <ZeffyPopup />
+  {/* The pop-up Give from Your DAF opens; nothing to open when Site Config has DAF off */}
+  {daf && <ZeffyPopup />}
 
 </BaseLayout>
 
@@ -1061,14 +1066,15 @@ const hero = {
   }
   .wtg-method-cta:hover { color: var(--c-accent); }
   .wtg-method-hint { display: block; font-size: 13px; color: var(--c-text-muted); line-height: 1.5; }
-  .wtg-method-hint--under { margin-top: 4px; }
+  /* A second action under the first (the DAF card: Give from Your DAF, then Send a Grant) */
+  .wtg-method-cta--second { display: flex; width: max-content; margin-top: 8px; }
   .wtg-method-ein { display: block; font-size: 14px; font-weight: 700; color: var(--c-dark); margin-top: 4px; }
 
   /* DAF info table — everything a grant form asks for, copy-ready */
   .wtg-daf-info { background: var(--c-warm-gray); border-radius: 10px; padding: 8px 16px; margin-bottom: 12px; }
   .wtg-daf-row { display: flex; flex-direction: column; gap: 2px; padding: 9px 0; }
   .wtg-daf-row + .wtg-daf-row { border-top: 1px solid var(--c-border); }
-  .wtg-daf-row span { color: var(--c-text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .wtg-daf-row > span:first-child { color: var(--c-text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
   .wtg-daf-row strong { color: var(--c-dark); font-size: 14px; line-height: 1.5; }
   .wtg-daf-ein { font-size: 17px; letter-spacing: 0.01em; }
   .wtg-daf-val { display: inline-flex; align-items: center; gap: 8px; }

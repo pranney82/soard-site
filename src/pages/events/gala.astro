@@ -17,7 +17,7 @@ import { getCollection, getEntry } from 'astro:content';
 import { BID_URL, auctionIsOpen, bidClosesLabel, AUCTION_ITEM_COUNT, AUCTION_CATEGORIES, AUCTION_HIGHLIGHTS } from '../../utils/auction';
 import EventRecap from '../../components/events/EventRecap.astro';
 import { recapMeta, galaThemeName, eventLook } from '../../utils/event-recap';
-import { isOver, latestOf, seriesByKey } from '../../../public/admin/events-shared.js';
+import { isOver, latestOf, seriesByKey, ticketsOf } from '../../../public/admin/events-shared.js';
 import { heroHtml, type HeroPart } from '../../utils/hero-words';
 
 /* ── Event content: the newest gala, so this page automatically follows
@@ -26,14 +26,16 @@ import { heroHtml, type HeroPart } from '../../utils/hero-words';
 const allEvents = (await getCollection('events')).map(e => e.data);
 const ev: any = latestOf(seriesByKey('gala'), allEvents) ?? {};
 const themeName = galaThemeName(ev);
-// Its tickets: the event's own link (Admin → Site Config → Zeffy, or the gala's editor). None yet: no ticket buttons,
-// never last year's form
-const TICKETS: string = String(ev.ticketUrl || '').trim();
+// Its tickets: the event's own link (Admin → Site Config → Zeffy, or the gala's editor). None yet means not on sale
+// yet: nothing on the page asks anyone to buy, the packages are there to read, and it says when they'll go on sale
+const TICKETS = ticketsOf(ev);
 
 /* ── Online bidding: while it's open, "Bid Now" outranks the ticket CTA
    everywhere on this page. Cutoff lives in utils/auction.ts. ── */
 const auctionOpen = auctionIsOpen();
 const bidClosesAt = bidClosesLabel();
+// The phone's sticky bar, and the room kept for it at the foot of the page, only when it has somewhere to go
+const hasSticky = auctionOpen || !!TICKETS;
 
 /* ── Gala-specific CMS data (admin-editable via gala.json) ── */
 const galaData = await getEntry('site', 'gala');
@@ -176,13 +178,15 @@ const eventJsonLd = {
   },
   "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
   "image": cfAbsolute(heroImageId),
-  "offers": {
-    "@type": "Offer",
-    "url": TICKETS || undefined,
-    "availability": "https://schema.org/InStock",
-    "validFrom": "2026-01-01",
-    "priceCurrency": "USD",
-  },
+  // An offer only while tickets are on sale
+  ...(TICKETS && {
+    "offers": {
+      "@type": "Offer",
+      "url": TICKETS,
+      "availability": "https://schema.org/InStock",
+      "priceCurrency": "USD",
+    },
+  }),
 };
 
 // The hero's words: the page shows them and its share card repeats them (BaseLayout og)
@@ -275,8 +279,8 @@ const hero = {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </a>
           )}
-          <a href={ev.ticketUrl || '#tickets'} target={ev.ticketUrl ? '_blank' : undefined} rel={ev.ticketUrl ? 'noopener' : undefined} class:list={['gv-btn', 'gv-btn--hero', auctionOpen ? 'gv-btn--outline-white' : 'gv-btn--coral']}>
-            Reserve Your Seat
+          <a href={TICKETS || '#tickets'} target={TICKETS ? '_blank' : undefined} rel={TICKETS ? 'noopener' : undefined} class:list={['gv-btn', 'gv-btn--hero', auctionOpen ? 'gv-btn--outline-white' : 'gv-btn--coral']}>
+            {TICKETS ? 'Reserve Your Seat' : 'See Tables & Tickets'}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
           <a href="#evening" class="gv-hero__scroll">
@@ -409,7 +413,7 @@ const hero = {
   <!-- ═══ TICKETS ═══ -->
   <section class="gv-tickets" id="tickets">
     <div class="container gv-tickets__inner">
-      <span class="gv-tickets__label" data-reveal>Reserve Your Seat</span>
+      <span class="gv-tickets__label" data-reveal>{TICKETS ? 'Reserve Your Seat' : 'On Sale Soon'}</span>
       <h2 class="gv-tickets__heading" data-reveal>Tables &amp; Tickets</h2>
       <p class="gv-tickets__sub" data-reveal>
         Sponsor a table, grab individual seats, or back a piece of the night. Every dollar lights another room.
@@ -430,7 +434,9 @@ const hero = {
         <div class="gv-tiers" data-reveal>
           {mainTiers.map(tier => {
             const inclusions = perkToInclusions(tier.perk);
-            const isSoldOut = tier.status === 'sold-out';
+            // Sold out and few left are about a sale: before one they're last year's, so they don't show
+            const isSoldOut = !!TICKETS && tier.status === 'sold-out';
+            const fewLeft = !!TICKETS && tier.status === 'few-left';
             const linked = !isSoldOut && !!TICKETS;
             const TierTag = linked ? 'a' : 'div';
             const tierLink = !linked ? {} : {
@@ -441,13 +447,13 @@ const hero = {
             };
             return (
               <TierTag class={`gv-tier ${tier.highlight === 'featured' ? 'gv-tier--featured' : tier.highlight === 'popular' ? 'gv-tier--popular' : ''} ${isSoldOut ? 'gv-tier--sold-out' : linked ? 'gv-tier--link' : ''}`} {...tierLink}>
-                {tier.status === 'sold-out' && (
+                {isSoldOut && (
                   <span class="gv-tier__badge gv-tier__badge--sold-out">Sold Out</span>
                 )}
-                {tier.status === 'few-left' && (
+                {fewLeft && (
                   <span class="gv-tier__badge gv-tier__badge--few-left">Few Left</span>
                 )}
-                {tier.status !== 'sold-out' && tier.status !== 'few-left' && tier.badge && (
+                {!isSoldOut && !fewLeft && tier.badge && (
                   <span class={`gv-tier__badge ${tier.badgeStyle === 'gold' ? 'gv-tier__badge--gold' : ''}`}>{tier.badge}</span>
                 )}
                 <div class="gv-tier__head">
@@ -495,7 +501,8 @@ const hero = {
           <ul class="gv-addons__list">
             {addOnTiers.map(tier => {
               const icon = iconForAddon(tier.name);
-              const isSoldOut = tier.status === 'sold-out';
+              const isSoldOut = !!TICKETS && tier.status === 'sold-out';
+              const fewLeft = !!TICKETS && tier.status === 'few-left';
               const linked = !isSoldOut && !!TICKETS;
               const AddonTag = linked ? 'a' : 'div';
               const addonLink = !linked ? {} : {
@@ -530,10 +537,10 @@ const hero = {
                   <div class="gv-addon__info">
                     <h4 class="gv-addon__name">
                       <span class="gv-addon__name-text">{tier.name}</span>
-                      {tier.status === 'sold-out' && (
+                      {isSoldOut && (
                         <span class="gv-tier__status-tag gv-tier__status-tag--sold-out">Sold Out</span>
                       )}
-                      {tier.status === 'few-left' && (
+                      {fewLeft && (
                         <span class="gv-tier__status-tag gv-tier__status-tag--few-left">Few Left</span>
                       )}
                     </h4>
@@ -568,7 +575,7 @@ const hero = {
           </p>
         </div>
       ) : (
-        <div class="gv-tickets__cta" data-reveal><p class="gv-tickets__secure-note">Tickets go on sale soon.</p></div>
+        <div class="gv-tickets__cta" data-reveal><p class="gv-tickets__soon">Tickets go on sale soon.</p></div>
       )}
     </div>
   </section>
@@ -1007,7 +1014,7 @@ const hero = {
 
   <!-- ═══ FAQ ═══ -->
   {faqs.length > 0 && (
-    <section class="gv-faq">
+    <section class:list={['gv-faq', { 'gv-has-sticky': hasSticky }]}>
       <div class="container">
         <FAQAccordion
           items={faqs}
@@ -1026,7 +1033,7 @@ const hero = {
   )}
 
   <!-- ═══ CTA ═══ -->
-  <section class="gv-cta">
+  <section class:list={['gv-cta', { 'gv-has-sticky': hasSticky }]}>
     <div class="container gv-cta__inner">
       <div class="gv-cta__card" data-reveal>
         <div class="gv-cta__glow" aria-hidden="true"></div>
@@ -1050,7 +1057,7 @@ const hero = {
   </section>
 
   <!-- ═══ STICKY MOBILE CTA ═══ -->
-  {(auctionOpen || TICKETS) && (
+  {hasSticky && (
     <div class="gv-sticky-cta" aria-hidden="true">
       <a
         href={auctionOpen ? BID_URL : (TICKETS)}
@@ -3069,6 +3076,14 @@ const hero = {
     color: var(--gv-palm);
     flex-shrink: 0;
   }
+  /* Before tickets go on sale: said plainly where the button will be */
+  .gv-tickets__soon {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--gv-midnight, var(--c-dark));
+  }
   .gv-tickets__trust-note {
     max-width: 56ch;
     margin: 0 auto;
@@ -3427,9 +3442,10 @@ const hero = {
     background: var(--gv-paper);
   }
   /* On mobile the sticky CTA (~70px) sits above the bottom of the page.
-     Pad the FAQ section so the last items can scroll above the bar. */
+     Pad the FAQ section so the last items can scroll above the bar, when there is one. */
   @media (max-width: 768px) {
-    .gv-faq { padding: var(--space-4xl) 0 calc(var(--space-4xl) + 80px); }
+    .gv-faq { padding: var(--space-4xl) 0; }
+    .gv-faq.gv-has-sticky { padding-bottom: calc(var(--space-4xl) + 80px); }
   }
 
   /* ─── CTA ─── */
@@ -3546,7 +3562,7 @@ const hero = {
   @media (max-width: 768px) {
     .gv-sticky-cta { display: block; }
     /* Push the last fixed area's worth of content up so the sticky CTA never covers it */
-    .gv-cta { padding-bottom: calc(var(--space-4xl) + 70px); }
+    .gv-cta.gv-has-sticky { padding-bottom: calc(var(--space-4xl) + 70px); }
   }
 
   /* Mobile polish */
@@ -3584,8 +3600,9 @@ const hero = {
     .gv-timeline__title { font-size: 1.15rem; }
 
     /* FAQ section: trim padding so it doesn't feel oversized on phones,
-       but keep extra bottom space so last items clear the sticky CTA bar. */
-    .gv-faq { padding: var(--space-4xl) 0 calc(var(--space-4xl) + 80px); }
+       but keep extra bottom space so last items clear the sticky CTA bar, when there is one. */
+    .gv-faq { padding: var(--space-4xl) 0; }
+    .gv-faq.gv-has-sticky { padding-bottom: calc(var(--space-4xl) + 80px); }
 
     /* Details cards stack: keep them comfortable */
     .gv-details { padding: var(--space-2xl) 0 var(--space-3xl); }

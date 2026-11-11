@@ -26,7 +26,12 @@
  *   newest event of a series shows its page's sponsor list (the Gala or Golf
  *   editor), and the heartbeat saves that list with the event when it ends,
  *   so next year's sponsors never rewrite this year's thank-you.
+ *
+ *   Tickets. An event's own tickets link (ticketsOf) is the only one any page uses: none means not on sale yet, and
+ *   no page asks anyone to buy or register.
  */
+
+import { zeffyLinkProblem } from './zeffy-links.js';
 
 export const TZ = 'America/New_York';
 
@@ -102,6 +107,16 @@ export function hasOwnPage(ev, events, today = dayIn()) {
   if (eventPath(ev, events, today) !== `/events/${ev.slug}/`) return false;
   if (ev.body || (ev.photos || []).length > 0 || ev.streamVideoId || ev.videoUrl) return true;
   return isOver(ev, today);
+}
+
+// ── Tickets ──────────────────────────────────────────────────────────────
+/**
+ * An event's tickets or sign-up link, when it's a whole https:// link (the rule Admin's Zeffy fields check with), or
+ * '' when it has none: every page that shows a ticket button asks this, and shows none for ''
+ */
+export function ticketsOf(ev) {
+  const url = String(ev?.ticketUrl ?? '').trim();
+  return url && !zeffyLinkProblem(url) ? url : '';
 }
 
 // ── Photos ───────────────────────────────────────────────────────────────

@@ -30,7 +30,7 @@ import siteSettings from '../../content/site/settings.json';
 import photoShapes from '../../data/dimensions-events.json';
 import {
   SERIES, seriesOf, isOver, dayIn, yearOf, eventPath, hasOwnPage, isLatest,
-  recapPhotos, recapSponsors, sponsorCount, splitSponsors, cleanHighlights, displayName, fmtDay as fmtWhen,
+  recapPhotos, recapSponsors, sponsorCount, splitSponsors, cleanHighlights, displayName, fmtDay as fmtWhen, ticketsOf,
 } from '../../../public/admin/events-shared.js';
 import type { CardSpec } from '../../utils/og-registry';
 
@@ -191,11 +191,13 @@ const recapMainSizes = recapMainWide ? '(max-width: 767px) 340px, (max-width: 12
 const photoIndex = (slug: string, id?: string) => Math.max(0, recaps[slug]?.photos.findIndex(p => p.id === id) ?? 0);
 
 
-/* Hero link target: detail page → ticket link (upcoming only) → none */
+/* Hero link target: detail page → ticket link (upcoming only) → none. Its tickets are the event's own link, or none
+   yet: then nothing here asks anyone to register */
+const heroTickets = heroEvent ? ticketsOf(heroEvent.data) : '';
 const heroUrl = heroEvent
-  ? detailPages[heroEvent.data.slug] || heroEvent.data.ticketUrl || null
+  ? detailPages[heroEvent.data.slug] || heroTickets || null
   : null;
-const heroIsExternal = !!heroEvent && !detailPages[heroEvent.data.slug] && !!heroEvent.data.ticketUrl;
+const heroIsExternal = !!heroEvent && !detailPages[heroEvent.data.slug] && !!heroTickets;
 
 /* ── Photo tour: every past event with photos, newest first ── */
 const tourGroups = past
@@ -394,11 +396,11 @@ const heroFrameAttrs = heroUrl
             <div class="hero-ctas">
               {detailPages[heroEvent.data.slug] ? (
                 <a href={detailPages[heroEvent.data.slug]} class="btn btn-primary btn-lg">
-                  View Details & Register
+                  {heroTickets ? 'View Details & Register' : 'View Details'}
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </a>
-              ) : heroEvent.data.ticketUrl ? (
-                <a href={heroEvent.data.ticketUrl} class="btn btn-primary btn-lg" target="_blank" rel="noopener noreferrer">
+              ) : heroTickets ? (
+                <a href={heroTickets} class="btn btn-primary btn-lg" target="_blank" rel="noopener noreferrer">
                   Get Tickets
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
                 </a>

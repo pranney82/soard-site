@@ -25,7 +25,7 @@ import { recapMeta } from '../../utils/event-recap';
 
 /** A plain title as card headline text */
 const escTitle = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-import { eventPath, hasOwnPage, isOver, yearPath } from '../../../public/admin/events-shared.js';
+import { eventPath, hasOwnPage, isOver, yearPath, ticketsOf } from '../../../public/admin/events-shared.js';
 
 export async function getStaticPaths() {
   const all = await getCollection('events');
@@ -45,6 +45,8 @@ export async function getStaticPaths() {
 const { event, forward } = Astro.props as { event: { data: any }; forward?: string };
 if (forward) return Astro.redirect(forward, 301);
 const ev = event.data;
+// Its tickets: the event's own link, or none yet (no button, no schema offer)
+const tickets = ticketsOf(ev);
 const collection = (await getCollection('events')).map((e) => e.data);
 const events = collection.some((e) => e.slug === ev.slug) ? collection : [...collection, ev];
 
@@ -94,10 +96,10 @@ const eventJsonLd = recap?.jsonLd ?? {
   },
   "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
   ...(ev.image && { "image": cfRaw(ev.image, 'w=1200,q=85') }),
-  ...(ev.ticketUrl && {
+  ...(tickets && {
     "offers": {
       "@type": "Offer",
-      "url": ev.ticketUrl,
+      "url": tickets,
       "availability": "https://schema.org/InStock",
     },
   }),
@@ -147,10 +149,10 @@ const eventJsonLd = recap?.jsonLd ?? {
           </span>
         </div>
         <p class="ev-hero__desc" data-reveal>{ev.description}</p>
-        {ev.ticketUrl && (
+        {tickets && (
           <div class="ev-hero__actions" data-reveal>
-            <a href={ev.ticketUrl} class="ev-btn ev-btn--gold" target="_blank" rel="noopener noreferrer">
-              {ev.ticketPrice ? `Get Tickets — ${ev.ticketPrice}` : 'Get Tickets'}
+            <a href={tickets} class="ev-btn ev-btn--gold" target="_blank" rel="noopener noreferrer">
+              {ev.ticketPrice ? `Get Tickets · ${ev.ticketPrice}` : 'Get Tickets'}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
             </a>
           </div>

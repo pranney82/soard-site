@@ -23,7 +23,7 @@ import { ReportEditor } from './board-report.js';
 import { AdvisoryMeetings } from './advisory-meeting.js';
 import { api } from './advisory/api.js';
 import { Thermometer } from './advisory/thermometer.js';
-import { ZeffyLink, useZeffyFormList, sameForm } from './zeffy-forms.js';
+import { ZeffyLink, fieldState, campaignNote, useZeffyFormList } from './zeffy-forms.js';
 
 const html = htm.bind(h);
 const API = '/api/advisory-admin';
@@ -141,7 +141,7 @@ function useDirty(ctx, key, where) {
 }
 
 // ─── Small pieces ───────────────────────────────────────────────────
-/** for: the id of the control the name belongs to, when the field holds more than one (a Zeffy link: the dropdown, then the box) */
+/** for: the id of the control the name belongs to, when the field holds more than one (a Zeffy link: its dropdown, then Open) */
 function Field({ label, hint = '', for: control, children }) {
   return html`<label class="ar-field" for=${control}><span class="ar-field__l">${label}</span>${children}${hint ? html`<span class="ar-field__h" id=${control ? `${control}-hint` : undefined}>${hint}</span>` : null}</label>`;
 }
@@ -253,9 +253,12 @@ function HostedRow({ x, ctx }) {
   const [note, setNote] = useState(x.note || '');
   const held = x.status === 'done';
   useDirty(ctx, `hosted-${x.id}`, date !== (x.date || '') || giveUrl !== (x.giveUrl || '') || note !== (x.note || '') ? `“${x.title}”` : '');
+  const forms = useZeffyFormList(ZEFFY_FROM);
   const send = async (status, done) => {
+    // A page picked now that won't do stops it; one saved earlier never stops Approve, Not now or Held (the field warns)
+    const wrong = fieldState(giveUrl, { forms, saved: x.giveUrl || '' }).problem;
+    if (wrong) { ctx.tell(`Its Zeffy page: ${wrong}`, true); return; }
     const j = await act({ action: 'hosted-status', id: x.id, status, note, date, giveUrl }, done);
-    // (the server finishes a web address typed without https://)
     if (j?.hosted) setGiveUrl(j.hosted.giveUrl || '');
   };
   const approve = async () => {
@@ -274,7 +277,7 @@ function HostedRow({ x, ctx }) {
     ${held ? (x.note ? html`<p class="ar-quote">${x.note}</p>` : null) : html`
       <div class="ar-grid2">
         <${Field} label="The date" hint=${x.status === 'approved' && !date ? 'It won’t show under Coming up until it has one.' : ''}><input class="ar-input" type="date" value=${date} onInput=${(e) => setDate(e.currentTarget.value)} /><//>
-        <${Field} label="Its Zeffy page" hint="So what it raises counts toward the goal" for=${`ar-give-${x.id}`}><${ZeffyLink} cls="ar-input" inputCls="ar-input" openCls="ar-btn" from=${ZEFFY_FROM} inputId=${`ar-give-${x.id}`} describedBy=${`ar-give-${x.id}-hint`} value=${giveUrl} prefer=${['peer', 'tickets', 'donation']} label="Its Zeffy page" onPick=${(f) => setGiveUrl(f.url)} onChange=${setGiveUrl} /><//>
+        <${Field} label="Its Zeffy page" hint="So what it raises counts toward the goal" for=${`ar-give-${x.id}`}><${ZeffyLink} cls="ar-input" inputCls="ar-input" openCls="ar-btn" from=${ZEFFY_FROM} inputId=${`ar-give-${x.id}`} describedBy=${`ar-give-${x.id}-hint`} value=${giveUrl} prefer=${['peer', 'tickets', 'donation']} label="Its Zeffy page" saved=${x.giveUrl || ''} onPick=${(f) => setGiveUrl(f ? f.url : '')} /><//>
       </div>
       <${Field} label="A note for the advisor"><input class="ar-input" value=${note} maxlength="800" onInput=${(e) => setNote(e.currentTarget.value)} /><//>
       <div class="ar-btns">
@@ -450,44 +453,24 @@ function Goal({ ctx }) {
   const [edits, setEdits] = useState({});
   const f = Object.fromEntries(GOAL_FIELDS.map((k) => [k, k in edits ? edits[k] : s[k]]));
   const up = (k) => (e) => setEdits({ ...edits, [k]: e.currentTarget.value });
-  // The campaign's ID follows its address: picked from Zeffy's list, or typed and Zeffy lists it, the ID fills in; typed
-  // and not listed, the ID empties and Save asks Zeffy for it; cleared, the campaign is unlinked. An ID typed by hand
-  // stays while an address is typed, until a campaign is picked. The server has the last word (functions/api/
-  // advisory-admin.js save-settings): an address Zeffy lists decides the ID, and a typed ID is checked with Zeffy
-  const zeffyList = useZeffyFormList(ZEFFY_FROM);
-  const autoId = useRef(null);
-  const pickCampaign = (c) => { autoId.current = c.id; setEdits({ ...edits, campaignUrl: c.url, campaignId: c.id }); };
-  // Zeffy's list came (or was read again) while an address was being typed: the ID catches up with it
-  useEffect(() => {
-    if (!zeffyList || !('campaignUrl' in edits) || !String(edits.campaignUrl || '').trim()) return;
-    const byHand = 'campaignId' in edits && edits.campaignId !== '' && edits.campaignId !== autoId.current && edits.campaignId !== (s.campaignId || '');
-    const listed = zeffyList.find((c) => sameForm(c.url, edits.campaignUrl));
-    if (!byHand && listed && edits.campaignId !== listed.id) { autoId.current = listed.id; setEdits({ ...edits, campaignId: listed.id }); }
-  }, [zeffyList]);
-  const typeCampaignUrl = (url) => {
-    const next = { ...edits, campaignUrl: url };
-    const byHand = 'campaignId' in edits && edits.campaignId !== '' && edits.campaignId !== autoId.current && edits.campaignId !== (s.campaignId || '');
-    if (!url.trim()) { next.campaignId = ''; autoId.current = ''; } else if (!byHand) {
-      const listed = url.trim() ? (zeffyList || []).find((c) => sameForm(c.url, url)) : null;
-      // The saved address, typed back (or with Zeffy's list not in yet), keeps the saved ID
-      const saved = !!url.trim() && (url.trim() === String(s.campaignUrl || '').trim() || sameForm(url, s.campaignUrl));
-      next.campaignId = listed ? listed.id : saved ? s.campaignId || '' : '';
-      autoId.current = next.campaignId;
-    }
-    setEdits(next);
-  };
+  // The campaign is picked from Zeffy's list: its link and its ID come from Zeffy together, nothing typed; "No form"
+  // unlinks it (the server still has the last word: functions/api/advisory-admin.js save-settings checks it with Zeffy)
+  const forms = useZeffyFormList(ZEFFY_FROM);
+  const pickCampaign = (c) => setEdits({ ...edits, campaignUrl: c ? c.url : '', campaignId: c ? c.id : '' });
   const moved = GOAL_FIELDS.filter((k) => k in edits && String(edits[k] ?? '') !== String(s[k] ?? ''));
   const changed = moved.length > 0;
   useDirty(ctx, 'goal', changed ? 'the goal and term' : '');
   const saveIt = async () => {
     if (moved.includes('goal') && (String(edits.goal).trim() === '' || !Number.isFinite(Number(edits.goal)))) { ctx.tell('Type the goal in dollars.', true); return; }
+    const wrong = fieldState(edits.campaignUrl ?? s.campaignUrl, { forms, saved: s.campaignUrl || '' }).problem;
+    if (wrong) { ctx.tell(`The Zeffy campaign: ${wrong}`, true); return; }
     if (moved.includes('lead')) {
       const next = data.board.find((p) => p.slug === f.lead)?.name || 'them';
       const yours = data.me.kind === 'lead';
       if (!(await ask({ title: `Hand the group to ${next}?`, text: `${next} gets Run it on the advisors’ page${yours ? ', and you lose it the next time this page opens.' : `, and ${data.leadName || 'the person running it now'} loses it.`}`, yes: `Yes, hand it to ${first(next)}`, no: 'Keep it as it is', careful: true }))) return;
     }
     const patch = Object.fromEntries(moved.map((k) => [k, k === 'goal' ? Number(edits.goal) : edits[k]]));
-    // A new address goes with the ID shown beside it, even when that ID hasn't changed: Zeffy is asked only when there's none
+    // A campaign goes with its ID, even when the ID is the one already saved (the same campaign's link written another way)
     if ('campaignUrl' in patch && !('campaignId' in patch)) patch.campaignId = f.campaignId || '';
     if (await act({ action: 'save-settings', settings: patch }, 'Saved')) setEdits({});
   };
@@ -513,8 +496,7 @@ function Goal({ ctx }) {
         <${Field} label="The term starts"><input class="ar-input" type="date" value=${f.termStart} onInput=${up('termStart')} /><//>
         <${Field} label="The term ends"><input class="ar-input" type="date" value=${f.termEnd} onInput=${up('termEnd')} /><//>
       </div>
-      <${Field} label="The Zeffy campaign’s web address" for="ar-campaign-url"><${ZeffyLink} cls="ar-input" inputCls="ar-input" openCls="ar-btn" from=${ZEFFY_FROM} inputId="ar-campaign-url" value=${f.campaignUrl} id=${f.campaignId || ''} prefer=${['peer']} label="The Zeffy campaign’s web address" onPick=${pickCampaign} onChange=${typeCampaignUrl} /><//>
-      <${Field} label="The campaign’s ID in Zeffy, if you have it" hint="The site finds it from the address when it can, and says so if it can’t"><input class="ar-input" value=${f.campaignId} onInput=${up('campaignId')} /><//>
+      <${Field} label="The Zeffy campaign" for="ar-campaign-url" hint=${campaignNote({ url: f.campaignUrl, id: f.campaignId }, { url: s.campaignUrl, id: s.campaignId }, forms)}><${ZeffyLink} cls="ar-input" inputCls="ar-input" openCls="ar-btn" from=${ZEFFY_FROM} inputId="ar-campaign-url" describedBy="ar-campaign-url-hint" value=${f.campaignUrl} saved=${s.campaignUrl || ''} id=${f.campaignId || ''} prefer=${['peer']} label="The Zeffy campaign" onPick=${pickCampaign} /><//>
       <div class="ar-btns"><button type="button" class="ar-btn ar-btn--go" disabled=${!changed || ctx.busy} onClick=${saveIt}>Save</button></div>
     <//>
     ${m.byAdvisor?.some((a) => a.gifts) ? html`<${Fold} summary="By advisor">

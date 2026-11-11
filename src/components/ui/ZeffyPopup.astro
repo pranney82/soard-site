@@ -2,26 +2,26 @@
 /**
  * ZeffyPopup — a Zeffy form in a pop-up on our own page, so a giver never leaves the site.
  *
- * Put <ZeffyPopup /> once on a page. Any link on it with data-zeffy="<the form's embed>" (embedOf() in
- * public/admin/zeffy-links.js) then opens that form here, with the link's own ?amount= filled in. The link's href
- * stays the form's full page: what a person gets with no JavaScript, or opening it in a new tab.
+ * Put <ZeffyPopup /> once on a page. Any link on it made with giftLink() or dafGift() (public/admin/zeffy-links.js)
+ * then opens its form here: data-zeffy is the form's embed with the link's amount, and href is the form's own page,
+ * what a person gets with no JavaScript, or opening it in a new tab.
  *
- * Used by /donate/ (every gift button, and Give from your DAF) and /ways-to-give/ (Give from Your DAF).
+ * Used by /donate/ (every gift button, and Give from Your DAF) and /ways-to-give/ (Give from Your DAF).
  *
- * Focus works like the kid-page reveal modal: remember who opened it, move focus into the dialog, keep Tab inside it,
- * and give focus back on close. Escape closes it.
+ * A native <dialog> opened with showModal(): the page behind can't be reached by Tab, a screen reader or a click
+ * while it's open (keys typed inside Zeffy's form never reach our page, so this is the only thing that keeps focus
+ * in). Escape, the close button and a click beside the form close it; focus goes back to the link. The form's frame
+ * is made on each open and taken away on close, so opening the form never adds to the Back button's history.
  */
 ---
 
-<div class="zeffy-modal" id="zeffy-modal" aria-hidden="true" inert role="dialog" aria-modal="true" aria-label="Donation form">
-  <div class="zeffy-modal-backdrop" id="zeffy-modal-close"></div>
-  <div class="zeffy-modal-container">
+<dialog class="zeffy-modal" id="zeffy-modal" aria-label="Donation form">
+  <div class="zeffy-modal-container" id="zeffy-modal-container">
     <button class="zeffy-modal-x" id="zeffy-modal-x" type="button" aria-label="Close donation form">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>
-    <iframe id="zeffy-iframe" title="Donation form powered by Zeffy" allow="payment" allowpaymentrequest></iframe>
   </div>
-</div>
+</dialog>
 
 <script>
   /* Per-visit: everything below is aborted on astro:before-swap, so listeners never stack across client-side
@@ -29,6 +29,8 @@
   let _popupAC: AbortController | null = null;
 
   function cleanupPopup() {
+    const dialog = document.getElementById('zeffy-modal') as HTMLDialogElement | null;
+    if (dialog?.open) dialog.close();
     _popupAC?.abort();
     _popupAC = null;
     document.body.style.overflow = '';
@@ -36,95 +38,80 @@
 
   document.addEventListener('astro:page-load', () => {
     cleanupPopup();
-    const modal = document.getElementById('zeffy-modal');
-    const iframe = document.getElementById('zeffy-iframe') as HTMLIFrameElement | null;
-    if (!modal || !iframe) return;
+    const dialog = document.getElementById('zeffy-modal') as HTMLDialogElement | null;
+    const box = document.getElementById('zeffy-modal-container');
+    if (!dialog || !box || typeof dialog.showModal !== 'function') return;
     _popupAC = new AbortController();
     const signal = _popupAC.signal;
-    let previousFocus: HTMLElement | null = null;
+    let opener: HTMLElement | null = null;
 
-    // The link's own form, as Zeffy embeds it (data-zeffy), with the link's amount
-    function openModal(link: HTMLAnchorElement) {
-      const amount = new URL(link.href).searchParams.get('amount');
-      const src = new URL(link.dataset.zeffy || '');
-      if (amount) src.searchParams.set('amount', amount);
-      iframe!.src = src.toString();
-      previousFocus = document.activeElement as HTMLElement | null;
-      modal!.classList.add('is-open');
-      modal!.setAttribute('aria-hidden', 'false');
-      modal!.inert = false;
+    // The link's own form, as Zeffy embeds it, with its amount (giftLink puts both in data-zeffy)
+    function open(link: HTMLAnchorElement) {
+      box!.querySelector('iframe')?.remove();
+      const frame = document.createElement('iframe');
+      frame.className = 'zeffy-modal-frame';
+      frame.title = 'Donation form powered by Zeffy';
+      frame.allow = 'payment';
+      frame.src = link.dataset.zeffy!;
+      box!.append(frame);
+      opener = link;
+      dialog!.showModal();
       document.body.style.overflow = 'hidden';
       document.getElementById('zeffy-modal-x')?.focus();
     }
 
-    function closeModal() {
-      modal!.classList.remove('is-open');
-      modal!.setAttribute('aria-hidden', 'true');
-      modal!.inert = true;
+    // However it closes (the button, Escape, a click beside the form, leaving the page): the frame goes, the page
+    // scrolls again, and focus is back on the link that opened it
+    dialog.addEventListener('close', () => {
+      box.querySelector('iframe')?.remove();
       document.body.style.overflow = '';
-      previousFocus?.focus();
-      previousFocus = null;
-      // 'about:blank': an empty src resolves to the page's own URL, which would reload the whole page invisibly
-      setTimeout(() => { if (!modal!.classList.contains('is-open')) iframe!.src = 'about:blank'; }, 350);
-    }
+      opener?.focus();
+      opener = null;
+    }, { signal });
 
-    // One listener for every data-zeffy link on the page, including any added after load. A link whose data-zeffy
-    // isn't a link at all opens its href as usual rather than an empty pop-up
+    // One listener for every gift link on the page, including any added after load. A link whose data-zeffy isn't a
+    // link at all opens its href as usual rather than an empty pop-up; ⌘/Ctrl/Shift/middle-click keep their new tab
     document.addEventListener('click', (e) => {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const link = (e.target as Element | null)?.closest?.('a[data-zeffy]') as HTMLAnchorElement | null;
       if (!link || !/^https:\/\//.test(link.dataset.zeffy || '')) return;
       e.preventDefault();
-      openModal(link);
+      open(link);
     }, { signal });
 
-    document.getElementById('zeffy-modal-close')?.addEventListener('click', closeModal, { signal });
-    document.getElementById('zeffy-modal-x')?.addEventListener('click', closeModal, { signal });
-
-    document.addEventListener('keydown', (e) => {
-      if (!modal.classList.contains('is-open')) return;
-      if (e.key === 'Escape') { closeModal(); return; }
-      // Keep Tab inside the dialog: keyboard focus never wanders behind the backdrop
-      if (e.key === 'Tab') {
-        const focusables = Array.from(modal.querySelectorAll<HTMLElement>('button, iframe, a[href]'));
-        if (!focusables.length) return;
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        const active = document.activeElement as HTMLElement | null;
-        if (!active || !modal.contains(active)) { e.preventDefault(); first.focus(); }
-        else if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
-      }
-    }, { signal });
+    document.getElementById('zeffy-modal-x')?.addEventListener('click', () => dialog.close(), { signal });
+    // The dialog fills the screen and the form sits in it: a click on the dialog itself is a click beside the form
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }, { signal });
   });
 
   document.addEventListener('astro:before-swap', cleanupPopup);
 </script>
 
 <style>
+  /* Full screen and see-through, so the form's box can sit in the middle and a click beside it lands on the dialog */
   .zeffy-modal {
     position: fixed;
     inset: 0;
-    /* Above the sticky header (1000) and mobile menu (1100), below only the focus-revealed skip link (9999) */
-    z-index: 1200;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow: hidden;
+  }
+  .zeffy-modal[open] {
     display: flex;
     align-items: center;
     justify-content: center;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    view-transition-name: none;
   }
-  .zeffy-modal.is-open {
-    pointer-events: auto;
-    opacity: 1;
-  }
-  .zeffy-modal-backdrop {
-    position: absolute;
-    inset: 0;
+  .zeffy-modal::backdrop {
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
+    animation: zeffy-fade 0.3s ease;
   }
   .zeffy-modal-container {
     position: relative;
@@ -136,19 +123,19 @@
     border-radius: 20px;
     overflow: hidden;
     box-shadow: 0 32px 80px rgba(0, 0, 0, 0.25);
-    transform: translateY(24px) scale(0.97);
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .zeffy-modal.is-open .zeffy-modal-container {
-    transform: translateY(0) scale(1);
+  .zeffy-modal[open] .zeffy-modal-container {
+    animation: zeffy-rise 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
+  @keyframes zeffy-fade { from { opacity: 0; } }
+  @keyframes zeffy-rise { from { opacity: 0; transform: translateY(24px) scale(0.97); } }
   .zeffy-modal-x {
     position: absolute;
-    top: 12px;
-    right: 12px;
+    top: 10px;
+    right: 10px;
     z-index: 10;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -160,7 +147,8 @@
     transition: background 0.2s ease;
   }
   .zeffy-modal-x:hover { background: rgba(0, 0, 0, 0.12); }
-  #zeffy-iframe {
+  .zeffy-modal-x:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+  .zeffy-modal-container :global(.zeffy-modal-frame) {
     width: 100%;
     height: 100%;
     border: 0;
@@ -179,6 +167,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .zeffy-modal, .zeffy-modal-container { transition: none; }
+    .zeffy-modal::backdrop, .zeffy-modal[open] .zeffy-modal-container { animation: none; }
   }
 </style>

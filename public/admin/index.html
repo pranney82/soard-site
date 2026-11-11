@@ -4614,8 +4614,10 @@
     import * as ES from './events-shared.js';
     import { AfterEventPanel, SponsorsList, EventBasics } from './event-recap-admin.js';
     import { EditWordsButton } from './email-words.js';
-    // Above every Zeffy link box: SOARD's Zeffy forms, and picking one fills in its link
-    import { ZeffyLink } from './zeffy-forms.js';
+    // Every Zeffy link field: SOARD's Zeffy forms to pick from, and what it says is what Save checks (fieldState)
+    import { ZeffyLink, fieldState, useZeffyFormList } from './zeffy-forms.js';
+    // A kid's Give button opens a donation or a peer-to-peer form
+    const KID_FORMS = ['donation', 'peer'];
     // Every "are you sure?" in the admin: an in-app dialog, never the browser's confirm()
     import { ask, askToLeave } from './ask.js';
     import { useDialog as usePplDialog } from './dialog.js';
@@ -11827,7 +11829,6 @@
       while (taken.includes(`${withYear}-${n}`)) n++;
       return `${withYear}-${n}`;
     };
-    const kdUrlOk = (u) => { try { const x = new URL(String(u || '').trim()); return x.protocol === 'https:' && !!x.hostname.includes('.'); } catch { return false; } };
 
     // A record as the editor holds it: keyed lists, ages as typed, named logos
     function kdForEditing(raw, ix, slug) {
@@ -13290,10 +13291,15 @@
       };
 
       // ── Save / delete ──
+      // The fundraising link: what its field says is what Save checks. One picked now that won't do blocks; one saved
+      // earlier only warns, so it never stops the rest of the profile saving (fieldState in ./zeffy-forms.js)
+      const zeffyForms = useZeffyFormList();
+      const savedFund = useMemo(() => JSON.parse(base || '{}').fundraisingUrl || '', [base]);
+      const fundState = fieldState(data.fundraisingUrl, { only: KID_FORMS, forms: zeffyForms, saved: savedFund });
       const problems = [
         !String(data.name || '').trim() && { id: 'name', text: 'Add their name', section: 'basics' },
         ages.bad && { id: 'ages', text: 'Ages should be numbers, like 10 or 7, 9', section: 'basics' },
-        data.fundraisingUrl && !kdUrlOk(data.fundraisingUrl) && { id: 'fund', text: 'The fundraising link should start with https://', section: 'giving' },
+        fundState.problem && { id: 'fund', text: `Fundraising link: ${fundState.problem}`, section: 'giving' },
         data.videoUrl && !ytId && { id: 'yt', text: 'The YouTube link isn’t one the page can play', section: 'video' },
         !slug && data.slug && existingSlugs.includes(data.slug) && { id: 'slug', text: 'That web address is taken', section: 'basics' },
       ].filter(Boolean);
@@ -13488,7 +13494,6 @@
       const zoneLabel = (i) => (i === 0 || (i === KS.GALLERY_LARGE) || i === KS.GALLERY_FIRST || i === KS.GALLERY_MAX)
         ? html`<li class="kd-zone" key=${`zone-${i}`} aria-hidden="true"><span>${KS.ZONES[KS.photoZone(i)].label}</span></li>` : null;
 
-      const fundOk = kdUrlOk(data.fundraisingUrl);
 
       return html`
         ${confirmDelete ? html`<${ConfirmModal}
@@ -13967,11 +13972,9 @@
         ${sec('giving', 'Giving', null, null, html`
           <div class="form-group u-m-0">
             <label class="form-label" for="kd-fund">Fundraising link <span class="form-optional">Zeffy</span></label>
-            <${ZeffyLink} inputId="kd-fund" value=${data.fundraisingUrl || ''} prefer=${['donation', 'peer']} label="Fundraising link" invalid=${!!data.fundraisingUrl && !fundOk}
-              onPick=${(f) => set({ fundraisingUrl: f.url })} onChange=${(v) => set({ fundraisingUrl: v })} />
-            <div class=${`form-hint${data.fundraisingUrl && !fundOk ? ' kd-bad' : ''}`}>${data.fundraisingUrl && !fundOk
-              ? 'Paste the whole link, starting with https://'
-              : data.fundraisingUrl ? 'Adds “Help fund this room” at the top of the page and at the end of the story.'
+            <${ZeffyLink} inputId="kd-fund" value=${data.fundraisingUrl || ''} saved=${savedFund} prefer=${KID_FORMS} only=${KID_FORMS} label="Fundraising link" describedBy="kd-fund-hint"
+              onPick=${(f) => set({ fundraisingUrl: f ? f.url : null })} />
+            <div class="form-hint" id="kd-fund-hint">${data.fundraisingUrl ? 'Adds “Help fund this room” at the top of the page and at the end of the story.'
               : data.status === 'needs-funding' ? html`<span class="kd-warn-text">Without a link, visitors have no way to give toward ${nameFirst}’s room.</span>`
               : 'Adds “Help fund this room” to the page. Usually set while a family is awaiting funding or in build.'}</div>
           </div>
@@ -20356,6 +20359,8 @@ ${sections || '<p>No one yet.</p>'}
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
+      // The tickets link as last loaded or saved: one saved earlier that won't do warns, never blocking the rest (fieldState)
+      const [savedTickets, setSavedTickets] = useState('');
       const [dirty, setDirty] = useState(false);
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
@@ -20398,6 +20403,7 @@ ${sections || '<p>No one yet.</p>'}
             if (res.success && res.content) {
               const parsed = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
               setData(parsed);
+              setSavedTickets(parsed.ticketUrl || '');
               setSha(res.sha);
             } else {
               addToast('Event not found', 'error');
@@ -20486,10 +20492,12 @@ ${sections || '<p>No one yet.</p>'}
       };
 
       const handleSave = async () => {
-        if (!data.title) { addToast('Give the article a title first', 'error'); return; }
+        if (!data.title) { addToast('Give the event a title first', 'error'); return; }
         if (!data.date) { addToast('Date is required', 'error'); return; }
         if (!data.location) { addToast('Location is required', 'error'); return; }
         if (!data.description) { addToast('Short description is required', 'error'); return; }
+        const ticketsWrong = fieldState(data.ticketUrl, { elsewhere: true, saved: savedTickets }).problem;
+        if (ticketsWrong) { addToast(`Tickets or sign-up link: ${ticketsWrong}`, 'error'); return; }
         const saveSlug = data.slug || slugify(data.title);
         if (!data.slug) setData(d => ({ ...d, slug: saveSlug }));
         if (!slug && existingSlugs.includes(saveSlug)) {
@@ -20505,6 +20513,7 @@ ${sections || '<p>No one yet.</p>'}
           const res = await api.saveContent(path, content, message, sha || undefined);
           if (res.success) {
             setSha(res.sha);
+            setSavedTickets(saveData.ticketUrl || '');
             setDirty(false);
             flushImageDeletes();
             addToast('Event saved', 'success');
@@ -20622,8 +20631,8 @@ ${sections || '<p>No one yet.</p>'}
           </div>
           <div class="form-group u-mb-field">
             <label class="form-label" for="ev-ticket-url">Tickets or sign-up link</label>
-            <${ZeffyLink} inputId="ev-ticket-url" value=${data.ticketUrl || ''} prefer=${['tickets']} label="Tickets or sign-up link" placeholder="https://"
-              onPick=${(f) => update('ticketUrl', f.url)} onChange=${(v) => update('ticketUrl', v)} />
+            <${ZeffyLink} inputId="ev-ticket-url" value=${data.ticketUrl || ''} saved=${savedTickets} prefer=${['tickets']} elsewhere="Tickets on another site?" label="Tickets or sign-up link"
+              onPick=${(f) => update('ticketUrl', f ? f.url : '')} onChange=${(v) => update('ticketUrl', v)} />
           </div>
           <div class="form-group u-mb-field">
             <span class="form-label">Short description</span>
@@ -22483,6 +22492,8 @@ ${sections || '<p>No one yet.</p>'}
       const eventFile = slug ? `src/content/events/${slug}.json` : null;
       const [eventData, _setEventData] = useState(null);
       const [eventSha, setEventSha] = useState(null);
+      // The registration link as last loaded or saved (see the event editor's savedTickets)
+      const [savedReg, setSavedReg] = useState('');
       const [eventDirty, setEventDirty] = useState(false);
       const updateEvent = (field, value) => { setDirty(true); setEventDirty(true); _setEventData((d) => ({ ...(d || {}), [field]: value })); };
       const [saveAfterUpload, setSaveAfterUpload] = useState(false);
@@ -22506,6 +22517,7 @@ ${sections || '<p>No one yet.</p>'}
             if (evRes?.success) {
               const ev0 = JSON.parse(evRes.content);
               _setEventData(ev0);
+              setSavedReg(ev0?.ticketUrl || '');
               setEventSha(evRes.sha);
               // Once the tournament is over, the thank-you page is what's left to do
               if (ES.isOver(ev0)) setActiveTab('after');
@@ -22516,6 +22528,8 @@ ${sections || '<p>No one yet.</p>'}
       }, []);
 
       const handleSave = async () => {
+        const registrationWrong = eventData && fieldState(eventData.ticketUrl, { elsewhere: true, saved: savedReg }).problem;
+        if (registrationWrong) { addToast(`Registration link: ${registrationWrong}`, 'error'); return; }
         setSaving(true);
         try {
           const content = JSON.stringify(data, null, 2);
@@ -22525,7 +22539,7 @@ ${sections || '<p>No one yet.</p>'}
               ? api.saveContent(eventFile, JSON.stringify(eventData, null, 2), 'Update golf tournament details', eventSha)
               : Promise.resolve({ success: true }),
           ]);
-          if (evRes.success && evRes.sha) { setEventSha(evRes.sha); setEventDirty(false); }
+          if (evRes.success && evRes.sha) { setEventSha(evRes.sha); setEventDirty(false); setSavedReg(eventData?.ticketUrl || ''); }
           if (res.success && !evRes.success) addToast('The tournament details didn’t save: ' + (evRes.error || 'Unknown error'), 'error');
           if (res.success) {
             setSha(res.sha);
@@ -22711,7 +22725,7 @@ ${sections || '<p>No one yet.</p>'}
             <div class="card">
               <h2 class="card-title">Event details</h2>
               <p class="card-subtitle u-mb-2">The golf page’s date, countdown, course, map link and Register buttons come from here.</p>
-              <${EventBasics} event=${eventData} onEvent=${updateEvent} />
+              <${EventBasics} event=${eventData} saved=${savedReg} onEvent=${updateEvent} />
             </div>
           `}
 
@@ -23100,6 +23114,8 @@ ${sections || '<p>No one yet.</p>'}
       const [saving, setSaving] = useState(false);
       const [dirty, setDirty] = useState(false);
       const [eventSha, setEventSha] = useState(null);
+      // The tickets link as last loaded or saved (see the event editor's savedTickets)
+      const [savedTickets, setSavedTickets] = useState('');
       const [galaSha, setGalaSha] = useState(null);
       const [eventData, _setEventData] = useState(null);
       const [data, _setData] = useState({
@@ -23137,6 +23153,7 @@ ${sections || '<p>No one yet.</p>'}
             if (evRes.success) {
               const ev0 = JSON.parse(evRes.content);
               _setEventData(ev0);
+              setSavedTickets(ev0?.ticketUrl || '');
               setEventSha(evRes.sha);
               // Once the gala is over, the thank-you page is what's left to do
               if (ES.isOver(ev0)) setActiveTab('after');
@@ -23151,6 +23168,8 @@ ${sections || '<p>No one yet.</p>'}
       }, [slug]);
 
       const handleSave = async () => {
+        const ticketsWrong = eventData && fieldState(eventData.ticketUrl, { elsewhere: true, saved: savedTickets }).problem;
+        if (ticketsWrong) { addToast(`Tickets link: ${ticketsWrong}`, 'error'); return; }
         setSaving(true);
         try {
           // Save both files in parallel; report combined result
@@ -23162,7 +23181,7 @@ ${sections || '<p>No one yet.</p>'}
             api.saveContent(galaPath, JSON.stringify(data, null, 2),
               'Update gala settings', galaSha),
           ]);
-          if (evRes.success && evRes.sha) setEventSha(evRes.sha);
+          if (evRes.success && evRes.sha) { setEventSha(evRes.sha); setSavedTickets(eventData?.ticketUrl || ''); }
           if (galaRes.success && galaRes.sha) setGalaSha(galaRes.sha);
           if (evRes.success && galaRes.success) {
             setDirty(false);
@@ -23444,9 +23463,9 @@ ${sections || '<p>No one yet.</p>'}
                     onInput=${e => updateEvent('address', e.target.value)} />
                 </div>
                 <div class="form-group u-span-all">
-                  <label for="gala-ticket-url">Ticket URL</label>
-                  <${ZeffyLink} inputId="gala-ticket-url" value=${eventData.ticketUrl || ''} prefer=${['tickets', 'auction']} label="Ticket URL"
-                    onPick=${(f) => updateEvent('ticketUrl', f.url)} onChange=${(v) => updateEvent('ticketUrl', v)} />
+                  <label for="gala-ticket-url">Tickets link</label>
+                  <${ZeffyLink} inputId="gala-ticket-url" value=${eventData.ticketUrl || ''} saved=${savedTickets} prefer=${['tickets', 'auction']} elsewhere="Tickets on another site?" label="Tickets link"
+                    onPick=${(f) => updateEvent('ticketUrl', f ? f.url : '')} onChange=${(v) => updateEvent('ticketUrl', v)} />
                 </div>
                 <div class="form-group u-span-all ev-center-y">
                   <label class="checkbox-label">
@@ -25474,7 +25493,10 @@ ${sections || '<p>No one yet.</p>'}
           // which used to hit a "Push to …" / "+ Add ..." button).
           if ((e.metaKey || e.ctrlKey) && e.key === 's') {
             e.preventDefault();
-            window.dispatchEvent(new CustomEvent('soard-save'));
+            // A field still being typed in finishes first, as it would on leaving it (a Zeffy field's link box puts
+            // https:// on), and the save runs once that's drawn
+            window.dispatchEvent(new CustomEvent('soard-before-save'));
+            setTimeout(() => window.dispatchEvent(new CustomEvent('soard-save')), 0);
             return;
           }
           // ? — keyboard shortcuts (only when not typing in an input)
@@ -25915,7 +25937,7 @@ ${sections || '<p>No one yet.</p>'}
           case 'articles':
             return editSlug !== null
               ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('site-hub', null, 'resources'); loadData(); }} addToast=${addToast} existingSlugs=${articles.map(a => a.slug)} />`
-              : html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} initialTab="resources" onPublish=${promptDeploy} guides=${guidesList} />`;
+              : html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} eventsState=${loadFailures.has('events') ? 'failed' : loading && !events.length ? 'loading' : 'ready'} onRetryLists=${loadData} initialTab="resources" onPublish=${promptDeploy} guides=${guidesList} />`;
           case 'events': {
             // The newest gala or tournament opens its own editor (it lays out
             // /events/gala/ or /events/golf/); older years are plain events
@@ -26012,7 +26034,7 @@ ${sections || '<p>No one yet.</p>'}
 
           // ─── Site Config: ./site-config.js, by public page (#site/<page>) ───
           case 'site-hub':
-            return html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} initialTab=${subTab} onPublish=${promptDeploy} guides=${guidesList} />`;
+            return html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} events=${events} eventsState=${loadFailures.has('events') ? 'failed' : loading && !events.length ? 'loading' : 'ready'} onRetryLists=${loadData} initialTab=${subTab} onPublish=${promptDeploy} guides=${guidesList} />`;
 
           default:
             return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} pendingData=${publishData} onDeploy=${promptDeploy} deploying=${deploying} />`;

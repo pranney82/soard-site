@@ -16,7 +16,7 @@ import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getCollection, getEntry } from 'astro:content';
 import EventRecap from '../../components/events/EventRecap.astro';
 import { recapMeta, eventLook } from '../../utils/event-recap';
-import { isOver, latestOf, seriesByKey, fmtDay } from '../../../public/admin/events-shared.js';
+import { isOver, latestOf, seriesByKey, fmtDay, ticketsOf } from '../../../public/admin/events-shared.js';
 import { heroHtml, BR, type HeroPart } from '../../utils/hero-words';
 
 /* ── CMS data (admin-editable via golf.json) ── */
@@ -31,9 +31,12 @@ const recap = over ? recapMeta(ev, allEvents, cms, '/events/golf/') : null;
 const dateISO: string = ev.date || '2026-05-18';
 const year = dateISO.slice(0, 4);
 const dateLong = fmtDay(dateISO, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-// Its registration: the event's own link (Admin → Site Config → Zeffy, or the tournament's editor). None yet: no
-// register buttons, never last year's form
-const ZEFFY: string = String(ev.ticketUrl || '').trim();
+// Its registration: the event's own link (Admin → Site Config → Zeffy, or the tournament's editor). None yet means
+// registration isn't open: nothing on the page asks anyone to register, the packages are there to read, and it says
+// registration opens soon
+const ZEFFY = ticketsOf(ev);
+// Sold out and few left are about registration: before it opens they're last year's, so they don't show
+const statusOf = (tier: { status?: string }) => (ZEFFY && (tier.status === 'sold-out' || tier.status === 'few-left') ? tier.status : '');
 const venue: string = String(ev.location || 'Indian Hills Country Club').trim();
 const address: string = String(ev.address || '4001 Clubland Dr. Marietta, GA 30068').trim();
 /* "4001 Clubland Dr. Marietta, GA 30068" → street / city lines */
@@ -83,35 +86,35 @@ const eventJsonLd = {
   },
   "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
   "image": cfAbsolute("golf-logo-dark"),
-  "offers": [
-    {
-      "@type": "Offer",
-      "name": "Foursome",
-      "price": "1500",
-      "priceCurrency": "USD",
-      "url": ZEFFY || undefined,
-      "availability": "https://schema.org/InStock",
-      "validFrom": `${year}-01-01`,
-    },
-    {
-      "@type": "Offer",
-      "name": "Gold Sponsor",
-      "price": "5000",
-      "priceCurrency": "USD",
-      "url": ZEFFY || undefined,
-      "availability": "https://schema.org/InStock",
-      "validFrom": `${year}-01-01`,
-    },
-    {
-      "@type": "Offer",
-      "name": "Presenting Sponsor",
-      "price": "20000",
-      "priceCurrency": "USD",
-      "url": ZEFFY || undefined,
-      "availability": "https://schema.org/InStock",
-      "validFrom": `${year}-01-01`,
-    },
-  ],
+  // Offers only while registration is open
+  ...(ZEFFY && {
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Foursome",
+        "price": "1500",
+        "priceCurrency": "USD",
+        "url": ZEFFY,
+        "availability": "https://schema.org/InStock",
+      },
+      {
+        "@type": "Offer",
+        "name": "Gold Sponsor",
+        "price": "5000",
+        "priceCurrency": "USD",
+        "url": ZEFFY,
+        "availability": "https://schema.org/InStock",
+      },
+      {
+        "@type": "Offer",
+        "name": "Presenting Sponsor",
+        "price": "20000",
+        "priceCurrency": "USD",
+        "url": ZEFFY,
+        "availability": "https://schema.org/InStock",
+      },
+    ],
+  }),
 };
 
 /* ── LCP preload — hero logo (must be byte-identical to <img>) ── */
@@ -157,7 +160,7 @@ const hero = {
         </h1>
         <p class="ev-hero__subtitle" data-reveal>{hero.lead.map((p) => typeof p === 'string' ? p : <a href="https://sunshineonaranneyday.com" target="_blank" rel="noopener" class="ev-hero__link">{p.a}</a>)}</p>
         <div class="ev-hero__actions" data-reveal>
-          <a href="#tickets" class="ev-btn ev-btn--gold ev-btn--hero">Register</a>
+          <a href="#tickets" class="ev-btn ev-btn--gold ev-btn--hero">{ZEFFY ? 'Register' : 'See the Packages'}</a>
           <a href="#details" class="ev-hero__scroll-link">
             Learn More
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
@@ -429,21 +432,21 @@ const hero = {
   <!-- ═══ TICKETS ═══ -->
   <section class="ev-tickets" id="tickets">
     <div class="container ev-tickets__inner">
-      <span class="ev-tickets__label" data-reveal>Reserve Your Spot</span>
+      <span class="ev-tickets__label" data-reveal>{ZEFFY ? 'Reserve Your Spot' : 'Opens Soon'}</span>
       <h2 class="ev-tickets__heading" data-reveal>Sponsorships &amp; Tickets</h2>
-      <p class="ev-tickets__sub" data-reveal>Browse sponsorship packages and foursomes, then register on Zeffy to complete your purchase.</p>
+      <p class="ev-tickets__sub" data-reveal>{ZEFFY ? 'Browse sponsorship packages and foursomes, then register on Zeffy to complete your purchase.' : 'Sponsorship packages and foursomes for this year’s tournament.'}</p>
 
       <!-- Sponsor tiers (data-driven) -->
       <div class="ev-tiers" data-reveal>
         {mainTiers.map(tier => (
-          <div class={`ev-tier ${tier.highlight === 'featured' ? 'ev-tier--featured' : tier.highlight === 'popular' ? 'ev-tier--popular' : ''} ${tier.status === 'sold-out' ? 'ev-tier--sold-out' : ''}`}>
-            {tier.status === 'sold-out' && (
+          <div class={`ev-tier ${tier.highlight === 'featured' ? 'ev-tier--featured' : tier.highlight === 'popular' ? 'ev-tier--popular' : ''} ${statusOf(tier) === 'sold-out' ? 'ev-tier--sold-out' : ''}`}>
+            {statusOf(tier) === 'sold-out' && (
               <span class="ev-tier__badge ev-tier__badge--sold-out">Sold Out</span>
             )}
-            {tier.status === 'few-left' && (
+            {statusOf(tier) === 'few-left' && (
               <span class="ev-tier__badge ev-tier__badge--few-left">Few Left</span>
             )}
-            {tier.status !== 'sold-out' && tier.status !== 'few-left' && tier.badge && (
+            {!statusOf(tier) && tier.badge && (
               <span class={`ev-tier__badge ${tier.badgeStyle === 'gold' ? 'ev-tier__badge--gold' : ''}`}>{tier.badge}</span>
             )}
             <div class="ev-tier__head">
@@ -473,11 +476,11 @@ const hero = {
         </summary>
         <div class="ev-more__grid">
           {addOnTiers.map(tier => (
-            <div class={`ev-tier ev-tier--sm ${tier.status === 'sold-out' ? 'ev-tier--sold-out' : ''}`}>
-              {tier.status === 'sold-out' && (
+            <div class={`ev-tier ev-tier--sm ${statusOf(tier) === 'sold-out' ? 'ev-tier--sold-out' : ''}`}>
+              {statusOf(tier) === 'sold-out' && (
                 <span class="ev-tier__status-tag ev-tier__status-tag--sold-out">Sold Out</span>
               )}
-              {tier.status === 'few-left' && (
+              {statusOf(tier) === 'few-left' && (
                 <span class="ev-tier__status-tag ev-tier__status-tag--few-left">Few Left</span>
               )}
               <h3 class="ev-tier__name">{tier.name}</h3>
@@ -501,7 +504,7 @@ const hero = {
           </p>
         </div>
       ) : (
-        <div class="ev-tickets__cta" data-reveal><p class="ev-tickets__secure-note">Registration opens soon.</p></div>
+        <div class="ev-tickets__cta" data-reveal><p class="ev-tickets__soon">Registration opens soon.</p></div>
       )}
     </div>
   </section>
@@ -610,7 +613,7 @@ const hero = {
 
   <!-- ═══ FAQ ═══ -->
   {faqs.length > 0 && (
-    <section class="ev-faq">
+    <section class:list={['ev-faq', { 'ev-has-sticky': !!ZEFFY }]}>
       <div class="container">
         <FAQAccordion
           items={faqs}
@@ -1267,6 +1270,14 @@ const hero = {
     margin-top: var(--space-3xl);
   }
 
+  /* Before registration opens: said plainly where the button will be */
+  .ev-tickets__soon {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--c-dark);
+  }
   .ev-tickets__secure-note {
     display: inline-flex;
     align-items: center;
@@ -2392,7 +2403,7 @@ const hero = {
   /* On mobile the sticky CTA (~70px) sits above the bottom of the page.
      Pad the FAQ section so the last items can scroll above the bar. */
   @media (max-width: 768px) {
-    .ev-faq { padding-bottom: calc(var(--space-4xl) + 80px); }
+    .ev-faq.ev-has-sticky { padding-bottom: calc(var(--space-4xl) + 80px); }
   }
 
   /* ─── Sticky Mobile CTA ────────────────────────────────────── */

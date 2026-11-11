@@ -10,6 +10,7 @@
  * A11Y: ARIA, keyboard focus, prefers-reduced-motion
  */
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { ticketsOf } from '../../../public/admin/events-shared.js';
 
 interface Props {
   event: {
@@ -30,6 +31,8 @@ interface Props {
 }
 
 const { event, detailUrl, calendarUrl, index = 0 } = Astro.props;
+// Its tickets: the event's own link (Admin → Site Config → Zeffy, or the event's editor), or none yet
+const tickets = ticketsOf(event);
 
 const catLabel: Record<string, string> = {
   fundraiser: 'Fundraiser', volunteer: 'Volunteer',
@@ -70,8 +73,8 @@ function fmtDay(d: string) {
   {/* Full-card click target — sits below interactive children via z-index */}
   {detailUrl ? (
     <a class="ev-card__overlay" href={detailUrl} aria-label={`View details for ${event.title}`} tabindex="-1"></a>
-  ) : event.ticketUrl ? (
-    <a class="ev-card__overlay" href={event.ticketUrl} target="_blank" rel="noopener noreferrer" aria-label={`Get tickets for ${event.title}`} tabindex="-1"></a>
+  ) : tickets ? (
+    <a class="ev-card__overlay" href={tickets} target="_blank" rel="noopener noreferrer" aria-label={`Get tickets for ${event.title}`} tabindex="-1"></a>
   ) : null}
 
   {/* Card header: event image with gradient overlay, or gradient-only fallback */}
@@ -137,8 +140,8 @@ function fmtDay(d: string) {
             View Details
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
-        ) : event.ticketUrl ? (
-          <a href={event.ticketUrl} class="ev-card__btn" target="_blank" rel="noopener noreferrer">
+        ) : tickets ? (
+          <a href={tickets} class="ev-card__btn" target="_blank" rel="noopener noreferrer">
             Get Tickets
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
           </a>

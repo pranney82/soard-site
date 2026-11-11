@@ -138,6 +138,8 @@ const filledAdmin = (who) => ({
 });
 
 // ─── The server ─────────────────────────────────────────────────────
+// SOARD's Zeffy forms, as /api/advisory-admin?zeffyForms=1 gives them
+const ADV_FORMS = [{ id: 'c-new', title: 'Spring Peer Drive', url: 'https://www.zeffy.com/peer-to-peer/spring-peer-drive', kind: 'peer', open: true, created: 1 }];
 const worlds = new Map();
 const world = (key) => {
   if (!worlds.has(key)) {
@@ -199,6 +201,8 @@ const server = http.createServer(async (req, res) => {
     if (w.down?.redirect) { res.writeHead(302, { Location: 'https://soard.cloudflareaccess.com/cdn-cgi/access/login' }); return res.end(); }
     if (w.down?.html && (req.method === 'GET' || w.down.html === 'all')) { await readBody(req); res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<!doctype html><title>Sign in</title>'); }
     if (w.down) return json(res, w.down.status, w.down.body);
+    // SOARD's Zeffy forms, for the campaign's and a fundraiser's dropdowns
+    if (req.method === 'GET' && url.searchParams.get('zeffyForms')) return json(res, 200, { ok: true, forms: ADV_FORMS });
     if (req.method === 'GET') return json(res, 200, p.endsWith('portal') ? w.portal : w.admin);
     const raw = await readBody(req);
     let b = {}; try { b = JSON.parse(raw.toString()); } catch { b = { multipart: true }; }
@@ -757,18 +761,21 @@ for (const width of [390, 1280]) {
   await settle(300);
   check(w.posts.find((x) => x.action === 'save-doc')?.doc.shared === false, 'round two: a file on an unsaved paper keeps it off the page');
   await page.close();
-  // A web address without https:// doesn't leave a warning behind
+  // A campaign picked and saved doesn't leave a warning behind; there's no box to type a link or an ID into
   const page2 = await tab('lead/paper', 1280);
   await page2.goto(`${ORIGIN}/admin/advisory/#/run/members`, { waitUntil: 'networkidle0' });
   await page2.waitForSelector('.ar-card');
   await page2.evaluate(() => { const d = [...document.querySelectorAll('.ar-fold')].find((x) => x.querySelector('summary').textContent.startsWith('Goal, term')); d.open = true; d.id = 'goal-fold'; });
-  await page2.type('#goal-fold input[type="url"]', 'zeffy.com/made-up');
+  check(!(await page2.$('#goal-fold input[type="url"]')) && !(await page2.evaluate(() => /campaign’s ID/.test(document.querySelector('#goal-fold')?.textContent || ''))), 'round two: the campaign is picked, with no link or ID box');
+  await page2.waitForFunction(() => !document.querySelector('#ar-campaign-url')?.disabled, { timeout: 8000 });
+  check(await page2.$$eval('#ar-campaign-url option', (os) => os.some((o) => o.textContent.trim() === 'No form')), 'round two: the campaign can be unlinked with “No form”');
+  await page2.select('#ar-campaign-url', 'c-new');
   await settle(60);
   await page2.evaluate(() => [...document.querySelectorAll('#goal-fold button')].find((b) => b.textContent === 'Save').click());
   await settle(260);
   await page2.evaluate(() => [...document.querySelectorAll('.ar-tabs button')].find((b) => b.textContent === 'Documents').click());
   await settle(260);
-  check(!(await page2.evaluate(() => !!document.querySelector('.ask'))), 'round two: a web address the server finished leaves no unsaved warning');
+  check(!(await page2.evaluate(() => !!document.querySelector('.ask'))), 'round two: a saved campaign leaves no unsaved warning');
   await page2.close();
 }
 {
@@ -825,13 +832,14 @@ for (const width of [390, 1280]) {
   // Someone else saved a goal: this older tab changes only the Zeffy link
   w.admin.settings = { ...w.admin.settings, goal: 30000 };
   await page.evaluate(() => { const d = [...document.querySelectorAll('.ar-fold')].find((x) => x.querySelector('summary').textContent.startsWith('Goal, term')); d.open = true; d.id = 'goal-fold'; });
-  await page.$eval('#goal-fold input[type="url"]', (x) => { x.value = 'https://www.zeffy.com/new-link'; x.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForFunction(() => !document.querySelector('#ar-campaign-url')?.disabled, { timeout: 8000 });
+  await page.select('#ar-campaign-url', 'c-new');
   await settle(60);
   await page.evaluate(() => [...document.querySelectorAll('#goal-fold button')].find((b) => b.textContent === 'Save').click());
   await settle(260);
   const patch = w.posts.find((x) => x.action === 'save-settings')?.settings || {};
   // The campaign's ID travels with its address (3e86de92), so a changed link sends both; nothing else goes
-  check(Object.keys(patch).sort().join() === 'campaignId,campaignUrl', `round three: only what changed is sent, the campaign’s link and its ID (${Object.keys(patch)})`);
+  check(Object.keys(patch).sort().join() === 'campaignId,campaignUrl' && patch.campaignId === 'c-new' && patch.campaignUrl === ADV_FORMS[0].url, `round three: only what changed is sent, the picked campaign’s link and ID together (${JSON.stringify(patch)})`);
   check(w.admin.settings.goal === 30000, 'round three: someone else’s goal survives');
   // Back to the tab: what changed meanwhile
   w.admin.settings = { ...w.admin.settings, goal: 40000 };

@@ -24,7 +24,7 @@ import ProcessStrip from '../components/ui/ProcessStrip.astro';
 import { getPublishedKids } from '../utils/collections';
 import faqData from '../content/site/faq.json';
 import siteSettings from '../content/site/settings.json';
-import { siteForm, embedOf, withParam, dafGiftUrl, DAF_MIN_TEXT } from '../../public/admin/zeffy-links.js';
+import { giftLink, dafGift, DAF_MIN_TEXT } from '../../public/admin/zeffy-links.js';
 import { getDonateSchema, getFAQSchema } from '../utils/schema';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, CF_BASE, cfLqip, cfId } from '../utils/cf-image';
@@ -59,14 +59,13 @@ const storyExcerpt = bioSentences.slice(0, 2).join(' ');
 const addressLine = `${siteSettings.address.street}, ${siteSettings.address.city}, ${siteSettings.address.state} ${siteSettings.address.zip}`;
 const legalName = 'Sunshine on a Ranney Day, Inc.';
 
-/* ── The Zeffy forms: Admin → Site Config → Zeffy. A gift button opens the form's
-   embed in the pop-up below (data-zeffy), with its amount ── */
-const ZEFFY_ONETIME = siteForm(siteSettings, 'donateUrl');
-const ZEFFY_MONTHLY = siteForm(siteSettings, 'monthlyUrl');
-const ONETIME_EMBED = embedOf(ZEFFY_ONETIME);
-const MONTHLY_EMBED = embedOf(ZEFFY_MONTHLY);
-const once = (amount: number) => withParam(ZEFFY_ONETIME, 'amount', amount);
-const monthly = (amount: number) => withParam(ZEFFY_MONTHLY, 'amount', amount);
+/* ── The Zeffy forms: Admin → Site Config → Zeffy. Every gift button is giftLink(): its href is the form's own page
+   and its data-zeffy the embed <ZeffyPopup /> opens, both at the button's amount. A form Site Config doesn't have
+   stops the build and says so. Give from Your DAF is there only when Site Config says the one-time form takes DAF
+   gifts (dafGift) ── */
+const once = (amount?: number) => giftLink(siteSettings, 'donateUrl', amount ?? null);
+const monthly = (amount?: number) => giftLink(siteSettings, 'monthlyUrl', amount ?? null);
+const daf = dafGift(siteSettings);
 
 const donateFaqs = faqData.items
   .filter(item => {
@@ -107,7 +106,7 @@ const hero = {
         <h1>{hero.title.map((p) => typeof p === 'string' ? p : 'em' in p ? <em>{p.em}</em> : <br/>)}</h1>
         <p class="hero-lead">{hero.lead.map((p) => typeof p === 'string' ? p : <strong>{p.strong}</strong>)}</p>
         <div class="hero-ctas">
-          <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-primary btn-lg btn-hero-glow">Donate Now →</a>
+          <a {...once()} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg btn-hero-glow">Donate Now →</a>
           <a href="#impact" class="btn btn-outline-dark">See Your Impact</a>
         </div>
         <div class="hero-trust">
@@ -206,32 +205,32 @@ const hero = {
             <span class="tier-feature-what">Furniture & Flooring</span>
           </div>
           <p class="tier-feature-desc">Adaptive furniture or new accessible flooring: the structural pieces that change a child's daily life.</p>
-          <a href={once(500)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-primary">Give $500 →</a>
+          <a {...once(500)} target="_blank" rel="noopener noreferrer" class="btn btn-primary">Give $500 →</a>
         </div>
         <div class="tier-row">
           <div class="tier-item" data-reveal>
             <span class="tier-item-amount">$60</span>
             <strong class="tier-item-what">Paint & Supplies</strong>
             <p>Transforms a child's walls into their dream canvas. Paint, primer, and all materials included.</p>
-            <a href={once(60)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="tier-item-cta">Give $60 →</a>
+            <a {...once(60)} target="_blank" rel="noopener noreferrer" class="tier-item-cta">Give $60 →</a>
           </div>
           <div class="tier-item" data-reveal data-delay="1">
             <span class="tier-item-amount">$125</span>
             <strong class="tier-item-what">Bedding & Decor</strong>
             <p>New bedding, curtains, rugs, and wall art. The details that make a room feel like <em>home</em>.</p>
-            <a href={once(125)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="tier-item-cta">Give $125 →</a>
+            <a {...once(125)} target="_blank" rel="noopener noreferrer" class="tier-item-cta">Give $125 →</a>
           </div>
           <div class="tier-item" data-reveal data-delay="2">
             <span class="tier-item-amount">$1,000</span>
             <strong class="tier-item-what">Full Room Sponsor</strong>
             <p>Funds a complete room transformation, from design to demolition to the big reveal moment.</p>
-            <a href={once(1000)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="tier-item-cta">Give $1,000 →</a>
+            <a {...once(1000)} target="_blank" rel="noopener noreferrer" class="tier-item-cta">Give $1,000 →</a>
           </div>
           <div class="tier-item tier-item--custom" data-reveal data-delay="3">
             <span class="tier-item-amount">Any $</span>
             <strong class="tier-item-what">Your Amount</strong>
             <p>Every dollar has a purpose. Give whatever feels right. Your gift helps build rooms for kids.</p>
-            <a href={once(50)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="tier-item-cta">Choose Your Amount →</a>
+            <a {...once(50)} target="_blank" rel="noopener noreferrer" class="tier-item-cta">Choose Your Amount →</a>
           </div>
         </div>
       </div>
@@ -245,32 +244,32 @@ const hero = {
             <span class="tier-feature-what">Room Champion</span>
           </div>
           <p class="tier-feature-desc">$600/year funds adaptive furniture and flooring that transforms a child's daily life.</p>
-          <a href={monthly(50)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="btn btn-primary">Give $50/mo →</a>
+          <a {...monthly(50)} target="_blank" rel="noopener noreferrer" class="btn btn-primary">Give $50/mo →</a>
         </div>
         <div class="tier-row">
           <div class="tier-item">
             <span class="tier-item-amount">$10<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Sunshine Starter</strong>
             <p>Less than 35¢ a day provides essential supplies for room makeovers all year long.</p>
-            <a href={monthly(10)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="tier-item-cta">Give $10/mo →</a>
+            <a {...monthly(10)} target="_blank" rel="noopener noreferrer" class="tier-item-cta">Give $10/mo →</a>
           </div>
           <div class="tier-item">
             <span class="tier-item-amount">$25<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Dream Builder</strong>
             <p>$300/year is enough to furnish a child's entire dream bedroom with new bedding, decor, and rugs.</p>
-            <a href={monthly(25)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="tier-item-cta">Give $25/mo →</a>
+            <a {...monthly(25)} target="_blank" rel="noopener noreferrer" class="tier-item-cta">Give $25/mo →</a>
           </div>
           <div class="tier-item">
             <span class="tier-item-amount">$100<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Legacy Builder</strong>
             <p>At $1,200/year, you're directly sponsoring a complete room transformation for a child in need.</p>
-            <a href={monthly(100)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="tier-item-cta">Give $100/mo →</a>
+            <a {...monthly(100)} target="_blank" rel="noopener noreferrer" class="tier-item-cta">Give $100/mo →</a>
           </div>
           <div class="tier-item tier-item--custom">
             <span class="tier-item-amount">Any $</span>
             <strong class="tier-item-what">Your Amount</strong>
             <p>Set your own monthly amount. Your recurring gift helps build rooms for kids who need them most.</p>
-            <a href={monthly(50)} target="_blank" rel="noopener noreferrer" data-zeffy={MONTHLY_EMBED} class="tier-item-cta">Choose Your Amount →</a>
+            <a {...monthly(50)} target="_blank" rel="noopener noreferrer" class="tier-item-cta">Choose Your Amount →</a>
           </div>
         </div>
       </div>
@@ -306,9 +305,11 @@ const hero = {
         <svg class="donate-fact-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6" x2="6" y1="18" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="10" x2="10" y1="18" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="14" x2="14" y1="18" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="18" x2="18" y1="18" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polygon points="12 2 20 7 4 7" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         <div class="donate-fact-body">
           <strong class="donate-fact-title">Giving from a Donor-Advised Fund?</strong>
-          <p>Give {DAF_MIN_TEXT} or more on our donation form and choose <strong>Donor-advised fund</strong> at checkout. Your sponsor confirms the grant.</p>
-          <a class="donate-fact-link donate-fact-link--first" href={dafGiftUrl(siteSettings)} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED}>Give from your DAF →</a>
-          <p class="donate-fact-or">Or recommend a grant through Fidelity, Schwab, Vanguard, or any DAF sponsor:</p>
+          {daf ? (
+            <p>Give {DAF_MIN_TEXT} or more on our donation form and choose <strong>Donor-advised fund</strong> when you pay, or recommend a grant through Fidelity, Schwab, Vanguard, or any DAF sponsor:</p>
+          ) : (
+            <p>Recommend a grant through Fidelity, Schwab, Vanguard, or any DAF sponsor:</p>
+          )}
           <div class="donate-fact-row">
             <p class="donate-fact-detail">{legalName}</p>
             <CopyChip text={legalName} label="Copy legal name to clipboard" />
@@ -317,7 +318,10 @@ const hero = {
             <p class="donate-fact-detail">EIN {siteSettings.ein}</p>
             <CopyChip text={siteSettings.ein} label="Copy EIN to clipboard" />
           </div>
-          <a class="donate-fact-link" href="/ways-to-give/#tax-smart">DAF, stock & IRA details →</a>
+          <div class="donate-fact-links">
+            {daf && <a class="donate-fact-link" {...daf} target="_blank" rel="noopener noreferrer">Give from Your DAF →</a>}
+            <a class="donate-fact-link" href="/ways-to-give/#tax-smart">DAF, stock & IRA details →</a>
+          </div>
         </div>
       </div>
     </div>
@@ -418,7 +422,7 @@ const hero = {
       <h2 data-reveal>Every child deserves a room<br/>that feels like <em>home</em>.</h2>
       <p data-reveal data-delay="1">You can make that happen today.</p>
       <div class="donate-finale-ctas" data-reveal data-delay="2">
-        <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-dark btn-lg">Donate Now →</a>
+        <a {...once()} target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Donate Now →</a>
         <a href="/kids/" class="btn btn-outline-dark">Meet the Kids</a>
       </div>
       <p class="donate-finale-note" data-reveal data-delay="3">501(c)(3) · EIN {siteSettings.ein} · All donations tax-deductible</p>
@@ -429,7 +433,7 @@ const hero = {
   <div class="sticky-cta" id="sticky-cta" aria-hidden="true" inert>
     <div class="sticky-cta-inner">
       <span class="sticky-cta-text">Help build dreams</span>
-      <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-primary sticky-cta-btn">Donate Now</a>
+      <a {...once()} target="_blank" rel="noopener noreferrer" class="btn btn-primary sticky-cta-btn">Donate Now</a>
     </div>
   </div>
 
@@ -1016,9 +1020,16 @@ const hero = {
     gap: 10px;
   }
   .donate-fact-row + .donate-fact-row { margin-top: 6px; }
-  .donate-fact-link {
-    display: inline-block;
+  /* The card's links share one line, wrapping on narrow cards: Give from Your DAF first, then the details */
+  .donate-fact-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 20px;
     margin-top: 10px;
+  }
+  .donate-fact-link {
+    display: inline-flex;
+    align-items: center;
     font-size: 13px;
     font-weight: 700;
     color: var(--c-accent);
@@ -1026,11 +1037,11 @@ const hero = {
     transition: letter-spacing 0.3s ease;
   }
   .donate-fact-link:hover { letter-spacing: 0.02em; }
-  /* The DAF card's give link sits above the grant details, not at the card's foot */
-  .donate-fact-link--first { margin-top: 0; }
-  .donate-fact-body .donate-fact-or { margin-top: 14px; }
   @media (max-width: 700px) {
     .donate-check-bar-inner { grid-template-columns: 1fr; }
+    /* A finger-sized row each, the words in the middle of it, one under the other */
+    .donate-fact-links { flex-direction: column; align-items: flex-start; gap: 0; margin-top: 4px; }
+    .donate-fact-link { min-height: 44px; }
   }
 
   /* ══════════════════════════════════════════

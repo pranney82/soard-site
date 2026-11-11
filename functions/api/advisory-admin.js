@@ -7,13 +7,14 @@
  *
  * GET                                  → everything it shows
  * GET ?zeffyForms=1                    → { ok, forms }  the forms in SOARD's Zeffy, for its Zeffy link dropdowns (./_zeffy-forms.js)
+ * GET ?zeffyLinks=1                    → { ok, campaignUrl, campaignId, hosted }  for Admin → Site Config → Zeffy
  * POST { action, ... }                 see the cases below
  * POST multipart (file + docId)        a paper's file (advisory_docs); (file + meetingId) a meeting's (./_advisory-meetings.js)
  */
 
 import {
   whoIs, getSettings, saveSettings, listAsks, saveAsk, putAskOut, closeAsk, deleteAsk, answersTo, listWishes, saveWish, deleteWish, listIntros, setIntroStatus,
-  listHosted, setHosted, allTerms, setTerm, listDocs, saveDoc, deleteDoc, signatures, missingEmails, isId, webLink, DOC_KINDS, INTRO_STATUSES, INTRO_HELP, HOSTED_STATUSES, GROUP_ADDRESS, SHELVES } from './_advisory.js';
+  listHosted, setHosted, setHostedLink, allTerms, setTerm, listDocs, saveDoc, deleteDoc, signatures, missingEmails, isId, webLink, DOC_KINDS, INTRO_STATUSES, INTRO_HELP, HOSTED_STATUSES, GROUP_ADDRESS, SHELVES } from './_advisory.js';
 import { activeAdvisors, peopleRows, readState } from './_board-roles.js';
 import { putFile, deleteFile, boardFileProblem } from './_board.js';
 import { logAudit } from './_audit.js';
@@ -154,7 +155,8 @@ export async function onRequestPost(context) {
           patch.lead = person.slug;
         }
         // The group's campaign, as Zeffy has it. An address Zeffy lists decides the ID, so a new address never keeps an old
-        // campaign's ID; an ID typed for an address Zeffy doesn't list is checked with Zeffy; a cleared address unlinks.
+        // campaign's ID; an ID sent for an address Zeffy doesn't list is checked with Zeffy; a cleared address unlinks.
+        // (Admin sends the campaign picked from Zeffy's list, link and ID together.)
         // With Zeffy not answering nothing changes; with Zeffy not connected the address waits for its ID, which the
         // money's heartbeat fills in once it is (maybeReadMoney). A page that sends only the address gets it looked up
         const urlMoved = 'campaignUrl' in patch && patch.campaignUrl !== settings.campaignUrl;
@@ -171,15 +173,15 @@ export async function onRequestPost(context) {
             const byUrl = nextUrl ? await campaignFromUrl(env, webLink(nextUrl)) : '';
             if (byUrl === null && env.ZEFFY_API_KEY) return fail(DOWN, 503);
             if (byUrl) {
-              if (nextId && nextId !== byUrl) return fail('That ID and that address are two different campaigns in Zeffy. Pick the campaign from the list, or empty the ID box.');
+              if (nextId && nextId !== byUrl) return fail('That link and that ID are two different campaigns in Zeffy. Pick the campaign again.');
               patch.campaignId = byUrl;
             } else if (byUrl === null) patch.campaignId = nextId;
             else if (nextId) {
               const there = await campaignExists(env, nextId);
               if (there === null && env.ZEFFY_API_KEY) return fail(DOWN, 503);
-              if (there === false) return fail('That ID isn’t a campaign in SOARD’s Zeffy. Check it and try again.');
+              if (there === false) return fail('That campaign isn’t in SOARD’s Zeffy any more. Pick another.');
               patch.campaignId = nextId;
-            } else if (nextUrl) return fail('That address isn’t a campaign in SOARD’s Zeffy. Check the link and try again.');
+            } else if (nextUrl) return fail('That link isn’t a campaign in SOARD’s Zeffy. Pick the campaign from the list.');
             else patch.campaignId = '';
           }
         }
@@ -216,6 +218,12 @@ export async function onRequestPost(context) {
         const sent = changed && settings.emails ? await sendHostUpdate(env, hosted) : null;
         await audit(context, by, 'updated', `Advisory fundraiser ${hosted.status}: ${hosted.title}`);
         return Response.json({ ok: true, hosted, sent });
+      }
+      case 'hosted-link': {
+        // Only its Zeffy page (Site Config → Zeffy): no status change, so no email to the member who hosts it
+        const hosted = await setHostedLink(env.DB, id, String(body.giveUrl || ''), { by });
+        await audit(context, by, 'updated', `Advisory fundraiser Zeffy page: ${hosted.title}`);
+        return Response.json({ ok: true, hosted });
       }
       case 'set-term': return Response.json({ ok: true, term: await setTerm(env.DB, String(body.slug || ''), body, settings) });
       case 'save-doc': {

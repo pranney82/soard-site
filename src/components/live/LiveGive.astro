@@ -9,10 +9,10 @@
  * keeps playing either way. Behaviour: src/utils/live-give.ts.
  */
 import siteSettings from '../../content/site/settings.json';
-import { siteForm, embedOf, withParam } from '../../../public/admin/zeffy-links.js';
+import { formLinks, requireSiteForm, withParam } from '../../../public/admin/zeffy-links.js';
 
-// The form: Admin → Site Config → Zeffy ("Fund the next room" on /live/)
-const ZEFFY_EMBED = embedOf(siteForm(siteSettings, 'liveUrl'));
+// The form: Admin → Site Config → Zeffy ("Fund the next room" on /live/); without one the build stops and says so
+const ZEFFY_EMBED = formLinks(requireSiteForm(siteSettings, 'liveUrl'))!.embed;
 ---
 
 <div class="give" data-give data-src={withParam(ZEFFY_EMBED, 'utm_source', 'live-reveal')} role="dialog" aria-modal="false" aria-labelledby="give-title" hidden>

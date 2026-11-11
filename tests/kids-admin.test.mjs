@@ -122,6 +122,12 @@ test('issues: what changes what visitors see is a warning; the rest is quiet', (
   assert.deepEqual(ids(kid({ videoUrl: null })), ['quiet:no-video']);
   assert.ok(ids(kid({ status: 'needs-funding', fundraisingUrl: null })).includes('warn:no-fund-link'));
   assert.ok(ids(kid({ status: 'in-progress', fundraisingUrl: null })).includes('quiet:no-fund-link'));
+  // A link that isn't a Zeffy form: said here as Profile Health says it (it doesn't count it), never as "no link"
+  const gofund = ids(kid({ status: 'needs-funding', fundraisingUrl: 'https://www.gofundme.com/f/room' }));
+  assert.ok(gofund.includes('warn:fund-not-zeffy') && !gofund.includes('warn:no-fund-link'));
+  assert.ok(ids(kid({ status: 'in-progress', fundraisingUrl: 'https://www.gofundme.com/f/room' })).includes('quiet:fund-not-zeffy'));
+  assert.ok(!ids(kid({ status: 'in-progress', fundraisingUrl: 'https://www.zeffy.com/en-US/donation-form/help-build-a-room' })).some((x) => /fund/.test(x)), 'a Zeffy form is all it needs');
+  assert.ok(!ids(kid({ status: 'completed', fundraisingUrl: 'https://www.gofundme.com/f/room' })).some((x) => /fund/.test(x)), 'a finished room isn’t asked about');
   assert.ok(ids(kid({ photos: [{ url: img('a'), alt: 'x' }] })).includes('warn:few-photos'));
   assert.ok(ids(kid({ heroSummary: 'One. Two. Three.' })).includes('warn:hook-cut'));
   assert.ok(ids(kid({ photos: [{ url: img('a') }, { url: img('b') }, { url: img('c'), alt: 'ok' }], streamVideoId: 'x' })).includes('quiet:alt'));
