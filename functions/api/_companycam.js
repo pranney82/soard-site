@@ -152,7 +152,7 @@ export async function projectVideos(env, projectId, { max = 500, fetchImpl = fet
 /**
  * A photo's or video's comments, oldest first: [{ content, creator_name, created_at, … }].
  * Asked of v1, then of v2 (which documents them for photos); [] when neither
- * keeps comments for it, `null` when it's gone.
+ * keeps comments for it or v2 won't answer this key.
  */
 export async function itemComments(env, kind, itemId, { fetchImpl = fetch } = {}) {
   const path = `/${kind === 'video' ? 'videos' : 'photos'}/${id(itemId)}/comments`;
@@ -163,7 +163,8 @@ export async function itemComments(env, kind, itemId, { fetchImpl = fetch } = {}
     if (!(e instanceof CompanyCamError) || e.status !== 404) throw e;
     const token = String(env?.COMPANYCAM_TOKEN || '').trim();
     const res = await fetchImpl(`${CC_V2}${path}?per_page=${PAGE}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (res.status === 404) return [];
+    // v2 refuses the site's key (seen Nov 11 2026): a video's comments aren't to be had here, so it has none to carry
+    if ([401, 403, 404].includes(res.status)) return [];
     if (!res.ok) throw new CompanyCamError(`CompanyCam returned ${res.status} listing comments`, { status: res.status, retryAfter: Number(res.headers.get('Retry-After')) || null });
     const body = await res.json().catch(() => null);
     list = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : null;
