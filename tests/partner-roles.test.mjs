@@ -256,10 +256,13 @@ test('staff’s say for someone the site can’t place: Trade Partner, Design Pa
 test('reveal and Demo Day invites: level roles and Trade Partners are partners on the job; the sponsor is whoever is from the kid’s sponsor', () => {
   const ace = (role, name, email, company = null) => ({ membership: { isInternal: false, role: { name: role }, account: company ? { name: company } : null, user: { name, emailAddress: email } } });
   const job = { aces: { nodes: [ace('Champion', 'Ann', 'ann@acmefdn.example', 'Acme Foundation'), ace('Trade Partner', 'Tia', 'tia@tko.example', 'TKO Plumbing'),
-    ace('Vendor', 'Ron', 'ron@randallbrothers.example', 'Randall Bros'), ace('Monetary Sponsor', 'Mo', 'mo@fund.example'), ace('Photographer', 'Pia', 'pia@acmefdn.example')] } };
+    ace('Vendor', 'Ron', 'ron@randallbrothers.example', 'Randall Bros'), ace('Monetary Sponsor', 'Mo', 'mo@fund.example'), ace('Monetary Sponsor', 'Sal', 'sal@acmefdn.example'),
+    ace('Photographer', 'Pia', 'pia@acmefdn.example')] } };
   const g = guestGroups(job, [], []);
-  assert.deepEqual(g.confirmed.map((p) => [p.name, p.kind]), [['Ann', 'partner'], ['Tia', 'trade partner'], ['Ron', 'vendor'], ['Mo', 'sponsor'], ['Pia', 'photographer']]);
+  assert.deepEqual(g.confirmed.map((p) => [p.name, p.kind]), [['Ann', 'partner'], ['Tia', 'trade partner'], ['Ron', 'vendor'], ['Mo', 'sponsor'], ['Sal', 'sponsor'], ['Pia', 'photographer']]);
   const isSponsor = (p, slug) => slug === 'isla' && /acmefdn/.test(p.email);
-  assert.deepEqual(sponsorGuests(g, 'isla', isSponsor).map((p) => p.name), ['Ann', 'Mo'], 'the sponsor’s Champion and JobTread’s own Monetary Sponsor; never the photographer');
-  assert.deepEqual(sponsorGuests(g, null, isSponsor).map((p) => p.name), ['Mo']);
+  // The company makes the sponsor, never the old Monetary Sponsor role on its own (room credits, Nov 10 2026)
+  assert.deepEqual(sponsorGuests(g, 'isla', isSponsor).map((p) => p.name), ['Ann', 'Sal'], 'the sponsor’s Champion, and its person still on the old role; never someone else on that role, or the photographer');
+  assert.deepEqual(sponsorGuests(g, null, isSponsor).map((p) => p.name), [], 'no kid, no sponsor');
+  assert.deepEqual(sponsorGuests(g, 'isla', null).map((p) => p.name), [], 'no sponsors read, nobody');
 });

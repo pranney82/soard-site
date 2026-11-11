@@ -26,6 +26,7 @@
  * reveal_sync keeps what was last written, for the record.
  */
 
+import { fieldValues } from './_jt-fields.js';
 import {
   SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
   easternParts, easternToUtcIso, longDay, clockTime, pave, isSiteEvent,
@@ -62,7 +63,6 @@ async function ensureSchema(DB) {
 }
 
 const hhmm = (t) => (t && t !== 'null' ? String(t).slice(0, 5) : null);
-const fieldValues = (nodes) => Object.fromEntries((nodes || []).map(v => [v.customField?.id, v.value]));
 const isYes = (v) => String(v || '').trim().toLowerCase().startsWith('yes');
 
 /** How a side's value is remembered, so its echo can be recognised */

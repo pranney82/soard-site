@@ -216,14 +216,24 @@ function makeApi() {
       st.waiting.add(`${TABLE[at.dir]}:${at.slug}`);
       return json({ success: true, sha: bump(at.dir, at.slug) });
     }
-    if (p === '/api/delete-content') {
-      const at = pathOf(body().path);
+    // Delete, as delete-content does it; Merge into's last step deletes the old company the same way, server side
+    const deleteAt = (at) => {
       const c = at && st[at.dir]?.[at.slug];
-      if (!c) return json({ success: false, error: 'not found' }, 404);
+      if (!c) return false;
       record(at.dir, at.slug, null, c, 'delete');
       st.deleted.push({ dir: at.dir, slug: at.slug, data: structuredClone(c), id: st.versions[key(at.dir, at.slug)].at(-1).id });
       delete st[at.dir][at.slug];
-      return json({ success: true });
+      return true;
+    };
+    if (p === '/api/delete-content') {
+      return deleteAt(pathOf(body().path)) ? json({ success: true }) : json({ success: false, error: 'not found' }, 404);
+    }
+    if (p === '/api/room-credits-admin' && req.method() === 'POST' && body().merged) {
+      const m = body().merged;
+      if (!st.partners[m.from] || !st.partners[m.into]) return json({ success: false, error: 'That company isn’t in Partners any more. Reload and try again.' }, 409);
+      if (m.check) return json({ success: true, ok: true });
+      deleteAt(pathOf(`src/content/partners/${m.from}.json`));
+      return json({ success: true, rooms: [] });
     }
     if (p === '/api/reorder-content') {
       const b = body();
@@ -1146,7 +1156,7 @@ try {
     ok(kyleLogos.some((l) => l.url === mcLogo && l.name === 'Means & Carney Interiors') && !kyleLogos.some((l) => l.url === amLogo) && kyleLogos.some((l) => l.url === akLogo),
       'Kyle’s page shows Means & Carney now, named, and still the Atlanta Kitchen logo');
     const swapAt = api.st.calls.findIndex((c) => c.path === '/api/partners-batch' && c.body?.swapLogo?.from === amLogo);
-    const delAt = api.st.calls.findIndex((c, i) => i > swapAt && c.path === '/api/delete-content' && /angela-means-design/.test(JSON.stringify(c.body || c.query || '')));
+    const delAt = api.st.calls.findIndex((c, i) => i > swapAt && c.path === '/api/room-credits-admin' && c.body?.merged?.from === 'angela-means-design' && !c.body.merged.check);
     ok(!api.st.partners['angela-means-design'] && swapAt >= 0 && delAt > swapAt && api.st.partners['means-and-carney-interiors'].logoFolders?.includes('angela-means-design'),
       'the kid pages switch before Angela Means Design is deleted; its folder counts for Means & Carney');
     ok(/1 kid page now shows its logo/.test(await page.$$eval('.toast', (t) => t.map((x) => x.textContent).join(' | ')).catch(() => '')), 'the toast says how many kid pages switched');

@@ -253,6 +253,19 @@ export function vendorAccessFacts(state) {
   };
 }
 
+/**
+ * Room credits ↔ JobTread (room_credit_state 'last', _room-credits.js): times, counts, and why a run stopped as a code
+ * ('designed-gone', 'designed-remade', 'sponsor-field', else 'error'), never its error text
+ */
+export function roomCreditsFacts(last) {
+  const d = last && typeof last === 'object' ? last : {};
+  return {
+    lastRunAt: d.at || null, stopped: d.error ? d.code || 'error' : null,
+    problems: Array.isArray(d.problems) ? d.problems.length : 0, held: d.held ?? 0, unknown: d.unknown ?? 0, owed: d.owed ?? 0,
+    changed: d.changed ?? 0, put: d.put ?? 0, more: !!d.more,
+  };
+}
+
 /** Gift alerts in Slack (site_config "zeffy-alerts", _zeffy.js); failing: posts Slack hasn't taken yet. Times and counts only */
 export function zeffyFacts(cfg, failing = null) {
   const d = cfg?.data || {};
@@ -447,10 +460,12 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
   // The automatic design import: its claim row says when it last ran (_reveal-design-auto.js)
   const designRunAt = await DB.prepare("SELECT updated_at FROM site_config WHERE key = 'reveal-design-auto-next'").first('updated_at').catch(() => null);
   // The tables appear with the first partner logo sweep; until then these settle to an error
-  const [logoState, logoWaiting, vendorState] = await Promise.all([
+  const [logoState, logoWaiting, vendorState, creditsLast] = await Promise.all([
     settle(async () => JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'state'").first('value')) || '{}')),
     settle(() => DB.prepare("SELECT count(DISTINCT company) AS n FROM kid_partner_logos WHERE state = 'waiting'").first('n')),
     settle(async () => JSON.parse((await DB.prepare("SELECT value FROM vendor_access_state WHERE key = 'state'").first('value')) || '{}')),
+    // The table appears with the first credits run. Wrapped: a run that stopped has an error of its own
+    settle(async () => ({ last: JSON.parse((await DB.prepare("SELECT value FROM room_credit_state WHERE key = 'last'").first('value')) || '{}') })),
   ]);
   // What the last staff alert text did, and each number's delivery report (counts and Twilio's words only)
   const alertTexts = await readAlertTexts(DB).catch(() => null);
@@ -476,6 +491,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
     kidLogos: kidLogoFacts(ok(logoState), typeof logoWaiting === 'number' ? logoWaiting : null),
     vendorAccess: vendorAccessFacts(ok(vendorState)),
+    roomCredits: roomCreditsFacts(ok(creditsLast)?.last),
     zeffy: zeffyFacts(ok(zeffyCfg), ok(zeffyFailing)),
     // Resend's delivery reports: registered, waiting, or the key can only send (never the secret)
     emailTracking: ok(await settle(() => trackingState(env))),

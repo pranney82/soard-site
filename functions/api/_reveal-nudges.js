@@ -23,6 +23,7 @@
  * like the invite safety sweep. Off until enabled in Reveals → Invites.
  */
 
+import { fieldValues } from './_jt-fields.js';
 import {
   SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, todayEastern, longDay, daysBetween, easternParts, pave,
 } from './_reveals.js';
@@ -70,7 +71,6 @@ export async function writeNudgeConfig(DB, patch) {
   return next;
 }
 
-const fieldValues = (nodes) => Object.fromEntries((nodes || []).map(v => [v.customField?.id, v.value]));
 const isYes = (v) => String(v || '').trim().toLowerCase().startsWith('yes');
 const hhmm = (t) => (t && t !== 'null' ? String(t).slice(0, 5) : null);
 const monthDay = (date) => new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });

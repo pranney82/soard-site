@@ -172,7 +172,12 @@ export async function loadAllKids(DB) {
 /** Every community project, drafts included, in the shape matchProject needs (kind 'community') */
 export async function loadAllProjects(DB) {
   let rows = [];
-  try { rows = (await DB.prepare('SELECT slug, name, data FROM community').all()).results || []; } catch { return []; }
+  try { rows = (await DB.prepare('SELECT slug, name, data FROM community').all()).results || []; } catch (e) {
+    // No table yet: no projects. Any other failed read fails the caller, as loadAllKids does: read as "no projects",
+    // a sweep would take every project for gone (credits let go, jobs unlinked)
+    if (/no such table/i.test(String(e?.message || e))) return [];
+    throw e;
+  }
   return rows.map((row) => {
     let data = {};
     try { data = JSON.parse(row.data || '{}'); } catch { /* use the columns */ }
@@ -215,17 +220,29 @@ async function writeState(DB, patch) {
 }
 
 /** Saved the way an admin save is: D1, the GitHub copy, the audit log, History. collection: 'kids' | 'community' */
-export async function saveRecord(env, collection, slug, before, after, message, now) {
+/**
+ * expect: the record's data as it was read. Then it's written only if it's still exactly that (a person's save
+ * or another sync since then wins, and nothing here overwrites it): returns null when it wasn't, to read again
+ */
+// by: who made the change, for the audit log and History (a sync by default; a person's change made through a sync's
+// code, a room credit picked on a kid's card, says who)
+export async function saveRecord(env, collection, slug, before, after, message, now, { expect = null, by = SYNC_USER } = {}) {
   const { DB } = env;
   const json = JSON.stringify(after);
   const [cols, vals] = EXTRACTORS[collection](after);
-  const all = ['"slug"', '"data"', '"updated_at"', ...cols];
-  await DB.prepare(`INSERT OR REPLACE INTO ${collection} (${all.join(', ')}) VALUES (${all.map(() => '?').join(', ')})`).bind(slug, json, now, ...vals).run();
+  if (expect != null) {
+    const sets = ['"data" = ?', '"updated_at" = ?', ...cols.map((c) => `${c} = ?`)];
+    const r = await DB.prepare(`UPDATE ${collection} SET ${sets.join(', ')} WHERE slug = ? AND data = ?`).bind(json, now, ...vals, slug, expect).run();
+    if (!r?.meta?.changes) return null;
+  } else {
+    const all = ['"slug"', '"data"', '"updated_at"', ...cols];
+    await DB.prepare(`INSERT OR REPLACE INTO ${collection} (${all.join(', ')}) VALUES (${all.map(() => '?').join(', ')})`).bind(slug, json, now, ...vals).run();
+  }
   const path = `src/content/${collection}/${slug}.json`;
   let gitStatus = 'ok';
   try { await commitFile(env, path, JSON.stringify(after, null, 2) + '\n', message); } catch { gitStatus = 'failed'; }
-  await logAudit(DB, { userEmail: SYNC_USER, action: after.publishStatus === 'draft' ? 'drafted' : 'updated', entityType: collection, entitySlug: slug, entityName: after.name, changes: diffJson(before, after), path, gitStatus });
-  try { await recordVersion(DB, { collection, slug, data: after, previous: before, userEmail: SYNC_USER, now }); } catch { /* history is a nicety */ }
+  await logAudit(DB, { userEmail: by, action: after.publishStatus === 'draft' ? 'drafted' : 'updated', entityType: collection, entitySlug: slug, entityName: after.name, changes: diffJson(before, after), path, gitStatus });
+  try { await recordVersion(DB, { collection, slug, data: after, previous: before, userEmail: by, now }); } catch { /* history is a nicety */ }
   return generateSha(json);
 }
 
@@ -325,10 +342,17 @@ export async function syncKidStatuses(env, { jobId = null, fetchImpl = fetch, no
       const project = isProject(rec);
       const facts = jobFacts(job);
       if (facts.status !== 'Denied') delete alerted[key];
-      const plan = project ? planProject(rec.data, facts) : planKid(rec.data, facts);
+      // The record as it is now (JobTread was read since the list was), written only if it's still that: a person's
+      // Save or a credit landing in between is never written over; this job is looked at again next run
+      const table = project ? 'community' : 'kids';
+      const raw = (await env.DB.prepare(`SELECT data FROM ${table} WHERE slug = ?`).bind(rec.slug).first())?.data;
+      if (!raw) continue;
+      let current;
+      try { current = JSON.parse(raw); } catch { continue; }
+      const plan = project ? planProject(current, facts) : planKid(current, facts);
       if (!plan) continue;
-      const change = describe(rec.data, plan.next, facts, project ? PROJECT_WORDS : STATUS_WORDS);
-      await saveRecord(env, project ? 'community' : 'kids', rec.slug, rec.data, plan.next, `${project ? 'Community project' : 'Kid'} status from JobTread: ${rec.name} ${change}`, iso);
+      const change = describe(current, plan.next, facts, project ? PROJECT_WORDS : STATUS_WORDS);
+      if (!(await saveRecord(env, table, rec.slug, current, plan.next, `${project ? 'Community project' : 'Kid'} status from JobTread: ${rec.name} ${change}`, iso, { expect: raw }))) continue;
       out.push({ slug: rec.slug, name: rec.name, change, ...(project ? { kind: 'community' } : {}) });
       if (plan.hide === 'denied' && !alerted[key]) { await alertDenied(env, { kid: rec, jobId: job.id, project }); alerted[key] = iso; }
     }

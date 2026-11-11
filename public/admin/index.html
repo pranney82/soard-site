@@ -3261,6 +3261,13 @@
     .kd-sponsor__suggest p { margin: 0; }
     .kd-sponsor__suggest li.kd-sponsor__suggest-note { padding: 0; border: none; background: none; color: var(--color-text-secondary); }
     .kd-sponsor__jtline .kd-sponsor__mark { margin-right: 0.3rem; }
+    /* Room credits (Designed by, Monetary sponsor): a question JobTread raised, and a credited company that isn't on the makeover */
+    .kd-credit__ask { display: grid; gap: 0.5rem; justify-items: start; margin-top: 0.75rem; padding: 0.65rem 0.75rem; border: 1px solid var(--tone-warn-line-strong); border-radius: 10px; background: var(--tone-warn-surface); font-size: var(--fs-xs); line-height: 1.45; }
+    .kd-credit__ask p { margin: 0; }
+    .kd-credit__row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; width: 100%; min-width: 0; }
+    .kd-credit__same { flex: 1 1 12rem; min-width: 0; max-width: 100%; }
+    .kd-credit__off { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin: 0.45rem 0 0; font-size: var(--fs-xs); line-height: 1.45; color: var(--color-text-secondary); }
+    .kd-credit__off > span:not(.kd-sponsor__mark) { flex: 1 1 12rem; min-width: 0; }
     .kd-pledge { display: grid; gap: 0.35rem; padding-top: 0.55rem; border-top: 1px solid var(--color-border); }
     .kd-pledge__row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
     .kd-pledge__field { display: grid; gap: 0.2rem; font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); }
@@ -4450,6 +4457,15 @@
     .pt-access__find { margin-top: 0.5rem; max-width: 18rem; }
     .pt-access__matched .form-hint { margin: 0.5rem 0 0; }
     .pt-access__group { margin: 1rem 0 0; font-size: var(--fs-sm); font-weight: 600; }
+    /* Designed By and Monetary Sponsor: the kid card's own question boxes, a page's name above */
+    .modal .pt-access__credits .form-hint { margin: 0 0 0.6rem; }
+    .pt-credit-asks { display: grid; gap: 0.75rem; list-style: none; margin: 0; padding: 0; }
+    .pt-credit-asks li { min-width: 0; }
+    .pt-credit-asks .kd-credit__ask { margin-top: 0; font-size: var(--fs-sm); }
+    .modal .pt-credit-asks__who { margin: 0 0 0.35rem; font-size: var(--fs-sm); font-weight: 600; }
+    .pt-credit-asks a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    .pt-credit-asks__who a + a, .pt-credit-asks__who a[target] { font-weight: 400; }
+    .pt-access__problems { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.5; }
     .pt-access__group small { margin-left: 0.2rem; font-size: var(--fs-xs); font-weight: 400; }
     .modal .pt-access__group-hint { margin: 0.1rem 0 0; font-size: var(--fs-xs); color: var(--color-text-secondary); }
     /* The longest partner name in "Which partner?" never widens the row */
@@ -12151,59 +12167,75 @@
     const kdPartnerNames = new Map();
     const kdEmailOk = (e) => !String(e || '').trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e).trim());
     const kdNames = (list) => (list.length > 2 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list.join(' and '));
-    /** Sponsor logos first in the Partners chapter, in the sponsors' order; a logo already there moves up instead of doubling */
-    function kdSponsorLogosFirst(logos, sponsors) {
-      const lead = [];
-      for (const p of sponsors) {
-        const there = logos.find((l) => !lead.includes(l) && (l.url === p.logo || (PS.nameKey(l.name) && PS.nameKey(l.name) === PS.nameKey(p.name))));
-        if (there) lead.push(there);
-        else if (p.logo) lead.push({ url: p.logo, name: p.name, _key: p.logo });
-      }
-      return [...lead, ...logos.filter((l) => !lead.includes(l))];
-    }
 
-    /** The kid's sponsors against JobTread (as last saved), contacts by sponsor, and the sync after a save */
-    function useKidSponsor(slug, jobId, chosen) {
-      const [view, setView] = useState(null); // { sponsors, jobtread, jobtreadError }
+    /**
+     * A room's credits (who designed it, who paid for it) as /api/room-credits-admin has them, with the sponsors'
+     * contacts and pledges. A credit is changed here at once, never by the page's Save (functions/api/_room-credits.js)
+     */
+    const KD_CREDITS_API = '/api/room-credits-admin';
+    const kdCreditsGet = (q) => fetch(`${KD_CREDITS_API}?${q}`, { cache: 'no-store' }).then((r) => apiJson(r, KD_CREDITS_API)).catch((e) => ({ success: false, error: e.message }));
+    // A change made here waits for Publish like any save: the Publish bar hears of it at once
+    const kdCreditsPost = (body) => fetch(KD_CREDITS_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then((r) => apiJson(r, KD_CREDITS_API))
+      .then((r) => { if (r?.success && !body?.merged?.check) window.dispatchEvent(new CustomEvent('soard-content-changed')); return r; })
+      .catch((e) => ({ success: false, error: e.message }));
+    function useRoomCredits(record, credited) {
+      const [room, setRoom] = useState(null); // { kinds: { designed, sponsored } }
       const [error, setError] = useState(null);
       const [contacts, setContacts] = useState({}); // partner slug → people
-      const [syncing, setSyncing] = useState(false);
-      // What each sponsor pledged toward this kid's makeover and what's come in (private, D1 only: ./_sponsor-pledges.js)
       const [pledges, setPledges] = useState({});
+      const [busy, setBusy] = useState(null); // 'designed' | 'sponsored' while JobTread is written
+      const slug = record && !record.startsWith('community/') ? record : null;
       const load = useCallback(async () => {
-        if (!slug) return;
-        const r = await kdSponsorGet(`kid=${encodeURIComponent(slug)}${jobId ? `&job=${encodeURIComponent(jobId)}` : ''}`);
+        if (!record) return;
+        const [r, p] = await Promise.all([kdCreditsGet(`record=${encodeURIComponent(record)}`), slug ? kdSponsorGet(`kid=${encodeURIComponent(slug)}`) : Promise.resolve({ success: true, pledges: {} })]);
         if (!r.success) { setError(r.error); return; }
         setError(null);
-        setView(r);
-        setPledges(r.pledges || {});
-        setContacts((c) => ({ ...c, ...Object.fromEntries((r.sponsors || []).map((s) => [s.slug, s.contacts || []])) }));
-      }, [slug, jobId]);
+        setRoom(r.room);
+        if (p.success) setPledges(p.pledges || {});
+      }, [record, slug]);
       useEffect(() => { load(); }, [load]);
-      // A sponsor picked but not saved yet: its contacts, for the card
-      const want = chosen.filter((s) => !(s in contacts)).join(',');
+      // The sponsors' people, for the card
+      const want = credited.filter((s) => !(s in contacts)).join(',');
       useEffect(() => {
         if (!want) return;
         kdSponsorGet(`partners=${want.split(',').map(encodeURIComponent).join(',')}`).then((r) => {
           if (r.success) setContacts((c) => ({ ...c, ...Object.fromEntries(want.split(',').map((s) => [s, r.contacts?.[s] || []])) }));
         });
       }, [want]);
-      const sync = async (previous) => {
-        setSyncing(true);
-        const r = await kdSponsorPost({ sync: { kid: slug, job: jobId, previous } });
-        setSyncing(false);
-        if (r.success) {
-          setView(r);
-          setContacts((c) => ({ ...c, ...Object.fromEntries((r.sponsors || []).map((s) => [s.slug, s.contacts || []])) }));
-        }
-        return r;
+      // One request at a time for the page (both cards): each is built when it's sent, with the page's version as it
+      // is then, so a second pick right after the first carries the first one's new version, not an older one
+      const chain = useRef(Promise.resolve());
+      const post = (kind, body) => {
+        const run = chain.current.then(async () => {
+          setBusy(kind);
+          const r = await kdCreditsPost(typeof body === 'function' ? body() : body);
+          setBusy(null);
+          if (r.success && r.view?.room) setRoom(r.view.room);
+          else if (r.success) load();
+          return r;
+        });
+        chain.current = run.catch(() => {});
+        return run;
       };
       const savePledge = async (partner, amounts) => {
         const r = await kdSponsorPost({ pledge: { kid: slug, partner, ...amounts } });
         if (r.success) setPledges((all) => Object.fromEntries([...Object.entries(all).filter(([k]) => k !== partner), ...(r.pledge ? [[partner, r.pledge]] : [])]));
         return r;
       };
-      return { view, error, contacts, setContacts, syncing, sync, reload: load, pledges, savePledge };
+      return { room, error, contacts, setContacts, pledges, savePledge, busy, post, reload: load };
+    }
+    /** What putting a company on the room did, in words */
+    function kdCreditPutSaid(name, put) {
+      if (!put) return '';
+      if (put.off) return `${name} was taken off this makeover earlier, so they weren’t put back. Add them back here if they should be.`;
+      if (put.retry) return `Putting ${name} on the makeover didn’t finish (JobTread didn’t answer). It’s tried again in a few minutes.`;
+      const bits = [];
+      if (put.logo) bits.push('their logo is on the page');
+      if (put.people?.length) bits.push(`${kdNames(put.people)} ${put.people.length === 1 ? 'is' : 'are'} on the JobTread job`);
+      if (put.waiting) bits.push('nobody of theirs has an email to add to the job yet');
+      const line = bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits[bits.length - 1]}` : bits[0] || '';
+      return line ? `${line[0].toUpperCase()}${line.slice(1)}.` : '';
     }
 
     /** "$25,000" from 25000; '' from nothing */
@@ -12246,18 +12278,6 @@
           : `${toCome ? `${toCome} ` : ''}Staff and the board page see this; the website never does.`}</p>
       </div>`;
     }
-    /** What a sync did, in one line for a toast */
-    function kdSponsorSyncSaid(r) {
-      const parts = [];
-      const added = (r.granted || []).filter((g) => !g.kept);
-      if (added.length) parts.push(`${kdNames(added.map((g) => g.name))} added to the job as ${added.length === 1 ? 'a Sponsor' : 'Sponsors'}`);
-      for (const g of (r.granted || []).filter((x) => x.kept)) parts.push(`${g.name} added, keeping their ${g.role || 'staff'} role`);
-      if (r.removed?.length) parts.push(`${kdNames(r.removed.map((x) => x.name))} taken off the job`);
-      for (const f of r.filled || []) parts.push(`${f.name}’s contact taken from JobTread`);
-      if (r.wrote) parts.push(r.wrote.to ? `Monetary Sponsor now says “${r.wrote.to}”` : 'Monetary Sponsor cleared');
-      return parts.length ? `JobTread: ${parts.join('; ')}.` : '';
-    }
-
     /** Name, email and phone rows for the people at a sponsor */
     function KdPeopleFields({ people, onChange, idPrefix, touched = false }) {
       const rows = people.length ? people : [{ name: '', email: '', phone: '' }];
@@ -12320,24 +12340,72 @@
     }
 
     /**
-     * First in the side panel: who pays for the room. Awaiting funding, it's
-     * the thing to settle, so it says so. Shows what JobTread has once the
-     * profile is saved, and offers what JobTread names when nothing is picked.
+     * Who designed the room, or who paid for it: one card for each, the same component (Peter, Nov 10 2026). Picked
+     * from Partners here or in JobTread's Designed By / Monetary Sponsor dropdowns, one record either way. A pick of
+     * a company that isn't on the makeover puts it on, once; taking a credit off is the credit only.
      */
-    // used: partner slug → how many other kids it sponsors (those come first)
-    function KdSponsorCard({ name, status, chosen, saved, partners, used = new Map(), contacts, view, viewError, slug, jobId, syncing, onPick, onRemove, onAddNew, onContacts, pledges = {}, onPledge = null }) {
+    const KD_CREDIT_KINDS = {
+      designed: { id: 'kd-sec-designer', h: 'Designed by', field: 'Designed By', category: 'design', what: 'design partner', search: 'Find the design partner in Partners',
+        ask: 'Who designed the room. Pick them from Partners, or add a new design partner.', add: 'Add another design partner', addNew: 'Add a new design partner' },
+      sponsored: { id: 'kd-sec-sponsor', h: 'Monetary sponsor', field: 'Monetary Sponsor', category: 'funding', what: 'sponsor', search: 'Find the sponsor in Partners',
+        ask: 'Who paid for the room. Pick them from Partners, or add a new sponsor.', add: 'Add another sponsor', addNew: 'Add a new sponsor' },
+    };
+    /**
+     * Launch's question for one room: JobTread's field names companies the page didn't have, and a person says which
+     * is right. The kid's card and Partners → JobTread access both show it with this. page: whose page, in words
+     */
+    function KdCreditHeld({ kind, held, working, onSettle, page = 'this page' }) {
+      const K = KD_CREDIT_KINDS[kind];
+      return html`<div class="kd-credit__ask" role="group" aria-label=${`JobTread and ${page} disagree`}>
+        <p>JobTread’s ${K.field} says <strong>${kdNames(held.jobtread.map((x) => x.name))}</strong>, which ${page} didn’t have${held.website.length ? html` (it has <strong>${kdNames(held.website.map((x) => x.name))}</strong>)` : ''}. Which is right?</p>
+        <div class="kd-credit__row">
+          <button type="button" class="btn btn-primary btn-sm" disabled=${working} onClick=${() => onSettle('jobtread')}>Use JobTread’s</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${working} onClick=${() => onSettle('website')}>Take it out of JobTread</button>
+        </div>
+      </div>`;
+    }
+    /**
+     * A name in JobTread's field that isn't a company in Partners: the same as a partner, a new partner, or not a
+     * company at all. Settled once, it's settled everywhere. where: the pages it's on, in words (Partners → JobTread
+     * access); without it, the kid's card says "also"
+     */
+    function KdCreditUnknown({ kind, value, partners, working, id, onSameAs, onAddNew, onNotCompany, where = '' }) {
+      const K = KD_CREDIT_KINDS[kind];
+      const [same, setSame] = useState('');
+      const fits = (p) => PS.categoriesOf(p).includes(K.category);
+      const sorted = useMemo(() => [...partners].sort((a, b) => fits(b) - fits(a) || a.name.localeCompare(b.name)), [partners, kind]);
+      return html`<div class="kd-credit__ask" role="group" aria-label=${`“${value}” in JobTread`}>
+        <p>${where ? html`<strong>“${value}”</strong> is in JobTread’s ${K.field} on ${where}, and isn’t a company in Partners.`
+          : html`JobTread’s ${K.field} also says <strong>“${value}”</strong>, which isn’t a company in Partners.`}</p>
+        <div class="kd-credit__row">
+          <label class="sr-only" for=${id}>The same company as</label>
+          <select id=${id} class="form-input kd-credit__same" value=${same} onChange=${(e) => setSame(e.target.value)}>
+            <option value="">Same as a partner…</option>
+            ${sorted.map((p) => html`<option key=${p.slug} value=${p.slug}>${p.name}</option>`)}
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${!same || working} onClick=${() => onSameAs(same)}>Link</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${working} onClick=${onAddNew}>Add to Partners</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${working} onClick=${onNotCompany}>Not a company</button>
+        </div>
+      </div>`;
+    }
+    function KdCreditCard({ kind, name, status, room, error, partners, used = new Map(), slug, jobId, busy, onSet, onAddNew, onAddBack, onSameAs, onNotCompany, onSettle,
+      contacts = {}, onContacts = null, pledges = {}, onPledge = null, noun = 'kid' }) {
+      const K = KD_CREDIT_KINDS[kind];
       const [q, setQ] = useState('');
       const [open, setOpen] = useState(false);
       const [act, setAct] = useState(0);
+      const v = room?.kinds?.[kind] || null;
       const bySlug = useMemo(() => new Map(partners.map((p) => [p.slug, p])), [partners]);
-      const list = chosen.map((s) => bySlug.get(s) || { slug: s, name: s, gone: true });
-      const funding = (p) => PS.categoriesOf(p).includes('funding');
+      const list = (v?.credits || []).map((c) => ({ ...(bySlug.get(c.slug) || { slug: c.slug, name: c.name, gone: true }), onRoom: c.onRoom, gone: c.gone }));
+      const chosen = list.map((p) => p.slug);
+      const fits = (p) => PS.categoriesOf(p).includes(K.category);
       const matches = useMemo(() => {
         const k = q.trim().toLowerCase();
-        const pool = partners.filter((p) => !chosen.includes(p.slug) && (k ? p.name.toLowerCase().includes(k) : funding(p) || used.has(p.slug)));
+        const pool = partners.filter((p) => !chosen.includes(p.slug) && (k ? p.name.toLowerCase().includes(k) : fits(p) || used.has(p.slug)));
         const starts = (p) => (k && p.name.toLowerCase().startsWith(k) ? 0 : 1);
         const rank = (p) => PS.LEVELS.findIndex((l) => l.id === p.level);
-        return pool.sort((a, b) => starts(a) - starts(b) || (used.get(b.slug) || 0) - (used.get(a.slug) || 0) || funding(b) - funding(a) || rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 8);
+        return pool.sort((a, b) => starts(a) - starts(b) || (used.get(b.slug) || 0) - (used.get(a.slug) || 0) || fits(b) - fits(a) || rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 8);
       }, [q, partners, used, chosen.join(',')]);
       const typed = q.trim();
       const exact = typed && partners.some((p) => PS.nameKey(p.name) === PS.nameKey(typed));
@@ -12345,72 +12413,55 @@
       const choose = (o) => {
         if (!o) return;
         if (o.add) onAddNew({ name: o.add });
-        else onPick(o.p);
+        else onSet(o.p, true);
         setQ('');
         setOpen(false);
       };
-      const jt = view?.jobtread;
-      const pending = chosen.join(',') !== saved.join(',');
-      const added = list.filter((p) => !saved.includes(p.slug));
-      const gone = saved.filter((x) => !chosen.includes(x)).map((x) => bySlug.get(x) || { slug: x, name: x });
       const first = String(name || '').trim().split(/\s+/)[0] || 'this kid';
-      const awaiting = status === 'needs-funding';
-      // What JobTread names, for a kid with no sponsor picked: the field, then Monetary Sponsor users by company
-      const find = (label) => partners.find((p) => PS.nameKey(p.name) === PS.nameKey(label)) || PS.similarPartners(label, partners, { min: 0.7, max: 1 })[0]?.partner || null;
-      const suggestions = !list.length && jt ? [
-        ...(jt.field ? [{ key: 'field', label: jt.field, why: html`JobTread’s Monetary Sponsor says <strong>${jt.field}</strong>.`, partner: find(jt.field), people: [] }] : []),
-        ...Object.values((jt.others || []).reduce((m, x) => {
-          const label = x.company || x.name || x.email;
-          (m[label] ||= { key: `u-${label}`, label, people: [], match: x.partner && partners.find((p) => p.slug === x.partner.slug) }).people.push(x);
-          return m;
-        }, {})).map((g) => ({ ...g, partner: g.match || find(g.label), why: html`<strong>${kdNames(g.people.map((x) => x.name || x.email))}</strong>${g.label !== (g.people[0].name || g.people[0].email) ? ` (${g.label})` : ''} ${g.people.length === 1 ? 'is' : 'are'} on the job as a Monetary Sponsor.` })),
-      ].filter((s, i, all) => !s.partner || all.findIndex((x) => x.partner?.slug === s.partner.slug) === i) : [];
-      const icon = (ok) => html`<span class=${`kd-sponsor__mark${ok ? ' is-ok' : ' is-warn'}`} aria-hidden="true">${ok ? kdIcon.check : kdIcon.alert}</span>`;
+      const needed = kind === 'sponsored' && status === 'needs-funding' && !list.length;
+      const ok = (yes) => html`<span class=${`kd-sponsor__mark${yes ? ' is-ok' : ' is-warn'}`} aria-hidden="true">${yes ? kdIcon.check : kdIcon.alert}</span>`;
+      // Either card's request in flight: both wait (one request at a time for the page)
+      const working = !!busy;
+      const job = v?.job || jobId || null;
+      const nameOf = (s) => bySlug.get(s)?.name || s;
+      const funding = kind === 'sponsored';
 
-      return html`<section class=${`kd-card kd-card--sponsor${awaiting && !list.length ? ' is-needed' : ''}`} id="kd-sec-sponsor" aria-labelledby="kd-sponsor-h">
-        <h3 id="kd-sponsor-h" tabindex="-1">Monetary sponsor ${syncing ? html`<span class="kd-card__count"><span class="spinner spinner-14" /> JobTread…</span>` : null}</h3>
-        ${!list.length ? html`<p class=${`kd-sponsor__ask${awaiting ? ' kd-warn-text' : ''}`}>${awaiting
-          ? `Who’s paying for ${first}’s room? Pick them and save: their contact is added to the job in JobTread, and Monetary Sponsor follows.`
-          : 'Who paid for the room. Pick them from Partners, or add a new sponsor.'}</p>` : null}
+      return html`<section class=${`kd-card kd-card--sponsor${needed ? ' is-needed' : ''}`} id=${K.id} aria-labelledby=${`${K.id}-h`} aria-busy=${working}>
+        <h3 id=${`${K.id}-h`} tabindex="-1">${K.h} ${busy === kind ? html`<span class="kd-card__count"><span class="spinner spinner-14" /> JobTread…</span>` : null}</h3>
+        ${!list.length ? html`<p class=${`kd-sponsor__ask${needed ? ' kd-warn-text' : ''}`}>${needed ? `Who’s paying for ${first}’s room? Pick them here or in JobTread’s ${K.field}.` : K.ask}</p>` : null}
+        ${error ? html`<p class="kd-card__note kd-bad">Couldn’t read the credits: ${error}</p>` : null}
         ${list.length ? html`<ul class="kd-sponsors">
           ${list.map((p) => {
             const people = contacts[p.slug] || [];
-            const v = !pending && jt ? view.sponsors?.find((x) => x.slug === p.slug) : null;
-            const reach = people.filter((c) => c.email);
             return html`<li key=${p.slug} class="kd-sponsor">
               <div class="kd-sponsor__head">
                 <${PtLogo} name=${p.name} logo=${p.logo} w=${64} h=${32} />
                 <strong class="kd-sponsor__name">${p.name}${p.gone ? html` <span class="kd-bad">(not in Partners)</span>` : null}</strong>
-                <button type="button" class="kd-x" aria-label=${`Remove ${p.name} as the sponsor`} onClick=${() => onRemove(p)}>${kdIcon.x}</button>
+                <button type="button" class="kd-x" aria-label=${`Take ${p.name} off as ${kind === 'designed' ? 'the design partner' : 'the sponsor'}`} disabled=${working} onClick=${() => onSet(p, false)}>${kdIcon.x}</button>
               </div>
-              ${people.length ? html`<ul class="kd-sponsor__people" aria-label=${`Contacts at ${p.name}`}>
-                ${people.map((c, i) => html`<li key=${i}>
-                  <span>${c.name || c.email}</span>
-                  ${c.email ? html`<a href=${`mailto:${c.email}`}>${c.email}</a>` : null}
-                  ${c.phone ? html`<a href=${`tel:${c.phone.replace(/[^\d+]/g, '')}`}>${c.phone}</a>` : null}
-                </li>`)}
-              </ul>` : html`<p class="kd-card__note">No contact on file.</p>`}
-              <button type="button" class="btn btn-ghost btn-sm kd-sponsor__contacts" onClick=${() => onContacts(p)} disabled=${p.gone}>${people.length ? kdIcon.edit : kdIcon.plus} ${people.length ? 'Edit contacts' : 'Add a contact'}</button>
-              ${slug && onPledge && saved.includes(p.slug) && !p.gone
-                ? html`<${KdPledge} key=${`pl-${p.slug}`} partner=${p.slug} name=${p.name} kidName=${first} saved=${pledges[p.slug]} onSave=${onPledge} />`
-                : slug && onPledge && !p.gone ? html`<p class="kd-card__note">Save the page, then add what ${p.name} pledged.</p>` : null}
-              ${v ? html`<ul class="kd-sponsor__jt" aria-label=${`${p.name} in JobTread`}>
-                ${v.onJob.length ? html`<li>${icon(true)}<span><strong>${kdNames(v.onJob.map((x) => x.name || x.email))}</strong> ${v.onJob.length === 1 ? 'is' : 'are'} on the job, so Demo Day and reveal invites reach them.</span></li>` : null}
-                ${v.otherRole.map((x) => html`<li key=${x.email}>${icon(false)}<span><strong>${x.name || x.email}</strong> is on the job as ${x.role ? `a ${x.role}` : 'staff'}, so gets ${x.role ? `${x.role.toLowerCase()}` : 'staff'} invites, not the sponsor’s. <a href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Change it in JobTread</a></span></li>`)}
-                ${v.missing.length && jt.open ? html`<li>${icon(false)}<span><strong>${kdNames(v.missing.map((x) => x.name || x.email))}</strong> ${v.missing.length === 1 ? 'isn’t' : 'aren’t'} on the job yet. Saving adds them.</span></li>` : null}
-                ${!v.onJob.length && !v.otherRole.length && !reach.length && jt.open ? html`<li>${icon(false)}<span>Nobody from ${p.name} is on the job. Add a contact with an email and save: they’re added to it.</span></li>` : null}
-              </ul>` : null}
+              ${p.onRoom === false && !p.gone ? html`<p class="kd-credit__off">${ok(false)}<span>${p.name} isn’t on this makeover now: no logo of theirs on the page${job ? ' and nobody of theirs on the job' : ''}.</span>
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${working} onClick=${() => onAddBack(p)}>${kdIcon.plus} Add them back</button></p>` : null}
+              ${funding ? html`
+                ${people.length ? html`<ul class="kd-sponsor__people" aria-label=${`Contacts at ${p.name}`}>
+                  ${people.map((c, i) => html`<li key=${i}>
+                    <span>${c.name || c.email}</span>
+                    ${c.email ? html`<a href=${`mailto:${c.email}`}>${c.email}</a>` : null}
+                    ${c.phone ? html`<a href=${`tel:${c.phone.replace(/[^\d+]/g, '')}`}>${c.phone}</a>` : null}
+                  </li>`)}
+                </ul>` : html`<p class="kd-card__note">No contact on file.</p>`}
+                ${onContacts ? html`<button type="button" class="btn btn-ghost btn-sm kd-sponsor__contacts" onClick=${() => onContacts(p)} disabled=${p.gone}>${people.length ? kdIcon.edit : kdIcon.plus} ${people.length ? 'Edit contacts' : 'Add a contact'}</button>` : null}
+                ${slug && onPledge && !p.gone ? html`<${KdPledge} key=${`pl-${p.slug}`} partner=${p.slug} name=${p.name} kidName=${first} saved=${pledges[p.slug]} onSave=${onPledge} />` : null}` : null}
             </li>`;
           })}
         </ul>` : null}
 
-        <div class="kd-combobox ppl-combobox kd-sponsor-pick">
-          <label class="sr-only" for="kd-sponsor-q">${list.length ? 'Add another sponsor' : 'Find the sponsor in Partners'}</label>
+        ${slug ? html`<div class="kd-combobox ppl-combobox kd-sponsor-pick">
+          <label class="sr-only" for=${`${K.id}-q`}>${list.length ? K.add : K.search}</label>
           <div class="search-bar">
             <span class="search-icon">${icons.search}</span>
-            <input id="kd-sponsor-q" type="search" role="combobox" aria-expanded=${open && options.length > 0} aria-controls="kd-sponsor-list" aria-autocomplete="list"
-              aria-activedescendant=${open && options[act] ? `kd-sponsor-opt-${act}` : null} autocomplete="off"
-              placeholder=${list.length ? 'Add another sponsor' : 'Search Partners'} value=${q}
+            <input id=${`${K.id}-q`} type="search" role="combobox" aria-expanded=${open && options.length > 0} aria-controls=${`${K.id}-list`} aria-autocomplete="list"
+              aria-activedescendant=${open && options[act] ? `${K.id}-opt-${act}` : null} autocomplete="off" disabled=${working}
+              placeholder=${list.length ? K.add : 'Search Partners'} value=${q}
               onInput=${(e) => { setQ(e.target.value); setOpen(true); setAct(0); }}
               onFocus=${() => setOpen(true)} onBlur=${() => setTimeout(() => setOpen(false), 150)}
               onKeyDown=${(e) => {
@@ -12420,44 +12471,138 @@
                 if (e.key === 'Escape') setOpen(false);
               }} />
           </div>
-          ${open && options.length ? html`<ul class="ppl-listbox kd-listbox" id="kd-sponsor-list" role="listbox" aria-label="Sponsors">
-            ${options.map((o, i) => html`<li key=${o.p?.slug || 'add'} id=${`kd-sponsor-opt-${i}`} role="option" aria-selected=${i === act} class=${o.add ? 'kd-listbox__add' : ''}
+          ${open && options.length ? html`<ul class="ppl-listbox kd-listbox" id=${`${K.id}-list`} role="listbox" aria-label=${K.h}>
+            ${options.map((o, i) => html`<li key=${o.p?.slug || 'add'} id=${`${K.id}-opt-${i}`} role="option" aria-selected=${i === act} class=${o.add ? 'kd-listbox__add' : ''}
                 onMouseDown=${(e) => { e.preventDefault(); choose(o); }} onMouseEnter=${() => setAct(i)}>
-              ${o.add ? html`<span class="kd-logo-mini">${kdIcon.plus}</span><span class="kd-listbox__name">Add “${o.add}” as a new sponsor</span>`
+              ${o.add ? html`<span class="kd-logo-mini">${kdIcon.plus}</span><span class="kd-listbox__name">Add “${o.add}” as a new ${K.what}</span>`
                 : html`<span class="kd-logo-mini">${o.p.logo ? html`<img src=${kdImg(o.p.logo, 'w=80,q=80')} alt="" />` : null}</span>
                   <span class="kd-listbox__name">${o.p.name}</span>
-                  <span class="kd-listbox__meta">${funding(o.p) ? 'Funding' : PS.levelOf(o.p.level).label}</span>`}
+                  <span class="kd-listbox__meta">${fits(o.p) ? PS.categoryLabel(K.category) : PS.levelOf(o.p.level).label}</span>`}
             </li>`)}
           </ul>` : null}
         </div>
-        ${!typed && !list.length ? html`<button type="button" class="btn btn-ghost btn-sm kd-sponsor__new" onClick=${() => onAddNew({})}>${kdIcon.plus} Add a new sponsor</button>` : null}
+        ${!typed && !list.length ? html`<button type="button" class="btn btn-ghost btn-sm kd-sponsor__new" onClick=${() => onAddNew({})}>${kdIcon.plus} ${K.addNew}</button>` : null}` : null}
 
-        ${suggestions.length ? html`<ul class="kd-sponsor__suggest" aria-label="From JobTread">
-          ${suggestions.some((x) => x.partner) ? html`<li class="kd-sponsor__suggest-note">A sponsor JobTread names that’s in Partners comes in by itself within 10 minutes.</li>` : null}
-          ${suggestions.map((s) => html`<li key=${s.key}>
-            <p>${s.why}</p>
-            ${s.partner ? html`<button type="button" class="btn btn-primary btn-sm" onClick=${() => onPick(s.partner)}>Use ${s.partner.name}</button>`
-              : html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onAddNew({ name: s.label, people: s.people.map((x) => ({ name: x.name || '', email: x.email, phone: '' })) })}>Add ${s.label} as a sponsor</button>`}
-          </li>`)}
-        </ul>` : null}
+        ${v?.held ? html`<${KdCreditHeld} kind=${kind} held=${v.held} working=${working} onSettle=${onSettle} />` : null}
+        ${(v?.unknown || []).map((value) => html`<${KdCreditUnknown} key=${value} kind=${kind} value=${value} partners=${partners} working=${working} id=${`${K.id}-same-${PS.nameKey(value)}`}
+          onSameAs=${(partner) => onSameAs(value, partner)} onAddNew=${() => onAddNew({ name: value, fromJobTread: value })} onNotCompany=${() => onNotCompany(value)} />`)}
 
         <p class="kd-card__note kd-sponsor__jtline">${
-          !slug ? 'After the first save, the sponsor goes to JobTread too.'
-          : !jobId ? 'No JobTread job matches this kid yet, so the sponsor stays on the website for now.'
-          : viewError ? html`<span class="kd-bad">Couldn’t read JobTread: ${viewError}</span>`
-          : view?.jobtreadError ? view.jobtreadError
-          : !jt ? html`<span class="spinner spinner-14" /> Checking JobTread…`
-          : pending ? [
-              added.length ? `Saving gives ${kdNames(added.map((p) => p.name))} access to the job in JobTread` : '',
-              gone.length ? `${added.length ? ', and takes' : 'Saving takes'} ${kdNames(gone.map((p) => p.name))} off it` : '',
-              '. JobTread’s Monetary Sponsor then shows who has that access.',
-            ].join('')
-          : list.length && jt.mirror && jt.fieldOk ? html`${icon(true)} JobTread’s Monetary Sponsor says “${jt.mirror}”, from who has Sponsor access.`
-          : list.length && jt.mirror ? html`${icon(false)} JobTread’s Monetary Sponsor says ${jt.field ? `“${jt.field}”` : 'nothing'}. Saving sets it to “${jt.mirror}”.`
-          : list.length ? html`${icon(false)} JobTread’s Monetary Sponsor stays blank until someone from ${kdNames(list.map((p) => p.name))} has Sponsor access on the job.`
-          : null
-        }${jobId ? html` <a href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Open the job ${kdIcon.external}</a>` : null}</p>
+          !slug ? `After the first save, ${K.h.toLowerCase()} can be picked here.`
+          : !room && !error ? html`<span class="spinner spinner-14" /> Checking JobTread…`
+          : !job ? `No JobTread job for this ${noun} yet, so it’s kept on this page. When the job is made, it goes into the job too.`
+          : v?.pending?.tries >= 3 ? html`${ok(false)} JobTread hasn’t taken a change to its ${K.field} (tried ${v.pending.tries} times${v.pending.error ? `: ${v.pending.error}` : ''}). This page shows the change, it’s tried again once a day, and making the same change in JobTread yourself settles it.`
+          : v?.pending ? html`${ok(false)} Still writing this to JobTread. It finishes on its own.`
+          : v?.held ? html`${ok(false)} Until someone says which is right (above), this page keeps its own answer, with any change made since in either place.`
+          : v?.waiting ? html`${ok(false)} JobTread’s ${K.field} changed a moment ago${v.waiting.added?.length ? ` (${kdNames(v.waiting.added.map((x) => (x.p ? nameOf(x.p) : x.v)))} added)` : ''}${v.waiting.removed?.length ? ` (${kdNames(v.waiting.removed.map((x) => (x.p ? nameOf(x.p) : x.v)))} taken off)` : ''}. It shows here after a second look, within 20 minutes.`
+          : html`${ok(true)} The same as JobTread’s ${K.field}${(v?.others || []).length ? `, which also says ${kdNames(v.others.map((x) => `“${x}”`))}` : ''}${(v?.unknown || []).length ? `, apart from ${v.unknown.length === 1 ? 'the name' : 'the names'} above` : ''}. A change in either place shows in the other.`
+        }${job ? html` <a href=${JT_JOB_URL(job)} target="_blank" rel="noopener">Open the job ${kdIcon.external}</a>` : null}</p>
       </section>`;
+    }
+
+    /**
+     * The two credit cards (who designed it, who paid for it) for a kid's or a community project's editor, one
+     * component both use: the cards for the side panel, the dialogs for the editor's top level. The editor's own
+     * pieces come in (set, setBase, setSha), and its page version and Take off this job are read when used
+     */
+    function useCreditCards({ record, slug, saved, jobId, name, status, partners, kids = [], sponsors = [], set, setBase, setSha, getSha, holdSha, toBase, takeOffEd, addToast, dataRef }) {
+      const [addedPartners, setAddedPartners] = useState([]); // added from here, before the directory reloads
+      const [creditDialog, setCreditDialog] = useState(null); // { kind, create: prefill } | { contacts: partner }
+      const allPartners = useMemo(() => [...new Map([...partners, ...addedPartners].map((p) => [p.slug, p])).values()], [partners, addedPartners]);
+      useEffect(() => { allPartners.forEach((p) => kdPartnerNames.set(p.slug, p.name)); }, [allPartners]);
+      const creditUse = useMemo(() => {
+        const m = { designed: new Map(), sponsored: new Map() };
+        kids.forEach((k) => {
+          if (k.slug === slug) return;
+          (k.sponsors || []).forEach((x) => m.sponsored.set(x, (m.sponsored.get(x) || 0) + 1));
+          (k.designers || []).forEach((x) => m.designed.set(x, (m.designed.get(x) || 0) + 1));
+        });
+        return m;
+      }, [kids, slug]);
+      const credits = useRoomCredits(saved ? record : null, sponsors || []);
+      // What the server just did to the page (the credits' copy, a logo a pick put on) comes in without losing what's
+      // being edited here, and the page's new version with it, so Save still works
+      // behind: someone else changed the page since it was opened, so the editor keeps its old version and Save says so
+      const takePage = (r) => {
+        // Held at once as well as in state: the next request in line reads it before the editor draws again
+        if (r?.sha && !r.behind) { holdSha(r.sha); setSha(r.sha); }
+        if (!r?.page) return;
+        const { designers, sponsors, partnerLogos } = r.page;
+        // Only the logo this request put on joins the editor's list: one the person took off here, not saved yet, stays off
+        const added = partnerLogos.filter((l) => l.url === r.put?.logoUrl && !(dataRef.current.partnerLogos || []).some((x) => x.url === l.url));
+        set((d) => ({ designers, sponsors, partnerLogos: [...added.map((l) => ({ ...l, _key: l.url })), ...(d.partnerLogos || [])] }));
+        // Through the editor's own save shape, so the saved copy compares equal and nothing reads as unsaved
+        setBase((b) => JSON.stringify(toBase({ ...JSON.parse(b || '{}'), designers, sponsors, partnerLogos })));
+      };
+      const creditWord = (kind) => (kind === 'designed' ? 'the design partner' : 'the monetary sponsor');
+      const setCredit = async (kind, p, on, { quiet = false, put = true } = {}) => {
+        const r = await credits.post(kind, () => ({ set: { record, kind, partner: p.slug, on, put, sha: getSha() } }));
+        if (!r.success) { addToast(`Couldn’t ${on ? 'add' : 'take off'} ${p.name}: ${r.error}`, 'error'); return r; }
+        takePage(r);
+        if (quiet) return r;
+        const field = KD_CREDIT_KINDS[kind].field;
+        const putOn = !!(r.put && (r.put.logo || r.put.people?.length));
+        const said = r.owed ? `${p.name} ${on ? 'is' : 'is no longer'} ${creditWord(kind)} here. JobTread didn’t take it just now, so it’s written there within 10 minutes${on ? ', and putting them on the makeover follows' : ''}.`
+          : on ? `${p.name} is ${creditWord(kind)}${r.job ? `, in JobTread’s ${field} too` : ''}. ${kdCreditPutSaid(p.name, r.put)}`
+          : `${p.name} is no longer ${creditWord(kind)}${r.job ? `, in JobTread too` : ''}. Their logo and place on the job stay; take them off the makeover in Partners below if they shouldn’t be there.`;
+        // Undo takes back exactly what was done: a pick that put them on the makeover takes them off it again (they
+        // weren't on it before); taking a credit off comes back as the credit only
+        addToast(said.trim(), 'success', { label: 'Undo', fn: async () => {
+          const back = await setCredit(kind, p, !on, { quiet: true, put: false });
+          if (back?.success && on && putOn) await kdTakeOffNow(takeOffEd(), { partner: p.slug }, p.name);
+        } });
+        return r;
+      };
+      const settleCredit = async (kind, use) => {
+        const r = await credits.post(kind, () => ({ settle: { record, kind, use, sha: getSha() } }));
+        if (!r.success) { addToast(`Couldn’t settle it: ${r.error}`, 'error'); return; }
+        takePage(r);
+        addToast(use === 'jobtread' ? 'This page now says what JobTread says.' : r.owed ? 'This page’s answer stands. JobTread didn’t take it just now, so it’s taken out there within 10 minutes.' : 'Taken out of JobTread, so it says what this page says.', 'success');
+      };
+      const sameAsCredit = async (kind, value, partner) => {
+        const r = await credits.post(kind, () => ({ sameAs: { value, partner, record, sha: getSha() } }));
+        if (!r.success) { addToast(`Couldn’t link “${value}”: ${r.error}`, 'error'); return; }
+        takePage(r);
+        addToast(`“${value}” in JobTread is ${allPartners.find((x) => x.slug === partner)?.name || partner} now, everywhere.`, 'success');
+      };
+      const notCompanyCredit = async (kind, value, undo = false) => {
+        const r = await credits.post(kind, () => ({ notCompany: { value, undo, record, sha: getSha() } }));
+        if (!r.success) { addToast(`Couldn’t set that: ${r.error}`, 'error'); return; }
+        takePage(r);
+        if (!undo) addToast(`“${value}” is left as JobTread says it, and not asked about again.`, 'success', { label: 'Undo', fn: () => notCompanyCredit(kind, value, true) });
+      };
+      // Credited but not on the makeover: a person puts them back on it now (their logo on the page, their people on the job)
+      const addBackCredit = async (kind, p) => {
+        const r = await credits.post(kind, () => ({ addBack: { record, kind, partner: p.slug, sha: getSha() } }));
+        if (!r.success) { addToast(`Couldn’t put ${p.name} back: ${r.error}`, 'error'); return; }
+        takePage(r);
+        if (!r.put?.logo && !r.put?.people?.length) { addToast(`Nothing to put back: ${p.name} has no logo in Partners${jobId ? ' and nobody of theirs with an email to add to the job' : ', and this page has no JobTread job'}.`, 'info'); return; }
+        const said = kdCreditPutSaid(p.name, r.put);
+        addToast(said ? `${p.name} is back on this makeover. ${said}` : `${p.name} is back on this makeover.`, 'success', { label: 'Undo', fn: () => kdTakeOffNow(takeOffEd(), { partner: p.slug }, p.name) });
+      };
+
+      const cards = html`${['sponsored', 'designed'].map((kind) => html`<${KdCreditCard} key=${kind} kind=${kind} name=${name} status=${status} room=${credits.room} error=${credits.error}
+            partners=${allPartners} used=${creditUse[kind]} slug=${saved ? record : null} jobId=${jobId} busy=${credits.busy}
+            onSet=${(p, on) => setCredit(kind, p, on)} onAddNew=${(prefill) => setCreditDialog({ kind, create: prefill })} onAddBack=${(p) => addBackCredit(kind, p)}
+            onSameAs=${(v, partner) => sameAsCredit(kind, v, partner)} onNotCompany=${(v) => notCompanyCredit(kind, v)} onSettle=${(use) => settleCredit(kind, use)}
+            contacts=${credits.contacts} onContacts=${kind === 'sponsored' ? (p) => setCreditDialog({ contacts: p }) : null}
+            pledges=${credits.pledges} onPledge=${kind === 'sponsored' && !String(record).startsWith('community/') ? credits.savePledge : null} noun=${String(record).startsWith('community/') ? 'project' : 'kid'} />`)}`;
+      const dialogs = html`${creditDialog?.create ? html`<${PartnerCreateDialog} sponsor=${creditDialog.kind === 'sponsored'} designer=${creditDialog.kind === 'designed'} partners=${allPartners}
+          prefill=${creditDialog.create.name || creditDialog.create.people ? creditDialog.create : null}
+          addToast=${addToast} onClose=${() => setCreditDialog(null)}
+          onCreated=${(newSlug, newName, rec, people) => {
+            const { kind, create } = creditDialog;
+            setAddedPartners((l) => [...l, rec]);
+            credits.setContacts((c) => ({ ...c, [newSlug]: people || [] }));
+            setCreditDialog(null);
+            // A name JobTread already has ("Add to Partners" on it) is now this partner; otherwise it's a new pick
+            if (create.fromJobTread) sameAsCredit(kind, create.fromJobTread, newSlug);
+            else setCredit(kind, rec, true);
+          }} />` : null}
+        ${creditDialog?.contacts ? html`<${KdSponsorContactsDialog} partner=${creditDialog.contacts} people=${credits.contacts[creditDialog.contacts.slug] || []}
+          addToast=${addToast} onClose=${() => setCreditDialog(null)}
+          onSaved=${(people) => { credits.setContacts((c) => ({ ...c, [creditDialog.contacts.slug]: people })); setCreditDialog(null); credits.reload(); }} />` : null}`;
+      return { cards, dialogs, allPartners };
     }
 
     // ═══════════════════════════════════════════
@@ -12820,34 +12965,11 @@
       const pinned = slug && favs.includes(`kid:${slug}`);
       const savedRooms = Number(JSON.parse(base || '{}').roomCount) || null;
 
-      // ── Monetary sponsor ──
-      const [addedPartners, setAddedPartners] = useState([]); // added from here, before the directory reloads
-      const [sponsorDialog, setSponsorDialog] = useState(null); // { create: prefill } | { contacts: partner }
-      const allPartners = useMemo(() => [...new Map([...partners, ...addedPartners].map((p) => [p.slug, p])).values()], [partners, addedPartners]);
-      useEffect(() => { allPartners.forEach((p) => kdPartnerNames.set(p.slug, p.name)); }, [allPartners]);
-      const savedSponsors = useMemo(() => JSON.parse(base || '{}').sponsors || [], [base]);
-      const sponsorUse = useMemo(() => {
-        const m = new Map();
-        kids.forEach((k) => { if (k.slug !== slug) (k.sponsors || []).forEach((x) => m.set(x, (m.get(x) || 0) + 1)); });
-        return m;
-      }, [kids, slug]);
-      const sponsor = useKidSponsor(slug, jobId, record.sponsors);
+      // ── Room credits: who designed the room, and who paid for it (functions/api/_room-credits.js) ──
+      // Changed on their cards at once, in JobTread too when the kid has a job, never by Save
+      const credit = useCreditCards({ record: slug, slug, saved: !!slug, jobId, name: data.name, status: data.status, partners, kids, sponsors: data.sponsors,
+        set, setBase, setSha, getSha: () => shaRef.current, holdSha: (v) => { shaRef.current = v; }, toBase: kdSaveRecord, takeOffEd: () => takeOffEd(), addToast, dataRef });
       const home = useJobHome(jobId);
-      const pickSponsor = (p) => {
-        set((d) => {
-          const sponsors = [...new Set([...(d.sponsors || []), p.slug])];
-          const list = sponsors.map((x) => (x === p.slug ? p : allPartners.find((y) => y.slug === x))).filter(Boolean);
-          return { sponsors, partnerLogos: kdSponsorLogosFirst(d.partnerLogos, list) };
-        });
-        // The card says what Save does; the logo moving is the part it doesn't show
-        if (p.logo) addToast(`${p.name}’s logo now leads Partners.`, 'info');
-      };
-      const offAtSave = useRef(new Map()); // a sponsor deleted by its logo: slug → name
-      const removeSponsor = (p) => {
-        const prev = dataRef.current.sponsors || [];
-        set((d) => ({ sponsors: (d.sponsors || []).filter((x) => x !== p.slug) }));
-        addToast(`${p.name} taken off. Saving takes them off the job in JobTread; their logo stays in Partners.`, 'info', { label: 'Undo', fn: () => set({ sponsors: prev }) });
-      };
 
       // ── Photos ──
       const keys = data.photos.map((p) => p._key);
@@ -13083,7 +13205,6 @@
       const addPartner = (p) => {
         if (!p || linked.has(p.logo)) return;
         addedHere.current.add(p.logo);
-        offAtSave.current.delete(p.slug);
         set((d) => ({ partnerLogos: [...d.partnerLogos, { url: p.logo, name: p.name, _key: p.logo }] }));
         setPartnerQuery('');
         setPartnerOpen(false);
@@ -13118,15 +13239,7 @@
         const inSaved = () => JSON.parse(base || '{}').partnerLogos || [];
         const company = kdLogoPartner(logo?.url, partners);
         const who = logo?.name?.trim() || company?.name || '';
-        // The monetary sponsor's own lane: deleted here it's off as the sponsor too, and Save takes them off the job, bill or not
-        const sponsors = dataRef.current.sponsors || [];
-        const sponsorOff = allPartners.find((p) => sponsors.includes(p.slug) && (p.slug === company?.slug || PS.nameKey(p.name) === PS.nameKey(who)));
-        if (sponsorOff) {
-          offAtSave.current.set(sponsorOff.slug, who);
-          set((d) => ({ sponsors: d.sponsors.filter((x) => x !== sponsorOff.slug), partnerLogos: d.partnerLogos.filter((l) => l._key !== key) }));
-          addToast(`${who} taken off. Saving takes them off the job in JobTread.`, 'info', { label: 'Undo', fn: () => { offAtSave.current.delete(sponsorOff.slug); set({ sponsors, partnerLogos: prev }); } });
-          return;
-        }
+        // A design partner's or sponsor's logo comes off like anyone's: the credit is its own card, and stays
         if (who && slug && inSaved().some((l) => l.url === logo.url)) {
           if (await ask({ title: `Take ${who} off this makeover?`, yes: 'Take them off', danger: true,
             text: 'Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there.' })) await kdTakeOffNow(takeOffEd(), { logos: [{ url: logo.url, name: who }] }, who);
@@ -13197,7 +13310,6 @@
           } else addToast(`Couldn’t save: ${res.error}`, 'error');
           return;
         }
-        const sponsorsBefore = JSON.parse(base || '{}').sponsors || [];
         const newLogos = (out.partnerLogos || []).filter((l) => addedHere.current.has(l.url) && !(JSON.parse(base || '{}').partnerLogos || []).some((x) => x.url === l.url));
         addedHere.current.clear();
         setSha(res.sha);
@@ -13205,33 +13317,6 @@
         set({ slug: slugToSave });
         history.reload();
         if (!wasNew) kdAddToJob(slugToSave, newLogos, addToast, () => setVendorsStamp((n) => n + 1));
-        // JobTread follows the website: the Monetary Sponsor field and each contact's Sponsor access
-        const sv = sponsor.view;
-        const behind = !sv?.jobtread || !sv.jobtread.fieldOk || (sv.sponsors || []).some((x) => x.missing?.length);
-        // After the sync, so it finds whoever the sponsor sync didn't take off, and they stay off
-        const leaving = [...offAtSave.current].filter(([p, who]) => !out.sponsors.includes(p) && !(out.partnerLogos || []).some((l) => kdLogoPartner(l.url, partners)?.slug === p || PS.nameKey(l.name) === PS.nameKey(who)));
-        offAtSave.current.clear();
-        // The sponsor toasts have said what happened; this only makes it stick
-        const sponsorsOff = () => {
-          if (wasNew) return;
-          for (const [partner, who] of leaving) {
-            ptAccessPost({ takeOff: { record: slugToSave, partner, sha: shaRef.current } }).catch((e) => ({ success: false, error: e.message })).then((r) => {
-              if (!r.success) { addToast(`Couldn’t take ${who} off the job: ${r.error}. Check this page’s Vendors list.`, 'error'); return; }
-              if (r.result?.sha) setSha(r.result.sha);
-              setVendorsStamp((n) => n + 1);
-            });
-          }
-        };
-        if (!wasNew && jobId && (out.sponsors.join(',') !== sponsorsBefore.join(',') || (out.sponsors.length && behind))) {
-          sponsor.sync(sponsorsBefore).then((r) => {
-            sponsorsOff();
-            if (!r.success) { addToast(`Saved, but JobTread wasn’t updated: ${r.error}`, 'error'); return; }
-            const said = kdSponsorSyncSaid(r);
-            // JobTread changes straight away, so no "when you publish" here
-            if (said) addToast(said, 'success', { label: 'Open the job', fn: () => window.open(JT_JOB_URL(jobId), '_blank', 'noopener') });
-            if (r.problems?.length) addToast(r.problems.join(' '), 'error');
-          });
-        } else sponsorsOff();
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on Meet the Kids”.` : `${out.name} saved. The site shows it after you publish.`, 'success');
@@ -13411,17 +13496,7 @@
           onHero=${(url) => set({ heroImage: url || '' })} onAccent=${(url) => set({ accentImage: url })}
           onMove=${movePhoto} onRemove=${(key) => removePhotos([key])}
           onFocus=${(key, focus) => set((d) => ({ photos: d.photos.map((x) => { if (x._key !== key) return x; const { focus: _f, ...rest } = x; return focus ? { ...rest, focus } : rest; }) }))} />` : null}
-        ${sponsorDialog?.create ? html`<${PartnerCreateDialog} sponsor=${true} partners=${allPartners} prefill=${sponsorDialog.create.name || sponsorDialog.create.people ? sponsorDialog.create : null}
-          addToast=${addToast} onClose=${() => setSponsorDialog(null)}
-          onCreated=${(newSlug, newName, rec, people) => {
-            setAddedPartners((l) => [...l, rec]);
-            sponsor.setContacts((c) => ({ ...c, [newSlug]: people || [] }));
-            setSponsorDialog(null);
-            pickSponsor(rec);
-          }} />` : null}
-        ${sponsorDialog?.contacts ? html`<${KdSponsorContactsDialog} partner=${sponsorDialog.contacts} people=${sponsor.contacts[sponsorDialog.contacts.slug] || []}
-          addToast=${addToast} onClose=${() => setSponsorDialog(null)}
-          onSaved=${(people) => { sponsor.setContacts((c) => ({ ...c, [sponsorDialog.contacts.slug]: people })); setSponsorDialog(null); sponsor.reload(); }} />` : null}
+        ${credit.dialogs}
         ${historyOpen !== undefined ? html`<${KdHistoryDialog} name=${data.name} history=${history} current=${record} dirty=${dirty}
           startId=${historyOpen} onRestore=${restoreVersion} onClose=${() => setHistoryOpen(undefined)} />` : null}
         ${design ? html`<${KdRevealLazy} part=${design} kid=${{ slug: data.slug || slug, name: data.name, year: data.year }} jobId=${jobId || ''} revealed=${revealed}
@@ -13521,10 +13596,7 @@
             </label>
             <p class="kd-card__note">${jtHides ? `Hidden because JobTread says ${jtStatus}. It comes back by itself when the job moves on.` : placeNote}</p>
           </section>
-          <${KdSponsorCard} name=${data.name} status=${data.status} chosen=${record.sponsors} saved=${savedSponsors} partners=${allPartners} used=${sponsorUse}
-            contacts=${sponsor.contacts} view=${sponsor.view} viewError=${sponsor.error} slug=${slug} jobId=${jobId} syncing=${sponsor.syncing}
-            onPick=${pickSponsor} onRemove=${removeSponsor} onAddNew=${(prefill) => setSponsorDialog({ create: prefill })}
-            onContacts=${(p) => setSponsorDialog({ contacts: p })} pledges=${sponsor.pledges} onPledge=${sponsor.savePledge} />
+          ${credit.cards}
           <section class="kd-card kd-card--health" aria-labelledby="kd-health-h">
             <h3 id="kd-health-h">Profile health <span class="kd-card__count">${checksDone} of ${checks.length}</span></h3>
             <div class="kd-meter" aria-hidden="true"><span style=${`width:${checks.length ? Math.round((checksDone / checks.length) * 100) : 0}%`}></span></div>
@@ -14470,6 +14542,11 @@
       const readAccess = () => ptAccessRead().then((r) => { if (!r.success || !Array.isArray(r.waiting)) throw new Error(r.error || 'Couldn’t load'); setAccess(r); })
         .catch((e) => setAccess((a) => (a && !a.failed ? a : { failed: e.message || 'Couldn’t load', waiting: [], near: [], added: [], setAside: [] })));
       useEffect(() => { readAccess(); }, []);
+      // What JobTread's Designed By and Monetary Sponsor say that a person has to settle (functions/api/_room-credits.js)
+      const [credits, setCredits] = useState(null);
+      const readCredits = () => kdCreditsGet('').then((r) => { if (!r.success || !Array.isArray(r.held)) throw new Error(r.error || 'Couldn’t load'); setCredits(r); })
+        .catch((e) => setCredits((c) => (c && !c.failed ? c : { failed: e.message || 'Couldn’t load', held: [], unknown: [], last: null })));
+      useEffect(() => { readCredits(); }, []);
       const dupes = useMemo(() => PS.duplicatesOf(partners), [partners]);
       const names = useMemo(() => new Map(partners.map((p) => [p.slug, p.name])), [partners]);
       const logoState = usePtLogoState(partners.map((p) => p.logo));
@@ -14744,14 +14821,19 @@
           ${(() => {
             const unplaced = access?.roles?.unplaced || [];
             const twins = access?.twins || [];
-            const n = access && !access.failed ? access.waiting.length + access.near.length + unplaced.length + twins.length : 0;
+            const asks = ptCreditAsks(credits);
+            const asksN = asks.held.length + asks.unknown.length + asks.owed.length;
+            const n = (access && !access.failed ? access.waiting.length + access.near.length + unplaced.length + twins.length : 0) + asksN;
             return html`<button type="button" class=${`ppl-ready__tile ppl-ready__tile--review pt-ready__access${n ? ' is-waiting' : ''}`}
-              onClick=${() => { setDialog({ kind: 'access' }); readAccess(); }} title="Each open job’s vendors on its JobTread job access, and their contacts kept the same in Partners and JobTread">
+              onClick=${() => { setDialog({ kind: 'access' }); readAccess(); readCredits(); }} title="Each open job’s vendors on its JobTread job access, their contacts kept the same in Partners and JobTread, and what JobTread’s Designed By and Monetary Sponsor say that needs a person">
               <span class="ppl-ready__label">JobTread access</span>
-              <span class="ppl-ready__value">${access?.failed ? '?' : access ? n : html`<span class="spinner spinner-14" />`}</span>
+              <span class="ppl-ready__value">${access?.failed ? asksN || '?' : access ? n : html`<span class="spinner spinner-14" />`}</span>
               <span class="ppl-ready__sub">${!access ? 'Checking' : access.failed ? 'Couldn’t check' : access.near.length ? `${access.near[0].name}: ${access.near[0].near[0]?.name || 'a near name'} in JobTread?`
                 : access.waiting.length ? `${access.waiting[0].name}: ${access.waiting[0].reason === 'error' ? 'JobTread refused' : 'no email'}`
-                : unplaced.length ? `${unplaced[0].name}: which company?` : twins.length ? `${twins[0].a.name}: in JobTread twice?` : 'Every vendor is on their jobs'}</span>
+                : unplaced.length ? `${unplaced[0].name}: which company?` : twins.length ? `${twins[0].a.name}: in JobTread twice?`
+                : asks.held.length ? `${asks.held[0].name}: whose ${KD_CREDIT_KINDS[asks.held[0].kind].field}?` : asks.unknown.length ? `“${asks.unknown[0].value}”: which partner?`
+                : asks.owed.length ? `${asks.owed[0].name}: JobTread won’t take a change`
+                : 'Every vendor is on their jobs'}</span>
             </button>`;
           })()}
         </div>
@@ -14814,6 +14896,7 @@
           <button class="btn btn-ghost btn-sm" onClick=${() => { setSearch(''); setFilter('all'); }}>Show everyone</button></div>` : null}
         `}
         ${dialog?.kind === 'create' ? html`<${PartnerCreateDialog} partners=${partners} prefill=${dialog.prefill} addToast=${addToast}
+          designer=${dialog.prefill?.creditKind === 'designed'} sponsor=${dialog.prefill?.creditKind === 'sponsored'}
           onClose=${() => { setDialog(dialog.from ? { kind: dialog.from } : null); onCreateClose?.(); }}
           onCreated=${(slug, name) => {
             setDialog(dialog.from ? { kind: dialog.from } : null);
@@ -14824,6 +14907,12 @@
               ptAccessPost({ link: { partner: slug, account: dialog.prefill.account } })
                 .then((r) => { if (!r.success) throw new Error(r.error); setAccess(r.view); })
                 .catch((e) => { addToast(`${name} is in Partners, but couldn’t be matched to JobTread’s vendor: ${e.message}`, 'error'); readAccess(); });
+            } else if (dialog.from === 'access' && dialog.prefill?.creditValue) {
+              // A name in JobTread's Designed By or Monetary Sponsor, added to Partners: it's this partner wherever JobTread says it
+              const value = dialog.prefill.creditValue;
+              kdCreditsPost({ sameAs: { value, partner: slug } })
+                .then((r) => { if (!r.success) throw new Error(r.error); if (Array.isArray(r.view?.held)) setCredits(r.view); else readCredits(); })
+                .catch((e) => { addToast(`${name} is in Partners, but “${value}” in JobTread couldn’t be linked to it: ${e.message}`, 'error'); readCredits(); });
             } else if (dialog.from === 'access') readAccess();
             onCreateClose?.();
             setSearch(''); setFilter('all');
@@ -14840,6 +14929,9 @@
             note: `${r.name} is a ${ptRolesOf(r.people).toLowerCase()} on ${ptPagesOf(r)}. Add their logo here and it goes on ${r.rows.length === 1 ? 'that page' : 'those pages'} by itself, and on any page they work on after this.` } })} />` : null}
         ${dialog?.kind === 'access' ? html`<${PtAccessDialog} view=${access} partners=${partners} addToast=${addToast} onClose=${() => setDialog(null)}
           onChange=${(v) => { if (Array.isArray(v?.waiting)) setAccess(v); else readAccess(); }}
+          credits=${credits} onCredits=${(v) => { if (Array.isArray(v?.held)) setCredits(v); else readCredits(); }}
+          onAddCredit=${(u) => setDialog({ kind: 'create', from: 'access', prefill: { name: u.value, creditValue: u.value, creditKind: u.kind,
+            note: `“${u.value}” is in JobTread’s ${KD_CREDIT_KINDS[u.kind].field} on ${u.where}. Added here, it’s that partner everywhere JobTread says it.` } })}
           onContacts=${(partner) => setDialog({ kind: 'vendor-contacts', partner })}
           onAdd=${(w) => setDialog({ kind: 'create', from: 'access', prefill: { name: w.name,
             note: `${w.name} has a logo on ${ptAccessPagesOf(w)} and isn’t in Partners. Add them with who to reach there, and they’re put on ${w.jobs.length === 1 ? 'that job' : 'those jobs'} in JobTread.` } })}
@@ -15268,6 +15360,28 @@
     /** “a Champion”, “an Ally”: a JobTread role with its article */
     const ptA = (role) => `${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}`;
     const ptRecordHash = (record) => `#kids/${String(record || '').split('/').map(encodeURIComponent).join('/')}`;
+    /**
+     * Partners → JobTread access's credit questions, from /api/room-credits-admin's list: launch's questions, one a
+     * room, and the names that aren't a company in Partners, one a name and field, with the pages each is on
+     * → { held: [{ record, name, kind, job, jobtread, website }], unknown: [{ value, kind, pages: [{ record, name, job }] }],
+     *     owed: [{ record, name, kind, job, tries, error }] (changes JobTread keeps refusing) }
+     */
+    function ptCreditAsks(credits) {
+      if (!credits || credits.failed) return { held: [], unknown: [], owed: [] };
+      const held = [...(credits.held || [])].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind));
+      const byName = new Map();
+      for (const u of credits.unknown || []) {
+        const key = `${u.kind} ${PS.nameKey(u.value)}`;
+        if (!byName.has(key)) byName.set(key, { key, value: u.value, kind: u.kind, pages: [] });
+        const g = byName.get(key);
+        if (!g.pages.some((x) => x.record === u.record)) g.pages.push({ record: u.record, name: u.name, job: u.job });
+      }
+      const unknown = [...byName.values()].sort((a, b) => b.pages.length - a.pages.length || a.value.localeCompare(b.value));
+      const owed = [...(credits.owed || [])].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind));
+      return { held, unknown, owed };
+    }
+    /** "Axel’s page", "Axel’s and Mia’s pages", "5 pages" */
+    const ptPagesWord = (pages) => (pages.length > 3 ? `${pages.length} pages` : `${kdNames(pages.map((x) => `${x.name}’s`))} ${pages.length === 1 ? 'page' : 'pages'}`);
     const ptAccessPagesOf = (w) => (w.jobs.length === 1 ? w.jobs[0].page : kdPlural(w.jobs.length, 'page'));
     /** Why a company belongs on a job: its logo on the page, a bill or order there, or both */
     const ptWhyOf = (why) => (why === 'page' ? 'Logo on' : why === 'bill' ? 'Bill or order on' : 'Logo and a bill on');
@@ -15303,7 +15417,7 @@
      * every partner matched to a JobTread vendor: a wrong match undone ("Not
      * the same"), a wrong name in JobTread fixed ("Call it …").
      */
-    function PtAccessDialog({ view, partners = [], onAdd, onAddVendor, onContacts, onChange, onClose, addToast }) {
+    function PtAccessDialog({ view, partners = [], onAdd, onAddVendor, onContacts, onChange, onClose, addToast, credits = null, onCredits = () => {}, onAddCredit = null }) {
       const [busy, setBusy] = useState(null);
       const [linkTo, setLinkTo] = useState({}); // membership (or a JobTread vendor's id) → slug picked in "Same as a partner…"
       const [pickFor, setPickFor] = useState(null); // the JobTread vendor whose "Same as a partner…" is open
@@ -15353,14 +15467,65 @@
         addToast(`“${r.linked.account.name}” is ${p.name} now${r.linked.archived ? `, and the empty “${r.linked.archived}” the site made is archived in JobTread.`
           : r.linked.left ? `. “${r.linked.left}”, its JobTread vendor before, holds something, so it stays there: if they’re one company, move it over and archive it in JobTread.` : '.'}`, 'success');
       });
+      // Designed By and Monetary Sponsor: what JobTread says that a person settles, with the same pieces the kid's card uses
+      const asks = ptCreditAsks(credits);
+      const creditLast = credits?.last || null;
+      const creditAct = async (key, body, done) => {
+        setBusy(key);
+        try {
+          const r = await kdCreditsPost(body);
+          if (!r.success) throw new Error(r.error);
+          onCredits(Array.isArray(r.view?.held) ? r.view : null);
+          done?.(r);
+        } catch (e) { addToast(`Couldn’t save that: ${e.message}`, 'error'); }
+        setBusy(null);
+      };
+      const settleCredit = (h, use) => creditAct(`c-${h.record}-${h.kind}`, { settle: { record: h.record, kind: h.kind, use } },
+        (r) => addToast(use === 'jobtread' ? `${h.name}’s page now says what JobTread says.` : r.owed ? `${h.name}’s page’s answer stands. JobTread didn’t take it just now, so it’s taken out there within 10 minutes.` : `Taken out of JobTread, so it says what ${h.name}’s page says.`, 'success'));
+      const sameAsCredit = (u, slug) => creditAct(`u-${u.key}`, { sameAs: { value: u.value, partner: slug } },
+        () => addToast(`“${u.value}” in JobTread is ${partners.find((p) => p.slug === slug)?.name || slug} now, everywhere.`, 'success'));
+      const notCompanyCredit = (u, undo = false) => creditAct(`u-${u.key}`, { notCompany: { value: u.value, undo } },
+        () => { if (!undo) addToast(`“${u.value}” is left as JobTread says it, and not asked about again.`, 'success', { label: 'Undo', fn: () => notCompanyCredit(u, true) }); });
+      const pagesLinked = (pages) => (pages.length > 3 ? `${pages.length} pages`
+        : html`${pages.map((x, i) => html`${i ? (i === pages.length - 1 ? ' and ' : ', ') : ''}<a href=${ptRecordHash(x.record)} onClick=${onClose}>${x.name}’s</a>`)} ${pages.length === 1 ? 'page' : 'pages'}`);
+      const creditProblems = creditLast?.problems || [];
+      const creditSection = asks.held.length || asks.unknown.length || asks.owed.length || creditLast?.error || creditProblems.length ? html`<section class="pt-access pt-access__credits" aria-labelledby="pt-access-credits">
+          <h3 id="pt-access-credits">Designed By and Monetary Sponsor</h3>
+          <p class="form-hint">What JobTread’s two fields say that the website can’t place yet. Settle each here or on the kid’s card in Kids; settled once, it’s settled everywhere.</p>
+          ${creditLast?.error ? html`<p class="kd-bad pt-wait__error">The last check of these fields ${kdWhen(creditLast.at)} stopped: ${creditLast.error} It tries again every 10 minutes.</p>` : null}
+          ${creditProblems.length ? html`<div class="pt-wait__error">
+            <p class="kd-bad">The last check of these fields ${kdWhen(creditLast.at)} couldn’t finish ${creditProblems.length === 1 ? 'one thing' : `${creditProblems.length} things`}. It tries again every 10 minutes.</p>
+            <ul class="pt-access__problems">${creditProblems.map((x, i) => html`<li key=${i}>${x}</li>`)}</ul>
+          </div>` : null}
+          ${asks.held.length || asks.unknown.length || asks.owed.length ? html`<ul class="pt-credit-asks">
+            ${asks.owed.map((o) => html`<li key=${`o-${o.record}-${o.kind}`}>
+              <p class="pt-credit-asks__who"><a href=${ptRecordHash(o.record)} onClick=${onClose}>${o.name}</a>${o.job ? html` · <a href=${ptJobUrl(o.job)} target="_blank" rel="noopener">the job in JobTread</a>` : null}</p>
+              <div class="kd-credit__ask" role="group" aria-label=${`${o.name}: a change JobTread hasn’t taken`}>
+                <p>JobTread hasn’t taken a change to this job’s ${KD_CREDIT_KINDS[o.kind].field} (tried ${o.tries} times${o.error ? `: ${o.error}` : ''}). The page shows the change; it’s tried again once a day, and making the same change in JobTread settles it.</p>
+              </div>
+            </li>`)}
+            ${asks.held.map((h) => html`<li key=${`h-${h.record}-${h.kind}`}>
+              <p class="pt-credit-asks__who"><a href=${ptRecordHash(h.record)} onClick=${onClose}>${h.name}</a>${h.job ? html` · <a href=${ptJobUrl(h.job)} target="_blank" rel="noopener">the job in JobTread</a>` : null}</p>
+              <${KdCreditHeld} kind=${h.kind} held=${h} page=${`${h.name}’s page`} working=${!!busy} onSettle=${(use) => settleCredit(h, use)} />
+            </li>`)}
+            ${asks.unknown.map((u) => html`<li key=${u.key}>
+              <${KdCreditUnknown} kind=${u.kind} value=${u.value} partners=${partners} working=${!!busy} id=${`pt-credit-same-${u.kind}-${PS.nameKey(u.value)}`} where=${pagesLinked(u.pages)}
+                onSameAs=${(slug) => sameAsCredit(u, slug)} onNotCompany=${() => notCompanyCredit(u)}
+                onAddNew=${() => onAddCredit?.({ value: u.value, kind: u.kind, where: ptPagesWord(u.pages) })} />
+            </li>`)}
+          </ul>` : null}
+        </section>` : null;
       const title = 'JobTread access';
-      if (!view) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p><//>`;
-      if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
+      // The credit questions don't wait on the vendor list: they show while it loads, and if it couldn't be read
+      if (!view) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose} busy=${!!busy}><p class="text-muted"><span class="spinner spinner-14" /> Loading…</p>${creditSection}<//>`;
+      if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose} busy=${!!busy}>
         <p class="kd-bad pt-wait__error">Couldn’t load the list: ${view.failed}</p>
-        <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button><//>`;
+        <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button>
+        ${creditSection}<//>`;
       const { waiting = [], near = [], added = [], takenOff = [], watch = {}, held = [], setAside: aside = [], matched = [], loose = [], billedOnly = [], twins = [], combined = [], jtOnly = [] } = view;
       const roles = view.roles || { on: false, pending: [], unplaced: [], recent: [] };
       const toggle = (k) => setShowRoles((v) => (v === k ? null : k));
+
       const PT_ROLE_WHY = { level: 'their level', trade: 'SOARD pays them', staff: 'staff said', 'set back': 'set back: changed in JobTread' };
       const named = (m) => m.accountName.trim() !== m.name.trim();
       const renamed = matched.filter(named).length;
@@ -15460,6 +15625,7 @@
             </span>
           </li>`)}</ul>
         </section>` : null}
+        ${creditSection}
         ${twins.length ? html`<section class="pt-access pt-access__twins" aria-labelledby="pt-access-twins">
           <h3 id="pt-access-twins">One company twice in JobTread?</h3>
           <ul class="pt-loose pt-wait">${twins.map((t) => {
@@ -15742,8 +15908,11 @@
 
     // ─── Adding a partner: the essentials in one step ───
     // sponsor: added as a kid's monetary sponsor (Admin → Kids), filed under Funding, with the people to reach there (private, D1 only)
-    function PartnerCreateDialog({ partners, prefill, onClose, onCreated, addToast, sponsor = false }) {
-      const [f, setF] = useState(() => ({ name: prefill?.name || '', website: prefill?.website || '', level: 'friend', category: [sponsor ? 'funding' : 'build'], logo: prefill?.logo || '' }));
+    // sponsor: a room credit's company (with who to reach there); designer: its design partner, filed under Design
+    function PartnerCreateDialog({ partners, prefill, onClose, onCreated, addToast, sponsor = false, designer = false }) {
+      const credit = sponsor || designer;
+      const noun = designer ? 'design partner' : 'sponsor';
+      const [f, setF] = useState(() => ({ name: prefill?.name || '', website: prefill?.website || '', level: 'friend', category: [designer ? 'design' : sponsor ? 'funding' : 'build'], logo: prefill?.logo || '' }));
       const [people, setPeople] = useState(() => prefill?.people || []);
       const [uploading, setUploading] = useState(false);
       const [preview, setPreview] = useState(null);
@@ -15794,7 +15963,7 @@
         logActivity('created', 'partner', record.name);
         let saved = [];
         const contacts = kdPeopleToSave(people);
-        if (sponsor && contacts.length) {
+        if (credit && contacts.length) {
           const c = await kdSponsorPost({ contacts: { partner: slug, people: contacts } });
           if (c.success) saved = c.contacts;
           else addToast(`${record.name} was added, but their contact wasn’t saved: ${c.error}`, 'error');
@@ -15804,9 +15973,9 @@
       const shown = preview || f.logo;
       const footer = html`
         <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
-        <button type="button" class="btn btn-primary" onClick=${create} disabled=${saving || uploading}>${saving ? html`<span class="spinner spinner-14" /> Adding…` : sponsor ? 'Add sponsor' : 'Add partner'}</button>`;
-      return html`<${KdDialog} title=${sponsor ? `Add ${prefill?.name || 'a sponsor'}` : prefill ? `Add ${prefill.name || 'this partner'} to the directory` : 'Add a partner'}
-        sub=${sponsor ? 'They join Partners under Funding, with their logo. Only staff see their contact.' : prefill?.note || (prefill?.kids ? `Their logo is already on ${kdPlural(prefill.kids, 'kid page')}. Check the name, then choose where they belong.` : 'They appear on the Partners page after you publish. Everything here can be changed later.')}
+        <button type="button" class="btn btn-primary" onClick=${create} disabled=${saving || uploading}>${saving ? html`<span class="spinner spinner-14" /> Adding…` : credit ? `Add ${noun}` : 'Add partner'}</button>`;
+      return html`<${KdDialog} title=${credit ? `Add ${prefill?.name || `a ${noun}`}` : prefill ? `Add ${prefill.name || 'this partner'} to the directory` : 'Add a partner'}
+        sub=${credit ? `They join Partners under ${designer ? 'Design' : 'Funding'}, with their logo. Only staff see their contact.` : prefill?.note || (prefill?.kids ? `Their logo is already on ${kdPlural(prefill.kids, 'kid page')}. Check the name, then choose where they belong.` : 'They appear on the Partners page after you publish. Everything here can be changed later.')}
         size="md" onClose=${onClose} busy=${saving} footer=${footer}>
         <form class="pt-create" onSubmit=${(e) => { e.preventDefault(); create(); }}>
           <div class="pt-create__logo">
@@ -15836,10 +16005,10 @@
                 placeholder="example.com" onInput=${(e) => set({ website: e.target.value })} onBlur=${() => { if (web.ok && web.url) set({ website: web.url }); }} />
               <div class=${`form-hint${!web.ok ? ' kd-bad' : ''}`}>${!web.ok ? 'That isn’t a web address. Try their site, like example.com.' : 'Their card on the site links here.'}</div>
             </div>
-            ${sponsor ? html`<fieldset class="form-group pt-create__people">
+            ${credit ? html`<fieldset class="form-group pt-create__people">
               <legend class="form-label">Who to reach there <span class="form-optional">only staff see this</span></legend>
               <${KdPeopleFields} people=${people} onChange=${setPeople} idPrefix="pt-new-person" touched=${touched} />
-              <div class="form-hint">With an email, they’re added to the kid’s job in JobTread when you save the profile, so they get the Demo Day and reveal invites.</div>
+              <div class="form-hint">${sponsor ? 'With an email, they’re added to the kid’s JobTread job, so they get the Demo Day and reveal invites.' : 'With an email, their main contact is added to the kid’s JobTread job.'}</div>
             </fieldset>` : null}
             ${same.length ? html`<div class="pt-same" role="status">
               ${pplIcon.alert}
@@ -16078,6 +16247,10 @@
       const go = async () => {
         setBusy(true);
         try {
+          // First, whether it can be done at all (both still in Partners, their people within the five a company has),
+          // so a merge that can't go through changes nothing
+          const ck = await kdCreditsPost({ merged: { from: from.slug, into: into.slug, check: true } });
+          if (!ck.success) throw new Error(ck.error);
           const r = await api.readContent(PT_PATH(into.slug));
           if (!r.success) throw new Error(r.error);
           const fresh = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
@@ -16103,10 +16276,10 @@
               switched += sw.changed?.length || 0;
             }
           }
-          const fr = await api.readContent(PT_PATH(from.slug));
-          if (!fr.success) throw new Error(fr.error);
-          const del = await api.deleteContent(PT_PATH(from.slug), fr.sha, `Merged into ${into.name}: ${from.name}`);
-          if (!del.success) throw new Error(del.error);
+          // Last, one step that does all of it or nothing: the rooms it designed or paid for, its names in JobTread, its
+          // pledges and people go to the other company, and it's deleted (Recently deleted keeps it)
+          const mc = await kdCreditsPost({ merged: { from: from.slug, fromName: from.name, into: into.slug } });
+          if (!mc.success) throw new Error(mc.error);
           addToast(`${from.name} merged into ${into.name}${switched ? `. ${kdPlural(switched, 'kid page')} now show${switched === 1 ? 's' : ''} its logo.` : ''}`, 'success');
           onMerged(into.slug);
         } catch (e) { addToast(`Couldn’t merge them: ${e.message}`, 'error'); setBusy(false); }
@@ -16122,6 +16295,7 @@
             : `${kidsOn} kid pages show ${ptPoss(from.name)} logo (${kidNames}). They count for ${into.name} now, and ${switching
               ? (switchable === kidsOn ? `show ${ptPoss(into.name)} logo instead` : `${switchable} of them show ${ptPoss(into.name)} logo instead`) : 'keep their logos'}.`}</li>` : null}
           ${people.length ? html`<li>${people.map((t) => t.name).join(', ')}’s Leadership ${people.length === 1 ? 'card links' : 'cards link'} to ${into.name} instead.</li>` : null}
+          <li>Any room ${from.name} designed or paid for is credited to ${into.name}, with its pledges and its people, and “${from.name}” in JobTread’s Designed By and Monetary Sponsor means ${into.name}.</li>
           <li>${from.name} leaves the Partners page when you publish. It stays in Recently deleted if you need it back.</li>
         </ul>
         ${switchable ? html`<label class="checkbox-label pt-merge-into__swap">
@@ -16223,8 +16397,17 @@
       const [takingOff, setTakingOff] = useState(null);
       const kidsOn = usageAll.byPartner.get(slug) || [];
       const kidBySlug = useMemo(() => new Map(kids.map((k) => [k.slug, k])), [kids]);
-      // Every makeover but their sponsorship (that's changed on the kid's page)
-      const canTakeOff = (k) => { const kid = kidBySlug.get(k.slug); return !!kid && !(kid.sponsors || []).includes(slug); };
+      // Every makeover, their sponsorships too: being on it is one thing, the credit another (it stays; it's changed on the kid's page)
+      const canTakeOff = (k) => !!kidBySlug.get(k.slug);
+      // What they did on each room (Peter, Nov 10 2026: "not immediately apparent who the designer was"): JobTread's
+      // Designed By and Monetary Sponsor, as the kid pages keep them (functions/api/_room-credits.js)
+      const partsOf = (kid) => [(kid?.designers || []).includes(slug) ? 'Designed it' : null, (kid?.sponsors || []).includes(slug) ? 'Monetary sponsor' : null].filter(Boolean);
+      const designedFor = kids.filter((k) => (k.designers || []).includes(slug));
+      const sponsoredFor = kids.filter((k) => (k.sponsors || []).includes(slug));
+      // A room they're credited on whose page doesn't show their logo still belongs in the list
+      const kidsList = [...kidsOn, ...[...designedFor, ...sponsoredFor].filter((k, i, all) => all.indexOf(k) === i && !kidsOn.some((x) => x.slug === k.slug))
+        .map((k) => ({ slug: k.slug, name: k.name, year: k.year, url: null, noLogo: true }))];
+      const roomsLine = (list) => list.map((k) => `${String(k.name || '').trim().split(/\s+/)[0]}${k.year ? ` ${k.year}` : ''}`).join(', ');
       const olderLogos = base?.logo ? [...new Set(kidsOn.filter((k) => PS.cfId(k.url) !== PS.cfId(base.logo)).map((k) => k.url))] : [];
       const olderCount = base?.logo ? kidsOn.filter((k) => PS.cfId(k.url) !== PS.cfId(base.logo)).length : 0;
       const logoState = usePtLogoState(data.logo && !kdLocal(data.logo) ? [data.logo] : []);
@@ -16446,6 +16629,8 @@
                 <span class=${`pt-level-tag pt-level-tag--${d.level}`}>${level.label}</span>
                 ${domain ? html`<a href=${web.url} target="_blank" rel="noopener">${domain} ${kdIcon.external}</a>` : null}
                 ${kidsOn.length ? html`<button type="button" class="ppl-link" onClick=${() => goTo('kids')}>${ptKidsLine(kidsOn)}</button>` : html`<span>Not on a kid page yet</span>`}
+                ${designedFor.length ? html`<span>Designed ${kdPlural(designedFor.length, 'room')}</span>` : null}
+                ${sponsoredFor.length ? html`<span>Monetary sponsor of ${kdPlural(sponsoredFor.length, 'room')}</span>` : null}
               </p>
             </div>
           </div>
@@ -16531,6 +16716,8 @@
             <dl class="kd-facts">
               <div><dt>Card links</dt><dd>${domain || html`<span class="text-muted">Nowhere: no website</span>`}</dd></div>
               <div><dt>Kid pages</dt><dd>${kidsOn.length ? ptKidsLine(kidsOn).replace(/^On /, '') : html`<span class="text-muted">None yet</span>`}</dd></div>
+              ${designedFor.length ? html`<div><dt>Designed</dt><dd>${roomsLine(designedFor)}</dd></div>` : null}
+              ${sponsoredFor.length ? html`<div><dt>Monetary sponsor</dt><dd>${roomsLine(sponsoredFor)}</dd></div>` : null}
               <div><dt>Press</dt><dd><${PressLinks} stories=${press.filter((st) => (st.partners || []).includes(slug) && st.publishStatus !== 'draft')} /></dd></div>
               <div><dt>Record</dt><dd><code>${slug}</code></dd></div>
             </dl>
@@ -16616,23 +16803,23 @@
               <button type="button" class="btn btn-ghost btn-sm" disabled=${swapping || dirty || !base?.logo} title=${dirty ? 'Save first' : null}
                 onClick=${() => switchKidPages(olderLogos, base.logo)}>${swapping ? html`<span class="spinner spinner-14" />` : null} Use the current logo</button>
             </div>` : null}
-            ${kidsOn.length ? html`<ul class="pt-kids">
-              ${(allKids ? kidsOn : kidsOn.slice(0, 12)).map((k) => {
+            ${kidsList.length ? html`<ul class="pt-kids">
+              ${(allKids ? kidsList : kidsList.slice(0, 12)).map((k) => {
                 const kid = kidBySlug.get(k.slug);
-                const old = base?.logo && PS.cfId(k.url) !== PS.cfId(base.logo);
+                const old = k.url && base?.logo && PS.cfId(k.url) !== PS.cfId(base.logo);
                 return html`<li key=${k.slug}>
                   <button type="button" class="pt-kid" onClick=${() => onOpenKid?.(k.slug)}>
                     ${kid?.heroImage ? html`<img class="pt-kid__img" src=${kdImg(kid.heroImage, 'w=120,h=120,fit=cover,gravity=face,q=70', kdHeroFocus(kid))} alt="" loading="lazy" />`
                       : html`<span class="pt-kid__img kd-thumb--empty" aria-hidden="true">${ptIcon.kids}</span>`}
-                    <span class="pt-kid__text"><strong>${k.name}</strong><small>${[k.year, old ? 'older logo' : null].filter(Boolean).join(' · ')}</small></span>
+                    <span class="pt-kid__text"><strong>${k.name}</strong><small>${[k.year, ...partsOf(kid), old ? 'older logo' : null, k.noLogo ? 'logo not on the page' : null].filter(Boolean).join(' · ')}</small></span>
                   </button>
                   ${canTakeOff(k) ? html`<button type="button" class="btn btn-ghost btn-sm pt-kid__off" disabled=${!!takingOff} aria-label=${`Take ${base?.name || data.name} off ${ptPoss(k.name)} job`} onClick=${() => takeOffJob(k)}>
                     ${takingOff === k.slug ? html`<span class="spinner spinner-14" />` : null} Take off this job</button>` : null}
                 </li>`;
               })}
             </ul>
-            ${kidsOn.length > 12 ? html`<button type="button" class="btn btn-ghost btn-sm pt-kids__all" aria-expanded=${allKids} onClick=${() => setAllKids((v) => !v)}>
-              ${allKids ? 'Show the newest 12' : `Show all ${kidsOn.length}`}</button>` : null}` : html`<p class="kd-empty-line">Not on a kid page yet. When a kid’s page adds their logo (Kids → a kid → Partners), it shows up here.</p>`}
+            ${kidsList.length > 12 ? html`<button type="button" class="btn btn-ghost btn-sm pt-kids__all" aria-expanded=${allKids} onClick=${() => setAllKids((v) => !v)}>
+              ${allKids ? 'Show the newest 12' : `Show all ${kidsList.length}`}</button>` : null}` : html`<p class="kd-empty-line">Not on a kid page yet. When a kid’s page adds their logo (Kids → a kid → Partners), it shows up here.</p>`}
           `)}
         </div>
         </div>
@@ -21499,6 +21686,10 @@ ${sections || '<p>No one yet.</p>'}
         onDrop: (e) => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); setDropping(null); onFiles([...e.dataTransfer.files]); },
       });
 
+      // Who designed the project's space and who paid for it: the same cards as a kid's (functions/api/_room-credits.js).
+      // Called before the loading screen returns, so the hooks run in the same order every time
+      const credit = useCreditCards({ record: `community/${slug}`, slug: null, saved: !!slug, jobId: slug ? jt.jobs?.[slug] || null : null, name: data.name, status: data.status,
+        partners, sponsors: data.sponsors, set, setBase, setSha, getSha: () => shaRef.current, holdSha: (v) => { shaRef.current = v; }, toBase: cmSaveRecord, takeOffEd: () => takeOffEd(), addToast, dataRef });
       if (loading) return html`<${EditorSkeleton} mark="photo" rail />`;
       if (loadError) return html`
         <nav class="breadcrumb" aria-label="Breadcrumb"><button onClick=${onBack}>Community Projects</button><span class="sep">›</span><span class="current">${slug}</span></nav>
@@ -21600,6 +21791,7 @@ ${sections || '<p>No one yet.</p>'}
           onWriteAlt=${(p) => writeAlt([p])} writing=${altBusy.has(openPhoto.url)}
           onMove=${movePhoto} onRemove=${(key) => removePhotos([key])}
           onFocus=${(key, focus) => set((d) => ({ photos: d.photos.map((x) => { if (x._key !== key) return x; const { focus: _f, ...rest } = x; return focus ? { ...rest, focus } : rest; }) }))} />` : null}
+        ${credit.dialogs}
         ${historyOpen !== undefined ? html`<${KdHistoryDialog} name=${data.name} history=${history} current=${record} dirty=${dirty} noun="project"
           startId=${historyOpen} onRestore=${restoreVersion} onClose=${() => setHistoryOpen(undefined)} />` : null}
         ${picker ? html`<${KidPhotoPicker} title=${picker.title} photos=${photos} current=${picker.current}
@@ -21683,6 +21875,7 @@ ${sections || '<p>No one yet.</p>'}
             </label>
             <p class="kd-card__note">${jtHides ? 'Hidden because JobTread says Denied. It comes back by itself when the job moves on.' : placeNote}</p>
           </section>
+          ${credit.cards}
           <section class="kd-card kd-card--health" aria-labelledby="cm-health-h">
             <h3 id="cm-health-h">Project health <span class="kd-card__count">${checksDone} of ${checks.length}</span></h3>
             <div class="kd-meter" aria-hidden="true"><span style=${`width:${checks.length ? Math.round((checksDone / checks.length) * 100) : 0}%`}></span></div>

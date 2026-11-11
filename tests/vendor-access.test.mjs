@@ -14,6 +14,7 @@ import {
 } from '../functions/api/_vendor-access.js';
 import { knownPeople, jobCompanies, syncKidPartners, fetchAccess, setLink } from '../functions/api/_kid-partners.js';
 import { readContacts, saveContacts } from '../functions/api/_sponsors.js';
+import { takenOff } from '../functions/api/_room-credits.js';
 import { _resetRoleCache } from '../functions/api/_jt-access.js';
 import { FIELD_CONTACT_EMAIL } from '../functions/api/_applicant-comms.js';
 import { onRequestGet, onRequestPost } from '../functions/api/vendor-access-admin.js';
@@ -159,7 +160,7 @@ function noMail(t) {
   return sent;
 }
 
-test('a job’s vendors: logos on the page (by file or name) and bills, never the kid’s monetary sponsor', () => {
+test('a job’s vendors: logos on the page (by file or name) and bills, the kid’s monetary sponsor too (one lane for every company)', () => {
   const accounts = [
     { id: 'acct-r', name: 'Randall Brothers, Inc.', contacts: [] },
     { id: 'acct-e', name: 'Ace Electric', contacts: [] },
@@ -172,7 +173,7 @@ test('a job’s vendors: logos on the page (by file or name) and bills, never th
   const rec = { slug: 'isla', name: 'Isla', data: { sponsors: ['acme-foundation'], partnerLogos: [logoOf(RANDALL), { url: img('kids/isla/blythe'), name: 'Blythe Creative Co.' }, logoOf(ACME), { url: img('kids/isla/cr'), name: 'CR Construction' }] } };
   const list = jobVendors(rec, { partners, pairs, accounts, bills: ['acct-e', 'acct-r', 'acct-a'] });
   const by = Object.fromEntries(list.map((v) => [v.name, [...v.why].sort().join(' ')]));
-  assert.deepEqual(by, { 'Randall Brothers': 'bill page', 'Blythe Creative Co.': 'page', 'CR Construction': 'page', 'Ace Electric': 'bill' });
+  assert.deepEqual(by, { 'Randall Brothers': 'bill page', 'Blythe Creative Co.': 'page', 'Acme Foundation': 'bill page', 'CR Construction': 'page', 'Ace Electric': 'bill' });
   assert.equal(list.find((v) => v.name === 'CR Construction').account.id, 'acct-cr', 'a logo not in Partners still finds its JobTread vendor by name');
 });
 
@@ -240,10 +241,10 @@ test('a sweep: vendors added quietly with their level or Trade Partner, a page p
   });
   const report = await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 });
   assert.deepEqual(report.problems, []);
-  assert.deepEqual(report.added.map((a) => `${a.person} (${a.name})`).sort(), ['Eve Ace (Ace Electric)', 'Ron Randall (Randall Brothers)']);
+  assert.deepEqual(report.added.map((a) => `${a.person} (${a.name})`).sort(), ['Ann Acme (Acme Foundation)', 'Eve Ace (Ace Electric)', 'Ron Randall (Randall Brothers)']);
   assert.deepEqual(['ron@randallbrothers.example', 'eve@aceelectric.example'].map((e) => jt.people.get(e).role), ['Friend', 'Trade Partner'], 'a partner’s level, a sub’s Trade Partner');
   for (const email of ['al@insure.example', 'desk@cornerstore.example', 'tia@tiledepot.example']) assert.ok(!jt.jobs[0].access.includes(email), `${email} isn’t put on the job`);
-  assert.ok(!jt.jobs[0].access.includes('ann@acmefdn.example'), 'the monetary sponsor is the Sponsor sweep’s');
+  assert.ok(jt.jobs[0].access.includes('ann@acmefdn.example'), 'the monetary sponsor, its logo on the page, goes on like any company (its other contacts go on when it’s picked: ./_room-credits.js)');
   assert.deepEqual(jt.jobs[1].access, [], 'a TEST job is left alone');
 
   // Blythe has no JobTread vendor: it gets one, nobody in it yet (staff don't make vendors in JobTread), and so does every partner, the pages' first.
@@ -264,6 +265,7 @@ test('a sweep: vendors added quietly with their level or Trade Partner, a page p
   ]);
   assert.deepEqual(await rows(DB), [
     { company: 'aceelectric', state: 'added', reason: null, why: 'bill' },
+    { company: 'acmefoundation', state: 'added', reason: null, why: 'page' },
     { company: 'blythecreative', state: 'waiting', reason: 'no-email', why: 'page' },
     { company: 'randallbrothers', state: 'added', reason: null, why: 'page' },
     { company: 'walkyourplans', state: 'waiting', reason: 'no-email', why: 'page' },
@@ -345,12 +347,12 @@ test('the admin: “Same company” pairs a near name for good, an email added p
   assert.ok(jt.jobs[0].access.includes('bea@blythe.example.com'));
   assert.deepEqual(jt.accounts.find((a) => a.name === 'Blythe Creative Co.').contacts.map((c) => c.email), ['bea@blythe.example.com']);
 
-  // Randall Brothers: nobody to reach, and staff say it's not needed
+  // Randall Brothers: nobody to reach, and staff say it's not needed (Acme, the kid's sponsor, waits for an email like anyone)
   const aside = await (await onRequestPost(req({ setAside: { company: 'randallbrothers' } }))).json();
-  assert.deepEqual(aside.view.waiting, []);
+  assert.deepEqual(aside.view.waiting.map((w) => w.name), ['Acme Foundation']);
   assert.deepEqual(aside.view.setAside.map((s) => s.name), ['Randall Brothers']);
   await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 15 * MIN });
-  assert.deepEqual((await adminView(DB)).waiting, [], 'set aside stays aside');
+  assert.deepEqual((await adminView(DB)).waiting.map((w) => w.name), ['Acme Foundation'], 'set aside stays aside (only the sponsor, still with no email, waits)');
   const undo = await (await onRequestPost(req({ setAside: { company: 'randallbrothers', undo: true } }))).json();
   assert.deepEqual(undo.view.setAside, []);
 
@@ -1000,7 +1002,7 @@ test('someone the site can’t be sure of is named back to staff, stays on, and 
   assert.deepEqual(await logosOf(DB), []);
 });
 
-test('Take off with no open job takes the logo off and says so; the kid’s sponsor and a logo nobody goes by never touch the job', async (t) => {
+test('Take off with no open job takes the logo off and says so; a logo nobody goes by never touches the job; the kid’s sponsor comes off like anyone, its credit staying', async (t) => {
   const { DB, jt, takeOff } = await onBothSides(t);
   const scan = { url: img('kids/isla-smith/scan.png'), name: 'Screenshot 2026-08-31' };
   await setPage(DB, { partnerLogos: [logoOf(RANDALL), scan] });
@@ -1010,15 +1012,18 @@ test('Take off with no open job takes the logo off and says so; the kid’s spon
   assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'that one logo left');
   await setPage(DB, { sponsors: ['randall-brothers'] });
   const sponsor = await takeOff();
-  assert.deepEqual(sponsor.skipped, [{ name: 'Randall Brothers', why: 'sponsor' }]);
-  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'the sponsor’s lane');
-  assert.ok(onTheJob(jt));
-  await setPage(DB, { sponsors: [] });
+  assert.deepEqual(sponsor.skipped, [], 'a sponsor isn’t skipped any more');
+  assert.deepEqual(sponsor.taken.map((x) => x.name), ['Randall Brothers'], 'Take off this job takes a sponsor off the job too');
+  assert.deepEqual(await logosOf(DB), [], 'and its logo off the page');
+  assert.ok(!onTheJob(jt));
+  const kid = JSON.parse((await DB.prepare("SELECT data FROM kids WHERE slug = 'isla-smith'").first()).data);
+  assert.deepEqual(kid.sponsors, ['randall-brothers'], 'the credit is another control: it stays until a person changes it (./_room-credits.js)');
+  await setPage(DB, { sponsors: [], partnerLogos: [logoOf(RANDALL)] });
   jt.jobs[0].name = 'Somebody Else (2026)';
   const closed = await takeOff();
   assert.equal(closed.job, false);
   assert.deepEqual(await logosOf(DB), [], 'no open job: the logo still comes off');
-  assert.equal(deletes(jt), 0);
+  assert.equal(deletes(jt), 1, 'only the sponsor’s take-off moved anyone (Ron); no open job moves nobody');
 });
 
 test('JobTread down before anything moved: nothing changes and staff are told; with the job known, the logo comes off and the sweep finishes', async (t) => {
@@ -2112,12 +2117,14 @@ test('a monetary sponsor deleted by its logo stays off after Save, bill or not',
   assert.ok(!onTheJob(jt), 'the bill doesn’t put them back');
 });
 
-test('a sponsor taken off isn’t taken back in from JobTread’s Monetary Sponsor field, even if the sync failed', async (t) => {
-  const { DB, jt, clock, now } = await onBothSides(t);
-  await DB.prepare('CREATE TABLE IF NOT EXISTS sponsor_jobs (record TEXT PRIMARY KEY, job_id TEXT NOT NULL, open INTEGER NOT NULL DEFAULT 1, field TEXT, dismissed TEXT, synced_at TEXT, result TEXT)').run();
-  await DB.prepare("INSERT INTO sponsor_jobs (record, job_id, dismissed) VALUES ('isla-smith', 'j1', '[\"someone-else\"]')").run();
+test('a sponsor a person took off stays remembered as off through the sweep, so a Monetary Sponsor pick doesn’t put it back', async (t) => {
+  const { DB, jt, clock, now, run, later } = await onBothSides(t);
+  await setPage(DB, { sponsors: ['randall-brothers'] });
   await takeOffJob(clock.env, { record: 'isla-smith', partner: 'randall-brothers' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
-  assert.deepEqual(JSON.parse((await DB.prepare('SELECT dismissed FROM sponsor_jobs').first()).dismissed), ['someone-else', 'randall-brothers']);
+  assert.equal(await takenOff(DB, 'j1', 'randall-brothers'), true);
+  later(20 * 60 * 1000);
+  await run();
+  assert.equal(await takenOff(DB, 'j1', 'randall-brothers'), true, 'not dropped as "their sponsor now"');
 });
 
 test('a logo deleted with nobody to move stays deleted when JobTread names the company differently', async (t) => {
@@ -2234,14 +2241,14 @@ test('a take-off landing during the sweep’s access read waits for the next run
   assert.deepEqual(await logosOf(DB), []);
 });
 
-test('a sponsor’s own upload, tied by name, stays on the page when the sponsor’s refused', async (t) => {
+test('a sponsor’s own upload, tied by name, comes off the page with the sponsor', async (t) => {
   const { DB, jt, takeOff } = await onBothSides(t);
   const up = { url: img('kids/isla-smith/acme-upload.png'), name: BLYTHE.name };
   await setPage(DB, { partnerLogos: [logoOf(RANDALL), up], sponsors: ['blythe-creative'] });
   const r = await takeOff([up]);
-  assert.deepEqual(r.skipped, [{ name: BLYTHE.name, why: 'sponsor' }]);
-  assert.deepEqual(r.removed, []);
-  assert.equal((await logosOf(DB)).length, 2);
+  assert.deepEqual(r.skipped, []);
+  assert.deepEqual(r.removed.map((l) => l.name), [BLYTHE.name]);
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
   void jt;
 });
 

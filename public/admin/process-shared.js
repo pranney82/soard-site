@@ -662,7 +662,7 @@ export function mapOf(track, steps) {
  * A map entry renamed since a rule named it (old name → the names it may have
  * now): the rule keeps working through a rename made elsewhere
  */
-export const RENAMED = { 'W-9s and insurance': ['Trade partners'] };
+export const RENAMED = { 'W-9s and insurance': ['Trade partners'], 'Monetary sponsor ↔ JobTread': ['Room credits ↔ JobTread'] };
 /** A Map of the map's entries by name, with each renamed entry under its old name too */
 export function byName(entries) {
   const m = new Map(entries.map((n) => [n.t, n]));

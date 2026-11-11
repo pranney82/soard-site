@@ -24,7 +24,6 @@ import { HISTORY_TABLES, recordDeletion } from './_content-history.js';
 
 export async function onRequestPost(context) {
   try {
-    const { DB } = context.env;
     const userEmail = context.data?.userEmail || 'unknown';
     const { path, message } = await context.request.json();
 
@@ -34,75 +33,14 @@ export async function onRequestPost(context) {
         { status: 400 }
       );
     }
-
-    const parsed = parsePath(path);
-    if (!parsed) {
+    if (!parsePath(path)) {
       return Response.json(
         { success: false, error: 'Path not allowed' },
         { status: 403 }
       );
     }
-
-    // 0. Read old value before deleting (for audit trail)
-    let oldData = null;
-    let entityName = null;
-    try {
-      if (parsed.type === 'site') {
-        const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(parsed.key).first();
-        if (row) { oldData = JSON.parse(row.data); entityName = getEntityName(oldData); }
-      } else {
-        const row = await DB.prepare(`SELECT data FROM ${parsed.table} WHERE slug = ?`).bind(parsed.slug).first();
-        if (row) { oldData = JSON.parse(row.data); entityName = getEntityName(oldData); }
-      }
-    } catch (e) { /* ok */ }
-
-    // 1. Delete from D1 FIRST (source of truth — prebuild reads from D1)
-    if (parsed.type === 'site') {
-      await DB.prepare('DELETE FROM site_config WHERE key = ?')
-        .bind(parsed.key).run();
-    } else {
-      await DB.prepare(`DELETE FROM ${parsed.table} WHERE slug = ?`)
-        .bind(parsed.slug).run();
-    }
-
-    // 2. Delete from GitHub (VCS backup). Non-blocking — D1 already reflects the delete.
-    let gitStatus = 'ok';
-    try {
-      await deleteFile(context.env, path, message);
-    } catch (err) {
-      gitStatus = 'failed';
-      console.error('[delete-content] GitHub delete failed:', err.message);
-    }
-
-    // 3. Audit log
-    const entityType = parsed.type === 'site' ? parsed.key : parsed.table;
-    const entitySlug = parsed.type === 'site' ? parsed.key : parsed.slug;
-
-    await logAudit(DB, {
-      userEmail,
-      action: 'deleted',
-      entityType,
-      entitySlug,
-      entityName,
-      changes: null,
-      path,
-      gitStatus,
-    });
-
-    // A deleted item can come back: keep the record as it was (Recently deleted)
-    if (HISTORY_TABLES[parsed.table] && oldData) {
-      try { await recordDeletion(DB, { collection: parsed.table, slug: parsed.slug, data: oldData, userEmail, now: new Date().toISOString() }); }
-      catch (e) { console.error(`[delete-content] ${parsed.table} history:`, e.message); }
-    }
-
-    // A board or Advisory Board member removed from the website: forget their private reveal
-    // email and take them off open reveal invites now
-    if (parsed.table === 'team' && (oldData?.group === 'board' || oldData?.group === 'advisory')) {
-      await setBoardEmail(DB, parsed.slug, '').catch(() => {});
-      context.waitUntil(refreshForBoardChange(context.env));
-    }
-
-    return Response.json({ success: true, gitCommit: gitStatus });
+    const { gitCommit } = await deleteItem(context.env, { path, message }, userEmail, (p) => context.waitUntil(p));
+    return Response.json({ success: true, gitCommit });
   } catch (err) {
     console.error("[delete-content]", err);
     return Response.json(
@@ -110,4 +48,75 @@ export async function onRequestPost(context) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Deletes one item, as Delete in the admin does: D1 first, then GitHub (not blocking), the audit log, and a copy
+ * kept for Recently deleted. Shared by this endpoint and Partners → Merge into (./_room-credits.js mergeCredits),
+ * which deletes the merged company inside its own locked step. → { gitCommit: 'ok' | 'failed' }
+ */
+export async function deleteItem(env, { path, message }, userEmail = 'unknown', waitUntil = (p) => p) {
+  const { DB } = env;
+  const parsed = parsePath(path);
+  if (!parsed) throw Object.assign(new Error('Path not allowed'), { status: 403 });
+
+  // 0. Read old value before deleting (for audit trail)
+  let oldData = null;
+  let entityName = null;
+  try {
+    if (parsed.type === 'site') {
+      const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(parsed.key).first();
+      if (row) { oldData = JSON.parse(row.data); entityName = getEntityName(oldData); }
+    } else {
+      const row = await DB.prepare(`SELECT data FROM ${parsed.table} WHERE slug = ?`).bind(parsed.slug).first();
+      if (row) { oldData = JSON.parse(row.data); entityName = getEntityName(oldData); }
+    }
+  } catch (e) { /* ok */ }
+
+  // 1. Delete from D1 FIRST (source of truth — prebuild reads from D1)
+  if (parsed.type === 'site') {
+    await DB.prepare('DELETE FROM site_config WHERE key = ?')
+      .bind(parsed.key).run();
+  } else {
+    await DB.prepare(`DELETE FROM ${parsed.table} WHERE slug = ?`)
+      .bind(parsed.slug).run();
+  }
+
+  // 2. Delete from GitHub (VCS backup). Non-blocking — D1 already reflects the delete.
+  let gitStatus = 'ok';
+  try {
+    await deleteFile(env, path, message);
+  } catch (err) {
+    gitStatus = 'failed';
+    console.error('[delete-content] GitHub delete failed:', err.message);
+  }
+
+  // 3. Audit log
+  const entityType = parsed.type === 'site' ? parsed.key : parsed.table;
+  const entitySlug = parsed.type === 'site' ? parsed.key : parsed.slug;
+  await logAudit(DB, {
+    userEmail,
+    action: 'deleted',
+    entityType,
+    entitySlug,
+    entityName,
+    changes: null,
+    path,
+    gitStatus,
+  });
+
+  // A deleted item can come back: keep the record as it was (Recently deleted)
+  if (HISTORY_TABLES[parsed.table] && oldData) {
+    try { await recordDeletion(DB, { collection: parsed.table, slug: parsed.slug, data: oldData, userEmail, now: new Date().toISOString() }); }
+    catch (e) { console.error(`[delete-content] ${parsed.table} history:`, e.message); }
+  }
+
+  // A board or Advisory Board member removed from the website: forget their private reveal
+  // email and take them off open reveal invites now
+  if (parsed.table === 'team' && (oldData?.group === 'board' || oldData?.group === 'advisory')) {
+    await setBoardEmail(DB, parsed.slug, '').catch(() => {});
+    waitUntil(refreshForBoardChange(env));
+  }
+
+  return { gitCommit: gitStatus };
 }

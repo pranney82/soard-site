@@ -243,16 +243,21 @@ export function demoHappened(demo, start, now = Date.now()) {
   return start <= (n.time || '00:00');
 }
 
-// Read when a run needs it: ./_sponsors.js reads this module's field ids, so it's loaded on demand
-const sponsorMatch = (DB) => import('./_sponsors.js').then((m) => m.sponsorMatcher(DB)).catch(() => null);
+// Read when a run needs it: ./_sponsors.js reads this module's field ids, so it's loaded on demand. A read that
+// fails fails the run: read as "no sponsors", every Demo Day already sent would drop its sponsors and email them
+const sponsorMatch = (DB) => import('./_sponsors.js').then((m) => m.sponsorMatcher(DB));
 
 /**
- * The kid's monetary sponsor on the job: someone with the Monetary Sponsor
- * role, or with a partner role (their level, or the old Vendor) from one of
- * the kid's sponsors. isSponsor(person, kid slug): ./_sponsors.js sponsorMatcher.
+ * The kid's monetary sponsor on the job: someone on it from one of the kid's
+ * sponsors (their company is in the kid's sponsors), whatever partner role
+ * they hold: their level, or the old Vendor or Monetary Sponsor. The old role
+ * on its own no longer makes anyone a sponsor (room credits, Nov 10 2026:
+ * Monetary Sponsor is the job's field). isSponsor(person, kid slug):
+ * ./_sponsors.js sponsorMatcher.
  */
 export function sponsorGuests(groups, slug, isSponsor = null) {
-  return groups.confirmed.filter((p) => p.kind === 'sponsor' || (!!isSponsor && !!slug && (p.kind === 'partner' || p.kind === 'vendor') && isSponsor(p, slug)));
+  if (!isSponsor || !slug) return [];
+  return groups.confirmed.filter((p) => (p.kind === 'partner' || p.kind === 'vendor' || p.kind === 'sponsor') && isSponsor(p, slug));
 }
 
 /**

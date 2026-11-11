@@ -26,7 +26,7 @@ import { maybeSweepApplications } from './_applications.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
 import { maybeSyncKidPartners } from './_kid-partners.js';
 import { maybeSyncVendorAccess } from './_vendor-access.js';
-import { maybeSyncSponsors } from './_sponsors.js';
+import { maybeSyncCredits } from './_room-credits.js';
 import { maybeSweepZeffy } from './_zeffy.js';
 import { maybeSyncDonors } from './_kit-donors.js';
 import { maybeRunWaitlist } from './_application-waitlist.js';
@@ -62,9 +62,12 @@ import { maybeRunAiWatch } from './_ai-watch.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
+// What runs after the reply (waitUntil) has about 30 s from it; counted from the call's start, with some to spare
+const AFTER_MS = 28 * 1000;
 
 export async function onRequestPost(context) {
   const { env, request } = context;
+  const deadline = Date.now() + AFTER_MS;
   const nonce = request.headers.get('x-hub-nonce');
   if (!env.LIVE_HUB) return Response.json({ ok: false, error: 'LIVE_HUB binding missing' }, { status: 503 });
   if (!(await verifyHubNonce(env, nonce))) return Response.json({ ok: false, error: 'invalid nonce' }, { status: 401 });
@@ -112,9 +115,9 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSweepApplications(env));
     context.waitUntil(maybeSyncKidStatuses(env));
     // Every 10 minutes: Vendors and Sponsors on a job get their logo on the kid's page; no logo, staff are emailed (see _kid-partners.js).
-    // Then monetary sponsors: job access follows the website, the Monetary Sponsor field mirrors it, and a
-    // Sponsor added in JobTread comes in (see _sponsors.js). In turn, so the two never write a kid at once
-    context.waitUntil(maybeSyncKidPartners(env).then(() => maybeSyncSponsors(env)));
+    // Then room credits: JobTread's Designed By and Monetary Sponsor, as Clareece picks them, reach the website, and a
+    // company picked that isn't on the room goes on, once (see _room-credits.js). In turn, so the two never write a kid at once
+    context.waitUntil(maybeSyncKidPartners(env).catch(() => null).then(() => maybeSyncCredits(env, { deadline })));
     // Every 15 minutes: each job's vendors (logos on the page, bills and orders) on its JobTread job access, quietly,
     // and vendor contacts kept in step both ways (see _vendor-access.js)
     context.waitUntil(maybeSyncVendorAccess(env));

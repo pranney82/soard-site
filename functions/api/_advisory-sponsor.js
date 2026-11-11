@@ -3,10 +3,13 @@
  * ===========================================================================
  * Peter, Nov 5 2026: the group sponsors a real kid, the Advisory Board is a real
  * partner with its own logo, and advisory@soardcharity.com is how JobTread knows
- * them. So the group works like any monetary sponsor (./_sponsors.js): the partner
- * "SOARD Advisory Board" goes on the kid, its one contact is the group's address,
- * and that address gets the sponsor's access on that one job. No advisor gets a
- * JobTread login. Its logo reaches the kid's page the way any sponsor's does.
+ * them. So the group works like any monetary sponsor (./_room-credits.js): the
+ * partner "SOARD Advisory Board" is the kid's Monetary Sponsor (in JobTread's
+ * field when the kid has a job), its one contact is the group's address, and that
+ * address gets the sponsor's access on that one job. No advisor gets a JobTread
+ * login. Its logo goes on the kid's page when it's picked, like any sponsor's.
+ * Moving on to another kid takes the group off the old one completely: the
+ * credit, then the logo and the access (Take off this job, ./_vendor-access.js).
  *
  * The Demo Day invite reaches the group through that address. A reveal doesn't:
  * advisors already get every reveal invite by name, so the group's address is left
@@ -20,12 +23,15 @@
  * been raised (pledged = received), and staff can't type over it (sponsors-admin.js).
  */
 
-import { loadAllKids, saveRecord, SYNC_USER } from './_kid-status.js';
-import { saveContacts, readContacts, syncKidSponsor, dismissSponsor } from './_sponsors.js';
+import { loadAllKids, SYNC_USER } from './_kid-status.js';
+import { saveContacts, readContacts } from './_sponsors.js';
+import { setCredit } from './_room-credits.js';
+import { takeOffJob } from './_vendor-access.js';
 import { savePledge } from './_sponsor-pledges.js';
 import { saveSettings, GROUP_ADDRESS } from './_advisory.js';
 
 export const ADVISORY_PARTNER = 'soard-advisory-board';
+const SYNC_BY = 'Advisory Board';
 const err = (message, status = 400) => Object.assign(new Error(message), { status });
 const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 const STAGES = { 'needs-funding': 'Getting ready', 'in-progress': 'Being built', completed: 'Finished' };
@@ -44,19 +50,6 @@ async function ensureContact(DB) {
   if (!have.some((c) => c.email === GROUP_ADDRESS)) await saveContacts(DB, ADVISORY_PARTNER, [{ name: 'SOARD Advisory Board', email: GROUP_ADDRESS }], { by: SYNC_USER });
 }
 
-async function putOnKid(env, kid, on, { now }) {
-  const iso = new Date(now).toISOString();
-  const sponsors = (kid.data.sponsors || []).filter((s) => s !== ADVISORY_PARTNER);
-  const after = {
-    ...kid.data,
-    sponsors: on ? [...sponsors, ADVISORY_PARTNER] : sponsors,
-    // Taken off: its logo comes off the page in the same save, or the sync would keep it on the job
-    ...(on ? {} : { partnerLogos: (kid.data.partnerLogos || []).filter((l) => !/advisory board/i.test(String(l.name || ''))) }),
-  };
-  await saveRecord(env, 'kids', kid.slug, kid.data, after, `${on ? 'The Advisory Board sponsors' : 'The Advisory Board no longer sponsors'} ${firstName(kid.data.name)}`, iso);
-  return after;
-}
-
 /** The group sponsors this kid. One kid per term: picking another moves the sponsor and the pledge, on the record */
 export async function pickKid(env, settings, slug, { by = '', now = Date.now(), fetchImpl = fetch, raised = 0 } = {}) {
   const { DB } = env;
@@ -70,16 +63,16 @@ export async function pickKid(env, settings, slug, { by = '', now = Date.now(), 
   await ensureContact(DB);
   // Who the group is sponsoring is written first and put back on a failure, so nothing is left half done
   const next = await saveSettings(DB, { kid: slug });
-  let data;
+  let credit;
   try {
-    data = await putOnKid(env, kid, true, { now });
+    // A person pressed Pick the kid: the group goes on that makeover, even one it was moved off before
+    credit = await setCredit(env, { record: slug, kind: 'sponsored', partner: ADVISORY_PARTNER, on: true, person: true }, by || SYNC_BY, { fetchImpl, now });
     await savePledge(DB, { kid: slug, partner: ADVISORY_PARTNER, pledged: raised, received: raised }, { by: 'Advisory Board', now });
   } catch (e) {
     await saveSettings(DB, { kid: '' });
     throw e;
   }
-  const sync = data.jobtreadJobId ? await syncKidSponsor(env, { slug, jobId: data.jobtreadJobId, previous: [] }, { by, fetchImpl, now }).catch((e) => ({ problems: [e.message] })) : { problems: ['This kid has no JobTread job yet'] };
-  return { settings: next, sync };
+  return { settings: next, sync: { job: credit.job, put: credit.put, problems: credit.job ? [] : ['This kid has no JobTread job yet'] } };
 }
 
 export async function clearKid(env, settings, { by = '', now = Date.now(), fetchImpl = fetch } = {}) {
@@ -89,14 +82,12 @@ export async function clearKid(env, settings, { by = '', now = Date.now(), fetch
   const kid = (await loadAllKids(DB)).find((k) => k.slug === settings.kid);
   // A finished makeover keeps its sponsor, logo and pledge: the group just moves on
   if (kid && kid.data.status !== 'completed') {
-    // Marked first, so JobTread's next sweep can't bring the group back while its access is still coming off
-    await dismissSponsor(DB, kid.slug, ADVISORY_PARTNER);
-    const data = await putOnKid(env, kid, false, { now });
+    // The credit first (JobTread's field too), then the group off the room: its logo off the page, its access off the job
+    await setCredit(env, { record: kid.slug, kind: 'sponsored', partner: ADVISORY_PARTNER, on: false }, by || SYNC_BY, { fetchImpl, now })
+      .catch((e) => problems.push(`Couldn’t take the group off as the sponsor: ${e.message}`));
     await savePledge(DB, { kid: kid.slug, partner: ADVISORY_PARTNER, pledged: null, received: null }, { by: 'Advisory Board', now });
-    if (data.jobtreadJobId) {
-      const r = await syncKidSponsor(env, { slug: kid.slug, jobId: data.jobtreadJobId, previous: [ADVISORY_PARTNER] }, { by, fetchImpl, now }).catch((e) => ({ problems: [e.message] }));
-      problems.push(...(r?.problems || r?.done?.problems || []));
-    }
+    const off = await takeOffJob(env, { record: kid.slug, partner: ADVISORY_PARTNER }, by || SYNC_BY, { fetchImpl, now }).catch((e) => ({ pending: [e.message] }));
+    problems.push(...(off?.pending || []).map((x) => `Still to come off the job: ${x}`));
   }
   return { settings: await saveSettings(DB, { kid: '' }), problems };
 }

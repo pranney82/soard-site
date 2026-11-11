@@ -55,8 +55,10 @@ const kids = defineCollection({
       url: link(),
       name: z.string().nullable().optional(),
     })).default([]),
-    // Monetary sponsors, as Partners slugs (Admin → Kids). JobTread's Monetary Sponsor field follows them
+    // Room credits, as Partners slugs: who paid for the room and who designed it. JobTread's Monetary Sponsor and
+    // Designed By fields are the record for a room with a job; this is the website's copy (functions/api/_room-credits.js)
     sponsors: z.array(z.string()).default([]),
+    designers: z.array(z.string()).default([]),
     heroSummary: z.string().nullable().optional(),
     shortDescription: z.string().nullable().optional(),
     metaDescription: z.string().nullable().optional(),
@@ -320,6 +322,9 @@ const community = defineCollection({
       url: link(),
       name: z.string().default(''),
     })).default([]),
+    // Room credits, as Partners slugs: who paid for it and who designed it (functions/api/_room-credits.js)
+    sponsors: z.array(z.string()).default([]),
+    designers: z.array(z.string()).default([]),
   }),
 });
 

@@ -57,6 +57,7 @@
  * "reveal-invites"). While off, each wake-up records what it would have done.
  */
 
+import { fieldValues } from './_jt-fields.js';
 import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchProject, isProject, parseJobName, loadKidsAndProjects } from './_reveals.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent } from './_google-calendar.js';
 import { sendEmails, slackPost, slackIssue, slackResolved, emailConfigured } from './_broadcast-notify.js';
@@ -455,7 +456,8 @@ export async function fetchStaff(grantKey, fetchImpl = fetch) {
     .filter(s => !NOT_STAFF.has(s.email));
 }
 
-export const fieldValues = (nodes) => Object.fromEntries((nodes || []).map(v => [v.customField?.id, v.value]));
+// A field with several choices (Makeover Type, Monetary Sponsor) is one node per choice: all of them, as "A and B"
+export { fieldValues };
 export const hhmm = (t) => (t ? String(t).slice(0, 5) : null);
 
 function addHour(time) {

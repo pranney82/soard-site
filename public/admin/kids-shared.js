@@ -243,7 +243,7 @@ export function kidIssues(kid) {
   if (!kid.heroImage) add('no-hero', 'warn', 'No main photo', 'photos', 'The grid card and the top of the page have no photo');
   if (!plain(kid.bio)) add('no-story', 'warn', 'No story', 'story', 'The page has no story section');
   // Awaiting funding is about finding who pays for the room (Peter, Oct 28 2026)
-  if (kid.status === 'needs-funding' && !(kid.sponsors || []).length) add('no-sponsor', 'warn', 'No monetary sponsor yet', 'sponsor', 'Pick who pays for the room; JobTread follows');
+  if (kid.status === 'needs-funding' && !(kid.sponsors || []).length) add('no-sponsor', 'warn', 'No monetary sponsor yet', 'sponsor', 'Pick who pays for the room, here or in JobTread');
   if (kid.status === 'needs-funding' && !kid.fundraisingUrl) add('no-fund-link', 'warn', 'No fundraising link', 'giving', 'Visitors have no way to give toward this room');
   if (kid.status === 'completed' && photos.length < 3) add('few-photos', 'warn', photos.length ? `Only ${photos.length} photo${photos.length === 1 ? '' : 's'}` : 'No photos', 'photos', 'Completed rooms read best with a full gallery');
   const intro = heroIntro(kid);
@@ -291,7 +291,7 @@ export function kidChecks(kid) {
 
 // ── History: what a save changed, in words ───────────────────────────
 const HISTORY_FIELDS = [
-  ['name', 'Name'], ['status', 'Status'], ['publishStatus', 'Shown on the site'], ['sponsors', 'Monetary sponsor'], ['year', 'Year'], ['age', 'Age'],
+  ['name', 'Name'], ['status', 'Status'], ['publishStatus', 'Shown on the site'], ['sponsors', 'Monetary sponsor'], ['designers', 'Designed by'], ['year', 'Year'], ['age', 'Age'],
   ['childCount', 'Kids in the profile'], ['diagnosis', 'Diagnosis'], ['rooms', 'What was built'],
   ['heroSummary', 'Hero summary'], ['bio', 'Story'], ['quote', 'Pull quote'],
   ['heroImage', 'Main photo'], ['accentImage', 'Accent photo'], ['photos', 'Photos'], ['photographer', 'Photographer'],
@@ -383,7 +383,7 @@ export function describeChanges(rawBefore, rawAfter, { partnerName = null } = {}
         return [cap && `${plural(cap, 'caption')} changed`];
       });
       else if (field === 'beforeAfterPhotos') detail = listChange(b || [], a || [], (x) => `${x.before}|${x.after}`);
-      else if (field === 'sponsors') detail = !(a || []).length ? 'Removed' : !(b || []).length ? `Set to ${(a || []).map(nameOf).join(' & ')}` : `${(b || []).map(nameOf).join(' & ')} → ${(a || []).map(nameOf).join(' & ')}`;
+      else if (field === 'sponsors' || field === 'designers') detail = !(a || []).length ? 'Removed' : !(b || []).length ? `Set to ${(a || []).map(nameOf).join(' & ')}` : `${(b || []).map(nameOf).join(' & ')} → ${(a || []).map(nameOf).join(' & ')}`;
       else if (typeof a === 'number' || typeof b === 'number') detail = `${b ?? 'none'} → ${a ?? 'none'}`;
       else if (!plain(b)) detail = `Added: “${clip(a)}”`;
       else if (!plain(a)) detail = 'Removed';
@@ -411,8 +411,9 @@ export function kidRecord(data) {
     videoUrl: String(d.videoUrl || '').trim() || null,
     fundraisingUrl: String(d.fundraisingUrl || '').trim() || null,
     revealVideoUrl: String(d.revealVideoUrl || '').trim() || null,
-    // Monetary sponsors: Partners slugs, the first is who JobTread names first (functions/api/_sponsors.js)
+    // Room credits: Partners slugs, as JobTread's Monetary Sponsor and Designed By name them (functions/api/_room-credits.js)
     sponsors: [...new Set((Array.isArray(d.sponsors) ? d.sponsors : []).filter((x) => typeof x === 'string' && x))],
+    designers: [...new Set((Array.isArray(d.designers) ? d.designers : []).filter((x) => typeof x === 'string' && x))],
     heroSummary: String(d.heroSummary || '').trim() || null,
     photos: clean(d.photos).filter((p) => p.url && !/^blob:/.test(p.url)),
     partnerLogos: clean(d.partnerLogos).filter((p) => p.url && !/^blob:/.test(p.url)),

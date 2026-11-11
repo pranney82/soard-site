@@ -25,7 +25,8 @@
 import { adminView, setCompanyAside, settleAccount, linkAccount, syncVendorAccess, unmatchAccount, renameAccount, settleTwins, takeOffJob, putBackJob, addToJob, makeoverView, setWatch } from './_vendor-access.js';
 import { reconcileJob } from './_reveal-invites.js';
 import { pickRole } from './_partner-roles.js';
-import { saveContacts, grantForPartner } from './_sponsors.js';
+import { saveContacts, readContacts } from './_sponsors.js';
+import { grantForSponsor } from './_room-credits.js';
 import { logAudit } from './_audit.js';
 import { nameKey } from '../../public/admin/partners-shared.js';
 
@@ -114,11 +115,14 @@ export async function onRequestPost(context) {
     const name = await partnerName(env.DB, partner);
     if (!name) return fail('That partner isn’t in the directory', 404);
     let saved;
+    // Who was there before, so only the ones just added go on the jobs it sponsors (one a person took off stays off)
+    const had = new Set(((await readContacts(env.DB, [partner]))[partner] || []).map((c) => String(c.email || '').toLowerCase()).filter(Boolean));
     try { saved = await saveContacts(env.DB, partner, people, { by }); } catch (e) { return fail(e.message); }
+    const added = saved.map((c) => String(c.email || '').toLowerCase()).filter((e) => e && !had.has(e));
     // Names only in the log: emails and phones stay in partner_contacts
     await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'partner-contacts', entitySlug: partner, entityName: 'Vendor contacts', changes: { people: saved.map((p) => p.name || 'unnamed') } });
-    // A sponsor too: its kids' jobs get them as Sponsors, as a save in the kid editor does
-    await grantForPartner(env, partner).catch(() => null);
+    // A sponsor too: each new one goes on the open job of each room it sponsors, once
+    await grantForSponsor(env, partner, { emails: added }).catch(() => null);
     return run(nameKey(name));
   }
 

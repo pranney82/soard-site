@@ -165,6 +165,23 @@ test('reveal checks and the date sync report their switch, last run and last act
   assert.ok(!JSON.stringify(f).includes('secret-ish'));
 });
 
+test('room credits report their last run in counts, and a stopped run by its code, never its error text', async () => {
+  const DB = await makeDb();
+  // Before the first run the room_credit_state table doesn't exist yet
+  let f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.deepEqual(f.roomCredits, { lastRunAt: null, stopped: null, problems: 0, held: 0, unknown: 0, owed: 0, changed: 0, put: 0, more: false });
+  await DB.prepare('CREATE TABLE room_credit_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)').run();
+  await DB.prepare('INSERT INTO room_credit_state (key, value) VALUES (?, ?)').bind('last', JSON.stringify({ at: '2026-11-10T15:00:00.000Z', error: 'JobTread’s Designed By field is gone (secret-ish detail)', code: 'designed-gone' })).run();
+  f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.equal(f.roomCredits.stopped, 'designed-gone', 'a stopped run is reported, not hidden as an unread table');
+  assert.equal(f.roomCredits.lastRunAt, '2026-11-10T15:00:00.000Z');
+  assert.ok(!JSON.stringify(f).includes('secret-ish'));
+  await DB.prepare('UPDATE room_credit_state SET value = ? WHERE key = ?').bind(JSON.stringify({ at: '2026-11-10T15:10:00.000Z', changed: 2, put: 1, unknown: 3, held: 1, owed: 2, problems: ['Axel Puente Arnao: couldn’t put Crosby on the room yet'], more: true }), 'last').run();
+  f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.deepEqual(f.roomCredits, { lastRunAt: '2026-11-10T15:10:00.000Z', stopped: null, problems: 1, held: 1, unknown: 3, owed: 2, changed: 2, put: 1, more: true });
+  assert.ok(!JSON.stringify(f).includes('Axel'), 'no names: counts only');
+});
+
 test('kid status from JobTread reports its last sweep, last run and the profiles it hid', async () => {
   const DB = await makeDb();
   // Before the first sync the kid_status_state table doesn't exist yet

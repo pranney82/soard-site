@@ -3,7 +3,8 @@
  * ===========================================================================
  * Each open kid or community job lists its vendors in JobTread's job access:
  *   - each company whose logo is on the page (the kid's monetary sponsor
- *     aside: ./_sponsors.js puts its people on), and
+ *     too: one lane for every company; a sponsor's other contacts go on when
+ *     it's picked, ./_room-credits.js), and
  *   - each JobTread vendor with a bill or a purchase order on the job, from
  *     the vendors table's JobTread cache (jt_id + facts.jobs, every 4 hours)
  * A company is on the job when anyone from it has access, in any role: a
@@ -44,9 +45,9 @@
  *     where it can be turned off again.
  * The reveal invite is built from who's on the job, so it follows by itself
  * (./_reveal-invites.js). A removal the site does for its own reasons says so
- * first (noteSiteRevoke, the sponsor sync too), so it's never read as a person
- * doing it in JobTread. The kid's monetary sponsor has its own lane
- * (./_sponsors.js).
+ * first (noteSiteRevoke), so it's never read as a person doing it in
+ * JobTread. The kid's monetary sponsor is put on the job when it's picked
+ * (./_room-credits.js), and taken off here like any company.
  *
  * A JobTread vendor that isn't a partner goes on a job only when SOARD pays
  * it for work (isTradeVendor: JobTread's Trades, W-9 and Documents fields, or
@@ -95,7 +96,7 @@ import { pageLogosOff, pageLogosOn } from './partners-batch.js';
 import { pave, grantJobAccess, revokeJobAccess, noteSiteRevoke } from './_jt-access.js';
 import { slackPost } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
-import { readContacts, saveContacts, isEmail, dismissSponsor } from './_sponsors.js';
+import { readContacts, saveContacts, isEmail } from './_sponsors.js';
 import { logAudit } from './_audit.js';
 import { roleMode, reconcileRoles, rolesView, readMemberships, isPartnerRole } from './_partner-roles.js';
 import { nameKey, wordsKey, domainOf, isSocial, kidUsage, nearPartners, cfId } from '../../public/admin/partners-shared.js';
@@ -429,7 +430,6 @@ export function pairAccounts(partners, accounts, { saved = {}, links = {}, notSa
  */
 export function jobVendors(rec, { partners, pairs, accounts, bills = [], trade = () => true, loose = null }) {
   const data = rec.data || {};
-  const sponsors = new Set(Array.isArray(data.sponsors) ? data.sponsors : []);
   const bySlug = new Map(partners.map((p) => [p.slug, p]));
   const accountOf = new Map([...pairs].map(([slug, a]) => [a.id, slug]));
   const out = new Map();
@@ -443,14 +443,14 @@ export function jobVendors(rec, { partners, pairs, accounts, bills = [], trade =
   for (const slug of usage.keys()) {
     const p = bySlug.get(slug);
     for (const row of usage.get(slug)) matched.add(row.url);
-    if (!p || sponsors.has(slug)) continue;
+    if (!p) continue;
     add({ company: nameKey(p.name), name: p.name, partner: slug, account: pairs.get(slug) || null }, 'page', usage.get(slug).map((row) => row.url));
   }
   // A named logo that isn't a partner's file: the partner by that name, else JobTread's vendor by it
   for (const l of data.partnerLogos || []) {
     if (!l?.url || matched.has(l.url) || !nameKey(l.name)) continue;
     const p = partners.find((x) => sameName(x.name, l.name));
-    if (p) { if (!sponsors.has(p.slug)) add({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null }, 'page', [l.url]); continue; }
+    if (p) { add({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null }, 'page', [l.url]); continue; }
     const a = accounts.find((x) => !x.archived && sameName(x.name, l.name));
     if (!a) { loose?.push(String(l.name).trim()); continue; }
     add({ company: nameKey(String(l.name).trim()), name: String(l.name).trim(), partner: null, account: a }, 'page', [l.url]);
@@ -460,7 +460,6 @@ export function jobVendors(rec, { partners, pairs, accounts, bills = [], trade =
     const a = byId.get(id);
     if (!a || a.archived) continue;
     const slug = accountOf.get(id);
-    if (slug && sponsors.has(slug)) continue;
     const p = slug ? bySlug.get(slug) : null;
     if (!p && !trade(a)) continue;
     add(p ? { company: nameKey(p.name), name: p.name, partner: slug, account: a } : { company: nameKey(a.name), name: a.name, partner: null, account: a }, 'bill');
@@ -834,8 +833,9 @@ const keepLogoOff = async (DB, record, jobId, left, name, partner, at) => {
     if ((partner && r.partner === partner) || sameName(r.name, name)) await DB.prepare("UPDATE kid_partner_logos SET state = 'off', updated_at = ? WHERE record = ? AND company = ?").bind(at, record, r.company).run();
   }
 };
+// The rest of the room's companies (its sponsors too), never the one coming off: a sponsor taken off goes like anyone
 const othersOn = (rec, vendors, who, bySlug, pairs) => [...vendors.filter((o) => whoOf(o) !== who),
-  ...(Array.isArray(rec.data?.sponsors) ? rec.data.sponsors : []).map((s) => bySlug.get(s)).filter(Boolean).map((p) => ({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null }))];
+  ...(Array.isArray(rec.data?.sponsors) ? rec.data.sponsors : []).filter((s) => `p:${s}` !== who).map((s) => bySlug.get(s)).filter(Boolean).map((p) => ({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null }))];
 const tableOf = (rec) => (isProject(rec) ? 'community' : 'kids');
 /** Off the job, the rest of the way: the row, and what the sweeps keep about them */
 const tookFrom = (v, going, had = []) => [...new Map([...had, ...going.map((m) => ({ name: m.user?.name || v.name, email: lower(m.user?.emailAddress) }))].map((t) => [t.email, t])).values()];
@@ -901,12 +901,12 @@ export async function takeOffJob(env, { record, partner = null, account = null, 
     const a = (await fetchVendorAccounts(key, fetchImpl).catch(() => [])).find((x) => x.id === account);
     if (a) companies.get(`a:${account}`).account = a;
   }
-  const sponsors = new Set(Array.isArray(rec.data?.sponsors) ? rec.data.sponsors : []);
-  for (const [who, v] of companies) if (sponsors.has(v.partner)) { companies.delete(who); out.skipped.push({ name: v.name, why: 'sponsor' }); }
+  // A monetary sponsor or design partner comes off like anyone else: being on the room is one thing, the credit
+  // another (./_room-credits.js), and the credit stays until a person changes it
   if (partner && !companies.size) return out;
   // Every logo of theirs on the page, however it got there; X on one of two is the company leaving
   const urls = [...new Set([
-    ...logos.map((l) => l.url).filter((u) => !sponsors.has(whose.get(u))),
+    ...logos.map((l) => l.url),
     ...[...companies.values()].flatMap((v) => [
       ...(v.partner ? (usage.get(v.partner) || []).map((row) => row.url).filter((u) => shown.some((l) => logoId(l?.url) === logoId(u))) : []),
       ...shown.filter((l) => l?.url && (nameKey(l.name) === v.company || sameName(l.name, v.name))).map((l) => l.url),
@@ -949,8 +949,7 @@ export async function takeOffJob(env, { record, partner = null, account = null, 
       if (row && out.removed.length) await seenStatement(DB, { ...row, goneLogos: out.removed }, at).run();
     }
   }
-  // Deleted is deleted, even with nobody to move: no open job, or a logo nobody can name. A sponsor's left the page at Save
-  if (partner) await dismissSponsor(DB, record, partner);
+  // Deleted is deleted, even with nobody to move: no open job, or a logo nobody can name
   if (out.removed.length || partner) {
     const noOne = [...out.skipped.filter((s) => s.why === 'unknown').map((s) => ({ name: s.name, partner: null })), ...(job ? [] : [...companies.values()])];
     for (const v of noOne) await keepLogoOff(DB, record, job?.id || null, [{}], v.name, v.partner, at);
@@ -1152,7 +1151,7 @@ export async function makeoverView(env, record, { fetchImpl = fetch } = {}) {
     const slug = [...pairs].find(([, a]) => a.id === id)?.[0];
     const p = slug && bySlug.get(slug);
     const v = p ? { company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) } : { company: nameKey(names.get(id)), name: names.get(id) || 'A vendor', partner: null, account: { id, contacts: [] } };
-    if (!(rec.data?.sponsors || []).includes(v.partner)) put(whoOf(v), v, { bill: true });
+    put(whoOf(v), v, { bill: true });
   }
   for (const row of seen.values()) {
     if (row.job_id !== job?.id || row.record !== record) continue;
@@ -1197,7 +1196,6 @@ function planJob({ k, job, rec, aces, seen, last, tookBySite, vendors, ctx, at, 
   const fresh = !last || last.record !== k || now - Date.parse(last.at) > STALE_LOOK_MS;
   const outsiders = outsidersOn(aces);
   const onJobIds = new Set(outsiders.map((m) => m.id));
-  const sponsors = new Set(Array.isArray(data.sponsors) ? data.sponsors : []);
   const contactsOf = (v) => ({ people: v.partner ? contactsAll[v.partner] || [] : [], website: bySlug.get(v.partner)?.website, links });
   const stale = [];
 
@@ -1208,8 +1206,8 @@ function planJob({ k, job, rec, aces, seen, last, tookBySite, vendors, ctx, at, 
     // Someone listed under another key now: they've become a partner, and lookFor finds this row for them
     if (row.account_id && [...entries.values()].some((v) => v.account?.id === row.account_id)) continue;
     const p = row.partner ? bySlug.get(row.partner) : null;
-    // Merged or deleted in Partners, their sponsor now, set aside, or another page's since the job was relinked: none of it is someone leaving
-    if (row.record !== k || (row.partner && !p) || sponsors.has(row.partner) || (setAside[nameKey(p?.name || row.name)] && !row.off)) { stale.push(row.who); continue; }
+    // Merged or deleted in Partners, set aside, or another page's since the job was relinked: none of it is someone leaving
+    if (row.record !== k || (row.partner && !p) || (setAside[nameKey(p?.name || row.name)] && !row.off)) { stale.push(row.who); continue; }
     const a = accounts.find((x) => x.id === row.account_id) || null;
     entries.set(row.who, p ? { company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null, why: new Set(), logos: [] }
       : { company: nameKey(a?.name || row.name), name: a?.name || row.name, partner: null, account: a, why: new Set(), logos: [] });

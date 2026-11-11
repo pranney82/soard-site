@@ -116,38 +116,44 @@ test('when there is no invite, and when one that is out is kept as it is', () =>
 
 test('the emails switch keeps the Advisory Board’s group off a new invite, and never takes it off one that’s out', () => {
   const GROUP = 'advisory@soardcharity.com';
-  const aces = [access('Sponsor', 'SOARD Advisory Board', GROUP)];
+  // On the job with its level, as the site puts it there; the kid's sponsor, so its group's address is the sponsor's
+  const aces = [access('Friend', 'SOARD Advisory Board', GROUP)];
+  const isSponsor = (p, slug) => slug === 'max' && p.email === GROUP;
   const people = { always: [], skip: [GROUP] };
-  const plan = (extra) => planDemo(job({ sponsor: 'SOARD Advisory Board', aces }), STAFF, { kids: KIDS, now: NOW, people, ...extra });
+  const plan = (extra) => planDemo(job({ sponsor: 'SOARD Advisory Board', aces }), STAFF, { kids: KIDS, now: NOW, people, isSponsor, ...extra });
   assert.ok(!plan({}).guests.includes(GROUP), 'off: a new invite leaves it out');
   assert.ok(plan({ sentGuests: [GROUP] }).guests.includes(GROUP), 'off: one that’s out keeps it');
-  assert.ok(planDemo(job({ sponsor: 'SOARD Advisory Board', aces }), STAFF, { kids: KIDS, now: NOW, people: { always: [], skip: [] } }).guests.includes(GROUP), 'on: it’s a guest');
+  assert.ok(planDemo(job({ sponsor: 'SOARD Advisory Board', aces }), STAFF, { kids: KIDS, now: NOW, isSponsor, people: { always: [], skip: [] } }).guests.includes(GROUP), 'on: it’s a guest');
 });
 
-test('guests: family, internal team, the monetary sponsor (Sponsor users on the job), and the every-demo-day list; nobody else on the job', () => {
+test('guests: family, internal team, the monetary sponsor (people on the job from the kid’s sponsors), and the every-demo-day list; nobody else on the job', () => {
   const people = {
     always: [{ email: 'mindi@example.com', name: 'Mindi', role: 'Social media' }, { email: 'CNIELSEN@soardcharity.com', name: 'dup' }],
   };
   const aces = [
-    access('Sponsor', 'Sam Sponsor', 'sam@sponsor.example'),
+    access('Champion', 'Sam Sponsor', 'sam@sponsor.example'),
+    // The old Sponsor role on its own isn't the sponsor (room credits, Nov 10 2026: the company is)
+    access('Sponsor', 'Olive Oldrole', 'olive@elsewhere.example'),
     access('Vendor', 'Jen Designer', 'jen@design.example'),
     access('Photographer', 'Pat Photo', 'pat@photo.example'),
     access('Makeover Family', 'Grandpa Sample', 'grandpa@example.com'),
     access('Admin', 'Qualification Committee', 'selection@soardcharity.com', true),
   ];
-  const p = planDemo(job({ sponsor: 'Jackson Healthcare', aces }), STAFF, { kids: KIDS, now: NOW, people });
+  const isSponsor = (p, slug) => slug === 'max' && /@sponsor\.example$/.test(p.email);
+  const p = planDemo(job({ sponsor: 'Jackson Healthcare', aces }), STAFF, { kids: KIDS, now: NOW, people, isSponsor });
   assert.deepEqual(p.guests, [
     'pat.sample@example.com', 'grandpa@example.com', // family: contacts and Makeover Family users
     'cnielsen@soardcharity.com', // internal team
-    'sam@sponsor.example', // the monetary sponsor: Sponsor users given access to the job
+    'sam@sponsor.example', // the monetary sponsor: people from the kid's sponsors given access to the job
     'mindi@example.com', // every demo day
   ]);
   assert.ok(!p.guests.includes('jen@design.example') && !p.guests.includes('pat@photo.example'), 'vendors, design partners and photographers on the job are not invited');
+  assert.ok(!p.guests.includes('olive@elsewhere.example'), 'nor someone on the old Sponsor role who isn’t from the kid’s sponsors');
   assert.equal(p.sponsor, 'Jackson Healthcare');
   assert.deepEqual(p.people['mindi@example.com'], { name: 'Mindi', kind: 'always', role: 'Social media' });
   assert.equal(p.people['sam@sponsor.example'].kind, 'sponsor');
   assert.ok(!p.guests.includes('selection@soardcharity.com'));
-  const none = planDemo(job({ sponsor: 'SOARF' }), STAFF, { kids: KIDS, now: NOW, people });
+  const none = planDemo(job({ sponsor: 'SOARF' }), STAFF, { kids: KIDS, now: NOW, people, isSponsor });
   assert.deepEqual(none.guests.filter((g) => none.people[g].kind === 'sponsor'), [], 'a sponsor named on the job with nobody from it on the job adds nobody');
 });
 
@@ -188,6 +194,12 @@ async function freshDb() {
   ] });
   await DB.prepare('INSERT INTO kids (slug, name, year, status, data) VALUES (?, ?, ?, ?, ?)').bind('max', 'Max', 2026, 'in-progress', '{"name":"Max","slug":"max"}').run();
   return DB;
+}
+/** Max's monetary sponsor, in Partners with its website (how Demo Day knows its people on the job) */
+async function sponsorMax(DB, slug, name, website) {
+  await DB.prepare('CREATE TABLE IF NOT EXISTS partners (slug TEXT PRIMARY KEY, name TEXT, level TEXT, category TEXT, featured INTEGER, data TEXT NOT NULL)').run();
+  await DB.prepare('INSERT OR REPLACE INTO partners (slug, name, level, category, featured, data) VALUES (?, ?, ?, ?, ?, ?)').bind(slug, name, 'friend', 'funding', 0, JSON.stringify({ slug, name, website, category: ['funding'] })).run();
+  await DB.prepare('UPDATE kids SET data = ? WHERE slug = ?').bind(JSON.stringify({ name: 'Max', slug: 'max', sponsors: [slug] }), 'max').run();
 }
 
 beforeEach(async () => {
@@ -271,8 +283,9 @@ test('sent once, follows the Demo task, and only facts email the guests', async 
   assert.equal((await run()).action, 'updated quietly');
   assert.ok(calls.some((c) => c.includes('sendUpdates=none')));
 
-  // Someone from the sponsor is given access to the job (Sponsor role): Google invites just them
-  jt = job({ demoDate: '2026-10-28', sponsor: 'Beazer', aces: [access('Sponsor', 'Bea', 'b@beazer.example')] });
+  // Someone from the sponsor is given access to the job: Google invites just them
+  await sponsorMax(env.DB, 'beazer', 'Beazer', 'https://beazer.example');
+  jt = job({ demoDate: '2026-10-28', sponsor: 'Beazer', aces: [access('Friend', 'Bea', 'b@beazer.example')] });
   assert.equal((await run()).action, 'updated');
   assert.ok(events.get(id()).attendees.some((a) => a.email === 'b@beazer.example'));
 });
@@ -543,7 +556,8 @@ test('admin: every demo day ahead with the exact invite and guests by group, the
   assert.deepEqual(demo.preview.guests.map((g) => [g.email, g.kind]), [['pat.sample@example.com', 'family'], ['cnielsen@soardcharity.com', 'staff'], ['mindi@example.com', 'always']]);
   assert.equal(demo.invite, null);
   // Someone from the sponsor given access to the job: named, and invited
-  jt = job({ sponsor: 'Jackson Healthcare', aces: [access('Sponsor', 'Jo Giving', 'giving@jackson.example')] });
+  await sponsorMax(env.DB, 'jackson-healthcare', 'Jackson Healthcare', 'https://jackson.example');
+  jt = job({ sponsor: 'Jackson Healthcare', aces: [access('Champion', 'Jo Giving', 'giving@jackson.example')] });
   const d2 = (await adminGet()).demos[0];
   assert.deepEqual(d2.sponsorOnJob, ['Jo Giving']);
   assert.ok(d2.preview.guests.some((g) => g.email === 'giving@jackson.example' && g.kind === 'sponsor'));

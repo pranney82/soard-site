@@ -48,7 +48,7 @@ export async function onRequestPost(context) {
       );
     }
 
-    const data = typeof content === 'string' ? JSON.parse(content) : content;
+    let data = typeof content === 'string' ? JSON.parse(content) : content;
     // A link that runs script when clicked (javascript:, data:, vbscript:) never
     // reaches the site or the public repo, whatever screen sent it
     const scripted = scriptLinks(data);
@@ -58,8 +58,8 @@ export async function onRequestPost(context) {
         { status: 400 }
       );
     }
-    const jsonStr = JSON.stringify(data);
-    const prettyJson = JSON.stringify(data, null, 2);
+    let jsonStr = JSON.stringify(data);
+    let prettyJson = JSON.stringify(data, null, 2);
     const now = new Date().toISOString();
 
     // 0. Read old value for diffing + optimistic-concurrency check
@@ -109,6 +109,18 @@ export async function onRequestPost(context) {
       }
     }
 
+    // Who designed a room and who paid for it are room credits (./_room-credits.js): picked in JobTread or on their
+    // card in Admin → Kids, never by a page save, so a tab opened before a credit changed can't put it back
+    if (!isCreate && (parsed.table === 'kids' || parsed.table === 'community')) {
+      const kept = (k) => (Array.isArray(oldData?.[k]) ? oldData[k] : []);
+      const same = (k) => JSON.stringify(kept(k)) === JSON.stringify(Array.isArray(data[k]) ? data[k] : []);
+      if (!same('designers') || !same('sponsors')) {
+        data = { ...data, designers: kept('designers'), sponsors: kept('sponsors') };
+        jsonStr = JSON.stringify(data);
+        prettyJson = JSON.stringify(data, null, 2);
+      }
+    }
+
     // 1. Write to D1 FIRST (source of truth — prebuild reads from D1, not GitHub)
     if (parsed.type === 'site') {
       await DB.prepare(
@@ -118,7 +130,16 @@ export async function onRequestPost(context) {
       const { table, slug } = parsed;
       const extractor = EXTRACTORS[table];
 
-      if (extractor) {
+      if (extractor && !isCreate) {
+        // Written only if the stored record is still the one read above: a sync or a credit card landing between
+        // that read and this write isn't overwritten (the editor is told to reload instead)
+        const [colNames, colValues] = extractor(data);
+        const sets = ['"data" = ?', '"updated_at" = ?', ...colNames.map((c) => `${c} = ?`)];
+        const r = await DB.prepare(`UPDATE ${table} SET ${sets.join(', ')} WHERE slug = ? AND data = ?`).bind(jsonStr, now, ...colValues, slug, oldRaw).run();
+        if (!r?.meta?.changes) {
+          return Response.json({ success: false, error: 'Conflict: this item was changed since you loaded it. Reload to get the latest version.' }, { status: 409 });
+        }
+      } else if (extractor) {
         const [colNames, colValues] = extractor(data);
         const allCols = ['"slug"', '"data"', '"updated_at"', ...colNames];
         const placeholders = allCols.map(() => '?').join(', ');
