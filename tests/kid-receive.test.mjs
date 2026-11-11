@@ -591,3 +591,55 @@ test('shipments: by the store’s emails, an order is ordered, on the way (with 
   assert.equal(body.view.shipments.find((x) => x.orderNumber === 'A1').stage, 'in');
   assert.equal(shipmentsOf([], []).length, 0);
 });
+
+test('shipments review: a delay moves the day; a shipping email with no order number joins by tracking; delivered names its things strictly; nothing phantom', async () => {
+  await order('d1', 'Shop', '2026-11-02T16:00:00Z', { kind: 'shipped', orderNumber: 'A1', expected: '2026-11-04', items: [{ name: 'Raincan Shower Head 52214-CZ' }], tracking: [{ carrier: 'UPS', number: '1Z9999999999999991' }] });
+  await order('d2', 'Shop', '2026-11-03T16:00:00Z', { kind: 'delayed', orderNumber: 'A1', expected: '2026-11-12', items: [] });
+  let sh = (await view()).shipments.find((x) => x.orderNumber === 'A1');
+  assert.equal(sh.expected, '2026-11-12', 'the newest email’s day');
+  // The carrier's delivered email, with no order number, but the same tracking number; it names the head its own way
+  await order('d3', 'UPS', '2026-11-05T16:00:00Z', { kind: 'delivered', items: [{ name: 'Raincan Showerhead, Chrome' }], tracking: [{ carrier: 'UPS', number: '1Z9999999999999991' }] });
+  const v = await view();
+  sh = v.shipments.find((x) => x.orderNumber === 'A1');
+  assert.equal(sh.stage, 'delivered', 'joined its order by the tracking number');
+  assert.ok(sh.items.every((i) => i.delivered), 'its names matched none of the order’s things exactly: the whole order');
+  assert.equal(kidOf(v, 'Rowan S.').items.filter((i) => /showerhead/i.test(i.name)).length, 0, 'the delivered email’s own names add no phantom thing');
+});
+
+test('shipments review: one shipped to the house is its own; ready for pickup is not delivered', async () => {
+  await order('h1', 'Rug Store', '2026-11-02T16:00:00Z', { kind: 'shipped', orderNumber: 'R9', jobPo: 'AVA', shipTo: 'elsewhere', items: [{ name: 'Round Rainbow Rug' }] });
+  await order('p1', 'Lamp Shop', '2026-11-03T16:00:00Z', { kind: 'pickup', orderNumber: 'L7', jobPo: 'ROWAN', items: [{ name: 'Cloud Pendant Light' }] });
+  const v = await view();
+  assert.deepEqual([v.shipments.find((x) => x.orderNumber === 'R9').stage, v.shipments.find((x) => x.orderNumber === 'R9').house], ['house', true]);
+  assert.equal(v.shipments.find((x) => x.orderNumber === 'L7').stage, 'pickup');
+});
+
+test('scan review: the box’s own order is exact; a name only narrows; an order already all in says so', async () => {
+  const { findBox } = await import('../functions/api/_kid-scan.js');
+  const { orderReads } = await import('../functions/api/_kid-checkin.js');
+  await order('t1', 'Shop', '2026-11-02T16:00:00Z', { kind: 'shipped', orderNumber: 'A1', items: [{ name: 'Raincan Shower Head 52214-CZ' }], tracking: [{ carrier: 'UPS', number: '1Z9999999999999992' }] });
+  let v = await view();
+  const reads = await orderReads(env.DB);
+  const base = { trackingNumbers: [], orderNumbers: [], po: '', store: '', items: [], references: [], models: [], names: [] };
+  assert.equal(findBox(v, reads, { ...base, trackingNumbers: ['1Z9999999999999992'] }).exact, true);
+  assert.equal(Boolean(findBox(v, reads, { ...base, names: ['Attn: Rowan'] }).exact), false);
+  for (const it of kidOf(v, 'Rowan S.').items.filter((i) => i.order?.orderNumber === 'A1')) await receive(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: it.itemId, partKey: it.partKey, name: it.name, units: it.qty, boxes: 1 });
+  v = await view();
+  const done = findBox(v, reads, { ...base, trackingNumbers: ['1Z9999999999999992'] });
+  assert.deepEqual([done.done, done.items.length, done.short], [true, 0, 'Rowan S.']);
+});
+
+test('batch review: past 60 are refused, not lost; a retry prints what it saved minutes ago; JobTread said only when every kid was written', async () => {
+  const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  const items = [{ tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 2 }];
+  const post = (body) => onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin?receive=1', { method: 'POST', body: JSON.stringify(body) }), waitUntil: () => {} }).then((r) => r.json());
+  const first = await post({ items });
+  assert.equal(first.results[0].repeat, false);
+  const again = await post({ items, again: true });
+  assert.equal(again.results[0].repeat, true);
+  assert.ok(again.print, 'the retry printed (its first answer never came back)');
+  const many = Array.from({ length: 62 }, () => ({ tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 1 }));
+  const big = await post({ items: many });
+  assert.equal(big.results.length, 62);
+  assert.equal(big.results.filter((r) => r.status === 400).length, 2);
+});

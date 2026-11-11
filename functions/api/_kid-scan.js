@@ -130,11 +130,17 @@ const wordsShare = (item, names) => {
 export function findBox(view, reads, label) {
   const coming = (i) => i.status === 'ordered' || i.status === 'partly';
   const ordered = view.kids.flatMap((k) => k.items.filter(coming).map((i) => ({ kid: k, item: i })));
+  // exact: the box's own order (its tracking or order number, or the product's model): its shipment opens. Anything
+  // looser (a name, a PO, words) only narrows it down, and a person picks
   const fromOrder = (key, how) => {
     const hits = ordered.filter((x) => x.item.order?.key === key);
-    if (!hits.length) return null;
+    if (!hits.length) {
+      // The order is known and everything in it is checked in already (the second box of a shipment)
+      const kid = view.kids.find((k) => k.items.some((i) => i.order?.key === key));
+      return kid ? { kid: kid.jobId, short: kid.short, items: [], done: true, exact: true, how } : null;
+    }
     const kid = hits[0].kid;
-    return { kid: kid.jobId, short: kid.short, items: hits.filter((h) => h.kid === kid).map((h) => h.item.id), how };
+    return { kid: kid.jobId, short: kid.short, items: hits.filter((h) => h.kid === kid).map((h) => h.item.id), how, exact: true };
   };
   for (const t of label.trackingNumbers || []) {
     const r = reads.find((x) => (x.read.tracking || []).some((tr) => sameTracking(tr.number, t)));
@@ -156,7 +162,7 @@ export function findBox(view, reads, label) {
   if (printed) {
     const hits = ordered.filter(({ item }) => { const m = compactAll([item.model]); return m.length >= 4 && printed.includes(m); });
     const kids = new Set(hits.map((h) => h.kid.jobId));
-    if (kids.size === 1) return { kid: hits[0].kid.jobId, short: hits[0].kid.short, items: hits.map((h) => h.item.id), how: `Model ${hits[0].item.model}` };
+    if (kids.size === 1) return { kid: hits[0].kid.jobId, short: hits[0].kid.short, items: hits.map((h) => h.item.id), how: `Model ${hits[0].item.model}`, exact: true };
   }
   // The kid's name on the label ("Attn: Dylan" in the address, or the PO box): that kid; the slip's or the box's names
   // narrow it to the things it is

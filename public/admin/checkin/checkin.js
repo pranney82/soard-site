@@ -15,7 +15,7 @@
 import qrcode from './qr.js';
 
 const DAY = 86400e3;
-const state = { kids: [], needsLook: [], shelves: [], printer: null, practice: true, since: null, filter: 'All', query: '', openHere: new Set(), foundBoxes: 1, mode: 'in', me: null };
+const state = { kids: [], needsLook: [], shelves: [], shipments: [], shipTaps: new Map(), printer: null, practice: true, since: null, filter: 'All', query: '', openHere: new Set(), foundBoxes: 1, mode: 'in', me: null };
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const daysAgo = (at) => Math.max(0, Math.floor((Date.now() - Date.parse(at)) / DAY));
@@ -93,7 +93,12 @@ async function flush() {
   const done = new Set();
   try {
     for (const q of readQueue()) {
-      try { await send(q.action, q.body); done.add(q.id); } catch (err) {
+      try {
+        const out = await send(q.action, Array.isArray(q.body?.items) ? { ...q.body, again: true } : q.body);
+        done.add(q.id);
+        const refused = (out.results || []).filter((x) => x.error && [400, 404, 409].includes(x.status));
+        if (refused.length) toast(`Not saved: ${refused.map((x) => x.error).join('; ')}`);
+      } catch (err) {
         if (FOR_GOOD.has(err.status)) { done.add(q.id); toast(`A check-in couldn’t be saved: ${err.message}`); continue; }
         if (err.status === 403) toast('Your sign-in ran out. Reload the page to sign in, and what’s waiting will save.');
         break;
@@ -786,9 +791,30 @@ function showFound({ found, label, likely = [] }, preview) {
   const kid = found && kidById(found.kid);
   const items = kid ? found.items.map((id) => kid.items.find((i) => i.id === id)).filter((i) => i && !isHere(i)) : [];
   state.foundBoxes = Number(label?.boxTotal) || 1;
-  // The box's shipment, with what the label matched ticked
-  const sh = kid && items.length && state.shipments.find((x) => x.items.some((i) => i.id === items[0].id));
-  if (sh) { shipmentSheet(sh.key, { pick: items.map((i) => i.id), how: found.how, boxes: state.foundBoxes, keep: true }); return; }
+  // The box's own order (its tracking or order number, the product's model): its shipment, what it matched ticked
+  if (kid && found.done) {
+    openSheet(`${head(`Everything from that order is checked in`, { sub: esc(`${kid.short} · ${found.how}`) })}
+      <button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan the next box</button>
+      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button></div>`, { keep: true });
+    return;
+  }
+  const shipsOf = (list) => [...new Set(list.map((i) => state.shipments.find((x) => x.items.some((y) => y.id === i.id))?.key).filter(Boolean))];
+  if (kid && items.length && found.exact) {
+    const keys = shipsOf(items);
+    if (keys.length === 1) { shipmentSheet(keys[0], { pick: items.map((i) => i.id), how: found.how, boxes: state.foundBoxes, keep: true }); return; }
+  }
+  // Only the kid's name, a PO or the product's words: the kid's shipments it could be, delivered first, for a tap
+  if (kid && items.length) {
+    const keys = shipsOf(items);
+    const order = { delivered: 0, pickup: 1, out: 2, shipped: 3, ordered: 4, house: 5, in: 6 };
+    const cards = keys.map((k) => state.shipments.find((x) => x.key === k)).sort((a, b) => order[a.stage] - order[b.stage]).slice(0, 8).map((x) => shipCard(x, { compact: true })).join('');
+    if (cards) {
+      openSheet(`${head(kidTitle(kid), { kid: true, sub: esc(`${found.how} · which shipment is it?`) })}
+        <div class="ship-pick">${cards}</div>
+        <button class="btn btn-text" type="button" data-rescan="1">Scan the packing slip or the product’s box</button>`, { keep: true });
+      return;
+    }
+  }
   if (kid && items.length === 1) { itemSheet(kid, items[0], { found: found.how, keep: true, boxes: state.foundBoxes }); return; }
   if (kid && items.length) {
     openSheet(`${head(kidTitle(kid), { kid: true, sub: esc(found.how) })}
@@ -1420,6 +1446,8 @@ const expectedOn = (ymd) => {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 const shipStatus = (sh) => (sh.stage === 'delivered' ? ['delivered', `Delivered ${when(sh.deliveredAt)}`]
+  : sh.stage === 'pickup' ? ['out', 'Ready for pickup']
+  : sh.stage === 'house' ? ['ordered', 'Going to the house']
   : sh.stage === 'out' ? ['out', 'Out for delivery']
     : sh.stage === 'shipped' ? ['shipped', sh.expected ? `Arriving ${expectedOn(sh.expected)}` : 'On the way']
       : sh.stage === 'in' ? ['in', `Checked in ${when(sh.checkedAt)}`] : ['ordered', `Ordered ${dayOf(sh.orderedAt)}`]);
@@ -1445,6 +1473,8 @@ function shipmentsHtml() {
   const groups = {
     delivered: state.shipments.filter((x) => x.stage === 'delivered' && Date.parse(x.deliveredAt || 0) >= weekAgo),
     out: state.shipments.filter((x) => x.stage === 'out'),
+    pickup: state.shipments.filter((x) => x.stage === 'pickup'),
+    house: state.shipments.filter((x) => x.stage === 'house'),
     shipped: state.shipments.filter((x) => x.stage === 'shipped'),
     earlier: state.shipments.filter((x) => x.stage === 'delivered' && Date.parse(x.deliveredAt || 0) < weekAgo),
     ordered: state.shipments.filter((x) => x.stage === 'ordered'),
@@ -1457,10 +1487,12 @@ function shipmentsHtml() {
     return `<div class="ship-h"><span>${esc(title)}</span><span>${list.length}</span></div>${list.map((x) => shipCard(x)).join('')}`;
   };
   const html = section('delivered', 'Delivered', groups.delivered)
+    + section('pickup', 'Ready for pickup', groups.pickup)
     + section('out', 'Out for delivery', groups.out)
     + section('shipped', 'On the way', groups.shipped)
     + section('earlier', 'Delivered more than a week ago', groups.earlier, true)
     + section('ordered', 'Ordered, not shipped yet', groups.ordered, true)
+    + section('house', 'Shipped to the house', groups.house, true)
     + section('in', 'Checked in lately', groups.in, true);
   return html || '<div class="empty">Nothing on the way. Scan a box, or pick a kid above.</div>';
 }
@@ -1475,9 +1507,10 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
   const [, words] = shipStatus(sh);
   const waiting = waitingOf(sh);
   const done = sh.items.filter((i) => !waiting.includes(i));
-  const boxes = new Map(waiting.map((i) => [i.id, pick?.includes(i.id) ? Math.max(1, preset) : 1]));
+  const boxes = new Map(waiting.map((i) => [i.id, pick?.length === 1 && pick.includes(i.id) ? Math.max(1, preset) : 1]));
   const ticked = new Set(waiting.map((i) => i.id).filter((id) => !pick || pick.includes(id)));
-  const taps = new Map(waiting.map((i) => [i.id, newTap()]));
+  for (const i of waiting) if (!state.shipTaps.has(i.id)) state.shipTaps.set(i.id, newTap());
+  const taps = state.shipTaps;
   const row = (i) => {
     const it = itemOfId(i.id), k = kidOfItem(i.id);
     return `<div class="look ship-row"><label class="sr-check"><input type="checkbox" data-shipitem="${esc(i.id)}"${ticked.has(i.id) ? ' checked' : ''} aria-label="Check in ${esc(it.name)}" /></label>
@@ -1489,7 +1522,17 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
   openSheet(`${head(esc(sh.store), { sub: esc([sh.orderNumber ? `Order ${sh.orderNumber}` : null, words, how].filter(Boolean).join(' · ')) })}
     ${waiting.length ? `<div class="label-above ship-boxes-h"><span>What came</span><span>Boxes</span></div><div class="pick">${waiting.map(row).join('')}</div>` : ''}
     ${done.length ? `<div class="pick">${done.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return it ? `<div class="look ship-row done">${face(k, 32)}<span class="sr-body"><b>${esc(it.name)}</b><span>${esc(k.short)}</span></span><span class="tag-here">${esc(it.status === 'house' ? 'House' : it.status === 'out' ? 'Loaded' : shelfName(it.shelf) || 'Here')}</span></div>` : ''; }).join('')}</div>` : ''}
-    ${waiting.length ? `<div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="shipgo" data-focus>${goWords()}</button></div>` : ''}`, { keep });
+    ${waiting.length ? `<div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="shipgo" data-focus>${goWords()}</button>
+      ${sh.house ? '<button class="btn btn-text" type="button" id="shiphouse">Not coming here: it went to the house</button>' : ''}</div>` : ''}`, { keep });
+  if ($('shiphouse')) $('shiphouse').onclick = async () => {
+    for (const i of waiting.filter((x) => ticked.has(x.id))) {
+      const it = itemOfId(i.id), k = kidOfItem(i.id);
+      try { await sendOrKeep('house', { tap: newTap(), jobId: k.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line }); } catch (err) { toast(err.message); return; }
+    }
+    await close();
+    render();
+    toast('Marked as gone to the house');
+  };
   const refresh = () => { const b = $('shipgo'); if (b) { b.textContent = goWords(); b.disabled = !ticked.size; } };
   document.querySelectorAll('#sheet-root [data-shipitem]').forEach((c) => { c.onchange = () => { if (c.checked) ticked.add(c.dataset.shipitem); else ticked.delete(c.dataset.shipitem); refresh(); }; });
   document.querySelectorAll('#sheet-root [data-boxes]').forEach((el) => {
@@ -1520,6 +1563,14 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
 
 /** After a shipment is checked in: each kid's shelf to put their things on, the labels, what didn't go */
 function shipDone(sh, items, r) {
+  for (const it of items) state.shipTaps.delete(it.itemId ? [...state.shipTaps].find(([, t]) => t === it.tap)?.[0] : null);
+  if (r.queued) {
+    // Waiting on the phone: shown as here at once, so it can't be checked in a second time meanwhile
+    for (const it of items) {
+      const x = itemOfId(`${it.itemId}|${it.partKey}`) || kidById(it.jobId)?.items.find((i) => i.itemId === it.itemId && i.partKey === it.partKey);
+      if (x) { x.got = (x.got || 0) + it.units; x.status = x.got >= x.qty ? 'here' : 'partly'; x.receipts = [...(x.receipts || []), { id: it.tap, kind: 'receive', units: it.units, boxes: it.boxes, shelf: null, at: new Date().toISOString(), waiting: true }]; }
+    }
+  }
   const byKid = new Map();
   const results = new Map((r.out?.results || []).map((x) => [x.tap, x]));
   const refused = [];

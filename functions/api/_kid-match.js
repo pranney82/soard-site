@@ -133,13 +133,18 @@ export function orderGroups(reads) {
   const groups = new Map();
   for (const r of reads) {
     const key = groupKey(r);
-    const g = groups.get(key) || { key, store: r.store, orderNumber: r.read.orderNumber || null, po: null, at: r.at, kinds: [], items: [], buyer: r.mailbox };
+    const g = groups.get(key) || { key, store: r.store, orderNumber: r.read.orderNumber || null, po: null, at: r.at, kinds: [], items: [], later: [], buyer: r.mailbox };
     g.kinds.push(r.read.kind);
     g.po ||= r.read.jobPo || null;
     if (r.at < g.at) g.at = r.at;
-    for (const it of r.read.items || []) if (!g.items.some((x) => x.name === it.name)) g.items.push(it);
+    // What was ordered comes from the order email; a shipping or delivered email names the same things its own way
+    // ("Raincan Showerhead…"), and counted again they'd be things nobody ordered
+    const into = r.read.kind === 'order' ? g.items : g.later;
+    for (const it of r.read.items || []) if (!into.some((x) => x.name === it.name)) into.push(it);
     groups.set(key, g);
   }
+  // No order email read (Crate & Barrel sends only shipped ones): the shipping and delivered emails' items are the order
+  for (const g of groups.values()) { if (!g.items.length) g.items = g.later; delete g.later; }
   return [...groups.values()].sort((a, b) => (a.at < b.at ? 1 : -1));
 }
 

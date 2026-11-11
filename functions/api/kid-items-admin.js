@@ -110,12 +110,14 @@ export async function onRequestPost(context) {
       const results = [];
       const fresh = [];
       const jobs = new Set();
+      body.items.forEach((it, n) => { if (n >= 60) results.push({ tap: it.tap, error: 'More than 60 at once. Check in the rest separately.', status: 400 }); });
       for (const it of body.items.slice(0, 60)) {
         try {
           const r = await receive(env.DB, it, { by });
           jobs.add(r.receipt.job_id);
           results.push({ tap: it.tap, jobId: r.receipt.job_id, shelf: r.shelf, repeat: r.repeat });
-          if (!r.repeat) fresh.push(r.receipt);
+          // A retry from the phone (its first answer never came back) prints what it saved minutes ago
+          if (!r.repeat || (body.again && Date.now() - Date.parse(r.receipt.at) < 15 * 60 * 1000)) fresh.push(r.receipt);
         } catch (err) {
           results.push({ tap: it.tap, error: err.message, status: err.status || 500 });
         }
@@ -123,7 +125,9 @@ export async function onRequestPost(context) {
       const view = await checkinView(env);
       out.results = results;
       if (fresh.length) out.print = await printLabels(env, fresh.flatMap((r) => labelsFor(view, r)));
-      for (const j of jobs) out.jt = await writeKidNow(env, j);
+      const said = [];
+      for (const j of jobs) said.push(await writeKidNow(env, j));
+      out.jt = said.length && said.every((x) => x === 'written') ? 'written' : said.includes('later') ? 'later' : said[0] || 'off';
       return Response.json({ success: true, ...out, view: { ...(await checkinView(env)), printer: await printerStatus(env) } }, { headers });
     }
     if (q.get('receive') || q.get('other')) {
