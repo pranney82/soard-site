@@ -52,6 +52,8 @@ function fakeJT({ jobs, fields = null, members = [] }) {
     // fetchAccess: j0, j1… aliased jobs
     if (Object.keys(q).every((k) => /^j\d+$/.test(k))) return reply(Object.fromEntries(Object.entries(q).map(([k, v]) => [k, { id: v.$.id, aces: aces(job(v.$.id)) }])));
     if (q.organization?.customFields) return reply({ organization: { customFields: { nodes: F.map((f) => ({ ...f })) } } });
+    // As JobTread does: a dropdown is made with at least one choice
+    if (q.createCustomField && q.createCustomField.$.type === 'option' && !(q.createCustomField.$.options || []).length) return { ok: false, status: 400, text: async () => 'The array with length 0 at "createCustomField"."$"."options" must be at least length 1', json: async () => ({}) };
     if (q.createCustomField) { const f = { id: DESIGNED, name: q.createCustomField.$.name, type: 'option', options: q.createCustomField.$.options || [], maxValuesAllowed: null }; F.push(f); return reply({ createCustomField: { createdCustomField: { id: f.id } } }); }
     if (q.customField) { const f = F.find((x) => x.id === q.customField.$.id); return reply({ customField: f ? { ...f } : null }); }
     if (q.updateCustomField) { F.find((x) => x.id === q.updateCustomField.$.id).options = [...q.updateCustomField.$.options]; return reply({}); }

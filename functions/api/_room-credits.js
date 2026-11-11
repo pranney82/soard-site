@@ -444,8 +444,11 @@ export async function creditFields(env, { fetchImpl = fetch } = {}) {
   const { DB } = env;
   await ensureSchema(DB);
   const known = await readState(DB, 'field-designed', null);
+  // Made the first time with its choices (JobTread makes no dropdown without one): Partners' design companies, A to Z
+  const first = known ? [] : wantedChoices(KINDS.designed, await readPartners(DB));
+  if (!known && !first.length) throw Object.assign(new Error('No company in Partners is in Design yet, so the Designed By dropdown has nothing to offer. Put the design partners in Design in Partners.'), { code: 'designed-gone' });
   const f = await jobFields(env.JOBTREAD_GRANT_KEY, [
-    { key: 'designed', name: KINDS.designed.field, multiple: true, make: !known },
+    { key: 'designed', name: KINDS.designed.field, multiple: true, make: !known, options: first },
     // Never made by the site: if it's gone, the run stops and says so (a new one wouldn't be the field the invites read)
     { key: 'sponsored', name: KINDS.sponsored.field, multiple: true, make: false },
   ], { fetchImpl, make: true });
@@ -454,7 +457,10 @@ export async function creditFields(env, { fetchImpl = fetch } = {}) {
   if (!f.sponsored || f.sponsored.id !== FIELD_MONETARY_SPONSOR) throw stop('sponsor-field', 'JobTread’s Monetary Sponsor field isn’t the one the site knows: it may have been deleted or made again');
   if (!f.designed) throw stop('designed-gone', 'JobTread’s Designed By field is gone, so the site stopped rather than take every designer off. Undo the delete in JobTread, or ask for help.');
   if (known && f.designed.id !== known.id) throw stop('designed-remade', 'JobTread’s Designed By field was made again, so the site stopped rather than read it as empty. Ask for help moving the credits to it.');
-  if (!known) await writeState(DB, 'field-designed', { id: f.designed.id, at: new Date().toISOString() });
+  if (!known) {
+    await writeState(DB, 'field-designed', { id: f.designed.id, at: new Date().toISOString() });
+    if (f.designed.made) await noteChoices(DB, 'designed', { added: first });
+  }
   return { designed: f.designed.id, sponsored: f.sponsored.id, fields: f };
 }
 
