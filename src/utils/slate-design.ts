@@ -158,6 +158,7 @@ export function startSlateDesign(o: Options) {
     }
   }
 
+  let firstApply = true;
   async function apply(slides: DesignSlide[]) {
     const next = designSignature(slides);
     if (next === sig) return;
@@ -166,7 +167,13 @@ export function startSlateDesign(o: Options) {
     clearTimeout(timer);
     show.replaceChildren();
     built = [{ slide: null, layer: null, ready: true, failed: false }];
+    // The first time, it's where it belongs at once (the server usually marked it already): the frame's move is for a
+    // design that opens while someone watches, never a screen settling as it loads
+    const settling = firstApply;
+    firstApply = false;
+    if (settling) body.classList.add('settling');
     body.toggleAttribute('data-design', slides.length > 0);
+    if (settling) { void body.offsetHeight; requestAnimationFrame(() => body.classList.remove('settling')); }
     if (!slides.length) { at = 0; steps.replaceChildren(); steps.hidden = true; chipFor(null); return; }
     for (const s of slides) {
       const layer = document.createElement('div');

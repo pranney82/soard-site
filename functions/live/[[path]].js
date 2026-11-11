@@ -38,6 +38,8 @@
 import { readState, readConfig, publicState, visibleState } from '../api/_broadcast.js';
 import { watchParty } from './_watch-party.js';
 import { revealSlides, designWindow } from '../../public/admin/reveal-design.js';
+import { revealOf } from '../api/reveal-design.js';
+import { cachedReveals } from '../api/_reveals.js';
 import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
 import { barFor, addBar, PAGE_REUSE } from '../_apply-bar.js';
 import { upcomingReveals } from '../_kid-reveal.js';
@@ -81,10 +83,11 @@ async function currentKid(env, state) {
  * room's design is out for the kid being watched and has a picture, else null.
  * The same rules as /api/reveal-design, which fills it.
  */
-function designFor(slug, data, state) {
+function designFor(slug, data, state, schedule = null) {
   if (!slug || !data || data.publishStatus === 'draft') return null;
   const kid = { ...data, slug: data.slug || slug };
-  const { open, after } = designWindow({ kid, broadcast: state });
+  // JobTread's schedule too, when it's at hand, exactly as /api/reveal-design decides
+  const { open, after } = designWindow({ kid, reveal: schedule ? revealOf(schedule, slug) : null, broadcast: state });
   return open && revealSlides(kid, { after }).length ? { slug, name: String(data.name || '').trim() } : null;
 }
 
@@ -318,6 +321,28 @@ export async function onRequest(context) {
   const isIndex = url.pathname === '/live/';
   const slugMatch = url.pathname.match(/^\/live\/([^/]+)\/$/);
   const pageKid = slugMatch && slugMatch[1] !== 'slate' ? slugMatch[1] : '';
+
+  // A child's starting-soon screen: marked as showing the design before it goes out when the design is out, so its
+  // frame is drawn where the design puts it rather than moving there once the screen has asked (SlateScreen.astro)
+  const slateMatch = url.pathname.match(/^\/live\/([^/]+)\/slate\/$/);
+  if (slateMatch && url.searchParams.get('design') !== 'preview' && env.DB) {
+    try {
+      const slug = slateMatch[1];
+      const [state, schedule, row] = await Promise.all([readState(env.DB), cachedReveals(env).catch(() => null), kidData(env, slug)]);
+      const design = designFor(slug, row.data, visibleState(state), schedule);
+      const res = await next(design ? fresh(request) : request);
+      if (!design || res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
+      const out = new HTMLRewriter().on('body', setAttrs({ 'data-design': '' })).transform(res);
+      const headers = new Headers(out.headers);
+      headers.set('Cache-Control', PAGE_REUSE);
+      headers.delete('ETag');
+      headers.delete('Last-Modified');
+      headers.delete('Content-Length');
+      return new Response(out.body, { status: out.status, headers });
+    } catch {
+      return next();
+    }
+  }
 
   // Only the live pages themselves are ever rewritten (not slates, images or share cards)
   if (!isIndex && !pageKid) {

@@ -23,7 +23,7 @@ const json = (body, status = 200, maxAge = 30) => Response.json(body, {
 });
 
 /** The kid's reveal from the schedule JobTread keeps: coming up (confirmed), or kept from the last few months */
-function revealOf(schedule, slug) {
+export function revealOf(schedule, slug) {
   const ahead = (schedule?.upcoming || []).find((r) => r.slug === slug && r.confirmed !== false);
   if (ahead) return { startsAt: ahead.startsAt, confirmed: true };
   const past = (schedule?.past || []).find((r) => r.slug === slug && r.startsAt);
