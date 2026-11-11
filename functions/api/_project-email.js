@@ -15,6 +15,7 @@ import {
   SITE_URL, HERO_TRANSFORM, PHOTO_TRANSFORM, SIDE, BRAND, SOARD_LOOK, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
   listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, makeoverWord, shortStory, tidy, kidName, shownPartners, leadPhoto,
+  chosenWords, plainWords, askHeadlineHtml, askHeadlineFit,
 } from './_reveal-invite-email.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
@@ -231,7 +232,7 @@ export function askBand({ kicker, headline, words, action, url, fit = { size: 30
  * "Meet Axel": the story, the rooms, and how to help, as the work is about to
  * start. The giving button goes to the kid's own fundraiser when there is one.
  */
-export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = new Set(), teamPicture = true } = {}) {
+export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = new Set(), teamPicture = true, words = {} } = {}) {
   const name = kidName(kid, 'our next kid');
   const slug = kid.slug || '';
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
@@ -243,9 +244,9 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const lead = leadOf(kid, brokenLogos);
 
   const space = makeoverWord(rooms);
-  const subject = `Meet ${name}, Our Next ${space ? 'Project' : 'Dream Room Project'}`;
+  const siteSubject = `Meet ${name}, Our Next ${space ? 'Project' : 'Dream Room Project'}`;
   // Its own line in the inbox, not the subject again
-  const preview = rooms.length ? `${name}’s story, what we’re building, and how you can help.` : `${name}’s story and how you can help.`;
+  const sitePreview = rooms.length ? `${name}’s story, what we’re building, and how you can help.` : `${name}’s story and how you can help.`;
   const ages = kid.age ? agesOf(kid.age) : [];
   const agesText = ages.length > 2 ? `${ages.slice(0, -1).join(', ')} & ${ages[ages.length - 1]}` : ages.join(' & ');
   const facts = [
@@ -272,11 +273,21 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
     : (named ? `Help us build <em style="font-style:italic;">dreams</em> like ${askName.html}` : 'Help us build more&nbsp;<em style="font-style:italic;">dreams</em>.');
   const askFit = named ? askName : headlineFit(['Help', 'us', 'build', own ? 'this dream.' : 'more dreams.'], 30, { phones: askPhones });
   const askWords = own ? (named ? `Help us build ${name}’s dream.` : 'Help us build this dream.') : (named ? `Help us build dreams like ${name}’s.` : 'Help us build more dreams.');
+  const siteAskWords = own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.` : `Every dollar goes directly to materials, labor, and design for kids like ${ending(name)} Zero platform fees.`;
+  // The site's own words, and staff's in place of any of them (Edit words)
+  const siteWords = {
+    subject: siteSubject, preview: sitePreview, opening: story,
+    askHeadline: own ? (named ? `Help us build ${name}’s *dream*.` : 'Help us build this *dream*.') : (named ? `Help us build *dreams* like ${name}’s.` : 'Help us build more *dreams*.'),
+    askWords: siteAskWords, closing: 'Thank you for being part of this.',
+  };
+  const w = chosenWords(words, siteWords);
+  const { subject, preview } = w;
+  const storyLink = `<p style="margin:16px 0 0;">${textLink(`Read ${name}’s story →`, kidUrl)}</p>`;
 
   const html = emailFrame(preview, `
   ${emailHeader(site, { mark: true })}
   ${cover({ kicker: `Our next project · ${yearOf(kid)}`, headline: `Meet ${fit.html}`, size: fit.size, phone: fit.phone, lead, alt: name, url: kidUrl })}
-  ${story ? lede(story, `<p style="margin:16px 0 0;">${textLink(`Read ${name}’s story →`, kidUrl)}</p>`) : `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 0;${SIDE}" class="pd">${textLink(`Read ${name}’s story →`, kidUrl)}</td></tr>`}
+  ${w.opening ? lede(w.opening, storyLink, SOARD_LOOK, { rich: true }) : story ? lede(story, storyLink) : `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 0;${SIDE}" class="pd">${textLink(`Read ${name}’s story →`, kidUrl)}</td></tr>`}
   ${facts.length ? factsRow(facts) : ''}
   ${photos.length >= 2 ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">${photoPair(photos, name, 0)}${photoNotes(kid)}</td></tr>` : ''}
   ${rooms.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
@@ -287,38 +298,38 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   ${gap(rooms.length ? 26 : 40)}
   ${askBand({
     kicker: 'How you can help',
-    headline: askHeadline,
-    fit: askFit,
-    words: own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.` : `Every dollar goes directly to materials, labor, and design for kids like ${ending(name)} Zero platform fees.`,
+    headline: w.askHeadline ? askHeadlineHtml(w.askHeadline) : askHeadline,
+    fit: w.askHeadline ? askHeadlineFit(w.askHeadline) : askFit,
+    words: w.askWords || siteAskWords,
     action,
     url: giveUrl,
   })}
-  ${signOff('Thank you for being part of this.', teamPicture)}
+  ${signOff(w.closing, teamPicture)}
   ${emailFooter(site, { mark: true })}`);
 
   const text = [
     `Meet ${name}`,
     '',
-    story,
+    w.opening ? plainWords(w.opening) : story,
     '',
     rooms.length ? `What we’re building: ${listJoin(rooms)}` : null,
     '',
-    `${askWords} ${own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space.` : `Every dollar goes directly to materials, labor, and design for kids like ${ending(name)}`} Zero platform fees.`,
+    `${w.askHeadline ? plainWords(w.askHeadline) : askWords} ${w.askWords || siteAskWords}`,
     `Give: ${giveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',
-    'Thank you for being part of this.',
+    w.closing,
     'The SOARD Team, Sunshine on a Ranney Day',
   ].filter((l) => l !== false && l !== null && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
-  return { subject, preview, html, text };
+  return { subject, preview, html, text, siteWords };
 }
 
 /**
  * "Axel's dream room is complete": the photos, the video and the partners who
  * made it possible, then what comes next for the families still waiting.
  */
-export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = new Set(), teamPicture = true } = {}) {
+export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = new Set(), teamPicture = true, words = {} } = {}) {
   const name = kidName(kid, 'our kid');
   const slug = kid.slug || '';
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
@@ -346,7 +357,6 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const onPage = curly(`${stripHtml(kid.bio)} ${kid.heroSummary || ''}`);
   const quote = said && !onPage.includes(said.slice(0, 40)) ? said : '';
 
-  const subject = finished;
   // The preview names only what the email shows
   const partners = partnerCards(kid, brokenLogos);
   const partnerWords = shownPartners(kid, brokenLogos).length === 1 ? 'the partner who made it possible' : 'the partners who made it possible';
@@ -354,11 +364,17 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const pictures = new Set(loads).size;
   const shown = [pictures && (pictures > 1 ? 'the photos' : 'the photo'), video && 'the video'].filter(Boolean);
   const offered = [...shown, partners && partnerWords].filter(Boolean);
-  const preview = offered.length === 1 && shown.length === 1
+  const sitePreview = offered.length === 1 && shown.length === 1
     ? `See ${name}’s transformation in ${shown[0]}.`
     : shown.length
     ? `See ${name}’s transformation: ${listJoin(offered)}.`
     : `See ${name}’s transformation${partners ? ` and ${partnerWords}` : ''}.`;
+
+  const siteAskWords = 'Families are on our waitlist right now. Your gift brings us closer to saying yes to the next child.';
+  // The site's own words, and staff's in place of any of them (Edit words)
+  const siteWords = { subject: finished, preview: sitePreview, opening: story, askHeadline: 'Another family is *waiting*.', askWords: siteAskWords, closing: 'Thank you for making this possible.' };
+  const w = chosenWords(words, siteWords);
+  const { subject, preview } = w;
 
   const pair = pairOf(kid, brokenLogos);
   // With a before and after, one wide photo says enough; galleries also hold close-ups of floors and tile
@@ -392,7 +408,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
     url: coverUrl,
     action: watch ? button(watch, coverUrl, { center: true }) : button('▶\uFE0E  Watch the Reveal', `${kidUrl}#chapter-reveal`, { center: true }),
   })}
-  ${lede(story)}
+  ${w.opening ? lede(w.opening, '', SOARD_LOOK, { rich: true }) : lede(story)}
   ${pair ? transformation(pair, name) : ''}
   ${photos.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:${pair ? 28 : 36}px 0 0;${SIDE}" class="pd">
     ${photoBlock(photos, name)}
@@ -407,30 +423,31 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   ${partners || gap(40)}
   ${askBand({
     kicker: 'What’s next',
-    headline: 'Another family is&nbsp;<em style="font-style:italic;">waiting</em>.',
-    words: 'Families are on our waitlist right now. Your gift brings us closer to saying yes to the next child.',
+    headline: w.askHeadline ? askHeadlineHtml(w.askHeadline) : 'Another family is&nbsp;<em style="font-style:italic;">waiting</em>.',
+    ...(w.askHeadline ? { fit: askHeadlineFit(w.askHeadline) } : {}),
+    words: w.askWords || siteAskWords,
     action: 'Give Now →',
     url: `${site}/donate/`,
   })}
-  ${signOff('Thank you for making this possible.', teamPicture)}
+  ${signOff(w.closing, teamPicture)}
   ${emailFooter(site, { mark: true })}`);
 
   const text = [
     finished,
     '',
-    story,
+    w.opening ? plainWords(w.opening) : story,
     '',
     video ? `Watch the reveal: ${kidUrl}#chapter-reveal` : null,
     allPhotos > 1 ? `See the photos: ${kidUrl}#chapter-gallery` : `${name}’s story: ${kidUrl}`,
     '',
     rooms.length ? `What we built: ${listJoin(rooms)}` : null,
     '',
-    'Another family is waiting. Families are on our waitlist right now. Your gift brings us closer to saying yes to the next child.',
+    `${w.askHeadline ? plainWords(w.askHeadline) : 'Another family is waiting.'} ${w.askWords || siteAskWords}`,
     `Give: ${site}/donate/`,
     '',
-    'Thank you for making this possible.',
+    w.closing,
     'The SOARD Team, Sunshine on a Ranney Day',
   ].filter((l) => l !== false && l !== null && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
-  return { subject, preview, html, text };
+  return { subject, preview, html, text, siteWords };
 }

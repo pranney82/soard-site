@@ -39,6 +39,7 @@ import { kitConfigured, kitCreateBroadcast, kitUpdateDraft, kitListAudiences, ki
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
 import { wholeListFilter, aimedBySite, leftOut } from './_reveal-signups.js';
+import { readWords, wordsKey } from './_email-words.js';
 import { revealInviteEmail, revealWhen, partnerLogoUrls, kidPhotoUrls, cleanAddress, TEAM_PICTURE, TIME_LATER, SITE_URL, EMAIL_DESIGN } from './_reveal-invite-email.js';
 
 // reviewer: who's emailed to review every draft the site makes in Kit (Peter, Nov 9 2026: him too). One address or several, comma-separated.
@@ -73,7 +74,8 @@ const SCHEMA = (table) => `CREATE TABLE IF NOT EXISTS ${table} (
 // audience_ref: the group as Kit knows it (a name can change). told: the last note that really reached the
 // reviewer (see noteFor). alarmed: the problem staff really heard about. held: why JobTread says it may be off.
 // design: the EMAIL_DESIGN the site last wrote, so a new design reaches an untouched draft by itself.
-const ADDED = ['content_hash', 'audience_ref', 'told', 'alarmed', 'held', 'design'];
+// words: the staff words it last wrote (./_email-words.js wordsHash, '' for the site's own), the same way.
+const ADDED = ['content_hash', 'audience_ref', 'told', 'alarmed', 'held', 'design', 'words'];
 const _ready = new WeakSet();
 export async function ensureKitSchema(DB) {
   if (_ready.has(DB)) return;
@@ -97,11 +99,11 @@ export async function readKitRow(DB, jobId, kind = 'invite') {
 
 async function writeKitRow(DB, row, kind = 'invite') {
   await DB.prepare(`INSERT OR REPLACE INTO ${kindOf(kind).table}
-    (job_id, broadcast_id, slug, reveal_date, hash, state, audience, reviewer, notified, error, updated_at, content_hash, audience_ref, told, alarmed, held, design)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    (job_id, broadcast_id, slug, reveal_date, hash, state, audience, reviewer, notified, error, updated_at, content_hash, audience_ref, told, alarmed, held, design, words)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(row.job_id, row.broadcast_id ?? null, row.slug ?? null, row.reveal_date ?? null, row.hash ?? null, row.state ?? null,
       row.audience ?? null, row.reviewer ?? null, row.notified ?? null, row.error ?? null, new Date().toISOString(), row.content_hash ?? null,
-      row.audience_ref ?? null, row.told ?? null, row.alarmed ?? null, row.held ?? null, row.design ?? null)
+      row.audience_ref ?? null, row.told ?? null, row.alarmed ?? null, row.held ?? null, row.design ?? null, row.words ?? null)
     .run();
 }
 
@@ -400,6 +402,8 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
   try {
     row = await readKitRow(DB, jobId, v.kind);
     if (hold && !row?.broadcast_id) return { kit: 'skip', reason: 'no draft waiting' };
+    // Staff's own words for this email (Edit words), if they gave any
+    const own = await readWords(DB, wordsKey(v.kind, jobId));
     if (row?.state === DELETED && !early) return { kit: 'skip', reason: 'the draft was deleted in Kit' };
     if (row?.broadcast_id) row = { ...row, held: hold };
     // The whole-list invite never has the address or the guests' notes, so a change to them is no change to it
@@ -421,7 +425,7 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
       try { kid = kidRow ? JSON.parse(kidRow.data) : null; } catch { /* unreadable */ }
       if (!kidPageReady(kid)) return { error: `${name}’s kid page isn’t published, so the ${v.email} can’t be filled in.` };
       const broken = await brokenLogos(kid, { fetchImpl });
-      return { email: revealInviteEmail({ kid: { ...kid, slug: who.slug }, date: f.date, time: f.start, address: v.private ? f.address : '', notes: v.private ? f.details : '', room: f.room, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE), watch: !v.private }) };
+      return { email: revealInviteEmail({ kid: { ...kid, slug: who.slug }, date: f.date, time: f.start, address: v.private ? f.address : '', notes: v.private ? f.details : '', room: f.room, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE), watch: !v.private, words: own.words }) };
     };
     const body = (email) => ({ subject: email.subject, previewText: email.preview, description: describe(name, jobId, hash, v.kind), html: email.html });
 
@@ -474,7 +478,7 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
         if (!c.ok || !id) return await trouble(`Kit didn’t take the draft: ${c.error || `HTTP ${c.status}`}`);
         made = true;
       }
-      row = { ...base, broadcast_id: id, hash: made ? hash : null, state: 'draft', audience: group ? group.name : WHOLE_LIST, audience_ref: group ? audienceRef(group) : null, design: made ? EMAIL_DESIGN : null };
+      row = { ...base, broadcast_id: id, hash: made ? hash : null, state: 'draft', audience: group ? group.name : WHOLE_LIST, audience_ref: group ? audienceRef(group) : null, design: made ? EMAIL_DESIGN : null, words: made ? own.hash : null };
       await writeKitRow(DB, row, v.kind); // kept first: a draft Kit has is never made twice
       seen = await kitReadBroadcast(env, id);
       if (!seen.ok) seen = await kitReadBroadcast(env, id); // a blip isn't an alarm
@@ -514,7 +518,8 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
     // leaves out has changed: a draft made before the sign-ups moved to Kit, or a leave-out tag made since
     const freshAim = !v.private && !went && aimedBySite(b) ? await wholeListFilter(env) : null;
     const reaim = !!freshAim && String(leftOut(freshAim)) !== String(leftOut(b.subscriber_filter));
-    const stale = row.design !== EMAIL_DESIGN || reaim;
+    // New words from staff reach it the same way, never one a person changed in Kit
+    const stale = row.design !== EMAIL_DESIGN || reaim || (row.words || '') !== own.hash;
     let wrote = false;
     if (!hold && !went && (!edited || forced) && !made && (changed || rewrite || stale)) {
       const r = await render();
@@ -539,7 +544,7 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
           return { kit: 'check', id: row.broadcast_id, error: `Kit’s copy couldn’t be read yet (${after.error})` };
         }
         b = after.broadcast;
-        row = { ...row, hash, content_hash: await copyHash(b), design: EMAIL_DESIGN };
+        row = { ...row, hash, content_hash: await copyHash(b), design: EMAIL_DESIGN, words: own.hash };
         wrote = true;
         wrongAim = aimedWrong(b);
       }

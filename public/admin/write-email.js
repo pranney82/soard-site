@@ -11,6 +11,7 @@
  */
 import { h, htm, useState, useEffect, useRef, useCallback } from './vendor.js';
 import { uploadPhotos } from './event-recap-admin.js';
+import { EmailFrame, WidthSwitch, field } from './email-sheet.js';
 
 const html = htm.bind(h);
 const API = '/api/custom-emails-admin';
@@ -119,13 +120,6 @@ function PictureField({ value, onChange, folder, label = 'Picture', addToast }) 
   </div>`;
 }
 
-const field = (label, value, onInput, { placeholder = '', hint = '', area = false, rows = 4 } = {}) => html`<label class="form-group">
-  <span class="form-label">${label}</span>
-  ${area ? html`<textarea class="form-textarea" rows=${rows} value=${value || ''} placeholder=${placeholder} onInput=${(e) => onInput(e.target.value)} />`
-    : html`<input class="form-input" value=${value || ''} placeholder=${placeholder} onInput=${(e) => onInput(e.target.value)} />`}
-  ${hint ? html`<span class="form-hint">${hint}</span>` : null}
-</label>`;
-
 function BlockFields({ b, set, folder, addToast }) {
   switch (b.type) {
     case 'cover': return html`
@@ -168,9 +162,8 @@ function BlockFields({ b, set, folder, addToast }) {
 /**
  * @param {object} p
  * @param {(text: string, tone?: string) => void} p.addToast
- * @param {any} p.EmailFrame  the preview frame from ./messages.js
  */
-export function WriteEmail({ addToast = () => {}, EmailFrame }) {
+export function WriteEmail({ addToast = () => {} }) {
   ensureCss();
   const [list, setList] = useState(null);
   const [email, setEmail] = useState(null);
@@ -359,10 +352,7 @@ export function WriteEmail({ addToast = () => {}, EmailFrame }) {
       <aside class="we-preview" aria-label="How it will look">
         <div class="we-preview__top">
           <span>As it will go. Kit adds its unsubscribe link and address under it.</span>
-          <div class="mm-seg" role="group" aria-label="Screen width">
-            <button type="button" aria-pressed=${String(!phone)} onClick=${() => setPhone(false)}>Computer</button>
-            <button type="button" aria-pressed=${String(phone)} onClick=${() => setPhone(true)}>Phone</button>
-          </div>
+          <${WidthSwitch} phone=${phone} setPhone=${setPhone} />
         </div>
         ${missing.length ? html`<p class="we-missing">Before it can go to Kit, add ${missing.join(', and ')}.</p>` : null}
         ${doc ? html`<${EmailFrame} doc=${doc} phone=${phone} title="Preview of the email" />` : html`<p class="we-hint"><span class="spinner spinner-12" /> Drawing the preview…</p>`}

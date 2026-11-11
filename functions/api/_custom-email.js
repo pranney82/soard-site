@@ -21,7 +21,7 @@
 
 import {
   SITE_URL, SIDE, BRAND, escapeHtml, href, cfImg, tidy, noWidow, emailFrame, emailHeader, emailFooter, signOff,
-  button, textLink, cover, headlineFit, TEAM_PICTURE,
+  button, textLink, cover, TEAM_PICTURE, inlineWords as inline, plainWords as plainOf, fitWords as fitOf,
 } from './_reveal-invite-email.js';
 import { askBand, gap } from './_project-email.js';
 
@@ -95,16 +95,6 @@ export function emailProblems(email) {
   return out;
 }
 
-/** Typed words as HTML: escaped, curly quotes, a typed em dash read as a spaced en dash, **bold**, *accent*, [words](link) */
-function inline(raw, { accent = D } = {}) {
-  let s = escapeHtml(tidy(raw));
-  s = s.replace(/\[([^\]]{1,200})\]\((https?:\/\/[^\s)]{1,500})\)/g, (m, words, url) => `<a href="${href(url.replace(/&amp;/g, '&'))}" target="_blank" style="color:${D};font-weight:700;text-decoration:underline;text-underline-offset:3px;">${words}</a>`);
-  s = s.replace(/\*\*([^*]{1,300})\*\*/g, '<strong style="font-weight:700;">$1</strong>');
-  s = s.replace(/(^|[\s(>])\*([^*\s][^*]{0,120}?)\*(?=[\s.,!?;:)<]|$)/g, `$1<em style="font-style:italic;color:${accent};">$2</em>`);
-  return s;
-}
-const plainOf = (raw) => tidy(raw).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1 ($2)').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)\*([^*]+)\*/g, '$1$2');
-
 /** A YouTube or Stream link → { kind, id, thumb } or null */
 export function videoOf(url) {
   const s = String(url || '');
@@ -120,7 +110,6 @@ const row = (inner, top = 28) => `<tr><td bgcolor="${CR}" style="background:${CR
 const img = (p, transform, width, extra = '') => `<img src="${escapeHtml(cfImg(p.id, transform))}" width="${width}" alt="${escapeHtml(p.alt)}" class="fl" style="width:100%;height:auto;display:block;border:0;${extra}" />`;
 const linked = (url, inner) => (url ? `<a href="${href(url)}" target="_blank" style="display:block;text-decoration:none;">${inner}</a>` : inner);
 /** The headline's size: fits a small phone, as every cover does */
-const fitOf = (text, max, phones) => headlineFit(String(text).replace(/\*/g, '').split(/\s+/).filter(Boolean), max, phones ? { phones } : undefined);
 
 function renderBlock(b, i, { brokenLogos, site }) {
   const ok = (p) => p.id && !brokenLogos.has(cfImg(p.id, WHOLE)) && !brokenLogos.has(cfImg(p.id, HALF));

@@ -33,6 +33,8 @@ import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { MindMap, prepareMap, Ago, STATUS, plural } from './mindmap.js';
 import { SentView } from './messages-sent.js';
 import { WriteEmail } from './write-email.js';
+import { EmailFrame, WidthSwitch } from './email-sheet.js';
+import { EditWordsButton } from './email-words.js';
 
 const html = htm.bind(h);
 
@@ -1056,25 +1058,9 @@ const CSS = `
 .mm-subject small { display: block; margin-top: 0.15rem; font-weight: 400; color: var(--color-text-muted); }
 .mm-change { all: unset; cursor: pointer; color: var(--color-link, #2B6CB0); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .mm-change:focus-visible { box-shadow: var(--focus-ring); border-radius: 3px; }
-.mm-sheet-wrap { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(20,21,24,0.48); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: overlayIn 0.18s ease-out; }
-.mm-sheet { display: flex; flex-direction: column; width: min(760px, 100%); max-height: calc(100vh - 2rem); background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
-.mm-sheet-head { display: flex; align-items: start; justify-content: space-between; gap: 0.75rem; padding: 1.1rem 1.25rem 0.8rem; border-bottom: 1px solid var(--color-border); }
-.mm-sheet-head h3 { margin: 0; font-size: var(--fs-md); letter-spacing: -0.015em; }
-.mm-sheet-head p { margin: 0.15rem 0 0; font-size: var(--fs-xs); color: var(--color-text-muted); }
-.mm-env { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.2rem 0.85rem; margin: 0; padding: 0.75rem 1.25rem; font-size: var(--fs-xs); border-bottom: 1px solid var(--color-border); background: var(--color-bg-secondary); }
-.mm-env dt { color: var(--color-text-muted); }
-.mm-env dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.mm-env dd.mm-env-subject { font-weight: 650; }
 .mm-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.6rem 1.25rem; border-bottom: 1px solid var(--color-border); }
-.mm-seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
-.mm-seg button { all: unset; cursor: pointer; padding: 0.3rem 0.7rem; border-radius: 6px; font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); }
-.mm-seg button[aria-pressed="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-xs); }
-.mm-seg button:focus-visible { box-shadow: var(--focus-ring); }
 .mm-body:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
 .mm-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 1rem 1.25rem; background: #F5F4F0; }
-.mm-frame-wrap { margin: 0 auto; width: 100%; max-width: 640px; height: 420px; overflow: hidden; border-radius: 10px; background: #F5F4F0; }
-.mm-frame-wrap.is-phone { max-width: 380px; }
-.mm-frame { display: block; width: 100%; height: 420px; border: 0; background: #F5F4F0; transform-origin: 0 0; }
 .mm-jt { max-width: 600px; margin: 0 auto; background: #fff; color: #2D2E33; border: 1px solid #E5E4E0; border-radius: 12px; padding: 1.1rem 1.25rem; font: 15px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
 .mm-jt-title { font-weight: 700; font-size: var(--fs-base); margin-bottom: 0.5rem; }
 .mm-jt-body { white-space: pre-line; overflow-wrap: anywhere; }
@@ -1106,8 +1092,6 @@ const CSS = `
 @media (max-width: 640px) {
   .mm-width { display: none !important; }
   .mm-bar:not(:has(.mm-seg:not(.mm-width))) { display: none; }
-  .mm-sheet-wrap { padding: 0; align-items: flex-end; }
-  .mm-sheet { max-height: 92vh; border-radius: 16px 16px 0 0; }
 }
 `;
 let cssDone = false;
@@ -1131,44 +1115,6 @@ const whenText = (start, end) => {
   const e = end?.dateTime ? new Date(end.dateTime) : null;
   return `${fmt(s, { weekday: 'long', month: 'long', day: 'numeric' })}, ${fmt(s, { hour: 'numeric', minute: '2-digit' })}${e ? ` to ${fmt(e, { hour: 'numeric', minute: '2-digit' })}` : ''}`;
 };
-
-/**
- * The email in a sandboxed frame (no scripts run in it; allow-same-origin only
- * lets this page measure it). Its height follows the email. An email wider
- * than the space (a fixed 600px table on a phone) is shrunk to fit, the way
- * phone mail apps show it; a responsive one uses its own phone layout.
- */
-function EmailFrame({ doc, phone, title }) {
-  const ref = useRef(null);
-  const wrap = useRef(null);
-  const fit = () => {
-    const f = ref.current;
-    const w = wrap.current;
-    const root = f?.contentDocument?.documentElement;
-    if (!root || !w) return;
-    const target = w.clientWidth;
-    f.style.width = `${target}px`;
-    f.style.transform = '';
-    const natural = root.scrollWidth;
-    const z = natural > target + 1 ? target / natural : 1;
-    if (z < 1) {
-      f.style.width = `${natural}px`;
-      f.style.transform = `scale(${z})`;
-    }
-    const tall = Math.max(240, root.scrollHeight + 4);
-    f.style.height = `${tall}px`;
-    w.style.height = `${Math.ceil(tall * z)}px`;
-  };
-  useEffect(() => { fit(); }, [phone]);
-  // Late fonts and images change the height
-  useEffect(() => {
-    const t = [300, 1200].map((ms) => setTimeout(fit, ms));
-    return () => t.forEach(clearTimeout);
-  }, [doc, phone]);
-  return html`<div ref=${wrap} class=${`mm-frame-wrap${phone ? ' is-phone' : ''}`}>
-    <iframe ref=${ref} class="mm-frame" title=${title} sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcdoc=${doc} onLoad=${fit}></iframe>
-  </div>`;
-}
 
 // ─── The preview sheet ────────────────────
 const kitWhen = (iso) => {
@@ -1217,6 +1163,8 @@ function MonthlyDraft({ addToast = () => {} }) {
       note: d.state === 'deleted' ? 'Deleted in Kit. You can draft it again.' : d.error ? d.error
         : d.state === 'skipped' ? `Won’t draft itself: ${month} was over before monthly emails began.` : 'Drafts itself within the hour.' };
   })();
+  // Its own words, until it has gone out
+  const words = !!d?.key && !['sent', 'scheduled'].includes(d.state);
   return html`<div class=${`mm-kit${row ? ` is-${row.tone}` : ''}`} aria-busy=${d || problem ? 'false' : 'true'}>
     <div class="mm-kit-top"><strong>${month ? `${month}’s email` : 'This month’s email'}</strong>${row && html`<span class="mm-kit-word">${row.word}</span>`}</div>
     ${problem && !d ? html`<p class="mm-kit-note" role="alert">${problem} <button type="button" class="mm-change" onClick=${load}>Try again</button></p>`
@@ -1224,9 +1172,10 @@ function MonthlyDraft({ addToast = () => {} }) {
       : html`
         ${d.off && html`<p class="mm-kit-note">${d.off}.</p>`}
         <p class="mm-kit-note">${row.note} Drafts only: nothing goes out until someone sends it from Kit.</p>
-        ${(row.open || (row.draft && !d.off)) && html`<div class="mm-kit-acts">
+        ${(row.open || (row.draft && !d.off) || words) && html`<div class="mm-kit-acts">
           ${row.open && d.url && html`<a class="btn btn-ghost btn-sm" href=${d.url} target="_blank" rel="noopener">Open in Kit ↗</a>`}
           ${row.draft && !d.off && html`<button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${draft}>${busy ? html`<span class="spinner spinner-12" /> Drafting…` : row.draft}</button>`}
+          ${words && html`<${EditWordsButton} emailKey=${d.key} title=${`${month}’s Monthly Impact`} edited=${!!d.edited} disabled=${busy} addToast=${addToast} onSaved=${load} />`}
         </div>`}`}
   </div>`;
 }
@@ -1342,7 +1291,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
           <h3 id="mm-sheet-title">${entry.t}</h3>
           <p>As it goes out, filled in for ${/^org-|^staff-new-org$/.test(entry.preview || '') ? 'a sample organization (Sunnyside Academy)' : 'a sample family (the Stones)'}. Nothing is sent from here unless you press ${p?.send === 'text' ? 'Text it to me' : 'Send it to me'}.</p>
         </div>
-        <button type="button" class="am-close" ref=${closeRef} aria-label="Close" onClick=${onClose}>×</button>
+        <button type="button" class="mm-sheet-x" ref=${closeRef} aria-label="Close" onClick=${onClose}>×</button>
       </div>
       ${p && html`<dl class="mm-env">
         <dt>Sent by</dt><dd><${Sender} s=${showing === 'text' ? 'twilio' : showing === 'push' ? 'push' : sendersOf(entry)[0]} /></dd>
@@ -1362,10 +1311,7 @@ function PreviewSheet({ entry, onClose, addToast, returnTo = null }) {
             <button type="button" aria-pressed=${String(lang === 'es')} onClick=${() => setLang('es')}>Spanish</button>
           </div>`}
         </div>
-        ${p?.html && showing === 'email' && html`<div class="mm-seg mm-width" role="group" aria-label="Screen width">
-          <button type="button" aria-pressed=${String(wide)} onClick=${() => setWide(true)}>Computer</button>
-          <button type="button" aria-pressed=${String(!wide)} onClick=${() => setWide(false)}>Phone</button>
-        </div>`}
+        ${p?.html && showing === 'email' && html`<${WidthSwitch} className="mm-width" phone=${!wide} setPhone=${(ph) => setWide(!ph)} />`}
       </div>` : null}
       <div class="mm-body" tabindex="0" role="region" aria-label="The message">${body()}</div>
       <div class="mm-foot">
@@ -1528,10 +1474,10 @@ export function MessagesMap({ addToast = () => {}, onNavigate = null }) {
         }} />`}
     </div>
     ${tab === 'sent' && html`<div role="tabpanel" aria-label="What went out">
-      <${SentView} entryOf=${entryOf} branchOf=${branchOf} labelOf=${rowLabel} senderOf=${rowSender} Sender=${Sender} EmailFrame=${EmailFrame}
+      <${SentView} entryOf=${entryOf} branchOf=${branchOf} labelOf=${rowLabel} senderOf=${rowSender} Sender=${Sender}
         onPreview=${preview} only=${only} setOnly=${setOnly} show=${show} setShow=${setShow} onProblems=${setProblems} />
     </div>`}
-    ${tab === 'write' && html`<div role="tabpanel" aria-label="Write an email"><${WriteEmail} addToast=${addToast} EmailFrame=${EmailFrame} /></div>`}
+    ${tab === 'write' && html`<div role="tabpanel" aria-label="Write an email"><${WriteEmail} addToast=${addToast} /></div>`}
     ${open && html`<${PreviewSheet} entry=${open} returnTo=${opener.current} onClose=${() => setOpen(null)} addToast=${addToast} />`}
   </div>`;
 }

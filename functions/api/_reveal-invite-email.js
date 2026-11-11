@@ -509,9 +509,55 @@ export function keyWord(html, look = SOARD_LOOK) {
 }
 
 /** The first words after the cover, a size up from the rest */
-export function lede(text, after = '', look = SOARD_LOOK) {
+/**
+ * Words staff typed, as HTML: **two stars** make words bold, *one star* puts a word in the accent, and
+ * [words](https://a-link) makes a link. Nothing else of HTML gets through. Write an email's words, and
+ * "Edit words" on the emails the site drafts by itself (./_email-words.js).
+ */
+export function inlineWords(raw, { accent = D, ink = D } = {}) {
+  let s = escapeHtml(tidy(raw));
+  s = s.replace(/\[([^\]]{1,200})\]\((https?:\/\/[^\s)]{1,500})\)/g, (m, words, url) => `<a href="${href(url.replace(/&amp;/g, '&'))}" target="_blank" style="color:${ink};font-weight:700;text-decoration:underline;text-underline-offset:3px;">${words}</a>`);
+  s = s.replace(/\*\*([^*]{1,300})\*\*/g, '<strong style="font-weight:700;">$1</strong>');
+  s = s.replace(/(^|[\s(>])\*([^*\s][^*]{0,120}?)\*(?=[\s.,!?;:)<]|$)/g, `$1<em style="font-style:italic;${accent ? `color:${accent};` : ''}">$2</em>`);
+  return s;
+}
+/** Typed words' last word kept with the one before, bold or in the accent too, so a line never ends with one word alone */
+export const glueLast = (html) => html.replace(/ ((?:<(?:em|strong)\b[^>]*>)?[^\s<>]{1,24}(?:<\/(?:em|strong)>)?[^\s<>]{0,3})$/, '&nbsp;$1');
+
+/**
+ * Staff's own words in place of the site's, part by part ("Edit words", ./_email-words.js): a part left
+ * empty keeps the site's. siteWords: the site's own words as the admin shows them, a *starred* word being the
+ * one the email sets in italics. → subject, preview and closing as text; opening, askHeadline and askWords
+ * as staff typed them, or null for the site's own.
+ */
+export function chosenWords(words, siteWords) {
+  const own = (k) => (typeof words?.[k] === 'string' && words[k].trim() ? words[k].trim() : null);
+  return {
+    subject: own('subject') ? tidy(own('subject')) : siteWords.subject,
+    preview: own('preview') ? tidy(own('preview')) : siteWords.preview,
+    closing: own('closing') ? tidy(own('closing')) : siteWords.closing,
+    opening: own('opening'),
+    askHeadline: own('askHeadline'),
+    askWords: own('askWords') ? tidy(own('askWords')) : null,
+  };
+}
+/** A give band headline staff typed, in the band's own color: *a word* in italics */
+export const askHeadlineHtml = (raw) => glueLast(inlineWords(raw, { accent: null }));
+/** …and sized for a phone, as the site's own are */
+export const askHeadlineFit = (raw) => fitWords(raw, 30, [[26, 'h2b']]);
+/** The same words for the plain-text copy: the marks gone, a link's address after its words */
+export const plainWords = (raw) => tidy(raw).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1 ($2)').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)\*([^*]+)\*/g, '$1$2');
+/** A headline staff typed, sized so its longest word fits a phone (the stars aren't letters) */
+export const fitWords = (text, max, phones) => headlineFit(String(text).replace(/\*/g, '').split(/\s+/).filter(Boolean), max, phones ? { phones } : undefined);
+
+/**
+ * The first words after the cover, a size up from the rest. rich: words staff typed (inlineWords), a
+ * blank line starting a new paragraph.
+ */
+export function lede(text, after = '', look = SOARD_LOOK, { rich = false } = {}) {
+  const paras = rich ? String(text).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean) : [text];
   return `<tr><td bgcolor="${look.paper}" style="background:${look.paper};padding:40px 0 0;${SIDE}" class="pd">
-    <p class="ld" style="margin:0;font-family:${SERIF};font-size:19px;line-height:1.65;color:${look.ink};">${noWidow(escapeHtml(text))}</p>
+    ${paras.map((p, i) => `<p class="ld" style="margin:${i ? '16px 0 0' : '0'};font-family:${SERIF};font-size:19px;line-height:1.65;color:${look.ink};">${rich ? glueLast(inlineWords(p, { accent: look.ink, ink: look.ink })).replace(/\n/g, '<br>') : noWidow(escapeHtml(p))}</p>`).join('\n    ')}
     ${after}
   </td></tr>`;
 }
@@ -727,7 +773,7 @@ export function partnerCards(kid, brokenLogos = new Set(), { noun = 'partner', l
  *   the watch entry (the live page, an alarm before it starts), not the guests' one.
  * @returns {{ subject: string, preview: string, html: string, text: string }}
  */
-export function revealInviteEmail({ kid = {}, date, time, address = '', notes = '', room = '', subjectPrefix = '', site = SITE_URL, brokenLogos = new Set(), teamPicture = true, watch = false } = {}) {
+export function revealInviteEmail({ kid = {}, date, time, address = '', notes = '', room = '', subjectPrefix = '', site = SITE_URL, brokenLogos = new Set(), teamPicture = true, watch = false, words = {} } = {}) {
   // The whole list never sees where the family lives, or the notes for guests coming to the house
   if (watch) { address = ''; notes = ''; }
   const name = kidName(kid, 'our next kid');
@@ -740,8 +786,8 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   const when = revealWhen(date, time);
   const cal = calendarLinks(slug, site, { watch });
 
-  const subject = watch ? `${subjectPrefix}Join Us Live for ${name}’s Reveal Day!` : `${subjectPrefix}You’re Invited to ${name}’s Reveal Day!`;
-  const preview = watch
+  const siteSubject = watch ? `Join Us Live for ${name}’s Reveal Day!` : `You’re Invited to ${name}’s Reveal Day!`;
+  const sitePreview = watch
     ? (roomText ? `Watch live on our website as we reveal ${name}’s brand-new ${roomText.toLowerCase()}!` : `Watch ${name}’s reveal live on our website!`)
     : roomText
       ? `Come celebrate ${name} as we reveal the brand-new ${roomText.toLowerCase()}!`
@@ -795,7 +841,13 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   const space = makeoverWord(roomLines);
   // "Tyrece, Maddie, and the family", never "Tyrece & Maddie and the family" (or "Remi and Nico and the family")
   const who = twoKids(name) ? `${name.replace(/\s(&|and)\s/, ', ')}, and the family` : `${name} and the family`;
-  const opening = `After months of planning and building, the day is almost here. ${who} haven’t seen the finished ${space ? space.lower : several ? 'rooms' : 'room'} yet. ${watch ? 'Watch live' : 'Come be there'} for that first reaction.`;
+  const siteOpening = `After months of planning and building, the day is almost here. ${who} haven’t seen the finished ${space ? space.lower : several ? 'rooms' : 'room'} yet. ${watch ? 'Watch live' : 'Come be there'} for that first reaction.`;
+  // The site's own words, and staff's in place of any of them (Edit words)
+  const siteWords = { subject: siteSubject, preview: sitePreview, opening: siteOpening, closing: watch ? 'Hope you’ll watch with us.' : 'Hope to see you there.' };
+  const w = chosenWords(words, siteWords);
+  const subject = `${subjectPrefix}${w.subject}`;
+  const preview = w.preview;
+  const opening = w.opening ? plainWords(w.opening) : siteOpening;
 
   const html = emailFrame(preview, `
   ${emailHeader(site, { mark: true })}
@@ -809,7 +861,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     url: kidUrl,
     action: `${ticket(rows, [arrive, ...noteLines].filter(Boolean))}${calendar}`,
   })}
-  ${lede(opening)}
+  ${w.opening ? lede(w.opening, '', SOARD_LOOK, { rich: true }) : lede(opening)}
   ${summary ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
     ${label(`${name}’s story`)}
     <p style="margin:14px 0 0;font-family:${SERIF};font-size:17px;line-height:1.7;color:${D};">${noWidow(escapeHtml(summary))}</p>
@@ -819,7 +871,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     ${photoNotes(kid, textLink(`Read ${name}’s story →`, kidUrl), { photos: !!lead || photos.length >= 2 })}
   </td></tr>
   ${partnerCards(kid, brokenLogos) || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
-  ${signOff(watch ? 'Hope you’ll watch with us.' : 'Hope to see you there.', teamPicture)}
+  ${signOff(w.closing, teamPicture)}
   ${emailFooter(site, { mark: true })}`);
 
   const text = [
@@ -838,9 +890,9 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     slug && timed && !watch && `Watch it live: ${liveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',
-    watch ? 'Hope you’ll watch with us.' : 'Hope to see you there.',
+    w.closing,
     'The SOARD Team, Sunshine on a Ranney Day',
   ].filter((l) => l !== false && l !== null && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
-  return { subject, preview, html, text };
+  return { subject, preview, html, text, siteWords };
 }

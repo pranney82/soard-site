@@ -65,7 +65,7 @@ import { slackCard } from './_slack-cards.js';
 import { personStatus, personName } from './_team.js';
 import { limit } from './_rate-limit.js';
 import { syncKidStatuses } from './_kid-status.js';
-import { syncKitInvite, holdKitInvite } from './_reveal-invite-kit.js';
+import { syncKitInvite, holdKitInvite, inviteFacts } from './_reveal-invite-kit.js';
 import { LEVEL_ROLES, TRADE_ROLE } from './_partner-roles.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
@@ -938,7 +938,36 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
  * the time fills in by itself once the reveal is confirmed.
  * kind: 'invite' (Reveal Emails, with the address) or 'watch' (the whole-list invite).
  */
-export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now = Date.now(), rewrite = false, kind = 'invite' } = {}) {
+/**
+ * A job's reveal as the invite email would have it, read from JobTread now: the plan (its day, time,
+ * address and guests' notes), which kid page it's for, and the room. Asked for by hand, so it needn't
+ * wait for construction to start (`sent` lifts that).
+ */
+async function inviteFromJob(env, jobId, config, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const [job, staff, kids, board] = await Promise.all([
+    fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
+    fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
+    loadKidsAndProjects(env.DB).catch(() => []),
+    fetchBoard(env, fetchImpl),
+  ]);
+  const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, template: config.template, sent: true });
+  const who = job ? displayName(job, kids) : null;
+  const room = job ? fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '' : '';
+  return { job, plan, who, room };
+}
+
+/** What a job's invite email says, for its preview in the admin (Edit words): null when JobTread has no such job */
+export async function inviteEmailFacts(env, jobId, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const config = await readConfig(env.DB);
+  const { job, plan, who, room } = await inviteFromJob(env, jobId, config, { fetchImpl, now });
+  return job ? { who, f: inviteFacts(plan, who, room) } : null;
+}
+
+/**
+ * early: draft it before JobTread confirms, or again once it was deleted in Kit (Draft invite email). Without
+ * it, only a draft already in Kit is brought up to date: new words for it (Edit words) never make a new one.
+ */
+export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now = Date.now(), rewrite = false, kind = 'invite', early = true } = {}) {
   const { DB } = env;
   await ensureSchema(DB);
   // One look at a job at a time, so this can't race JobTread's own wake-up into a second draft
@@ -949,17 +978,8 @@ export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now =
     if (!config.enabled) return { jobId, kit: 'skip', reason: 'reveal invites are paused in Reveals → Invites' };
     const row = await readRow(DB, jobId);
     if (row?.state === 'cancelled' && row.last_action === BY_HAND) return { jobId, kit: 'skip', reason: 'its calendar invite was deleted, so the reveal looks called off' };
-    const [job, staff, kids, board] = await Promise.all([
-      fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
-      fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-      loadKidsAndProjects(DB).catch(() => []),
-      fetchBoard(env, fetchImpl),
-    ]);
-    // Asked for by hand, so it needn't wait for construction to start (`sent` lifts that)
-    const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, template: config.template, sent: true });
-    const who = job ? displayName(job, kids) : null;
-    const room = job ? fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '' : '';
-    const result = await syncKitInvite(env, { jobId, plan, who, room, config, sandbox: jobId === SANDBOX_JOB_ID || isTestJob(job), alertTo: alertList(env, config), early: true, rewrite, kind: kind === 'watch' ? 'watch' : 'invite' });
+    const { job, plan, who, room } = await inviteFromJob(env, jobId, config, { fetchImpl, now });
+    const result = await syncKitInvite(env, { jobId, plan, who, room, config, sandbox: jobId === SANDBOX_JOB_ID || isTestJob(job), alertTo: alertList(env, config), early, rewrite, kind: kind === 'watch' ? 'watch' : 'invite' });
     return { jobId, name: who?.name || null, date: plan.date || null, ...result };
   } finally {
     await unlockJob(DB, jobId);

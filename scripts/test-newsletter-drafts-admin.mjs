@@ -7,9 +7,10 @@
  * public/ and every /api/* call is answered here:
  *   - the 2026 gala: over, photos on the page, nothing drafted: Draft in Kit
  *     drafts it (a draft only) and the block turns to Open in Kit
- *   - the golf tournament: no photos yet, so no button and the reason why
+ *   - the golf tournament: no photos yet, so no Draft button and the reason why
+ *     (its words can be ready ahead: Edit words, tested in test-email-words.mjs)
  *   - Monthly Impact: October, not drafted; Draft October’s in Kit; then Kit
- *     drafts paused: no button
+ *     drafts paused: no Draft button
  * Checks the words, what each button sends, phone width, 44px targets on touch,
  * axe and console errors. Screenshots in test-results/newsletter-drafts/.
  *
@@ -114,7 +115,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.er-mail, [aria-labelledby="er-mail-h"] [role="alert"]'), { timeout: 20000 }).catch(() => {});
   const block = await text(page, '[aria-labelledby="er-mail-h"]');
   ok(/^The recap email “What a Night!” in Kit for the newsletter list: the photos, the numbers and the sponsors\. Drafts only\. Nothing goes out until someone sends it from Kit\./.test(block), `it says what the email is, and that it’s a draft only (${block.slice(0, 200)})`);
-  ok(/Event Recap NOT DRAFTED Won’t draft itself for this gala: it was over before recap emails began, or long ago\. You can still draft it\. Draft in Kit$/i.test(block), `an event from before: why it won’t come by itself, and Draft in Kit (${block.slice(-160)})`);
+  ok(/Event Recap NOT DRAFTED Won’t draft itself for this gala: it was over before recap emails began, or long ago\. You can still draft it\. Draft in Kit Edit words$/i.test(block), `an event from before: why it won’t come by itself, and Draft in Kit (${block.slice(-160)})`);
   ok(calls.includes(`GET /api/newsletter-drafts-admin?event=${GALA}`), 'it read the gala’s email');
   ok(await clickText(page, '[aria-labelledby="er-mail-h"] button', 'Draft in Kit'), 'Draft in Kit');
   await page.waitForFunction(() => /Open in Kit/.test(document.querySelector('[aria-labelledby="er-mail-h"]')?.innerText || ''), { timeout: 8000 }).catch(() => {});
@@ -133,7 +134,8 @@ try {
   await page.goto(`${SITE}/admin/index.html#events/${GOLF}`, { waitUntil: 'networkidle2' });
   await page.waitForFunction(() => document.querySelector('.er-mail'), { timeout: 20000 }).catch(() => {});
   const golf = await text(page, '[aria-labelledby="er-mail-h"]');
-  ok(/“What a Day!”/.test(golf) && /Add the photographer’s photos first: the email is the photos\.$/.test(golf) && !(await page.$('[aria-labelledby="er-mail-h"] button')), `a day, not a night; the reason, and no button (${golf.slice(-120)})`);
+  const golfButtons = await page.$$eval('[aria-labelledby="er-mail-h"] button', (bs) => bs.map((b) => b.textContent.trim()));
+  ok(/“What a Day!”/.test(golf) && /Add the photographer’s photos first: the email is the photos\. Edit words$/.test(golf) && JSON.stringify(golfButtons) === '["Edit words"]', `a day, not a night; the reason, and no Draft button, only its words (${golf.slice(-120)} ${JSON.stringify(golfButtons)})`);
   await page.close();
 
   console.log('Monthly Impact in Emails & invites');
@@ -159,7 +161,7 @@ try {
   }
   await msgs.waitForFunction(() => document.querySelector('.mm-kit .mm-kit-acts, .mm-kit [role="alert"]'), { timeout: 8000 }).catch(() => {});
   const box = await text(msgs, '.mm-kit');
-  ok(/^October’s email NOT DRAFTED Won’t draft itself: October was over before monthly emails began\. Drafts only: nothing goes out until someone sends it from Kit\. Draft October’s in Kit$/i.test(box), `the month just ended, why it won’t come by itself, and its button (${box})`);
+  ok(/^October’s email NOT DRAFTED Won’t draft itself: October was over before monthly emails began\. Drafts only: nothing goes out until someone sends it from Kit\. Draft October’s in Kit Edit words$/i.test(box), `the month just ended, why it won’t come by itself, its button and its words (${box})`);
   ok(await clickText(msgs, '.mm-kit button', 'Draft October’s in Kit'), 'Draft October’s in Kit');
   await msgs.waitForFunction(() => /Open in Kit/.test(document.querySelector('.mm-kit')?.innerText || ''), { timeout: 8000 }).catch(() => {});
   ok(JSON.stringify(posts.at(-1)) === JSON.stringify({ key: 'monthly:2026-10' }), `it asks for October’s (${JSON.stringify(posts.at(-1))})`);
@@ -176,7 +178,8 @@ try {
   const phone = await open(390, `#events/${GALA}`, { touch: true });
   await phone.waitForFunction(() => document.querySelector('.er-mail'), { timeout: 20000 }).catch(() => {});
   const pb = await text(phone, '.er-mail');
-  ok(/Kit drafts are off while reveal invites are paused \(Reveals → Invites\)\./.test(pb) && !(await phone.$('.er-mail button')), `paused: says so, no Draft button (${pb})`);
+  const pausedButtons = await phone.$$eval('.er-mail button', (bs) => bs.map((b) => b.textContent.trim()));
+  ok(/Kit drafts are off while reveal invites are paused \(Reveals → Invites\)\./.test(pb) && JSON.stringify(pausedButtons) === '["Edit words"]', `paused: says so, no Draft button, its words still there (${pb} ${JSON.stringify(pausedButtons)})`);
   const small = await phone.$$eval('.er-mail a, .er-mail button', (els) => els.map((e) => ({ t: e.textContent.trim(), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44));
   ok(small.length === 0, `44px targets on touch (${JSON.stringify(small)})`);
   const fit = await phone.evaluate(() => {

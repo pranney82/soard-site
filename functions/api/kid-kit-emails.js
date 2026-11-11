@@ -3,7 +3,8 @@
  * =====================================================================
  * Behind Cloudflare Access (not in the middleware's public list).
  *
- * GET  ?slug=&jobId=           → { ok, off, invite, watch, kickoff, reveal }: where each email stands, read from Kit
+ * GET  ?slug=&jobId=           → { ok, off, page, invite, watch, kickoff, reveal }: where each email stands, read from Kit;
+ *                                page: { published, completed }, the kid's page as the emails see it
  * POST { slug, kind, jobId? }  → that email drafted in Kit now. kind 'invite' or 'watch' (the
  *                                whole-list invite; both need the JobTread job), 'kickoff' or 'reveal'.
  *
@@ -47,7 +48,7 @@ export async function onRequestGet({ env, request }) {
       return x;
     };
     const withUrl = (x) => (x?.id ? { ...x, url: kitUrl(x.id) } : x);
-    return Response.json({ ok: true, off: project.off, invite: withUrl(stand(invites)), watch: withUrl(stand(watches)), kickoff: withUrl(project.kickoff), reveal: withUrl(project.reveal) }, { headers: { 'Cache-Control': 'no-store' } });
+    return Response.json({ ok: true, off: project.off, page: project.page, invite: withUrl(stand(invites)), watch: withUrl(stand(watches)), kickoff: withUrl(project.kickoff), reveal: withUrl(project.reveal) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     return fail(err.message, 500);
   }

@@ -1399,3 +1399,40 @@ test('the review note says the whole list however Kit writes its default audienc
   assert.equal(two.subject, 'Rowan’s reveal changed: please update the whole-list invite');
   assert.notEqual(one.subject, two.subject);
 });
+
+// ─── Edit words (Nov 11 2026): staff's own words, the facts still JobTread's ───
+
+test('Edit words: an untouched invite takes staff’s words quietly, keeps them when JobTread moves the time, and an edited one is left alone', async () => {
+  const { saveWords } = await import('../functions/api/_email-words.js');
+  await sync();
+  const b = [...kit.broadcasts.values()][0];
+  const told = emails.length;
+  await saveWords(env.DB, 'invite:22PTestJob001', { subject: 'Come see Rowan’s new bathroom', opening: 'We can’t *wait* for this one.', closing: 'See you Saturday.' });
+  assert.equal((await sync()).kit, 'redesigned');
+  assert.equal(b.subject, 'Come see Rowan’s new bathroom');
+  assert.match(b.content, /We can’t <em style="font-style:italic;color:#373A36;">wait<\/em> for this&nbsp;one\./);
+  assert.match(b.content, /See you&nbsp;Saturday\./);
+  assert.equal(emails.length, told, 'nobody is emailed about new words');
+  assert.equal((await sync()).kit, 'unchanged', 'once in, nothing more to write');
+  // JobTread moves the time: the facts follow, her words stay
+  assert.equal((await sync(plan({ start: '17:00' }))).kit, 'updated');
+  assert.match(b.content, /5:00 PM/);
+  assert.equal(b.subject, 'Come see Rowan’s new bathroom');
+  // The whole-list copy has its own words: hers for the invite never reach it
+  assert.ok(!(await readKitRow(env.DB, '22PTestJob001', 'watch')));
+  // Someone changes it in Kit: new words never write over that
+  b.content += '<p>Linzi’s own line</p>';
+  await saveWords(env.DB, 'invite:22PTestJob001', { subject: 'Another subject' });
+  kit.calls = [];
+  await sync();
+  assert.ok(!kit.calls.some((c) => c.startsWith('PUT')));
+  assert.equal(b.subject, 'Come see Rowan’s new bathroom');
+});
+
+test('Edit words: a draft from before words existed isn’t rewritten for nothing', async () => {
+  await sync();
+  await env.DB.prepare('UPDATE reveal_invite_kit SET words = NULL').run().catch(() => {});
+  kit.calls = [];
+  assert.equal((await sync()).kit, 'unchanged');
+  assert.ok(!kit.calls.some((c) => c.startsWith('PUT')));
+});

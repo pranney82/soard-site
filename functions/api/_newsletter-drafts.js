@@ -32,6 +32,7 @@ import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
 import { SITE_URL, TEAM_PICTURE } from './_reveal-invite-email.js';
 import { brokenLogos, kitInviteSettings, reviewersOf, kitDraftUrl, copyHash, wentOut } from './_reveal-invite-kit.js';
 import { readConfig, alertList } from './_reveal-invites.js';
+import { readWords } from './_email-words.js';
 import {
   getReveals, fetchJobs, pave, matchKid, loadKids as loadMatchKids, easternParts, isRehearsalJob, SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
 } from './_reveals.js';
@@ -313,6 +314,8 @@ export async function monthlyFacts(env, month, { now = Date.now(), fetchImpl = f
 async function contextFor(env, row, { now, fetchImpl }) {
   const { DB } = env;
   const today = dayIn(now);
+  // Staff's own words for this email (Edit words), if they gave any: a change to them is a change to what it says
+  const { words } = await readWords(DB, row.key);
   if (row.kind === 'recap') {
     const slug = row.key.slice('recap:'.length);
     const [events, docs] = await Promise.all([loadEvents(DB), loadDocs(DB)]);
@@ -325,7 +328,7 @@ async function contextFor(env, row, { now, fetchImpl }) {
       title, what: 'Event Recap', ev,
       block: recapBlock(ev, { photos, live, today }),
       images: (broken) => (ev ? recapImageUrls(ev, events, pageDoc, broken) : []),
-      render: (broken) => eventRecapEmail({ event: ev, events, pageDoc, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) }),
+      render: (broken, w = words) => eventRecapEmail({ event: ev, events, pageDoc, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE), words: w }),
     };
   }
   const month = row.key.slice('monthly:'.length);
@@ -335,8 +338,20 @@ async function contextFor(env, row, { now, fetchImpl }) {
     title: `${monthName(month, { year: true })} Monthly Impact`, what: 'Monthly Impact', month,
     block: !done ? `Ready on the 1st of ${monthName(nextMonth(month))}, when ${monthName(month)} is over` : !monthlyHasNews(facts) ? `The site has nothing from ${monthName(month)} to put in it` : null,
     images: () => monthlyImageUrls(facts),
-    render: (broken) => monthlyImpactEmail({ ...facts, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) }),
+    render: (broken, w = words) => monthlyImpactEmail({ ...facts, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE), words: w }),
   };
+}
+
+/**
+ * An Event Recap or Monthly Impact as the site would draft it now, for Edit words' preview: its title,
+ * why it can't be drafted yet (block), and render(words) → the email with those words in place of the
+ * site's. Reads what drafting reads, once; no picture check.
+ */
+export async function newsletterEmailFor(env, key, { now = Date.now(), fetchImpl = fetch } = {}) {
+  const ctx = await contextFor(env, { key, kind: key.startsWith('recap:') ? 'recap' : 'monthly' }, { now, fetchImpl });
+  // missing: a recap whose event isn't there (nothing to render)
+  if (key.startsWith('recap:') && !ctx.ev) return { title: ctx.title, block: ctx.block, missing: true };
+  return { title: ctx.title, block: ctx.block, render: (words) => ctx.render(new Set(), words) };
 }
 /** An email's name without reading Kit or the live page */
 async function titleFor(DB, key) {

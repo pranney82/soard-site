@@ -4613,6 +4613,7 @@
     // Event pages before and after the event: series, recap photos and sponsors, year pages
     import * as ES from './events-shared.js';
     import { AfterEventPanel, SponsorsList, EventBasics } from './event-recap-admin.js';
+    import { EditWordsButton } from './email-words.js';
     // Above every Zeffy link box: SOARD's Zeffy forms, and picking one fills in its link
     import { ZeffyLink } from './zeffy-forms.js';
     // Every "are you sure?" in the admin: an in-app dialog, never the browser's confirm()
@@ -12781,14 +12782,20 @@
             ${d.off ? html`<p class="kd-card__note kd-kit__off">${d.off}.</p>` : null}
             <ul class="kd-kit">
               ${KD_KIT_ROWS.map((row) => {
-                const x = kdKitRow(row, d[row.kind] || { state: 'none' });
+                const st = d[row.kind] || { state: 'none' };
+                const x = kdKitRow(row, st);
+                // Its own words, while it can still go out: the invites by their JobTread job, Kickoff and Reveal
+                // by the kid. Not once it's scheduled or sent, nor the invites and Kickoff once the makeover is done.
+                const wordsKey = ['invite', 'watch'].includes(row.kind) ? (jobId ? `${row.kind}:${jobId}` : null) : `${row.kind}:${slug}`;
+                const words = wordsKey && !['sent', 'scheduled', 'nojob'].includes(st.state) && !(d.page?.completed && row.kind !== 'reveal');
                 return html`<li key=${row.kind} class=${`kd-kit__row is-${x.tone}`}>
                   <div class="kd-kit__top"><strong>${row.label}</strong><span class="kd-kit__word">${x.word}</span></div>
                   <p class="kd-kit__note">${x.note}</p>
-                  ${x.open || (x.draft && !d.off) ? html`<div class="kd-card__actions">
+                  ${x.open || (x.draft && !d.off) || words ? html`<div class="kd-card__actions">
                     ${x.open ? html`<a class="btn btn-ghost btn-sm" href=${x.open} target="_blank" rel="noopener">Open in Kit ${kdIcon.external}</a>` : null}
                     ${x.draft && !d.off ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => draft(row)}>
                         ${busy === row.kind ? html`<span class="spinner spinner-14" /> Drafting…` : x.draft}</button>` : null}
+                    ${words ? html`<${EditWordsButton} emailKey=${wordsKey} title=${`${name || 'The kid'}’s ${/^(Reveal invite|Whole-list invite)$/.test(row.label) ? row.label.toLowerCase() : row.label}`} edited=${!!st.edited} disabled=${!!busy} addToast=${addToast} onSaved=${load} />` : null}
                   </div>` : null}
                 </li>`;
               })}

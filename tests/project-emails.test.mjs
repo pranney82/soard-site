@@ -1471,3 +1471,77 @@ test('a name card never ends a line on a small joining word: "Friends / & Family
   assert.deepEqual(c.lines, ['Friends', '& Family', 'of Max Daniel']);
   assert.ok(c.lines.slice(0, -1).every((l) => !/(^|\s)(&|and|of|the|for|to)$/i.test(l)));
 });
+
+// ─── Edit words (Nov 11 2026): /api/email-words-admin on a kid's Kickoff ───
+
+const asStaff = (body) => ({ env, data: { userEmail: 'linzi@soardcharity.com' }, request: new Request('https://x/api/email-words-admin', { method: 'POST', body: JSON.stringify(body) }) });
+
+test('Edit words: the box shows the site’s own words, a preview saves nothing, and saving brings an untouched draft up quietly', async () => {
+  const api = await import('../functions/api/email-words-admin.js');
+  const { readWords } = await import('../functions/api/_email-words.js');
+  await writeConfig(env.DB, config);
+  const row = await drafted();
+  const key = `kickoff:${SLUG}`;
+  const got = await (await api.onRequestGet({ env, request: new Request(`https://x/api/email-words-admin?key=${key}`) })).json();
+  assert.equal(got.ok, true);
+  assert.deepEqual(got.parts.map((p) => p.key), ['subject', 'preview', 'opening', 'askHeadline', 'askWords', 'closing']);
+  assert.equal(got.siteWords.subject, 'Meet Rowan, Our Next Dream Room Project');
+  assert.equal(got.siteWords.askHeadline, 'Help us build Rowan’s *dream*.');
+  assert.deepEqual(got.words, {});
+  // A preview: her words in the email, nothing kept, nothing sent to Kit
+  kit.puts.length = 0;
+  const seen = await (await api.onRequestPost(asStaff({ key, words: { subject: 'Rowan’s room starts Monday' }, preview: true }))).json();
+  assert.equal(seen.email.subject, 'Rowan’s room starts Monday');
+  assert.deepEqual((await readWords(env.DB, key)).words, {});
+  assert.equal(kit.puts.length, 0);
+  // Saved: the draft in Kit has them, and nobody is emailed
+  const sent = emails.length;
+  const r = await (await api.onRequestPost(asStaff({ key, words: { subject: 'Rowan’s room starts Monday', askWords: 'Every gift counts.' } }))).json();
+  assert.equal(r.result, 'updated', JSON.stringify(r));
+  assert.match(r.message, /has your words now/);
+  assert.equal(kit.puts.length, 1);
+  assert.equal(kit.broadcasts.get(row.broadcast_id).subject, 'Rowan’s room starts Monday');
+  assert.match(kit.broadcasts.get(row.broadcast_id).content, /Every gift&nbsp;counts\./);
+  assert.equal(emails.length, sent);
+  assert.equal((await readProjectRow(env.DB, SLUG, 'kickoff')).refresh, null, 'done, nothing owed');
+  // All boxes emptied: back to the site's own words
+  const back = await (await api.onRequestPost(asStaff({ key, words: {} }))).json();
+  assert.equal(back.result, 'updated');
+  assert.match(back.message, /the site’s own words again/);
+  assert.equal(kit.broadcasts.get(row.broadcast_id).subject, 'Meet Rowan, Our Next Dream Room Project');
+});
+
+test('Edit words: a draft someone changed in Kit is left as they made it, and saying so; none in Kit yet takes them when drafted', async () => {
+  const api = await import('../functions/api/email-words-admin.js');
+  await writeConfig(env.DB, config);
+  // Not drafted yet: kept for when it is
+  await queued('kickoff');
+  const first = await (await api.onRequestPost(asStaff({ key: `kickoff:${SLUG}`, words: { closing: 'With love, the SOARD crew.' } }))).json();
+  assert.equal(first.result, 'saved');
+  assert.match(first.message, /when it’s drafted/);
+  const r = await look('kickoff');
+  assert.equal(r.project, 'drafted');
+  const row = await readProjectRow(env.DB, SLUG, 'kickoff');
+  const b = kit.broadcasts.get(row.broadcast_id);
+  assert.match(b.content, /With love, the SOARD&nbsp;crew\./, 'drafted with her words');
+  // A person edits it in Kit; new words leave it alone
+  b.subject = 'Linzi’s own subject';
+  kit.puts.length = 0;
+  const later = await (await api.onRequestPost(asStaff({ key: `kickoff:${SLUG}`, words: { closing: 'Something new.' } }))).json();
+  assert.equal(later.result, 'edited');
+  assert.match(later.message, /leaves it as they made it/);
+  assert.equal(kit.puts.length, 0);
+  assert.equal(b.subject, 'Linzi’s own subject');
+});
+
+test('Edit words: the hourly look finishes what Kit didn’t take, never on a draft a person changed', async () => {
+  const { saveWords } = await import('../functions/api/_email-words.js');
+  const row = await drafted();
+  await saveWords(env.DB, `kickoff:${SLUG}`, { subject: 'Rowan’s room starts Monday' });
+  await env.DB.prepare("UPDATE project_emails SET refresh = 'words' WHERE slug = ?").bind(SLUG).run();
+  await writeConfig(env.DB, config);
+  const out = await runProjectEmails(env, { now: NOW + DAY });
+  assert.ok(out.some((o) => o.project === 'redesigned'), JSON.stringify(out));
+  assert.equal(kit.broadcasts.get(row.broadcast_id).subject, 'Rowan’s room starts Monday');
+  assert.equal((await readProjectRow(env.DB, SLUG, 'kickoff')).refresh, null);
+});

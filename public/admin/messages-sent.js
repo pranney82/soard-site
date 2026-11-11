@@ -15,6 +15,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
+import { EmailFrame } from './email-sheet.js';
 
 const html = htm.bind(h);
 
@@ -223,7 +224,7 @@ const Mark = ({ ok }) => (ok === true ? html`<span class="ms-ok-i" aria-label="P
     : html`<span class="ms-q-i" aria-label="Couldn’t check">?</span>`);
 
 // ─── One message, exactly as it went ──────
-function RowSheet({ row, label, entry, onClose, onPreview, Sender, senderOf, EmailFrame, now, returnTo = null }) {
+function RowSheet({ row, label, entry, onClose, onPreview, Sender, senderOf, now, returnTo = null }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const closeRef = useRef(null);
@@ -255,7 +256,7 @@ function RowSheet({ row, label, entry, onClose, onPreview, Sender, senderOf, Ema
           <h3 id="ms-sheet-title">${label}</h3>
           <p>${row.who || row.to || ''}${row.who && row.to && row.who !== row.to ? ` · ${row.to}` : ''}</p>
         </div>
-        <button type="button" class="am-close" ref=${closeRef} aria-label="Close" onClick=${onClose}>×</button>
+        <button type="button" class="mm-sheet-x" ref=${closeRef} aria-label="Close" onClick=${onClose}>×</button>
       </div>
       <dl class="mm-env">
         <dt>Sent by</dt><dd><${Sender} s=${senderOf(row)} /></dd>
@@ -293,12 +294,12 @@ function RowSheet({ row, label, entry, onClose, onPreview, Sender, senderOf, Ema
 
 /**
  * props: entryOf(key) → the map entry (or null), branchOf(entry) → its
- * branch's title, labelOf(row), senderOf(row), Sender, EmailFrame,
+ * branch's title, labelOf(row), senderOf(row), Sender,
  * onPreview(entry), only / setOnly (an entry key the log is narrowed to),
  * show / setShow (the chip picked: 'all', a branch, 'problems' or 'tests'),
  * onProblems(n) (how many didn't arrive in 30 days, for the tab's badge).
  */
-export function SentView({ entryOf, branchOf, labelOf, senderOf, Sender, EmailFrame, onPreview, only = null, setOnly, show: showProp, setShow: setShowProp, onProblems = () => {} }) {
+export function SentView({ entryOf, branchOf, labelOf, senderOf, Sender, onPreview, only = null, setOnly, show: showProp, setShow: setShowProp, onProblems = () => {} }) {
   ensureCss();
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
@@ -503,6 +504,6 @@ export function SentView({ entryOf, branchOf, labelOf, senderOf, Sender, EmailFr
       </aside>
     </div>
     ${open && html`<${RowSheet} row=${open.row} label=${labelOf(open.row)} entry=${entryOf(open.row.entry)} onClose=${() => setOpen(null)} returnTo=${open.from}
-      onPreview=${onPreview} Sender=${Sender} senderOf=${senderOf} EmailFrame=${EmailFrame} now=${now} />`}
+      onPreview=${onPreview} Sender=${Sender} senderOf=${senderOf} now=${now} />`}
   </div>`;
 }

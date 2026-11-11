@@ -20,6 +20,7 @@
  */
 import { h, htm, useState, useRef, useEffect, useCallback } from './vendor.js';
 import { ZeffyLink } from './zeffy-forms.js';
+import { EditWordsButton } from './email-words.js';
 import {
   seriesOf, isOver, isLatest, eventPath, yearPath, yearOf, fmtDay, recapPhotos, recapSponsors,
   sponsorCount, recapLead, cleanHighlights, HIGHLIGHTS_MAX, displayName, cleanSponsors,
@@ -347,6 +348,8 @@ export function RecapEmail({ slug, kind = 'event', when = 'night', addToast = ()
       note: d.state === 'deleted' ? 'Deleted in Kit. You can draft it again.' : d.error ? d.error
         : d.state === 'skipped' ? `Won’t draft itself for this ${kind}: it was over before recap emails began, or long ago. You can still draft it.` : 'Drafts itself within the hour.' };
   })();
+  // Its own words, until it has gone out
+  const words = !!d && !['sent', 'scheduled'].includes(d.state);
   return html`
     <section class="er-block" aria-labelledby="er-mail-h" aria-busy=${d || problem ? 'false' : 'true'}>
       <h3 id="er-mail-h">The recap email</h3>
@@ -357,9 +360,10 @@ export function RecapEmail({ slug, kind = 'event', when = 'night', addToast = ()
             ${d.off ? html`<p class="er-mail__note">${d.off}.</p>` : null}
             <div class="er-mail__top"><strong>Event Recap</strong><span class="er-mail__word">${row.word}</span></div>
             <p class="er-mail__note">${row.note}</p>
-            ${row.open || (row.draft && !d.off) ? html`<div class="er-mail__acts">
+            ${row.open || (row.draft && !d.off) || words ? html`<div class="er-mail__acts">
               ${row.open && d.url ? html`<a class="btn btn-ghost btn-sm" href=${d.url} target="_blank" rel="noopener">Open in Kit ↗</a>` : null}
               ${row.draft && !d.off ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${draft}>${busy ? html`<span class="spinner spinner-12" /> Drafting…` : row.draft}</button>` : null}
+              ${words ? html`<${EditWordsButton} emailKey=${`recap:${slug}`} title="the recap email" edited=${!!d.edited} disabled=${busy} addToast=${addToast} onSaved=${load} />` : null}
             </div>` : null}
           </div>`}
     </section>`;

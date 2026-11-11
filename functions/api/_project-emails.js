@@ -35,6 +35,7 @@ import { SITE_URL, TEAM_PICTURE, EMAIL_DESIGN } from './_reveal-invite-email.js'
 import { projectKickoffEmail, projectRevealEmail, revealChecks } from './_project-email.js';
 import { brokenLogos, kidPageReady, kitInviteSettings, reviewersOf, kitDraftUrl, copyHash, wentOut } from './_reveal-invite-kit.js';
 import { readConfig, alertList } from './_reveal-invites.js';
+import { readWords, wordsKey } from './_email-words.js';
 
 const KINDS = {
   kickoff: { what: 'kickoff email', render: projectKickoffEmail },
@@ -56,7 +57,8 @@ const SCHEMA = `CREATE TABLE IF NOT EXISTS project_emails (
   slug TEXT NOT NULL, kind TEXT NOT NULL, job_id TEXT, broadcast_id TEXT, state TEXT, told TEXT, reminded TEXT,
   error TEXT, alarmed TEXT, queued_at TEXT, claimed_at TEXT, updated_at TEXT, PRIMARY KEY (slug, kind))`;
 // content_hash: Kit's copy as the site last wrote it, to tell a person's edit. design: the EMAIL_DESIGN
-// it was written in. refresh: 'force' when staff ask for a rebuild by hand.
+// it was written in. refresh: 'force' when staff ask for a rebuild by hand; 'words' when staff changed
+// its words (./_email-words.js), which reaches it like a new design: never one a person changed in Kit.
 const ADDED = ['content_hash', 'design', 'refresh'];
 const _ready = new WeakSet();
 export async function ensureProjectSchema(DB) {
@@ -219,7 +221,10 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
     const kid = await readKid(DB, slug);
     name = kid?.name || name;
     if (!kid) return { project: 'waiting', reason: 'no kid page' };
-    const { render, what } = KINDS[kind];
+    const { what } = KINDS[kind];
+    // Staff's own words for this email (Edit words), if they gave any
+    const { words } = await readWords(DB, wordsKey(kind, slug));
+    const render = (args) => KINDS[kind].render({ ...args, words });
 
     // Drafted, but the reviewer's email didn't go: only that is owed
     if (row.broadcast_id) {
@@ -299,7 +304,7 @@ export async function refreshProjectDraft(env, row, { config = {}, fetchImpl = f
     if (!kitInviteSettings(config).enabled || config.enabled === false) return { project: 'off' };
     if (!kitConfigured(env)) return { project: 'skip', reason: 'Kit is not connected' };
     const forced = row.refresh === 'force';
-    if (row.design === EMAIL_DESIGN && !forced) return { project: 'unchanged', id: row.broadcast_id };
+    if (row.design === EMAIL_DESIGN && !forced && row.refresh !== 'words') return { project: 'unchanged', id: row.broadcast_id };
     const seen = await kitReadBroadcast(env, row.broadcast_id);
     if (!seen.ok) {
       if (/HTTP 404/.test(seen.error || '')) { await done('deleted'); return { project: 'skip', reason: 'the draft was deleted in Kit' }; }
@@ -319,7 +324,8 @@ export async function refreshProjectDraft(env, row, { config = {}, fetchImpl = f
     if (!kid) return { project: 'skip', reason: 'no kid page' };
     const { render, what } = KINDS[kind];
     const broken = await brokenLogos(kid, { fetchImpl, extra: kind === 'reveal' ? revealChecks(kid) : [] });
-    const email = render({ kid, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) });
+    const { words } = await readWords(DB, wordsKey(kind, slug));
+    const email = render({ kid, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE), words });
     const u = await kitUpdateDraft(env, row.broadcast_id, { subject: email.subject, previewText: email.preview, description: b.description || `[auto] ${kid.name} ${what} · ${slug} · ${kind}`, html: email.html });
     if (u.status) { await done(u.status === 'scheduled' ? 'scheduled' : 'sent'); return { project: 'skip', reason: 'it has left the site’s hands' }; }
     if (!u.ok) return { project: 'error', error: `Kit didn’t take the rebuild (${u.error || 'no answer'})` };
@@ -353,7 +359,7 @@ export async function runProjectEmails(env, { now = Date.now(), fetchImpl = fetc
       ORDER BY queued_at`).all();
     // Drafts waiting in Kit from an older design, or asked to be rebuilt
     const { results: stale } = await DB.prepare(`SELECT * FROM project_emails
-      WHERE broadcast_id IS NOT NULL AND state = 'drafted' AND (design IS NULL OR design != ? OR refresh = 'force')
+      WHERE broadcast_id IS NOT NULL AND state = 'drafted' AND (design IS NULL OR design != ? OR refresh IN ('force', 'words'))
       ORDER BY queued_at LIMIT ?`).bind(EMAIL_DESIGN, DRAFTS_PER_LOOK).all();
     if (!results?.length && !stale?.length) return [];
     const config = await readConfig(DB);

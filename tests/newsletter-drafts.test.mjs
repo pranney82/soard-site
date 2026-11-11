@@ -658,3 +658,34 @@ test('each series’ mark from its event page, under the header: golf’s wave, 
   assert.ok(url);
   assert.ok(!/recap-golf-wave/.test(eventRecapEmail({ event: golfEv, events: [GOLF], brokenLogos: new Set([url]) }).html));
 });
+
+// ─── Edit words (Nov 11 2026): the recap follows staff's words like any change ───
+
+test('Edit words: the recap draft takes staff’s words when saved, quietly, and the gala’s look stays', async (t) => {
+  const api = await import('../functions/api/email-words-admin.js');
+  // The admin asks on the real clock: the day after this test's gala
+  const realNow = Date.now;
+  Date.now = () => at('2027-08-22T16:00:00Z');
+  t.after(() => { Date.now = realNow; });
+  await look('2027-08-01T14:00:00Z');
+  publish();
+  await look('2027-08-22T15:00:00Z');
+  const id = String(only().id);
+  const key = recapKey(GALA.slug);
+  const got = await (await api.onRequestGet({ env, request: new Request(`https://x/api/email-words-admin?key=${key}`) })).json();
+  assert.equal(got.siteWords.askHeadline, 'Help us build the next *dream*.');
+  assert.match(got.email.html, /background:#faf3e0/, 'the preview is the gala’s own look');
+  const sent = emails.length;
+  const r = await (await api.onRequestPost({ env, data: { userEmail: 'linzi@soardcharity.com' }, request: new Request('https://x', { method: 'POST', body: JSON.stringify({ key, words: { opening: 'Thank you, *Havana*!', askHeadline: 'Keep the *party* going.' } }) }) })).json();
+  assert.equal(r.result, 'updated', JSON.stringify(r));
+  assert.equal(kit.puts.at(-1).id, id);
+  assert.match(only().content, /Thank you,&nbsp;<em style="font-style:italic;color:#0d2f3f;">Havana<\/em>!/, "in the gala’s ink, kept with the word before it");
+  assert.match(only().content, /Keep the <em style="font-style:italic;">party<\/em>&nbsp;going\./);
+  assert.match(only().content, /border-radius:22px/, 'still the gala’s card that asks');
+  assert.equal(emails.length, sent, 'nobody is emailed');
+  // The same words again: nothing to write
+  const puts = kit.puts.length;
+  const again = await (await api.onRequestPost({ env, data: { userEmail: 'linzi@soardcharity.com' }, request: new Request('https://x', { method: 'POST', body: JSON.stringify({ key, words: { opening: 'Thank you, *Havana*!', askHeadline: 'Keep the *party* going.' } }) }) })).json();
+  assert.equal(again.result, 'updated');
+  assert.equal(kit.puts.length, puts);
+});

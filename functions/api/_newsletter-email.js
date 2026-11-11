@@ -23,6 +23,7 @@
 import {
   SITE_URL, HERO_TRANSFORM, PHOTO_TRANSFORM, LOGO_TRANSFORM, SIDE, BRAND, SOARD_LOOK, escapeHtml, href, cfImg, label, tidy, kidName, listJoin,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, keyWord, lede, photoImg, photoPair, noWidow,
+  chosenWords, plainWords, askHeadlineHtml, askHeadlineFit,
   headlineFit, fitName, roomNames, galleryPicks, kidPhotos, makeoverWord,
 } from './_reveal-invite-email.js';
 import { askBand, gap, streamCheckUrl } from './_project-email.js';
@@ -218,7 +219,7 @@ function highlightsBlock(highlights, look = SOARD_LOOK) {
  * made it possible and a way to keep the sunshine going.
  * @returns {{ subject: string, preview: string, html: string, text: string }}
  */
-export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site = SITE_URL, brokenLogos = new Set(), teamPicture = true } = {}) {
+export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site = SITE_URL, brokenLogos = new Set(), teamPicture = true, words = {} } = {}) {
   const ev = event;
   // Only photos that load, first one on top, as staff ordered them
   const { all, photos, lead, body, sponsors, highlights } = recapPicks(ev, events, pageDoc, brokenLogos);
@@ -245,9 +246,18 @@ export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site 
   const named = [...byName].map(([name, list]) => ({ name, moment: [...new Set(list)].join(' · ') }));
   const sponsorCount = logos.length + named.length;
 
-  const subject = `What a ${when}! See the Photos from ${series ? 'our ' : ''}${name}`;
-  const preview = sponsorCount ? `The photos from ${titled}, and a thank-you to the sponsors who made it possible.` : `The photos from ${titled}.`;
-  const opening = tidy(recapLead(ev, { photos: photos.length, sponsors: sponsorCount }));
+  const siteOpening = tidy(recapLead(ev, { photos: photos.length, sponsors: sponsorCount }));
+  const siteAskWords = 'Families are on our waitlist right now. Your gift brings us closer to saying yes to the next child.';
+  // The site's own words, and staff's in place of any of them (Edit words)
+  const siteWords = {
+    subject: `What a ${when}! See the Photos from ${series ? 'our ' : ''}${name}`,
+    preview: sponsorCount ? `The photos from ${titled}, and a thank-you to the sponsors who made it possible.` : `The photos from ${titled}.`,
+    opening: siteOpening, askHeadline: 'Help us build the next *dream*.', askWords: siteAskWords,
+    closing: `Thank you for an unforgettable ${when.toLowerCase()}.`,
+  };
+  const w = chosenWords(words, siteWords);
+  const { subject, preview } = w;
+  const opening = w.opening ? plainWords(w.opening) : siteOpening;
   const fit = headlineFit(['What', 'a', `${when}!`], 54, { phones: [[40, 'dm'], [30, 'dms']] });
 
   const html = emailFrame(preview, `
@@ -267,7 +277,7 @@ export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site 
     action: photos.length > 1 ? button(`See All ${photos.length} Photos`, url, { center: !look.page }) : '',
     look,
   })}
-  ${lede(opening, '', look)}
+  ${w.opening ? lede(w.opening, '', look, { rich: true }) : lede(opening, '', look)}
   ${highlights.length ? highlightsBlock(highlights, look) : ''}
   ${body.length ? `<tr><td bgcolor="${look.paper}" style="background:${look.paper};padding:32px 0 0;${SIDE}" class="pd">
     ${body.length === 1 ? photoImg({ url: body[0].id, alt: altOf(body[0]) }, name, WIDE_TRANSFORM, 504) : ''}
@@ -284,14 +294,14 @@ export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site 
   ${gap(40, look)}
   ${askBand({
     kicker: 'Keep the sunshine going',
-    headline: 'Help us build the next&nbsp;<em style="font-style:italic;">dream</em>.',
-    fit: headlineFit(['Help', 'us', 'build', 'the', 'next dream.'], 30, { phones: [[26, 'h2b']] }),
-    words: 'Families are on our waitlist right now. Your gift brings us closer to saying yes to the next child.',
+    headline: w.askHeadline ? askHeadlineHtml(w.askHeadline) : 'Help us build the next&nbsp;<em style="font-style:italic;">dream</em>.',
+    fit: w.askHeadline ? askHeadlineFit(w.askHeadline) : headlineFit(['Help', 'us', 'build', 'the', 'next dream.'], 30, { phones: [[26, 'h2b']] }),
+    words: w.askWords || siteAskWords,
     action: 'Give Now →',
     url: `${site}/donate/`,
     look,
   })}
-  ${signOff(`Thank you for an unforgettable ${when.toLowerCase()}.`, teamPicture, look)}
+  ${signOff(w.closing, teamPicture, look)}
   ${emailFooter(site, { look })}`, look);
 
   const text = [
@@ -305,14 +315,14 @@ export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site 
     // Each sponsor once, though a level sponsor may also have named a moment of the night
     sponsorCount ? `Thank you to our sponsors: ${listJoin([...new Map([...logos.map((l) => tidy(l.name)), ...named.map((n) => n.name)].filter(Boolean).map((n) => [nameKey(n), n])).values()])}.` : null,
     '',
-    'Help us build the next dream. Families are on our waitlist right now. Your gift brings us closer to saying yes to the next child.',
+    `${w.askHeadline ? plainWords(w.askHeadline) : 'Help us build the next dream.'} ${w.askWords || siteAskWords}`,
     `Give: ${site}/donate/`,
     '',
-    `Thank you for an unforgettable ${when.toLowerCase()}.`,
+    w.closing,
     'The SOARD Team, Sunshine on a Ranney Day',
   ].filter((l) => l !== null && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
-  return { subject, preview, html, text };
+  return { subject, preview, html, text, siteWords };
 }
 
 // ── Monthly Impact ────────────────────────────────────────────────────────
@@ -389,7 +399,7 @@ export const monthlyHasNews = ({ revealed = [], building = [], upcoming = [], ev
  * @param {object[]} p.press     stories in the month: { outlet, title, url, date }
  * @param {{kids: number, rooms: number}} p.totals  since 2012
  */
-export function monthlyImpactEmail({ month, today = '', revealed = [], building = [], upcoming = [], events = [], recaps = [], press = [], totals = null, site = SITE_URL, brokenLogos = new Set(), teamPicture = true } = {}) {
+export function monthlyImpactEmail({ month, today = '', revealed = [], building = [], upcoming = [], events = [], recaps = [], press = [], totals = null, site = SITE_URL, brokenLogos = new Set(), teamPicture = true, words = {} } = {}) {
   const mon = monthName(month);
   const monYear = monthName(month, { year: true });
   const kids = revealed.map((r) => ({ ...r, name: kidName(r.kid, 'our kid'), url: r.kid.slug ? `${site}/kids/${r.kid.slug}/` : `${site}/kids/` }));
@@ -405,7 +415,6 @@ export function monthlyImpactEmail({ month, today = '', revealed = [], building 
   const headline = one ? `${fit.html} Big&nbsp;<em style="font-style:italic;color:${Y};">Reveal</em>.`
     : kids.length ? `${escapeHtml(cap(countWord(kids.length)))} Big&nbsp;<em style="font-style:italic;color:${Y};">Reveals</em>.`
       : `${escapeHtml(mon)} at&nbsp;<em style="font-style:italic;color:${Y};">SOARD</em>.`;
-  const subject = `Your Monthly Dose of Sunshine: ${headText}`;
 
   // The cover: the month's first reveal, else the first room being built
   const coverKid = kids[0]?.kid || building[0] || null;
@@ -424,12 +433,21 @@ export function monthlyImpactEmail({ month, today = '', revealed = [], building 
     recaps.length && `the photos from ${listJoin(recaps.map((r) => (r.series ? `our ${r.name}` : r.name)))}`,
     press.length && `${plural(press.length, 'story', 'stories')} in the news`,
   ].filter(Boolean);
-  const opening = parts.length
+  const siteOpening = parts.length
     ? `Here’s your monthly dose of sunshine from ${mon}: ${listJoin(parts)}.`
     : `Here’s your monthly dose of sunshine, and what’s coming up next.`;
   // "Plus what's coming up" only when there's a Coming up to see
   const anyAhead = ahead.length + eventsAhead.length > 0;
-  const preview = parts.length ? `${cap(listJoin(parts))}.${anyAhead ? ' Plus what’s coming up.' : ''}` : anyAhead ? 'What’s coming up at SOARD.' : `${monYear} at SOARD.`;
+  const siteAskWords = 'Families are on our waitlist right now. Every dollar goes directly to materials, labor, and design. Zero platform fees.';
+  // The site's own words, and staff's in place of any of them (Edit words)
+  const siteWords = {
+    subject: `Your Monthly Dose of Sunshine: ${headText}`,
+    preview: parts.length ? `${cap(listJoin(parts))}.${anyAhead ? ' Plus what’s coming up.' : ''}` : anyAhead ? 'What’s coming up at SOARD.' : `${monYear} at SOARD.`,
+    opening: siteOpening, askHeadline: 'Help us build the next *dream*.', askWords: siteAskWords, closing: 'Thank you for being part of the sunshine.',
+  };
+  const w = chosenWords(words, siteWords);
+  const { subject, preview } = w;
+  const opening = w.opening ? plainWords(w.opening) : siteOpening;
 
   // The month's reveals: one gets the photos under the cover; several get a card each
   const revealBlock = () => {
@@ -484,7 +502,7 @@ export function monthlyImpactEmail({ month, today = '', revealed = [], building 
   const html = emailFrame(preview, `
   ${emailHeader(site)}
   ${cover({ kicker: `Monthly Dose of Sunshine\u00A0· ${monYear.replace(' ', '\u00A0')}`, headline, size: fit.size, phone: fit.phone, lead, alt: coverKid ? kidName(coverKid, '') : '', url: coverUrl, action: coverAction })}
-  ${lede(opening)}
+  ${w.opening ? lede(w.opening, '', SOARD_LOOK, { rich: true }) : lede(opening)}
   ${revealBlock()}
   ${totals && (totals.kids || totals.rooms) ? numbersBand({ kicker: 'Since 2012', numbers: [
     totals.kids && { value: Number(totals.kids).toLocaleString('en-US'), label: 'kids served' },
@@ -497,13 +515,13 @@ export function monthlyImpactEmail({ month, today = '', revealed = [], building 
   ${gap(40)}
   ${askBand({
     kicker: 'How you can help',
-    headline: 'Help us build the next&nbsp;<em style="font-style:italic;">dream</em>.',
-    fit: headlineFit(['Help', 'us', 'build', 'the', 'next dream.'], 30, { phones: [[26, 'h2b']] }),
-    words: 'Families are on our waitlist right now. Every dollar goes directly to materials, labor, and design. Zero platform fees.',
+    headline: w.askHeadline ? askHeadlineHtml(w.askHeadline) : 'Help us build the next&nbsp;<em style="font-style:italic;">dream</em>.',
+    fit: w.askHeadline ? askHeadlineFit(w.askHeadline) : headlineFit(['Help', 'us', 'build', 'the', 'next dream.'], 30, { phones: [[26, 'h2b']] }),
+    words: w.askWords || siteAskWords,
     action: 'Give Now →',
     url: `${site}/donate/`,
   })}
-  ${signOff('Thank you for being part of the sunshine.', teamPicture)}
+  ${signOff(w.closing, teamPicture)}
   ${emailFooter(site)}`);
 
   const text = [
@@ -519,12 +537,12 @@ export function monthlyImpactEmail({ month, today = '', revealed = [], building 
     ...recaps.map((r) => `The photos from ${[r.name, r.year].filter(Boolean).join(' ')}: ${r.url}`),
     ...pressRows.map((r) => `${r.small}: ${r.main}${r.link ? ` (${r.link.url})` : ''}`),
     '',
-    'Help us build the next dream. Families are on our waitlist right now. Every dollar goes directly to materials, labor, and design. Zero platform fees.',
+    `${w.askHeadline ? plainWords(w.askHeadline) : 'Help us build the next dream.'} ${w.askWords || siteAskWords}`,
     `Give: ${site}/donate/`,
     '',
-    'Thank you for being part of the sunshine.',
+    w.closing,
     'The SOARD Team, Sunshine on a Ranney Day',
   ].filter((l) => l !== null && l !== false && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
-  return { subject, preview, html, text };
+  return { subject, preview, html, text, siteWords };
 }
