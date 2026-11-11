@@ -149,6 +149,34 @@ export async function projectVideos(env, projectId, { max = 500, fetchImpl = fet
   return out.slice(0, max);
 }
 
+/**
+ * A photo's or video's comments, oldest first: [{ content, creator_name, created_at, … }].
+ * Asked of v1, then of v2 (which documents them for photos); [] when neither
+ * keeps comments for it, `null` when it's gone.
+ */
+export async function itemComments(env, kind, itemId, { fetchImpl = fetch } = {}) {
+  const path = `/${kind === 'video' ? 'videos' : 'photos'}/${id(itemId)}/comments`;
+  let list = null;
+  try {
+    list = await ccAll(env, path, { max: 100, fetchImpl });
+  } catch (e) {
+    if (!(e instanceof CompanyCamError) || e.status !== 404) throw e;
+    const token = String(env?.COMPANYCAM_TOKEN || '').trim();
+    const res = await fetchImpl(`${CC_V2}${path}?per_page=${PAGE}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (res.status === 404) return [];
+    if (!res.ok) throw new CompanyCamError(`CompanyCam returned ${res.status} listing comments`, { status: res.status, retryAfter: Number(res.headers.get('Retry-After')) || null });
+    const body = await res.json().catch(() => null);
+    list = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : null;
+    if (!list) throw new CompanyCamError('CompanyCam’s v2 answered without a list of comments', { status: res.status });
+  }
+  const when = (c) => (typeof c?.created_at === 'number' ? c.created_at * 1000 : Date.parse(c?.created_at || '') || 0);
+  return list.filter((c) => c && c.status !== 'deleted' && String(c.content || '').trim()).sort((a, b) => when(a) - when(b));
+}
+
+/** Comments as one note for JobTread ("Name: words", one a line), or '' */
+export const commentsNote = (comments) => (comments || [])
+  .map((c) => `${String(c.creator_name || '').trim() ? `${String(c.creator_name).trim()}: ` : ''}${String(c.content).trim()}`).join('\n').slice(0, 2000);
+
 const NOT_READY = new Set(['pending', 'processing', 'processing_error', 'failed', 'uploading', 'deleted']);
 const MUX = /^https:\/\/stream\.mux\.com\/([A-Za-z0-9]+)\.m3u8(?:\?|$)/;
 const ORIGINAL = /^https:\/\/companycam-video\.s3\.amazonaws\.com\/[^?#]+\.(mp4|mov|m4v)(?:[?#]|$)/i;

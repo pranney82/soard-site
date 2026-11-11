@@ -22,7 +22,7 @@ const at = (m) => T0 + m * MIN;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 let w; let env; let realFetch;
 
-const newWorld = () => ({ jobs: new Map(), files: new Map(), projects: new Map(), photos: new Map(), videos: new Map(), gone: new Set(), writes: [], slack: [], next: 100, now: T0 });
+const newWorld = () => ({ jobs: new Map(), files: new Map(), projects: new Map(), photos: new Map(), videos: new Map(), comments: new Map(), gone: new Set(), lookups: [], writes: [], slack: [], next: 100, now: T0 });
 const fid = () => `f${++w.next}`;
 
 function jobtread(body) {
@@ -38,15 +38,16 @@ function jobtread(body) {
   }
   if (op === 'account') {
     const files = [...w.files.values()].filter((f) => f.jobId === q.$.id);
-    return json({ account: { cc: { nextPage: null, nodes: files.filter((f) => f.name.startsWith('CompanyCam')).map((f) => ({ id: f.id, name: f.name })) } } });
+    return json({ account: { cc: { nextPage: null, nodes: files.filter((f) => f.name.startsWith('CompanyCam')).map((f) => ({ id: f.id, name: f.name, description: f.description || null })) } } });
   }
   if (op === 'job') {
     const files = [...w.files.values()].filter((f) => f.jobId === q.$.id);
-    if (q.cc) return json({ job: { cc: { nextPage: null, nodes: files.filter((f) => f.name.startsWith('CompanyCam')).map((f) => ({ id: f.id, name: f.name, createdAt: f.createdAt, createdByUser: { name: f.by }, comments: { nodes: f.comments ? [{ id: 'c' }] : [] } })) } } });
+    if (q.cc) return json({ job: { cc: { nextPage: null, nodes: files.filter((f) => f.name.startsWith('CompanyCam')).map((f) => ({ id: f.id, name: f.name, description: f.description || null, createdAt: f.createdAt, createdByUser: { name: f.by }, comments: { nodes: f.comments ? [{ id: 'c' }] : [] } })) } } });
     if (q.img) return json({ job: { img: { count: files.filter((f) => f.name.startsWith('IMG')).length } } });
   }
   w.writes.push({ op, args: q.$ });
   if (op === 'deleteFile') { w.files.delete(q.$.id); return json({}); }
+  if (op === 'updateFile') { const f = w.files.get(q.$.id); if (f && 'description' in q.$) f.description = q.$.description; return json({}); }
   if (op === 'createUploadRequest') {
     if (String(q.$.url || '').includes('Refused')) return new Response('file is too large', { status: 400 });
     return json({ createUploadRequest: { createdUploadRequest: { id: `up${w.writes.length}` } } });
@@ -57,10 +58,15 @@ function jobtread(body) {
 
 function companycam(url) {
   const path = url.pathname.replace('/public_api/v1', '');
+  if (/\/comments$/.test(path)) { if (w.busy) return json({ errors: ['Too many requests'] }, 429); w.lookups.push(path); }
   let m;
   const page = (data) => json({ data, errors: [], meta: { has_next: false } });
   if (path === '/projects') return page([...w.projects.values()].filter((p) => !!p.archived === (url.searchParams.get('archived') === 'true')));
   if ((m = path.match(/^\/projects\/(\d+)\/photos$/))) return w.gone.has(m[1]) ? json({ data: null, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404) : page([...w.photos.values()].filter((p) => p.project_id === m[1]));
+  // Comments: v1 has them for photos; a video's are asked of v2
+  if ((m = path.match(/^\/photos\/(\d+)\/comments$/))) return page(w.comments.get(m[1]) || []);
+  if ((m = path.match(/^\/videos\/(\d+)\/comments$/))) return json({ data: null, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404);
+  if ((m = path.match(/^\/v2\/videos\/(\d+)\/comments$/))) return w.noVideoComments ? json({ errors: ['Not found'] }, 404) : json(w.comments.get(m[1]) || []);
   // v1 lists a video by its original upload; v2 (a bare array, page by page) by its stream on Mux
   if ((m = path.match(/^\/projects\/(\d+)\/videos$/))) return page([...w.videos.values()].filter((v) => v.project_id === m[1]).map((v) => ({ ...v, status: v.status === 'processed' ? 'active' : v.status, playback_url: `https://companycam-video.s3.amazonaws.com/uploads/${v.id}.mov`, format: 'mov' })));
   if ((m = path.match(/^\/v2\/projects\/(\d+)\/videos$/))) {
@@ -475,4 +481,100 @@ test('a video JobTread’s own link already brought isn’t copied again, and a 
   await run(70);
   assert.ok(names('j1').includes('CompanyCam 7700141'), 'the site brings it once JobTread’s hour is up');
   assert.equal(names('j1').filter((n) => n === 'CompanyCam 7700140').length, 1, 'never twice');
+});
+
+// What was on a job stays decided, and CompanyCam's comments travel with their photos (Nov 11 2026)
+const desc = (jobId, itemId) => [...w.files.values()].find((f) => f.jobId === jobId && f.name === `CompanyCam ${itemId}`)?.description || null;
+
+test('a CompanyCam photo or video someone deleted from the job in JobTread is never put back', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  photo('3009001', '500');
+  const fileId = copy('j1', '3009001');
+  video('7700170', '500');
+  await run(0);
+  assert.ok(names('j1').includes('CompanyCam 7700170'));
+  // A person deletes both in JobTread
+  w.files.delete(fileId);
+  w.files.delete([...w.files.values()].find((f) => f.name === 'CompanyCam 7700170').id);
+  await run(61);
+  await run(122);
+  assert.deepEqual(names('j1'), [], 'neither came back');
+  const r = await row('j1');
+  assert.deepEqual([r.missing, r.videos_missing, r.left_out], [0, 0, 2]);
+  assert.equal((await jobsFacts(env)).audit.leftOut, 2);
+});
+
+test('the comments staff wrote on a photo in CompanyCam become its JobTread description, never over a person’s words, each looked up once', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  for (const id of ['3009001', '3009002', '3009003']) { photo(id, '500'); copy('j1', id); }
+  w.comments.set('3009001', [{ id: 'c1', content: 'Window is 31 x 50 1/2', creator_name: 'Lizzie T', status: 'active', created_at: '2026-01-20T10:00:00Z' }]);
+  w.comments.set('3009002', [{ id: 'c2', content: 'Dble niche', creator_name: 'Sam R', status: 'active', created_at: 1754000000 }, { id: 'c3', content: '14x9.5ish.', creator_name: 'Sam R', status: 'active', created_at: 1754000100 }]);
+  [...w.files.values()].find((f) => f.name === 'CompanyCam 3009002').description = 'Staff wrote this in JobTread';
+  video('7700180', '500');
+  copy('j1', '7700180');
+  w.comments.set('7700180', [{ id: 'c4', content: 'Crown molding installed', creator_name: 'Lizzie T', status: 'active', created_at: 1754000200 }]);
+  await run(0);
+  assert.equal(desc('j1', '3009001'), 'Lizzie T: Window is 31 x 50 1/2');
+  assert.equal(desc('j1', '3009002'), 'Staff wrote this in JobTread', 'a person’s words stay');
+  assert.equal(desc('j1', '3009003'), null, 'no comments, nothing written');
+  assert.equal(desc('j1', '7700180'), 'Lizzie T: Crown molding installed', 'a video’s too, from v2');
+  const r = await row('j1');
+  assert.deepEqual([r.notes_left, r.notes_written, r.problem], [0, 2, null]);
+  const n = w.lookups.length;
+  await run(61);
+  assert.equal(w.lookups.length, n, 'each looked up once');
+  assert.equal(w.writes.filter((x) => x.op === 'updateFile').length, 2, 'and written once');
+});
+
+test('comments are looked up 25 a turn, and a job with more to look up comes round in 10 minutes', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  for (let i = 0; i < 50; i++) { const id = String(3008000 + i); photo(id, '500'); copy('j1', id); }
+  await run(0);
+  assert.equal((await row('j1')).notes_left, 25);
+  await run(11);
+  assert.equal((await row('j1')).notes_left, 0);
+  assert.equal(w.lookups.length, 50);
+});
+
+test('a video whose comments CompanyCam doesn’t keep is simply without a note', async () => {
+  w.noVideoComments = true;
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  video('7700190', '500');
+  copy('j1', '7700190');
+  await run(0);
+  const r = await row('j1');
+  assert.deepEqual([r.notes_left, r.problem], [0, null]);
+});
+
+test('a placed project’s comments go onto its copies on the account', async () => {
+  project('900', 'Rosa Lane 2026', { street: '8 Review Way' });
+  photo('3009901', '900');
+  w.comments.set('3009901', [{ id: 'c9', content: 'Confirmed no blocking', creator_name: 'Bryce W', status: 'active', created_at: 1754000300 }]);
+  const placed = [{ project: '900', targetType: 'account', targetId: 'acct-rosa', folder: 'Warranty' }];
+  await run(0, { placed });
+  await run(11, { placed });
+  assert.equal(desc('acct-rosa', '3009901'), 'Bryce W: Confirmed no blocking', 'copied first, its note on the next run');
+  const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_jobs_state WHERE key = 'placed'").first('value'));
+  assert.deepEqual([st['900'].notesLeft, st['900'].notesWritten], [0, 1]);
+});
+
+test('when CompanyCam turns comment look-ups away, the job is back in 10 minutes and finishes', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  photo('3009001', '500');
+  copy('j1', '3009001');
+  w.comments.set('3009001', [{ id: 'c1', content: 'Kitchenette', creator_name: 'Clare C', status: 'active', created_at: 1754000000 }]);
+  w.busy = true;
+  await run(0);
+  let r = await row('j1');
+  assert.equal(r.problem, 'notes');
+  assert.ok(r.notes_left > 0, 'still owed');
+  w.busy = false;
+  await run(11);
+  r = await row('j1');
+  assert.deepEqual([r.problem, r.notes_left, desc('j1', '3009001')], [null, 0, 'Clare C: Kitchenette']);
 });

@@ -48,6 +48,13 @@
  * is there; one in the linked project waits its hour like a photo. A job
  * whose videos haven't been looked at yet is due at once, closed or open.
  *
+ * What has been on a job stays decided: every CompanyCam photo or video
+ * that has been on a job (or a placed home) is remembered, so one a person
+ * deletes in JobTread is never put back (Peter, Nov 11 2026: deletions are
+ * "on purpose and with reason"). And the comments staff wrote on a photo or
+ * video in CompanyCam (build notes, measurements) go onto its copy as the
+ * file's description, only where that's empty, never over a person's words.
+ *
  * Results in D1 companycam_jobs and companycam_jobs_state "jobs-audit",
  * "closed-audit" and "orphans" (Site → Automations). Env: COMPANYCAM_TOKEN,
  * JOBTREAD_GRANT_KEY.
@@ -56,7 +63,7 @@
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { slackPost } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
-import { companycamOn, CompanyCamError, ccAll, getPhoto, projectPhotos, photoImageUrl, projectVideos, videoFileUrl, videoShape } from './_companycam.js';
+import { companycamOn, CompanyCamError, ccAll, getPhoto, projectPhotos, photoImageUrl, projectVideos, videoFileUrl, videoShape, itemComments, commentsNote } from './_companycam.js';
 import { uploadToJobTread } from './_companycam-sync.js';
 
 export const COPY = true;    // copy what a job is missing
@@ -93,6 +100,7 @@ const BUDGET_MS = 18000;
 const LINKED_GRACE_MS = HOUR;      // JobTread's own sync gets its turn with the linked project
 const COPY_PER_RUN = 15;
 const VIDEOS_PER_RUN = 2; // JobTread fetches each one itself, up to 100 MB, so a run starts few
+const NOTES_PER_RUN = 25;  // comment look-ups a job's turn makes (CompanyCam allows 240 reads a minute; two jobs a minute)
 const MAX_REMOVE_PER_RUN = 50;
 const MAX_PHOTOS = 2000;
 const SAME_FAMILY_WITHIN_MS = 183 * DAY;
@@ -120,13 +128,17 @@ const SCHEMA = [
     other_projects TEXT, relinked_at TEXT, relinks INTEGER NOT NULL DEFAULT 0, copied INTEGER NOT NULL DEFAULT 0, removed INTEGER NOT NULL DEFAULT 0,
     problem TEXT, detail TEXT, checked_at INTEGER, updated_at TEXT NOT NULL)`,
   'CREATE TABLE IF NOT EXISTS companycam_jobs_state (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL)',
+  // Every CompanyCam photo or video that has been on a job or account: one gone since was deleted on purpose
+  'CREATE TABLE IF NOT EXISTS companycam_seen (target_id TEXT NOT NULL, item_id TEXT NOT NULL, first_seen TEXT NOT NULL, PRIMARY KEY (target_id, item_id))',
+  // Each photo's or video's comments in CompanyCam, looked up once, and where they were written into JobTread
+  'CREATE TABLE IF NOT EXISTS companycam_notes (item_id TEXT PRIMARY KEY, kind TEXT NOT NULL, note TEXT, checked_at TEXT NOT NULL, applied_to TEXT, applied_at TEXT)',
 ];
 const _ready = new WeakSet();
 async function ensureSchema(DB) {
   if (_ready.has(DB)) return;
   await DB.batch(SCHEMA.map((sql) => DB.prepare(sql)));
   await DB.prepare('ALTER TABLE companycam_jobs ADD COLUMN sources TEXT').run().catch(() => null); // added after the first passes
-  for (const col of ['cc_videos', 'video_copies', 'videos_missing']) await DB.prepare(`ALTER TABLE companycam_jobs ADD COLUMN ${col} INTEGER`).run().catch(() => null); // videos, Nov 11 2026
+  for (const col of ['cc_videos', 'video_copies', 'videos_missing', 'left_out', 'notes_left', 'notes_written']) await DB.prepare(`ALTER TABLE companycam_jobs ADD COLUMN ${col} INTEGER`).run().catch(() => null); // videos, deletions kept, notes: Nov 11 2026
   _ready.add(DB);
 }
 async function getState(DB, key) {
@@ -142,7 +154,7 @@ async function takeTurn(DB, key, everyMs, now) {
   const upd = await DB.prepare('UPDATE companycam_jobs_state SET value = ?, updated_at = ? WHERE key = ? AND CAST(value AS INTEGER) <= ?').bind(next, iso(now), `turn:${key}`, now).run();
   return upd?.meta?.changes > 0;
 }
-const COLS = ['job_name', 'project_id', 'project_name', 'found_by', 'linked', 'cc_photos', 'jt_copies', 'missing', 'double_copies', 'by_hand', 'cc_videos', 'video_copies', 'videos_missing', 'other_projects', 'sources', 'copied', 'removed', 'problem', 'detail', 'checked_at'];
+const COLS = ['job_name', 'project_id', 'project_name', 'found_by', 'linked', 'cc_photos', 'jt_copies', 'missing', 'double_copies', 'by_hand', 'cc_videos', 'video_copies', 'videos_missing', 'left_out', 'notes_left', 'notes_written', 'other_projects', 'sources', 'copied', 'removed', 'problem', 'detail', 'checked_at'];
 async function saveJob(DB, row, now) {
   const cols = COLS.filter((c) => c in row);
   await DB.prepare(`INSERT INTO companycam_jobs (job_id, ${cols.join(', ')}, updated_at) VALUES (?, ${cols.map(() => '?').join(', ')}, ?)
@@ -151,6 +163,17 @@ async function saveJob(DB, row, now) {
 }
 const getJob = (DB, jobId) => DB.prepare('SELECT * FROM companycam_jobs WHERE job_id = ?').bind(jobId).first();
 const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
+const chunks = (list, n = 90) => Array.from({ length: Math.ceil(list.length / n) }, (_, i) => list.slice(i * n, i * n + n));
+
+/** The CompanyCam ids that have been on this job or account */
+async function seenOn(DB, targetId) {
+  const { results } = await DB.prepare('SELECT item_id FROM companycam_seen WHERE target_id = ?').bind(targetId).all();
+  return new Set((results || []).map((r) => r.item_id));
+}
+async function markSeen(DB, targetId, ids, now) {
+  const stmt = DB.prepare('INSERT OR IGNORE INTO companycam_seen (target_id, item_id, first_seen) VALUES (?, ?, ?)');
+  for (const part of chunks([...new Set(ids)].map(String), 50)) await DB.batch(part.map((id) => stmt.bind(targetId, id, iso(now))));
+}
 
 // ─── JobTread ───────────────────────────────────────────────────────
 
@@ -179,12 +202,12 @@ async function jobCopies(env, jobId, fetchImpl) {
   const copies = [];
   let page = null;
   for (let i = 0; i < 25; i++) {
-    const r = await jt(env, { job: { $: { id: jobId }, cc: { _: 'files', $: { size: 100, where: ['name', 'like', 'CompanyCam%'], ...(page ? { page } : {}) }, nextPage: {}, nodes: { id: {}, name: {}, createdAt: {}, createdByUser: { name: {} }, comments: { $: { size: 1 }, nodes: { id: {} } } } } } }, fetchImpl);
+    const r = await jt(env, { job: { $: { id: jobId }, cc: { _: 'files', $: { size: 100, where: ['name', 'like', 'CompanyCam%'], ...(page ? { page } : {}) }, nextPage: {}, nodes: { id: {}, name: {}, description: {}, createdAt: {}, createdByUser: { name: {} }, comments: { $: { size: 1 }, nodes: { id: {} } } } } } }, fetchImpl);
     const cc = r?.job?.cc;
     for (const f of cc?.nodes || []) {
       const photoId = photoIdOf(f.name);
       // Made by JobTread's integration ("CompanyCam") or by the site's own key (no user): never a person's upload
-      if (photoId) copies.push({ id: f.id, photoId, createdAt: f.createdAt, byMachine: !f.createdByUser?.name || f.createdByUser.name === 'CompanyCam', comments: (f.comments?.nodes || []).length });
+      if (photoId) copies.push({ id: f.id, photoId, description: f.description || '', createdAt: f.createdAt, byMachine: !f.createdByUser?.name || f.createdByUser.name === 'CompanyCam', comments: (f.comments?.nodes || []).length });
     }
     if (!cc?.nextPage) break;
     page = cc.nextPage;
@@ -231,14 +254,15 @@ async function projectIndex(env, { fetchImpl, now, force = false }) {
  * → { videos, missing, copied, errors, noFile } (noFile: how one missing video
  * that gave no file looked, so a video CompanyCam describes some new way is seen)
  */
-export async function copyVideos(env, target, projects, { have, fetchImpl = fetch, copy = COPY, limit = VIDEOS_PER_RUN, folder = null, deadline = Infinity, linked = null, now = Date.now() } = {}) {
+export async function copyVideos(env, target, projects, { have, gone = new Set(), fetchImpl = fetch, copy = COPY, limit = VIDEOS_PER_RUN, folder = null, deadline = Infinity, linked = null, now = Date.now() } = {}) {
   const all = [];
   for (const pid of projects) {
     const list = await projectVideos(env, pid, { fetchImpl }).catch((e) => { if (e.status === 404) return []; throw e; });
     for (const v of list) if (v?.id) all.push({ ...v, source: String(pid) });
   }
   const videos = [...new Map(all.map((v) => [String(v.id), v])).values()];
-  let missing = videos.filter((v) => !have.has(String(v.id)));
+  // One that was on here and was deleted in JobTread stays deleted
+  let missing = videos.filter((v) => !have.has(String(v.id)) && !gone.has(String(v.id)));
   let copied = 0;
   const errors = [];
   // CompanyCam's video times are seconds since 1970 (its photos' are ISO dates)
@@ -259,7 +283,51 @@ export async function copyVideos(env, target, projects, { have, fetchImpl = fetc
     missing = missing.filter((v) => !have.has(String(v.id)));
   }
   const stuck = missing.find((v) => !videoFileUrl(v));
-  return { videos: videos.length, missing: missing.length, copied, errors, noFile: stuck ? { id: String(stuck.id), ...videoShape(stuck) } : null };
+  return {
+    videos: videos.length, missing: missing.length, copied, errors, noFile: stuck ? { id: String(stuck.id), ...videoShape(stuck) } : null,
+    list: videos.map((v) => ({ id: String(v.id), kind: 'video', comments: v.comments_count ?? v.comment_count ?? null })),
+  };
+}
+
+// ─── Notes ──────────────────────────────────────────────────────────
+
+/**
+ * The comments on these CompanyCam photos and videos, onto their copies here:
+ * each item's comments are looked up once (at most `limit` a run, none for
+ * one CompanyCam counts no comments on), and a note is written as the copy's
+ * description only when that's empty. `files`: Map(item id → { id, description }).
+ * → { left: items still to look up, written }
+ */
+export async function carryNotes(env, targetId, items, files, { fetchImpl = fetch, limit = NOTES_PER_RUN, deadline = Infinity, now = Date.now(), write = COPY } = {}) {
+  const { DB } = env;
+  const known = new Map();
+  for (const part of chunks(items.map((i) => String(i.id)))) {
+    const { results } = await DB.prepare(`SELECT item_id, note, applied_at FROM companycam_notes WHERE item_id IN (${part.map(() => '?').join(',')})`).bind(...part).all();
+    for (const r of results || []) known.set(r.item_id, r);
+  }
+  const ins = DB.prepare('INSERT OR REPLACE INTO companycam_notes (item_id, kind, note, checked_at) VALUES (?, ?, ?, ?)');
+  let looked = 0;
+  for (const it of items) {
+    if (known.has(String(it.id))) continue;
+    if (looked >= limit || Date.now() > deadline) break;
+    looked += 1;
+    const note = it.comments === 0 ? '' : commentsNote(await itemComments(env, it.kind, it.id, { fetchImpl }));
+    await ins.bind(String(it.id), it.kind, note || null, iso(now)).run();
+    known.set(String(it.id), { item_id: String(it.id), note: note || null, applied_at: null });
+  }
+  let written = 0;
+  const done = DB.prepare('UPDATE companycam_notes SET applied_to = ?, applied_at = ? WHERE item_id = ?');
+  for (const [itemId, r] of known) {
+    const f = files.get(itemId);
+    if (!r.note || r.applied_at || !f || !write) continue;
+    // A person's words in JobTread stay: the note goes only where the description is empty
+    if (!String(f.description || '').trim()) {
+      await jt(env, { updateFile: { $: { id: f.id, description: r.note } } }, fetchImpl);
+      written += 1;
+    }
+    await done.bind(targetId, iso(now), itemId).run();
+  }
+  return { left: items.filter((i) => !known.has(String(i.id))).length, written };
 }
 
 // ─── One job ────────────────────────────────────────────────────────
@@ -321,7 +389,10 @@ export async function checkJob(env, job, index, { fetchImpl = fetch, now = Date.
     }
     const unique = [...new Map(photos.map((p) => [String(p.id), p])).values()];
     const have = new Set(copies.map((c) => c.photoId));
-    let missing = unique.filter((p) => !have.has(String(p.id)));
+    // What was on the job and isn't now was deleted by a person: it stays out
+    const seen = await seenOn(DB, job.id);
+    const gone = new Set([...seen].filter((id) => !have.has(id)));
+    let missing = unique.filter((p) => !have.has(String(p.id)) && !gone.has(String(p.id)));
     const byId = new Map();
     for (const c of copies) byId.set(c.photoId, [...(byId.get(c.photoId) || []), c]);
     const doubles = [...byId.values()].filter((list) => list.length > 1);
@@ -342,6 +413,7 @@ export async function checkJob(env, job, index, { fetchImpl = fetch, now = Date.
         await jt(env, { createFile: { $: { name: ccName(p.id), targetType: 'job', targetId: job.id, uploadRequestId }, createdFile: { id: {} } } }, fetchImpl);
         copiedNow += 1;
         done.add(String(p.id));
+        have.add(String(p.id));
       }
       missing = missing.filter((p) => !done.has(String(p.id)));
     }
@@ -361,11 +433,24 @@ export async function checkJob(env, job, index, { fetchImpl = fetch, now = Date.
     let videoError = null;
     let videoNote = null; // not a problem (a video still processing), kept so a new shape is seen
     try {
-      vid = await copyVideos(env, { targetType: 'job', targetId: job.id }, [...sources.keys()], { have, fetchImpl, copy, deadline, linked: job.companycamId, now });
+      vid = await copyVideos(env, { targetType: 'job', targetId: job.id }, [...sources.keys()], { have, gone, fetchImpl, copy, deadline, linked: job.companycamId, now });
       if (vid.errors.length) videoError = vid.errors[0];
       else if (vid.noFile) videoNote = `video ${vid.noFile.id} gave no file yet: status ${vid.noFile.status}, processing ${vid.noFile.processing}, playback ${vid.noFile.playback}; fields ${vid.noFile.fields}`.slice(0, 300);
     } catch (e) {
       videoError = `videos: ${errText(e)}`;
+    }
+
+    await markSeen(DB, job.id, [...have], now);
+
+    // Comments staff wrote in CompanyCam, onto the copies as their description
+    let notes = null;
+    let noteError = null;
+    try {
+      const files = new Map(copies.map((c) => [c.photoId, { id: c.id, description: c.description }]));
+      const items = [...unique.map((p) => ({ id: String(p.id), kind: 'photo', comments: p.comments_count ?? p.comment_count ?? null })), ...(vid?.list || [])];
+      notes = await carryNotes(env, job.id, items, files, { fetchImpl, deadline, now, write: copy });
+    } catch (e) {
+      noteError = `notes: ${errText(e)}`;
     }
 
     const main = job.companycamId || [...sources.keys()][0] || null;
@@ -376,11 +461,14 @@ export async function checkJob(env, job, index, { fetchImpl = fetch, now = Date.
       double_copies: Math.max(0, doubles.reduce((n, l) => n + l.length - 1, 0) - removedNow), by_hand: byHand,
       // A job whose videos couldn't be listed counts none (so it isn't due again every minute); the trouble is in `detail`
       cc_videos: vid ? vid.videos : 0, video_copies: vid ? vid.videos - vid.missing : 0, videos_missing: vid ? vid.missing : 0,
+      left_out: [...gone].filter((id) => unique.some((p) => String(p.id) === id) || (vid?.list || []).some((v) => v.id === id)).length,
+      // Notes that couldn't be looked up this time (CompanyCam busy) bring the job back in 10 minutes; the trouble is in `detail`
+      notes_left: notes ? notes.left : Math.max(1, prior?.notes_left || 0), notes_written: (prior?.notes_written || 0) + (notes?.written || 0),
       sources: JSON.stringify([...sources].map(([id, why]) => ({ id, why, name: info(id)?.name || null, photos: info(id)?.photos ?? null }))),
       other_projects: held.length ? JSON.stringify(held) : null,
       copied: (prior?.copied || 0) + copiedNow, removed: (prior?.removed || 0) + removedNow,
-      problem: !sources.size ? 'no-project' : videoError ? 'videos' : null,
-      detail: !sources.size ? 'No CompanyCam project for this job' : videoError || videoNote, checked_at: now,
+      problem: !sources.size ? 'no-project' : videoError ? 'videos' : noteError ? 'notes' : null,
+      detail: !sources.size ? 'No CompanyCam project for this job' : videoError || noteError || videoNote, checked_at: now,
     };
     await saveJob(DB, row, now);
     return { row, copied: copiedNow, removed: removedNow, videos: vid?.copied || 0 };
@@ -403,19 +491,19 @@ export async function nudgeJobsFor(DB, projectId) {
 
 // ─── Projects given a home (PLACED) ─────────────────────────────────
 
-/** The "CompanyCam <id>" photo ids already on this account or job */
-async function placedHave(env, { targetType, targetId }, fetchImpl) {
-  if (targetType === 'job') return new Set((await jobCopies(env, targetId, fetchImpl)).copies.map((c) => c.photoId));
-  const have = new Set();
+/** The "CompanyCam <id>" files already on this account or job: Map(CompanyCam id → { id, description }) */
+async function placedFiles(env, { targetType, targetId }, fetchImpl) {
+  if (targetType === 'job') return new Map((await jobCopies(env, targetId, fetchImpl)).copies.map((c) => [c.photoId, { id: c.id, description: c.description }]));
+  const files = new Map();
   let page = null;
   for (let i = 0; i < 25; i++) {
-    const r = await jt(env, { account: { $: { id: targetId }, cc: { _: 'files', $: { size: 100, where: ['name', 'like', 'CompanyCam%'], ...(page ? { page } : {}) }, nextPage: {}, nodes: { id: {}, name: {} } } } }, fetchImpl);
+    const r = await jt(env, { account: { $: { id: targetId }, cc: { _: 'files', $: { size: 100, where: ['name', 'like', 'CompanyCam%'], ...(page ? { page } : {}) }, nextPage: {}, nodes: { id: {}, name: {}, description: {} } } } }, fetchImpl);
     const cc = r?.account?.cc;
-    for (const f of cc?.nodes || []) { const id = photoIdOf(f.name); if (id) have.add(id); }
+    for (const f of cc?.nodes || []) { const id = photoIdOf(f.name); if (id && !files.has(id)) files.set(id, { id: f.id, description: f.description || '' }); }
     if (!cc?.nextPage) break;
     page = cc.nextPage;
   }
-  return have;
+  return files;
 }
 
 /**
@@ -427,7 +515,7 @@ export async function placeProjects(env, { fetchImpl = fetch, now = Date.now(), 
   const { DB } = env;
   if (!placed.length) return null;
   const st = (await getState(DB, 'placed')) || {};
-  const done = placed.every((p) => st[p.project] && !st[p.project].missing && !st[p.project].videosMissing && !st[p.project].error);
+  const done = placed.every((p) => st[p.project] && !st[p.project].missing && !st[p.project].videosMissing && !st[p.project].notesLeft && !st[p.project].error);
   // Caught up: looked at again daily, in case CompanyCam gets a late photo before it closes
   if (!(await takeTurn(DB, 'place', done ? DAY : RECHECK_MISSING_MS, now))) return null;
   let left = COPY_PER_RUN;
@@ -438,8 +526,11 @@ export async function placeProjects(env, { fetchImpl = fetch, now = Date.now(), 
       // A placed project CompanyCam no longer shows is said so, not taken as empty
       const photos = (await projectPhotos(env, p.project, { max: MAX_PHOTOS, fetchImpl }).catch((e) => { if (e.status === 404) throw new Error('CompanyCam doesn’t show this project any more (404)'); throw e; }))
         .filter((ph) => ph?.status !== 'deleted' && ph?.processing_status === 'processed');
-      const have = await placedHave(env, p, fetchImpl);
-      let missing = photos.filter((ph) => !have.has(String(ph.id)));
+      const files = await placedFiles(env, p, fetchImpl);
+      const have = new Set(files.keys());
+      const seen = await seenOn(DB, p.targetId);
+      const gone = new Set([...seen].filter((id) => !have.has(id)));
+      let missing = photos.filter((ph) => !have.has(String(ph.id)) && !gone.has(String(ph.id)));
       let copiedNow = 0;
       if (copy) {
         for (const ph of missing.slice(0, Math.max(0, left))) {
@@ -454,8 +545,13 @@ export async function placeProjects(env, { fetchImpl = fetch, now = Date.now(), 
         missing = missing.filter((ph) => !have.has(String(ph.id)));
       }
       Object.assign(row, { photos: photos.length, have: have.size, missing: missing.length, copied: (row.copied || 0) + copiedNow });
-      const vid = await copyVideos(env, p, [p.project], { have, fetchImpl, copy, folder: p.folder || null, deadline, now });
+      const vid = await copyVideos(env, p, [p.project], { have, gone, fetchImpl, copy, folder: p.folder || null, deadline, now });
       Object.assign(row, { videos: vid.videos, videosHave: vid.videos - vid.missing, videosMissing: vid.missing, videosCopied: (row.videosCopied || 0) + vid.copied, videoErrors: vid.errors.length ? vid.errors : null });
+      await markSeen(DB, p.targetId, [...have], now);
+      // Notes: on the copies already listed (one copied this run gets its note next time)
+      const items = [...photos.map((ph) => ({ id: String(ph.id), kind: 'photo', comments: ph.comments_count ?? ph.comment_count ?? null })), ...vid.list];
+      const notes = await carryNotes(env, p.targetId, items, files, { fetchImpl, deadline, now, write: copy });
+      Object.assign(row, { leftOut: gone.size, notesLeft: notes.left, notesWritten: (row.notesWritten || 0) + notes.written });
     } catch (e) {
       row.error = errText(e);
     }
@@ -480,10 +576,10 @@ export async function maybeCheckJobs(env, { fetchImpl = fetch, now = Date.now(),
     const jobs = await listJobs(env, fetchImpl, { closed: closedToo });
     const open = jobs.filter((j) => !j.closed);
     const closed = jobs.filter((j) => j.closed);
-    const { results } = await DB.prepare('SELECT job_id, checked_at, missing, videos_missing, cc_videos FROM companycam_jobs').all();
-    // A job whose videos were never looked at is due now (videos came on Nov 11 2026, days before CompanyCam closes)
-    const last = new Map((results || []).map((r) => [r.job_id, r.cc_videos == null ? 0 : r.checked_at || 0]));
-    const waiting = new Set((results || []).filter((r) => r.missing > 0 || r.videos_missing > 0).map((r) => r.job_id));
+    const { results } = await DB.prepare('SELECT job_id, checked_at, missing, videos_missing, cc_videos, notes_left FROM companycam_jobs').all();
+    // A job whose videos or notes were never looked at is due now (both came on Nov 11 2026, days before CompanyCam closes)
+    const last = new Map((results || []).map((r) => [r.job_id, r.cc_videos == null || r.notes_left == null ? 0 : r.checked_at || 0]));
+    const waiting = new Set((results || []).filter((r) => r.missing > 0 || r.videos_missing > 0 || r.notes_left > 0).map((r) => r.job_id));
     const every = (j) => (waiting.has(j.id) ? RECHECK_MISSING_MS : j.closed ? CLOSED_EVERY_MS : CHECK_EVERY_MS);
     const oldestFirst = (a, b) => (last.get(a.id) || 0) - (last.get(b.id) || 0);
     const isDue = (j) => (last.get(j.id) || 0) <= now - every(j);
@@ -541,9 +637,10 @@ async function auditSummary(DB, jobs, now, { copy, dedupe }) {
   return {
     at: iso(now), copy, dedupe, jobs: rows.length, linked: rows.filter((r) => r.linked).length, withPhotos: rows.filter((r) => r.cc_photos).length,
     missing: sum('missing'), doubleCopies: sum('double_copies'), byHand: sum('by_hand'), copied: sum('copied'), removed: sum('removed'),
-    videos: sum('cc_videos'), videosMissing: sum('videos_missing'),
+    videos: sum('cc_videos'), videosMissing: sum('videos_missing'), leftOut: sum('left_out'), notesLeft: sum('notes_left'), notesWritten: sum('notes_written'),
     videosMissingBy: rows.filter((r) => r.videos_missing).map((r) => ({ job: r.job_name, missing: r.videos_missing })),
     videoErrors: rows.filter((r) => r.problem === 'videos').map((r) => ({ job: r.job_name, detail: r.detail })),
+    noteErrors: rows.filter((r) => r.problem === 'notes').map((r) => ({ job: r.job_name, detail: r.detail })),
     missingBy: rows.filter((r) => r.missing).map((r) => ({ job: r.job_name, missing: r.missing })),
     doublesBy: rows.filter((r) => r.double_copies).map((r) => ({ job: r.job_name, doubles: r.double_copies })),
     twoProjects: rows.filter((r) => parse(r.sources, []).length > 1).map((r) => ({ job: r.job_name, projects: parse(r.sources, []).map((s) => s.name) })),
