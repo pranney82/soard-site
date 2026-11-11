@@ -20,6 +20,10 @@
  * is), and never a file that already has Before, During or After (a person's
  * pick, or an earlier one).
  *
+ * Documents on an open job get Costs, Design or Plans by ./_tag-rules.js (a
+ * private paper never; a file on a document only Costs). A file still on an
+ * old tag is left to the move (./_tag-moves.js), which takes the old tag off.
+ *
  * WRITE is off: every pick is recorded in D1 (photo_stages) and counted on
  * Site → Automations, and nothing is written to JobTread until the picks are
  * checked. One job a turn, every 2 minutes on the heartbeat, a job's new
@@ -32,6 +36,7 @@ import { pave } from './_jt-access.js';
 import { FIELD_STATUS, REVEAL_TASK_TYPE, loadAllProjects, linkJobs } from './_kid-status.js';
 import { heicExifPlace } from '../../public/admin/kid-guess.js';
 import { tagIds } from './_file-tags.js';
+import { docPick, isRetiring } from './_tag-rules.js';
 
 export const WRITE = false; // Nov 11 2026: picks recorded, nothing written, until they're checked
 const TURN_MS = 2 * 60 * 1000;
@@ -121,7 +126,7 @@ export function readTaken(buf) {
 }
 
 /** Read one file's taken time from JobTread's link: { taken, camera } | null (none in it) — throws on a failed fetch */
-async function fetchTaken(url, fetchImpl) {
+export async function fetchTaken(url, fetchImpl) {
   const head = await fetchImpl(url, { headers: { Range: `bytes=0-${HEAD_BYTES - 1}` } });
   if (!head.ok) throw new Error(`file link answered ${head.status}`);
   const buf = await head.arrayBuffer();
@@ -169,7 +174,7 @@ async function openJobs(key, fetchImpl) {
   return out;
 }
 
-async function jobDates(key, jobId, fetchImpl) {
+export async function jobDates(key, jobId, fetchImpl) {
   const body = await pave(key, { job: { $: { id: jobId }, id: {}, name: {}, closedOn: {},
     customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_STATUS] }, nodes: { value: {} } },
     demo: { _: 'tasks', $: { size: 5, where: { and: [['isGroup', '=', false], ['name', '=', 'Demo']] } }, nodes: { startDate: {} } },
@@ -181,19 +186,20 @@ async function jobDates(key, jobId, fetchImpl) {
   return { name: j.name, closed: !!j.closedOn, status: j.customFieldValues?.nodes?.[0]?.value || null, demo: first(j.demo?.nodes), reveal: first(j.reveal?.nodes) };
 }
 
-/** The job's own photos and videos (not a daily log's or a document's): [{ id, name, type, url, tags: [{ id, name }] }] */
-async function jobPhotos(key, jobId, fetchImpl) {
+/** The job's own files (not a daily log's): [{ id, name, type, url, createdBy, documentId, documentType, tags: [{ id, name }] }] */
+async function jobFiles(key, jobId, fetchImpl) {
   const out = [];
   let page = null;
   for (let i = 0; i < MAX_PAGES; i++) {
-    const body = await pave(key, { job: { $: { id: jobId }, f: { _: 'files', $: { size: PAGE, where: { or: [['type', 'like', 'image/%'], ['type', 'like', 'video/%']] }, ...(page ? { page } : {}) },
-      nextPage: {}, nodes: { id: {}, name: {}, type: {}, dailyLog: { id: {} }, document: { id: {} }, url: { $: { original: true } },
+    const body = await pave(key, { job: { $: { id: jobId }, f: { _: 'files', $: { size: PAGE, ...(page ? { page } : {}) },
+      nextPage: {}, nodes: { id: {}, name: {}, type: {}, dailyLog: { id: {} }, document: { id: {}, type: {} }, createdByUser: { name: {} }, url: { $: { original: true } },
         fileTags: { $: { size: 10 }, nodes: { id: {}, name: {} } } } } } }, fetchImpl);
     const conn = body?.job?.f;
     if (!conn) throw new Error('JobTread sent no files');
     for (const f of conn.nodes || []) {
-      if (f.dailyLog?.id || f.document?.id) continue;
-      out.push({ id: f.id, name: f.name || '', type: String(f.type || '').toLowerCase(), url: f.url || null, tags: f.fileTags?.nodes || [] });
+      if (f.dailyLog?.id) continue;
+      out.push({ id: f.id, name: f.name || '', type: String(f.type || '').toLowerCase(), url: f.url || null, createdBy: f.createdByUser?.name || '',
+        documentId: f.document?.id || null, documentType: f.document?.type || null, tags: f.fileTags?.nodes || [] });
     }
     page = conn.nextPage || null;
     if (!page) break;
@@ -209,9 +215,10 @@ export async function sortJob(env, job, { fetchImpl = fetch, now = Date.now(), c
   await ensureSchema(DB);
   const dates = await jobDates(key, job.id, fetchImpl);
   const facts = { ...dates, community };
-  const files = await jobPhotos(key, job.id, fetchImpl);
+  const files = (await jobFiles(key, job.id, fetchImpl)).filter((f) => !f.tags.some((t) => isRetiring(t.name)));
   const ids = await tagIds(DB);
   const stageIds = new Map(STAGES.map((s) => [ids.get(s), s]).filter(([id]) => id));
+  const docIds = new Map(['Costs', 'Design', 'Plans'].map((s) => [ids.get(s), s]).filter(([id]) => id));
   const known = new Map();
   for (let i = 0; i < files.length; i += 90) {
     const part = files.slice(i, i + 90).map((f) => f.id);
@@ -220,14 +227,27 @@ export async function sortJob(env, job, { fetchImpl = fetch, now = Date.now(), c
     for (const r of results || []) known.set(r.file_id, r);
   }
   let read = 0;
-  const picks = { Before: 0, During: 0, After: 0, none: 0 };
+  const picks = { Before: 0, During: 0, After: 0, docs: 0, none: 0 };
   let left = 0;
   const upsert = DB.prepare(`INSERT INTO photo_stages (file_id, job_id, name, kind, taken, camera, stage, why, reads, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(file_id) DO UPDATE SET job_id = excluded.job_id, name = excluded.name, kind = excluded.kind, taken = excluded.taken, camera = excluded.camera,
       stage = excluded.stage, why = excluded.why, reads = excluded.reads, decided_at = excluded.decided_at`);
   for (const f of files) {
     const prior = known.get(f.id);
-    const kind = f.type.startsWith('video/') ? 'video' : 'photo';
+    const kind = f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'photo' : 'doc';
+    // A document: Costs, Design or Plans by the shared rules; a file on a document only Costs
+    if (kind === 'doc' || f.documentId) {
+      const already = f.tags.map((t) => docIds.get(t.id) || stageIds.get(t.id)).find(Boolean) || null;
+      let dp = already ? { tag: already, why: 'already tagged' } : docPick({ name: f.name, createdBy: f.createdBy, documentType: f.documentType });
+      if (!already && f.documentId && dp.tag && dp.tag !== 'Costs') dp = { tag: null, why: 'on a document' };
+      if (!prior || prior.stage !== dp.tag || prior.why !== dp.why) await upsert.bind(f.id, job.id, f.name, kind, null, null, dp.tag, dp.why, 0, iso(now)).run();
+      picks[dp.tag && STAGES.includes(dp.tag) ? dp.tag : dp.tag ? 'docs' : 'none'] = (picks[dp.tag && STAGES.includes(dp.tag) ? dp.tag : dp.tag ? 'docs' : 'none'] || 0) + 1;
+      if (write && dp.tag && !already && f.tags.length < 10 && ids.get(dp.tag)) {
+        await pave(key, { updateFile: { $: { id: f.id, fileTagIds: [...f.tags.map((t) => t.id), ids.get(dp.tag)] } } }, fetchImpl);
+        await DB.prepare('UPDATE photo_stages SET written_at = ? WHERE file_id = ?').bind(iso(now), f.id).run();
+      }
+      continue;
+    }
     const fromCompanyCam = /^CompanyCam \d+$/.test(f.name);
     let taken = prior?.taken || null;
     let camera = prior?.camera ?? null;

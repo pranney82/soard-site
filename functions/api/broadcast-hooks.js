@@ -37,6 +37,7 @@ import { maybeRunNewsletterDrafts } from './_newsletter-drafts.js';
 import { maybeRunCompanyCam } from './_companycam-sync.js';
 import { maybeKeepTags } from './_file-tags.js';
 import { maybeSortPhotos } from './_photo-stages.js';
+import { maybeMoveTags } from './_tag-moves.js';
 import { maybeCheckJobs } from './_companycam-jobs.js';
 import { maybeCapSelfTest } from './_application-cap.js';
 import { maybeTrackEmails } from './_email-log.js';
@@ -139,6 +140,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeKeepTags(env));
     // Every 2 minutes, one job: its photos sorted into Before, During and After by when each was taken (see _photo-stages.js)
     context.waitUntil(maybeSortPhotos(env));
+    // Every 2 minutes: the next files on JobTread's old tags moved onto the new ones (see _tag-moves.js)
+    context.waitUntil(maybeMoveTags(env));
     // Every open job's CompanyCam photos against JobTread's copies, about hourly (see _companycam-jobs.js)
     context.waitUntil(maybeCheckJobs(env));
     // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)

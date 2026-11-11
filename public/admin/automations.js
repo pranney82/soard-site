@@ -640,6 +640,20 @@ const MAP = { t: 'SOARD', children: [
             const demo = p.missingDemo?.length ? ` Missing a Demo date: ${p.missingDemo.slice(0, 3).join(', ')}${p.missingDemo.length > 3 ? ` and ${p.missingDemo.length - 3} more` : ''}.` : '';
             return ON(`${plural(p.jobs, 'job')} sorted: ${counts}${p.write ? `; ${plural(p.written || 0, 'tag')} written` : ' (writing nothing yet)'}.${demo}`, p.lastAt);
           } },
+        { t: 'Old JobTread tags moved onto the new ones', s: 'live', k: 'schedule',
+          when: 'Every 2 minutes, the next 25 files on an old tag, on the heartbeat, round and round until they’re empty.',
+          does: 'Moves every file on JobTread’s old tags (.BeforePics, Progress Photos, the “:” construction tags, _Sponsor, .BuildSpecDocs, .WorkingPlans, .FinalPlans, Design Documents, .PricingQuotes) onto the new ones: photos and videos to Before, During or After by when they were taken (or what their old tag meant), plans to Plans, designs to Design, quotes and receipts to Costs. A private paper never gets a sharing tag and comes off one. _MakeoverFamily keeps only family papers. An old tag left empty is deleted; In Kind, COI and W-9 stay.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_tag-moves.js · _tag-rules.js (broadcast-hooks.js)',
+          info: 'Peter, Nov 11, 2026: “can you migrate these over too?” Started writing nothing: every planned move is recorded and counted here, and it writes once the picks are checked. A daily log’s file is left as it is.',
+          live: (f) => {
+            if (!env(f)) return null;
+            const m = f.tagMoves;
+            if (!m) return null;
+            if (m.error?.error && !m.files) return ATTN(`JobTread didn’t answer: ${m.error.error}`, m.error.at);
+            if (!m.files) return ATTN('It hasn’t looked at a file yet. It rides on the heartbeat, so check the Heartbeat entry.');
+            const to = Object.entries(m.to || {}).filter(([k]) => k !== 'none').map(([k, n]) => `${n} to ${k}`).join(', ');
+            return ON(`${plural(m.files, 'file')} looked at (${to || 'none placed yet'}; ${plural(m.unplaced || 0, 'file')} nothing places)${m.write ? `; ${m.written || 0} moved` : ', moving nothing yet'}.`, m.lastAt);
+          } },
         { t: 'CompanyCam photos on every job', s: 'live', k: 'schedule',
           when: 'Every open job (not TEST) about once an hour, a couple a minute on the heartbeat. A new photo in a job’s project moves that job to the front (CompanyCam’s webhook).',
           does: 'Copies to each job any CompanyCam photo or video it doesn’t have, under JobTread’s own name (“CompanyCam 123…”). A job’s photos come from the project it’s linked to, the project its own earlier photos came from, and a project at the same address under the family’s name. A photo in the project JobTread is still linked to waits an hour, so JobTread’s own sync goes first. It never relinks a job: relinking makes JobTread copy every photo again. Second copies JobTread makes are removed. Slack hears once a pass what was copied and removed.',

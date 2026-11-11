@@ -64,6 +64,7 @@ import { companycamFacts } from './_companycam-sync.js';
 import { jobsFacts } from './_companycam-jobs.js';
 import { tagsFacts } from './_file-tags.js';
 import { stagesFacts } from './_photo-stages.js';
+import { movesFacts } from './_tag-moves.js';
 import { applicationSettings, pickApplication } from './_applications.js';
 import { capFacts, lastCapNotice } from './_application-cap.js';
 import { trackingState } from './_email-log.js';
@@ -529,6 +530,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     fileTags: await settle(() => tagsFacts(DB)),
     // Counts and job names only (_photo-stages.js)
     photoStages: await settle(() => stagesFacts(DB)),
+    // Counts and tag names only (_tag-moves.js)
+    tagMoves: await settle(() => movesFacts(DB)),
     // Mercury through the relay: account names and kinds only (_mercury.js)
     mercury: await settle(() => mercuryFacts(env, fetchImpl)),
     jobCosts: await settle(() => jobCostFacts(DB)),

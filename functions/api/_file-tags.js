@@ -12,6 +12,8 @@
  *   After   reveal day on
  *   Design  layouts, 3Ds, presentations, inspiration, renderings
  *   Plans   the current build set, specs, templates
+ *   Costs   pricing quotes, bills and receipts: staff only (Peter, Nov 11 2026:
+ *           "we will be uploading receipts and bills to here so might need a tag")
  *
  * Each run (hourly, on the heartbeat: broadcast-hooks.js) makes any of
  * the five that's missing and keeps its audience exactly as below: an access
@@ -50,6 +52,9 @@ export const TAGS = [
     description: 'Layouts, 3Ds, presentations, inspiration and renderings. Seen by partners and design partners on the job. Never a family paper.' },
   { name: 'Plans', color: '#0ea5e9', roles: [...LEVEL_ROLES, TRADE_ROLE, DESIGN_ROLE], staff: STAFF_SEE,
     description: 'The current build set, specs and templates. Seen by partners, trades and design partners on the job. Never a family paper.' },
+  // Staff only: the staff roles that see .PricingQuotes today, and nobody outside
+  { name: 'Costs', color: '#64748b', roles: [], staff: ['Admin', 'Designer', 'Production Manager', 'Project Manager'],
+    description: 'Pricing quotes, bills and receipts. Staff only. Set by the website: what QuickBooks sends, and files named like a quote, estimate, bill, invoice or receipt.' },
 ];
 /** Old tags whose audience loses the family, by Peter's rule (no photos for families) */
 const FAMILY_OFF = ['.BeforePics'];

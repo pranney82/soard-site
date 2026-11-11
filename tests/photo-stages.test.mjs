@@ -52,7 +52,7 @@ function world({ files, dates = { demo: '2026-03-02', reveal: '2026-03-20', stat
     const q = JSON.parse(init.body).query;
     if (q.organization?.jobs) return Response.json({ organization: { jobs: { nextPage: null, nodes: [{ id: 'j1', name: 'Ava Stone (2026)' }, { id: 'jt', name: 'TEST Office (2026)' }] } } });
     if (q.job?.demo) return Response.json({ job: { id: 'j1', name: 'Ava Stone (2026)', closedOn: null, customFieldValues: { nodes: [{ value: dates.status }] }, demo: { nodes: dates.demo ? [{ startDate: dates.demo }] : [] }, reveal: { nodes: dates.reveal ? [{ startDate: dates.reveal }] : [] } } });
-    if (q.job?.f) return Response.json({ job: { f: { nextPage: null, nodes: files.map((f) => ({ id: f.id, name: f.name, type: f.type, dailyLog: f.dailyLog ? { id: 'dl' } : null, document: null, url: `https://cdn.example.com/${f.id}`, fileTags: { nodes: f.tags || [] } })) } } });
+    if (q.job?.f) return Response.json({ job: { f: { nextPage: null, nodes: files.map((f) => ({ id: f.id, name: f.name, type: f.type, dailyLog: f.dailyLog ? { id: 'dl' } : null, document: f.document || null, createdByUser: { name: f.by || 'Clareece' }, url: `https://cdn.example.com/${f.id}`, fileTags: { nodes: f.tags || [] } })) } } });
     if (q.updateFile) { w.writes.push(q.updateFile.$); return Response.json({}); }
     throw new Error(`unexpected ${JSON.stringify(q).slice(0, 80)}`);
   };
@@ -85,7 +85,7 @@ test('a job’s photos are sorted, writing nothing; daily-log photos, screenshot
   assert.deepEqual(got.p5, [null, 'not a camera photo']);
   assert.deepEqual(got.p6, ['Before', 'already tagged'], 'a person’s pick stands');
   assert.deepEqual(got.v1, [null, 'a video (no time read yet)']);
-  assert.deepEqual(r.picks, { Before: 2, During: 1, After: 1, none: 2 });
+  assert.deepEqual(r.picks, { Before: 2, During: 1, After: 1, docs: 0, none: 2 });
   assert.deepEqual(w.writes, [], 'nothing written while WRITE is off');
   assert.ok(w.ranges.every((h) => h === 'bytes=0-262143'), 'only the first 256 KB of each');
   // Read once: the next turn reads no file again
@@ -124,4 +124,27 @@ test('no Demo date yet: Before while still before the build, else listed as miss
   await maybeSortPhotos(e, { fetchImpl: w.fetchImpl, now: T });
   const facts = await stagesFacts(e.DB);
   assert.deepEqual(facts.missingDemo, ['Ava Stone (2026)']);
+});
+
+test('documents on an open job get Costs, Design or Plans by name; a private paper never; a file on a document only Costs; old-tag files left to the move', async () => {
+  const e = await env();
+  for (const [n, id] of [['Costs', 'tC'], ['Design', 'tG'], ['Plans', 'tP']]) await e.DB.prepare('INSERT INTO file_tags VALUES (?, ?, ?)').bind(n, id, 'x').run();
+  const doc = (id, name, o = {}) => ({ id, name, type: 'application/pdf', bytes: new Uint8Array(8), ...o });
+  const w = world({ files: [
+    doc('d1', 'Lowes quote 3-14.pdf'), doc('d2', 'Bedroom 3D render.pdf'), doc('d3', 'Final plan set v2.pdf'),
+    doc('d4', 'Project Summary Letter.pdf'), doc('d5', 'receipt business 1d.pdf', { by: 'QuickBooks Online' }),
+    doc('d6', 'Layout.pdf', { document: { id: 'doc1', type: 'customerOrder' } }), doc('d7', 'notes.pdf'),
+    doc('d8', 'Old plans.pdf', { tags: [{ id: 'old1', name: '.FinalPlans' }] }),
+  ] });
+  await sortJob(e, { id: 'j1' }, { fetchImpl: w.fetchImpl, now: T, write: true });
+  const got = await rows(e.DB);
+  assert.deepEqual(got.d1, ['Costs', 'named like a quote, bill or receipt']);
+  assert.deepEqual(got.d2, ['Design', 'named like a design']);
+  assert.deepEqual(got.d3, ['Plans', 'named like plans']);
+  assert.deepEqual(got.d4, [null, 'a private paper']);
+  assert.deepEqual(got.d5, ['Costs', 'sent by QuickBooks']);
+  assert.deepEqual(got.d6, [null, 'on a document']);
+  assert.deepEqual(got.d7, [null, 'nothing places it']);
+  assert.equal(got.d8, undefined, 'a file on an old tag is the move’s');
+  assert.deepEqual(w.writes.map((x) => [x.id, x.fileTagIds]).sort(), [['d1', ['tC']], ['d2', ['tG']], ['d3', ['tP']], ['d5', ['tC']]]);
 });

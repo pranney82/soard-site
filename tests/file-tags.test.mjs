@@ -49,16 +49,17 @@ test('the five tags are made with their audiences, notify off, and their ids kep
   const e = await env();
   const w = world();
   const r = await ensureTags(e, { fetchImpl: w.fetchImpl });
-  assert.deepEqual(r.made, ['Before', 'During', 'After', 'Design', 'Plans']);
+  assert.deepEqual(r.made, ['Before', 'During', 'After', 'Design', 'Plans', 'Costs']);
   for (const n of ['Before', 'During', 'After']) assert.deepEqual(audience(w, n), ['Builder', 'Champion', 'Design Partner', 'Friend', 'Photographer', 'Signature', 'Trade Partner']);
   assert.deepEqual(audience(w, 'Design'), ['Builder', 'Champion', 'Design Partner', 'Friend', 'Signature']);
   assert.deepEqual(audience(w, 'Plans'), ['Builder', 'Champion', 'Design Partner', 'Friend', 'Signature', 'Trade Partner']);
+  assert.deepEqual(audience(w, 'Costs'), [], 'Costs: staff only');
   assert.ok(w.writes.filter((q) => q.createAce).every((q) => q.createAce.$.notify === false), 'nobody is notified');
   assert.ok(!w.tags.some((t) => t.aces.some((a) => ['r-family', 'r-board'].includes(a.roleId))), 'never families or the board');
   assert.ok(w.tags.filter((t) => TAGS.some((s) => s.name === t.name)).every((t) => t.aces.some((a) => a.roleId === 'r-pm')), 'staff who see the old tags see the new ones');
   assert.ok(TAGS.every((t) => t.name.length <= 25 && t.description.length <= 256 && /^#[0-9a-f]{6}$/.test(t.color)));
   const ids = await tagIds(e.DB);
-  assert.deepEqual([...ids.keys()].sort(), ['After', 'Before', 'Design', 'During', 'Plans']);
+  assert.deepEqual([...ids.keys()].sort(), ['After', 'Before', 'Costs', 'Design', 'During', 'Plans']);
   // Nothing to do the second time
   const n = w.writes.length;
   const again = await ensureTags(e, { fetchImpl: w.fetchImpl });
@@ -103,14 +104,14 @@ test('hourly on the heartbeat, one run at a time; the last result kept for Site 
   const w = world();
   const T = Date.parse('2026-11-11T21:00:00Z');
   const first = await maybeKeepTags(e, { fetchImpl: w.fetchImpl, now: T });
-  assert.deepEqual(first.made, ['Before', 'During', 'After', 'Design', 'Plans']);
+  assert.deepEqual(first.made, ['Before', 'During', 'After', 'Design', 'Plans', 'Costs']);
   assert.equal(await maybeKeepTags(e, { fetchImpl: w.fetchImpl, now: T + 30 * 60 * 1000 }), null, 'not again within the hour');
   const down = async () => new Response('busy', { status: 503 });
   const failed = await maybeKeepTags(e, { fetchImpl: down, now: T + 61 * 60 * 1000 });
   assert.match(failed.error, /JobTread/);
   const facts = await tagsFacts(e.DB);
   assert.match(facts.last.error, /JobTread/);
-  assert.deepEqual(facts.kept.sort(), ['After', 'Before', 'Design', 'During', 'Plans']);
+  assert.deepEqual(facts.kept.sort(), ['After', 'Before', 'Costs', 'Design', 'During', 'Plans']);
 });
 
 test('the inventory: every tag, who sees it, and how many photos, videos and files it holds', async () => {
