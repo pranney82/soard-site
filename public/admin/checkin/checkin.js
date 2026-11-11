@@ -57,7 +57,7 @@ const clean = (m) => String(m || '').replace(/[.\s]+$/, '');
 const readQueue = () => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; } };
 // → false when this phone can't keep anything (private browsing with storage off, or it's full)
 const writeQueue = (q) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); return true; } catch { return false; } };
-const QUEUEABLE = new Set(['receive', 'other', 'house', 'undo', 'shelf', 'decide', 'out']);
+const QUEUEABLE = new Set(['receive', 'other', 'house', 'undo', 'shelf', 'decide', 'out', 'price']);
 const CANT_KEEP = 'No connection, and this phone can’t keep it for later (its storage is off). Try again with signal';
 // What one waiting request holds: a load's boxes, a shipment's check-ins, a take-back's boxes, or one thing
 // (a decide's items are answers, not check-ins: it's one thing, sent and settled whole)
@@ -353,7 +353,7 @@ function toast(text) {
 }
 
 function apply(view) {
-  Object.assign(state, { kids: view.kids || [], everyKid: view.everyKid || [], needsLook: view.needsLook || [], shelves: view.shelves || [], shipments: view.shipments || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
+  Object.assign(state, { kids: view.kids || [], everyKid: view.everyKid || [], unprinted: view.unprinted || [], needsLook: view.needsLook || [], shelves: view.shelves || [], shipments: view.shipments || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
   overlayQueue();
   pruneLoad();
   $('mode').hidden = !state.practice || readQueue().length > 0;
@@ -439,8 +439,10 @@ function showPrinter() {
   const el = $('printer');
   const problem = p?.setUp && p.problems?.length ? p.problems[0] : '';
   el.className = `printer-pill ${!p?.setUp ? 'off' : problem ? 'warn' : p.online ? 'ok' : 'off'}${problem ? ' says' : ''}`;
-  el.innerHTML = `${PRINTER_ICON}<i aria-hidden="true"></i>${problem ? `<span>${esc(problem)}</span>` : ''}`;
-  el.setAttribute('aria-label', `Shelves and printer. Printer: ${!p?.setUp ? 'not set up' : problem || (p.online ? 'ready' : 'off or out of reach')}`);
+  // Labels that never printed: how many, on the button that leads to them
+  const waiting = (state.unprinted || []).reduce((t, x) => t + x.boxes, 0);
+  el.innerHTML = `${PRINTER_ICON}<i aria-hidden="true"></i>${problem ? `<span>${esc(problem)}</span>` : ''}${waiting ? `<span class="waiting-n">${waiting}</span>` : ''}`;
+  el.setAttribute('aria-label', `Shelves and printer. Printer: ${!p?.setUp ? 'not set up' : problem || (p.online ? 'ready' : 'off or out of reach')}${waiting ? `. ${waiting} ${waiting === 1 ? 'label' : 'labels'} never printed` : ''}`);
 }
 
 // ─── Sheets ─────────────────────────────────────────────────────────
@@ -587,6 +589,32 @@ function itemSheet(kid, it, { found = '', keep = false, boxes: preset = 1, ref =
   if ($('wrongkid')) $('wrongkid').onclick = () => wrongKidSheet(kid, it);
 }
 
+/**
+ * Things bought on top whose price no store email gave (The Container Store's say none): what one of each cost, for
+ * their budget line, and their allowance goes down by it. Asked where they're checked in or looked at, never required
+ */
+const unpriced = (list) => list.filter((it) => it?.also && !it.also.typed && it.order?.key && !it.order.cents && it.source !== 'donated');
+function priceHtml(list) {
+  if (!list.length) return '';
+  return `<div class="price-ask" id="priceask"><span class="label-above">${list.length === 1 ? 'What did it cost? No store email says' : 'What did they cost? No store email says'}</span>
+    ${list.map((it, n) => `<div class="field"><label for="price${n}">${esc(it.name)}${it.qty > 1 ? ` (one of ${it.qty})` : ''}</label><input id="price${n}" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off" data-price="${n}" /></div>`).join('')}
+    <button class="btn" type="button" id="saveprices">Save ${list.length === 1 ? 'the price' : 'the prices'}</button></div>`;
+}
+function bindPrices(kid, list) {
+  if (!$('saveprices')) return;
+  $('saveprices').onclick = async () => {
+    const given = list.map((it, n) => ({ it, cents: Math.round(Number(String(document.querySelector(`#sheet-root [data-price="${n}"]`)?.value || '').replace(/[^0-9.]/g, '')) * 100) || 0 })).filter((x) => x.cents > 0);
+    if (!given.length) { document.querySelector('#sheet-root [data-price="0"]')?.focus(); return; }
+    const byOrder = new Map();
+    for (const x of given) byOrder.set(x.it.order.key, [...(byOrder.get(x.it.order.key) || []), { itemName: x.it.orderedAs || x.it.name, cents: x.cents }]);
+    let queued = false;
+    try {
+      for (const [orderKey, items] of byOrder) { const r = await sendOrKeep('price', { tap: newTap(), orderKey, jobId: kid.jobId, items }); queued ||= r.queued; }
+    } catch (err) { toast(`Not saved: ${clean(err.message)}`); return; }
+    $('priceask').innerHTML = `<div class="done-line">${ICON.tick}<span>${esc(queued ? 'Saved on this phone. It goes when the connection is back' : 'Saved. On the budget in a minute')}</span></div>`;
+  };
+}
+
 /** Something already here: when it came, where it is, Print again, Undo, another shelf */
 function hereSheet(kid, it, { keep = false } = {}) {
   const live = (it.receipts || []).filter((r) => !r.undone);
@@ -598,6 +626,7 @@ function hereSheet(kid, it, { keep = false } = {}) {
     <p class="item-name">${esc(it.name)}</p>
     ${factsHtml(factsOf(it))}
     ${budgetPick(kid, it)}
+    ${priceHtml(unpriced([it]))}
     <div class="receipts">${waiting ? '<div class="receipt"><span>Waiting on this phone for the connection</span></div>' : rows}</div>
     ${last?.kind === 'receive' && !last.waiting ? '<button class="btn btn-big" type="button" id="reprint" data-focus>Print again</button>' : ''}
     ${waiting || !last ? '' : '<div class="btn-row"><button class="btn btn-text" type="button" id="undo">Undo the check-in</button></div>'}`, { keep });
@@ -624,6 +653,7 @@ function hereSheet(kid, it, { keep = false } = {}) {
   };
   bindMoves(kid, it);
   bindBudget(kid, it);
+  bindPrices(kid, unpriced([it]));
 }
 
 /**
@@ -657,9 +687,10 @@ function bindBudget(kid, it) {
 function printSaid(p) {
   if (!p) return { ok: false, text: 'Saved. The labels print when it’s sent.' };
   if (p.printed) return p.error ? { ok: false, text: `${p.printed} printed, the rest didn’t: ${p.error}` } : { ok: true, text: p.printed === 1 ? 'Printed' : `${p.printed} printed` };
-  if (!p.setUp) return { ok: false, text: 'The printer isn’t set up yet' };
+  if (p.nothing) return { ok: true, text: 'Every label has printed' };
+  if (!p.setUp) return { ok: false, text: 'The printer isn’t set up yet. The labels wait for it.' };
   if (p.problems?.length) return { ok: false, text: `Printer: ${p.problems.join(', ')}` };
-  if (p.queued) return { ok: false, text: 'The printer is off. They print when it’s back on.' };
+  if (p.queued) return { ok: false, text: 'The printer is off. The labels wait for it.' };
   return { ok: false, text: p.error || 'The printer didn’t answer' };
 }
 const jtSaid = (jt, queued) => (queued ? 'Saved on this phone. It goes to JobTread when the connection is back.'
@@ -685,7 +716,8 @@ async function printed(kid, it, { units = 1, boxes = 1, other = null, tap = newT
     <div class="printer" aria-hidden="true"><div class="slot"></div><div class="stack" style="--peek:${(shown - 1) * 8}px">${labels}</div></div>
     <div class="done-line" id="saved" style="--after:${after}ms">${ICON.wait}<span>Saving</span></div>
     <div class="done-line sub" id="printed" style="--after:${after + 80}ms" hidden></div>
-    <button class="shelf-callout" type="button" id="moveit" aria-label="Move it to another shelf"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><b id="shelf">${esc(shelfNow || '…')}</b></button>
+    <button class="shelf-callout" type="button" id="moveit" aria-label="Move it to another shelf"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><span class="sc-shelf"><b id="shelf">${esc(shelfNow || '…')}</b>${ICON.chev}</span></button>
+    ${priceHtml(unpriced([it]))}
     <div class="after"><button class="btn btn-primary btn-big" type="button" id="next" data-focus>Scan the next box</button>
       <div class="btn-row"><button class="btn btn-text" type="button" id="done">Done</button><button class="btn btn-text" type="button" id="undo">Undo</button></div></div>`, { keep: true });
   document.querySelectorAll('canvas[data-qr]').forEach((c) => drawQr(c, `${location.origin}/admin/checkin/?r=${encodeURIComponent(tap)}&b=${c.dataset.qr}`));
@@ -733,6 +765,7 @@ async function printed(kid, it, { units = 1, boxes = 1, other = null, tap = newT
     toast('Taken back');
   };
   $('moveit').onclick = () => (out.receipt ? shelfPicker(kid, tap, () => printedShelf(kid)) : null);
+  bindPrices(kid, unpriced([it]));
 }
 const printedShelf = (kid) => { const s = $('shelf'); if (s) s.textContent = kidById(kid.jobId)?.shelf || s.textContent; };
 
@@ -806,6 +839,7 @@ async function house(kid, it) {
 }
 
 /** Another shelf (or the Floor) for a check-in; a shelf another kid has can't be picked */
+/** Another shelf for a check-in, or a shipment's for one kid (taps): moved, and their labels print again with it */
 function shelfPicker(kid, tap, then) {
   const mine = new Set(kid.shelves || []);
   const list = state.shelves.filter((s) => s.shelf === 'Floor' || !s.kid || s.kid === kid.jobId);
@@ -813,8 +847,10 @@ function shelfPicker(kid, tap, then) {
     <div class="shelf-pick">${list.map((s) => `<button class="shelf-btn${mine.has(s.shelf) ? ' mine' : ''}" type="button" data-shelf="${esc(s.shelf)}">${esc(s.shelf === 'Floor' ? 'Floor' : s.shelf)}</button>`).join('')}</div>`, { keep: true });
   document.querySelectorAll('#sheet-root [data-shelf]').forEach((b) => {
     b.onclick = async () => {
-      try { await sendOrKeep('shelf', { tap, shelf: b.dataset.shelf }); } catch (err) { toast(err.message); return; }
-      toast(`On ${shelfName(b.dataset.shelf)}`);
+      let r;
+      try { r = await sendOrKeep('shelf', Array.isArray(tap) ? { tap: newTap(), taps: tap, shelf: b.dataset.shelf } : { tap, shelf: b.dataset.shelf }); } catch (err) { toast(err.message); return; }
+      const p = r.queued ? null : printSaid(r.out?.print);
+      toast(`On ${shelfName(b.dataset.shelf)}${r.queued ? '. It goes when the connection is back' : p?.ok ? '. New labels printing' : `. ${p?.text || ''}`}`);
       await close();
       render();
       then?.();
@@ -972,14 +1008,36 @@ function shelvesSheet(focus = '') {
   }).join('');
   openSheet(`${head('Shelves', { sub: `${state.shelves.filter((s) => s.kid).length} of ${state.shelves.filter((s) => s.shelf !== 'Floor').length} in use` })}
     <button class="printer-card" type="button" id="printer-setup"><span class="printer-pill ${!p.setUp ? 'off' : p.problems?.length ? 'warn' : p.online ? 'ok' : 'off'}"><i aria-hidden="true"></i>${esc(!p.setUp ? 'Not set up' : p.problems?.length ? p.problems.join(', ') : p.online ? 'Ready' : 'Off or out of reach')}</span><b>Label printer</b>${ICON.chev}</button>
+    ${waitingLabels()}
     <div class="pick">${rows}</div>
     <button class="btn btn-big" type="button" id="signs">Print the shelf signs</button>`, { keep: Boolean(sheetEl()) });
   $('printer-setup').onclick = printerSheet;
+  bindWaitingLabels();
   $('signs').onclick = async () => {
     try { const out = await send('shelf-labels', { shelves: state.shelves.map((s) => s.shelf) }); toast(printSaid(out.print).text); } catch (err) { toast(err.message); }
   };
   document.querySelectorAll('#sheet-root [data-onshelf]').forEach((b) => { b.onclick = () => shelfSheet(b.dataset.onshelf); });
   if (focus) document.querySelector('#sheet-root .shelf-row.focus')?.scrollIntoView({ block: 'center' });
+}
+
+/** Labels that never printed (the printer was off or not set up) for boxes still at the Office: all of them, one tap */
+function waitingLabels() {
+  const list = state.unprinted || [];
+  if (!list.length) return '';
+  const n = list.reduce((t, x) => t + x.boxes, 0);
+  const ready = state.printer?.online;
+  return `<div class="pick waiting-labels"><div class="look"><b>${esc(n === 1 ? '1 label never printed' : `${n} labels never printed`)}</b>
+    <span>${esc(list.slice(0, 3).map((x) => `${x.short}: ${x.name}`).join(' · '))}${list.length > 3 ? esc(` and ${list.length - 3} more`) : ''}</span></div></div>
+    ${ready ? `<button class="btn btn-primary btn-big" type="button" id="printwaiting">Print ${n === 1 ? 'it' : `all ${n}`}</button>` : `<p class="why-line">${n === 1 ? 'It prints' : 'They print'} once the printer is ready.</p>`}`;
+}
+function bindWaitingLabels() {
+  if (!$('printwaiting')) return;
+  $('printwaiting').onclick = async () => {
+    const b = $('printwaiting');
+    b.disabled = true;
+    try { const out = await send('print-waiting', { taps: (state.unprinted || []).map((x) => x.tap) }); toast(printSaid(out.print).text); } catch (err) { toast(err.message); }
+    shelvesSheet();
+  };
 }
 
 /** What's on one shelf (the QR on the shelf's sign opens this, for load-out) */
@@ -2460,13 +2518,16 @@ async function shipDone(sh, items) {
   const byKid = new Map();
   for (const it of items) byKid.set(it.jobId, [...(byKid.get(it.jobId) || []), it]);
   const labels = items.reduce((t, it) => t + it.boxes, 0);
-  const callouts = (shelfOf) => [...byKid].map(([jobId, list]) => { const k = kidById(jobId); return `<div class="shelf-callout static"><span class="who">${face(k, 36)}${esc(k?.short || '')}</span><b>${esc(shelfOf(jobId) || '…')}</b>
-      <span class="sc-items">${list.map((x) => `<span>${esc(x.name)}${x.boxes > 1 ? ` (${x.boxes} boxes)` : ''}</span>`).join('')}</span></div>`; }).join('');
+  // Each kid's shelf: once saved, a tap moves this shipment's boxes for them to another (new labels print)
+  let movable = false;
+  const callouts = (shelfOf) => [...byKid].map(([jobId, list]) => { const k = kidById(jobId); return `<${movable ? 'button type="button" data-shipshelf' : 'div'}="${esc(jobId)}" class="shelf-callout with-items${movable ? '' : ' static'}"${movable ? ` aria-label="${esc(`${k?.short || ''}’s shelf: move it`)}"` : ''}><span class="who">${face(k, 36)}${esc(k?.short || '')}</span><span class="sc-shelf"><b>${esc(shelfOf(jobId) || '…')}</b>${movable ? ICON.chev : ''}</span>
+      <span class="sc-items">${list.map((x) => `<span>${esc(x.name)}${x.boxes > 1 ? ` (${x.boxes} boxes)` : ''}</span>`).join('')}</span></${movable ? 'button' : 'div'}>`; }).join('');
   openSheet(`<div class="sheet-head"><div><h3 tabindex="-1" data-focus>${esc(sh.store)}</h3><div class="sheet-sub" id="shipsaid">Checking in ${plural(items.length, 'thing')}</div></div>
       <button class="x" type="button" data-close="1" aria-label="Close">${ICON.x}</button></div>
     <div class="done-line" id="saved" style="--after:0ms">${ICON.wait}<span>Saving</span></div>
     <div class="done-line sub" id="printed" hidden></div>
     <div id="callouts">${callouts((j) => kidById(j)?.shelf)}</div>
+    <div id="prices"></div>
     <div class="after"><button class="btn btn-primary btn-big" type="button" id="next">Scan the next box</button>
       <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button><button class="btn btn-text" type="button" id="shipundo" hidden>Undo</button></div></div>`, { keep: true });
   $('next').onclick = async () => { await close(); scan(); };
@@ -2493,7 +2554,25 @@ async function shipDone(sh, items) {
   pr.hidden = false;
   pr.innerHTML = `${p.ok ? ICON.tick : ICON.warn}<span>${esc(r.queued ? `${plural(labels, 'label')} print when it’s sent` : p.ok ? `${plural(labels, 'label')} printing` : p.text)}</span>${!p.ok && !r.queued && r.out?.print?.setUp ? '<button class="btn btn-text inline" type="button" id="again">Print again</button>' : ''}`;
   const shelfOf = (jobId) => { const x = ok.find((it) => it.jobId === jobId && results.get(it.tap)?.shelf); return x ? shelfName(results.get(x.tap).shelf) : kidById(jobId)?.shelf; };
-  $('callouts').innerHTML = callouts(shelfOf);
+  movable = ok.length > 0;
+  const drawCallouts = () => {
+    $('callouts').innerHTML = callouts(shelfOf);
+    document.querySelectorAll('#callouts [data-shipshelf]').forEach((b) => {
+      const k = kidById(b.dataset.shipshelf);
+      const taps = ok.filter((it) => it.jobId === b.dataset.shipshelf).map((it) => it.tap);
+      b.onclick = () => shelfPicker(k, taps);
+    });
+  };
+  drawCallouts();
+  // Bought on top with no price in any email: asked here, while the box is in hand (one kid's at a time)
+  const things = ok.map((x) => kidById(x.jobId)?.items.find((i) => i.itemId === x.itemId && i.partKey === x.partKey)).filter(Boolean);
+  const toPrice = unpriced(things);
+  const priceKid = toPrice.length ? kidOfItem(toPrice[0].id) : null;
+  if (priceKid) {
+    const mine = toPrice.filter((i) => kidOfItem(i.id) === priceKid);
+    $('prices').innerHTML = priceHtml(mine);
+    bindPrices(priceKid, mine);
+  }
   if ($('again')) $('again').onclick = async () => {
     let said = null;
     for (const it of ok) { try { said = printSaid((await send('reprint', { tap: it.tap })).print); } catch (err) { said = { text: err.message }; } }

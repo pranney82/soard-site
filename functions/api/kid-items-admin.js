@@ -13,6 +13,9 @@
  *   ?shelf=1   { tap, shelf }                                      a check-in moved to another shelf (or the Floor)
  *   ?reprint=1 { tap }                                             a check-in's labels again
  *   ?decide=1  { orderKey, items: [{ itemName, decision }], at?, things?, undo?, from? }   Needs a look, Whose is it? and Wrong kid answers
+ *   ?price=1   { orderKey, jobId, items: [{ itemName, cents }] }  what things bought on top cost, when no email says
+ *   ?shelf=1   { tap | taps, shelf }                             a check-in (or a shipment's, one kid) to another shelf; labels again
+ *   ?print-waiting=1 { taps? }                                   every label that never printed (boxes at the Office), now
  *   ?other=1   { tap, jobId, name, cents, donated, units, boxes } something else that came, typed in
  *   ?allow=1   { key, jobId, itemId? }                             a person's answer: on that allowance, or (none) Also bought
  *   ?shelf-labels=1 { shelves: ['1', …] }                          the shelves' own signs
@@ -24,7 +27,7 @@ import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
 import { checkinView, checkinData } from './_kid-checkin.js';
 import { readLabel, findBox, likelyBoxes } from './_kid-scan.js';
-import { receive, undoMany, moveShelf, decide, answeredAt, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord, WHOLE_ORDER } from './_kid-record.js';
+import { receive, undoMany, moveShelf, decide, answeredAt, setPrice, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord, WHOLE_ORDER } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { shelfLabel } from './_kid-labels.js';
 import { keepSort } from './_kid-allow.js';
@@ -116,6 +119,8 @@ export async function onRequestPost(context) {
     const out = {};
     let jobId = null;
     let print = null;
+    // Labels printed again because what's on them changed (a check-in moved to another shelf)
+    let reprint = [];
     if (q.get('receive') && Array.isArray(body.items)) {
       // A whole shipment checked in at once: each item on its own (one that can't go doesn't stop the rest), all their
       // labels printed together, each kid's JobTread lines written once
@@ -188,8 +193,17 @@ export async function onRequestPost(context) {
       if (context.waitUntil) context.waitUntil(write); else await write;
       out.jt = 'later';
     } else if (q.get('shelf')) {
-      jobId = (await moveShelf(env.DB, body.tap, String(body.shelf || ''))).jobId;
+      // One check-in, or a shipment's for one kid: moved to that shelf, and their labels printed again with it (the
+      // ones on the boxes say the old shelf)
+      const taps = Array.isArray(body.taps) ? body.taps.map(String).slice(0, 60) : [String(body.tap || '')];
+      for (const t of taps) jobId = (await moveShelf(env.DB, t, String(body.shelf || ''))).jobId;
       out.shelf = String(body.shelf);
+      // Its labels are to print again (now, or when the printer's ready, like any that never printed)
+      for (const t of taps) {
+        await env.DB.prepare("UPDATE kid_receipts SET printed_at = NULL WHERE id = ? AND kind = 'receive' AND undone_at IS NULL").bind(t).run();
+        const r = await env.DB.prepare("SELECT * FROM kid_receipts WHERE id = ? AND kind = 'receive' AND undone_at IS NULL").bind(t).first();
+        if (r) reprint.push(r);
+      }
     } else if (q.get('reprint')) {
       const r = await env.DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(String(body.tap || '')).first();
       if (!r) return Response.json({ success: false, error: 'That check-in isn’t saved yet.' }, { status: 404, headers });
@@ -221,6 +235,22 @@ export async function onRequestPost(context) {
       }
       // Whoever had it before is written too (Wrong kid moves it off them)
       for (const k of [...kids, ...(body.from ? [String(body.from)] : [])]) context.waitUntil?.(writeKidNow(env, k));
+    } else if (q.get('print-waiting')) {
+      // Every label that never printed, for boxes still at the Office (the view's list): printed now
+      const want = new Set((Array.isArray(body.taps) ? body.taps : []).map(String));
+      const list = (await checkinView(env, { photos: false })).unprinted.filter((x) => !want.size || want.has(x.tap));
+      for (const x of list) {
+        const r = await env.DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(x.tap).first();
+        if (r) reprint.push(r);
+      }
+      if (!reprint.length) out.print = { printed: 0, nothing: true };
+    } else if (q.get('price')) {
+      // What things bought on top cost, when the store's emails don't say: on the kid's budget line, and their allowance
+      // goes down by it
+      const items = Array.isArray(body.items) ? body.items.slice(0, 40) : [];
+      if (!body.orderKey || !items.length) return Response.json({ success: false, error: 'Which thing? Reload the page.' }, { status: 400, headers });
+      for (const it of items) await setPrice(env.DB, { orderKey: body.orderKey, itemName: it.itemName, cents: it.cents }, { by });
+      if (body.jobId) jobId = String(body.jobId);
     } else if (q.get('allow')) {
       // A person's answer for something bought on top (typed in): on this allowance, or Also bought (no itemId). It stands
       // over the site's sorting, and its line moves on the next run
@@ -243,6 +273,7 @@ export async function onRequestPost(context) {
       out.placed = { kid: String(whose.decision.kid), things: kid ? kid.items.filter((i) => i.order?.key === String(body.orderKey)).length : 0, look: view.needsLook.some((x) => x.key === String(body.orderKey)) };
     }
     if (print) out.print = await printFor(context, [print], view, { again: Boolean(q.get('reprint')) });
+    if (reprint.length) out.print = await printFor(context, reprint, view);
     // JobTread now, for the kid it changed: the answer says whether it's there
     if (jobId) out.jt = await writeKidNow(env, jobId);
     return Response.json({ success: true, ...out, view: { ...(out.jt === 'written' ? await checkinView(env) : view), printer: await printerStatus(env) } }, { headers });

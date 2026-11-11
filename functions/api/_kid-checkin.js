@@ -75,6 +75,8 @@ function settle(it, whoOf = () => null) {
   it.got = st.got;
   it.sent = st.sent;
   it.boxesLeft = st.boxesLeft;
+  // Check-ins every box of which went out (for the server only: never sent to the page)
+  Object.defineProperty(it, 'allOutIds', { value: new Set(ins.filter((r) => st.per.get(r.id)?.full).map((r) => r.id)), enumerable: false, configurable: true, writable: true });
   // Where it is: the shelves of its check-ins with a box still at the Office, newest first (one that went out isn't
   // where the rest is); all of it out, the last shelf it was on
   it.shelves = [...new Set(ins.filter((r) => r.shelf && !st.per.get(r.id)?.full).reverse().map((r) => r.shelf))];
@@ -140,12 +142,13 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
   const lineOf = new Map(lines.map((l) => [`${l.jobId}|${l.itemId}`, l]));
   for (const l of lines) {
     const kid = kidOf.get(l.jobId);
-    if (templates.has(`${l.jobId}|${l.itemId}`)) {
-      // An allowance: a sum set aside for a kind of thing ("Decor: Books, wall art, shelves, decorative objects"), in a
-      // Selection & Allowance group. A labor line that's alike on every makeover ("Plumbing Final") is a template too, not one
-      if (allowanceAt(l)) kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120), cents: l.cents });
-      continue;
-    }
+    // An allowance: a sum set aside for a kind of thing, in a Selection & Allowance group. Every line there is one
+    // ("Decor/Accessories" $2,000, "Furniture", "Bedding"): what the designer picked for it is in its words, and
+    // something bought on top of those for that kind of thing goes next to it, the line down by it (Peter, Nov 11 2026:
+    // the Container Store's drawers "were not in JT yet since only an allowance was in"). A labor line that's alike on
+    // every makeover ("Plumbing Final") is in no such group, and never one
+    if (/allowance/i.test(l.groupName)) kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120), cents: l.cents });
+    if (templates.has(`${l.jobId}|${l.itemId}`)) continue;
     const seen = new Map();
     l.parts.forEach((p) => {
       // The part's own key (model, link or name) keeps its record when the designer edits the line; two alike are told apart
@@ -261,10 +264,12 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
     let placed = 0;
     for (const it of g.items) {
       const qty = Math.max(1, Math.round(Number(it.quantity) || 1));
-      // The reader keeps an item's price in cents; an older read had it as written
-      const cents = Number.isFinite(Number(it.cents)) && Number(it.cents) > 0 ? Math.round(Number(it.cents)) : priceCents(it.price);
+      // The reader keeps an item's price in cents; an older read had it as written. None in any email: a person's
+      const emailed = Number.isFinite(Number(it.cents)) && Number(it.cents) > 0 ? Math.round(Number(it.cents)) : priceCents(it.price);
+      const said = emailed ? null : record.prices.get(decisionKey(g.key, it.name));
+      const cents = emailed || said?.cents || null;
       const d = answerOf(it.name);
-      const put = (kid, target) => { Object.assign(target, { order: { ...order, cents }, orderedAs: it.name, before }); current.set(it.name, target.also ? (target.also.allowItemId ? `allow:${target.also.allowItemId}` : 'also') : `line:${target.id}`); placed++; };
+      const put = (kid, target) => { Object.assign(target, { order: { ...order, cents, ...(said ? { pricedBy: firstOf.get(String(said.by || '').toLowerCase()) || 'a person' } : {}) }, orderedAs: it.name, before }); current.set(it.name, target.also ? (target.also.allowItemId ? `allow:${target.also.allowItemId}` : 'also') : `line:${target.id}`); placed++; };
       if (d) {
         // A person said: that answer stands over the matcher's
         const kid = d.kid && kidOf.get(d.kid);
@@ -368,10 +373,16 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
     const here = kids.flatMap((k) => k.items.filter((i) => (i.status === 'here' || i.status === 'partly') && (i.shelves || [i.shelf]).includes(s)).map(() => k.jobId));
     return { shelf: s, name: shelfName(s), kid: kid?.jobId || (s === FLOOR ? null : record.shelves.get(s) || null), things: here.length };
   });
+  // Labels that never printed (the printer was off or not set up), for boxes still at the Office: none is lost, all
+  // print with one tap once it's ready (the heartbeat prints the last two hours' by itself)
+  const atOfficeIds = new Map();
+  for (const k of kids) for (const it of k.items) if ((it.status === 'here' || it.status === 'partly') && it.boxesLeft > 0) for (const r of it.receipts) if (!it.allOutIds?.has(r.id)) atOfficeIds.set(r.id, { k, it });
+  const unprinted = record.receipts.filter((r) => r.kind === 'receive' && !r.undoneAt && !r.printedAt && atOfficeIds.has(r.id))
+    .map((r) => { const { k, it } = atOfficeIds.get(r.id); return { tap: r.id, jobId: k.jobId, short: k.short, name: it.name, boxes: Math.max(1, r.boxes || 1), at: r.at }; });
   // Every open makeover's kid, for "whose is it?": a kid whose budget has only allowances yet is who an allowance buy is for
   const everyKid = kids.map(({ jobId, name, short, photo, shelf, shelves: s, allowances }) => ({ jobId, name, short, photo, shelf, shelves: s, allowances }))
     .sort((a, b) => String(a.short).localeCompare(String(b.short)));
-  const view = { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), everyKid, open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, all.filter((r) => SHIP_KINDS.has(r.read.kind) && !keyOf.maybe?.(r)), unplaced, keyOf) };
+  const view = { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), everyKid, unprinted, open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, all.filter((r) => SHIP_KINDS.has(r.read.kind) && !keyOf.maybe?.(r)), unplaced, keyOf) };
   // Who ordered, as the page says it ("Clareece")
   const nameOf = (email) => firstOf.get(String(email || '').toLowerCase()) || String(email || '').split('@')[0] || null;
   return { view, reads: all, keyOf, nameOf };

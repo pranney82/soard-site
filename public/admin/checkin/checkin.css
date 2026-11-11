@@ -602,3 +602,15 @@ body[data-mode="out"] .sheet-head .tag-here { background: #111111; color: #FFFFF
 .likely-row .face { grid-row: 1 / span 2; }
 .likely-row .row-name, .likely-row .row-sub { grid-column: 2; }
 .kidpick .chip.working { opacity: 0.6; }
+
+/* Labels that never printed: how many, on the printer button */
+.printer-pill .waiting-n { font-variant-numeric: tabular-nums; font-weight: 750; }
+.waiting-labels { margin-bottom: 10px; }
+/* What a thing cost, when no store email says */
+.price-ask { display: grid; gap: 10px; margin: 16px 0 14px; }
+.sc-shelf { display: inline-flex; align-items: center; gap: 6px; }
+.sc-shelf svg { color: var(--faint); flex: none; }
+/* A shipment's shelf for one kid, with its things under it: the same as a button that moves it */
+.shelf-callout.with-items { flex-wrap: wrap; }
+#callouts .shelf-callout + .shelf-callout { margin-top: 10px; }
+.price-ask .field input { width: 100%; }

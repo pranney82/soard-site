@@ -53,6 +53,10 @@ const SCHEMA = [
     written_cost REAL, written_price REAL, at TEXT, PRIMARY KEY (job_id, item_id))`,
   // Each of a kid's allowance lines, once seen: it stays theirs when no other open makeover has the same words any more
   'CREATE TABLE IF NOT EXISTS kid_allow_lines (job_id TEXT NOT NULL, item_id TEXT NOT NULL, at TEXT, PRIMARY KEY (job_id, item_id))',
+  // What a thing bought on top cost, by a person, when the store's emails don't say (Peter, Nov 11 2026: the Container
+  // Store's drawers went on the budget with no price). The email's own price stands over it
+  `CREATE TABLE IF NOT EXISTS kid_prices (
+    key TEXT PRIMARY KEY, order_key TEXT NOT NULL, item_name TEXT NOT NULL, cents INTEGER NOT NULL, by_email TEXT, at TEXT NOT NULL)`,
 ];
 // Added Nov 10 2026 with checking out: an "out" names the check-in whose label was scanned. Nov 11: printed_at, when
 // the printer took a check-in's labels (a retry from the phone prints only what never reached it)
@@ -108,23 +112,37 @@ export async function writeState(DB, key, data) {
 /** Everything the page and the JobTread writer need from the record, in one read */
 export async function readRecord(DB) {
   await ensureRecord(DB);
-  const [receipts, decisions, also, shelves, sorts, allowLines] = await Promise.all([
+  const [receipts, decisions, also, shelves, sorts, allowLines, prices] = await Promise.all([
     all(DB, 'SELECT * FROM kid_receipts ORDER BY at'),
     all(DB, 'SELECT * FROM kid_decisions'),
     all(DB, 'SELECT * FROM kid_also ORDER BY at'),
     all(DB, 'SELECT * FROM kid_shelves'),
     all(DB, 'SELECT * FROM kid_allow_class'),
     all(DB, 'SELECT job_id, item_id FROM kid_allow_lines'),
+    all(DB, 'SELECT key, cents, by_email, at FROM kid_prices'),
   ]);
   return {
-    receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null, box: r.box || null })),
+    receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null, box: r.box || null, printedAt: r.printed_at || null })),
     decisions: new Map(decisions.map((d) => [d.key, { ...parse(d.decision, {}), orderKey: d.order_key, by: d.by_email, at: d.at }])),
     also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, qty: a.qty || null, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, allowItemId: a.allow_item_id || null, offByHand: a.off_by_hand || null, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
     shelves: new Map(shelves.map((s) => [s.shelf, s.job_id])),
     // Sorted onto an allowance (itemId) or not (null); none yet: not sorted
     sorts: new Map(sorts.map((x) => [x.key, { itemId: x.item_id || null, how: x.how, tries: x.tries || 0 }])),
     allowLines: new Set(allowLines.map((x) => `${x.job_id}|${x.item_id}`)),
+    // A person's price for a thing in an order (by decisionKey), per one
+    prices: new Map(prices.map((x) => [x.key, { cents: x.cents, by: x.by_email, at: x.at }])),
   };
+}
+
+/** What one of a thing cost, said by a person (the store's emails didn't say): { orderKey, itemName, cents } */
+export async function setPrice(DB, { orderKey, itemName, cents } = {}, { by = null, now = new Date().toISOString() } = {}) {
+  await ensureRecord(DB);
+  if (!orderKey || !itemName) throw bad('Which thing? Reload the page.');
+  const c = Math.round(Number(cents));
+  if (!Number.isFinite(c) || c <= 0 || c > 10_000_000) throw bad('Type what one of it cost.');
+  await DB.prepare('INSERT OR REPLACE INTO kid_prices (key, order_key, item_name, cents, by_email, at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(decisionKey(orderKey, itemName), String(orderKey), String(itemName).slice(0, 300), c, by, now).run();
+  return c;
 }
 
 const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
