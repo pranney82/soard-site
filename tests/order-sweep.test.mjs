@@ -328,3 +328,21 @@ test('Nov 11: Walmart’s “Arrived: Your …” is a delivery, and one let go 
   const after = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
   assert.equal(after.triageV, 2);
 });
+
+test('Nov 11 review: one email let go by and since deleted from Gmail is let go for good, and the look again goes on to the rest', async () => {
+  const gone = mail({ box: PAT, at: T0 - 2 * DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Oak Step Stool...', text: 'Your package arrived.' });
+  const cart = mail({ box: PAT, at: T0 - DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Bathroom Storage Cart...', text: 'Your package arrived. Order# 2000155-53264812' });
+  await run(T0);
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  for (const m of [gone, cart]) await env.DB.prepare("UPDATE order_mail SET state = 'skipped', kind = NULL, store = NULL, read = NULL, detail = NULL WHERE id = ?").bind(m.id).run();
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st, triageV: 1 })).run();
+  // Deleted from Gmail since
+  store.splice(store.indexOf(gone), 1);
+  aiAnswers['Arrived: Your Bathroom Storage Cart...'] = { kind: 'delivered', orderNumber: '2000155-53264812', items: [{ name: 'Bathroom Storage Cart', quantity: 1, price: '' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
+  await run(T0 + 4 * MIN);
+  await run(T0 + 8 * MIN);
+  const byId = new Map((await rows()).map((r) => [r.id, r]));
+  assert.deepEqual([byId.get(gone.id).state, byId.get(gone.id).detail], ['skipped', 'looked at again: gone from Gmail']);
+  assert.deepEqual([byId.get(cart.id).state, byId.get(cart.id).kind], ['read', 'delivered']);
+  assert.equal(JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data).triageV, 2);
+});

@@ -148,11 +148,19 @@ export function linesOf(view) {
  *   values  what the site's record says now; last: what the site last wrote; now: what JobTread says; hand: kept edits
  */
 export function withHand(values, last, now, hand = {}) {
-  const h = { ...hand };
+  const h = { ...hand, ...(hand.status ? { status: { ...hand.status } } : {}) };
+  // A word from before the four, as JobTread says it now (Received is At the Office; the Partly ones have none)
+  const renamed = (st) => (st && OLD_STATUSES[st] ? OLD_STATUSES[st] : st);
   // JobTread's status isn't what the site last wrote (or there was one before the site's first write): a person set
   // it. It stands while the site's own status stays where it was then, and goes when the line has news
-  if (now?.status != null && now.status !== values.status && now.status !== (last ? last.status : undefined)) {
+  if (now?.status != null && now.status !== values.status && now.status !== renamed(last ? last.status : undefined) && now.status !== (last ? last.status : undefined)) {
     h.status = { value: now.status, basis: last ? last.status : values.status };
+  }
+  // A person's status from before the four: its word as it is now, and the line as the site says it now is where it
+  // stood (the change of words is no news on the line)
+  if (h.status) {
+    h.status.value = renamed(h.status.value);
+    if (!STATUSES.includes(h.status.basis)) h.status.basis = values.status;
   }
   if (h.status && (h.status.basis !== values.status || !STATUSES.includes(h.status.value))) delete h.status;
   // Lines in Order details the site didn't write: a person's note, every line of it, kept at the bottom
@@ -227,7 +235,8 @@ async function settleOptions(env, field, { fetchImpl = fetch, letGo = false } = 
 /** Once every line says one of the four (none, nor a hand edit, says an old one): the old options go → true if they did */
 export async function letGoOldStatuses(env, { fetchImpl = fetch } = {}) {
   await ensure(env.DB);
-  const rows = (await env.DB.prepare('SELECT wrote, hand FROM kid_jt_lines').all()).results || [];
+  // Open makeovers' lines only: a closed one's last write (or a line gone from JobTread) never holds the old words up
+  const rows = (await env.DB.prepare('SELECT wrote, hand FROM kid_jt_lines WHERE job_id IN (SELECT DISTINCT job_id FROM kid_parts) AND error IS NULL').all()).results || [];
   const old = (v) => v && !STATUSES.includes(v);
   if (rows.some((r) => old(parse(r.wrote, {})?.status) || old(parse(r.hand, {})?.status?.value))) return false;
   const data = await pave(env.JOBTREAD_GRANT_KEY, {
@@ -786,8 +795,9 @@ export async function maybeWriteKidItems(env, { fetchImpl = fetch, now = Date.no
       await freeShelves(env, await checkinView(env, { photos: false, strict: true }), { fetchImpl }).catch((err) => r.errors.push(`shelves: ${err.message}`));
     }
     // Every line written with the four statuses (none left behind, no error): the old options go from the field
-    if (mode === 'on' && !st.oldStatusesGone && !(r.left > 0) && !r.errors.length) {
-      st.oldStatusesGone = await letGoOldStatuses(env, { fetchImpl }).then((gone) => gone || null).catch((err) => { r.errors.push(`statuses: ${err.message}`); return null; });
+    // (JobTread refusing: tried again a day later, not every run)
+    if (mode === 'on' && !st.oldStatusesGone && !(r.left > 0) && !r.errors.length && now - (st.letGoFailedAt || 0) > 86400e3) {
+      st.oldStatusesGone = await letGoOldStatuses(env, { fetchImpl }).then((gone) => gone || null).catch((err) => { st.letGoFailedAt = now; r.errors.push(`statuses: ${err.message}`); return null; });
     }
     Object.assign(st, { mode, behind: r.left > 0, last: { ...r, errors: r.errors.slice(0, 5) }, error: r.errors.length ? r.errors.slice(0, 3).join(' · ').slice(0, 500) : null, runningUntil: 0 });
     await writeState(env.DB, 'jt', st);

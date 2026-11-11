@@ -219,3 +219,22 @@ test('several photos of one box: what each says, together (lists joined once, th
   const body = await (await post({ image: JPEG, also: { ...blank, store: 'Amazon', trackingNumbers: ['TBA123456789000'] } })).json();
   assert.deepEqual([body.found?.short, body.label.store, body.label.trackingNumbers, body.label.orderNumbers], ['Ava E.', 'Amazon', ['TBA123456789000'], ['Order # 111-1234567-7654321']]);
 });
+
+test('Nov 11 review: one master tracking number on both boxes of a shipment: box 2’s thing is offered (box 1’s is noted as in), and once all is in it’s “already checked in”', async () => {
+  const { checkinView, orderReads } = await import('../functions/api/_kid-checkin.js');
+  const { receive } = await import('../functions/api/_kid-record.js');
+  await line('j-ava', 'Ava Example (2026)', 'a-desk', 'Desk', 'Oak Writing Desk, Oak Desk Chair', [part('Oak Writing Desk'), part('Oak Desk Chair')]);
+  await order('m7', 'Furnish', { kind: 'shipped', orderNumber: 'F-77', jobPo: 'AVA', items: [{ name: 'Oak Writing Desk' }, { name: 'Oak Desk Chair' }], tracking: [{ carrier: 'FedEx', number: '612345678901' }] });
+  let view = await checkinView(env);
+  const reads = await orderReads(env.DB);
+  const label = { ...blank, trackingNumbers: ['612345678901'] };
+  const desk = view.kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.name === 'Oak Writing Desk');
+  await receive(env.DB, { tap: 'tap-desk-0001', jobId: 'j-ava', itemId: desk.itemId, partKey: desk.partKey, name: desk.name, line: desk.line, units: 1, boxes: 1, track: '612345678901' });
+  view = await checkinView(env);
+  const box2 = findBox(view, reads, label);
+  assert.deepEqual([box2.short, box2.items.length, box2.alsoIn?.name], ['Ava E.', 1, 'Oak Writing Desk']);
+  const chair = view.kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.name === 'Oak Desk Chair');
+  await receive(env.DB, { tap: 'tap-chair-0001', jobId: 'j-ava', itemId: chair.itemId, partKey: chair.partKey, name: chair.name, line: chair.line, units: 1, boxes: 1, track: '612345678901' });
+  view = await checkinView(env);
+  assert.ok(findBox(view, reads, label).already);
+});

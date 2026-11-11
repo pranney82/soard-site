@@ -45,13 +45,26 @@ export function nameScore(a, b) {
   const small = Math.min(x.size, y.size);
   return Math.max(shared / (x.size + y.size - shared), small >= 2 ? shared / small * 0.95 : 0);
 }
-/** Which of an order's things some emails name (each name to its one likeliest thing) → Set of the things' names */
+// Every word of a name, sizes, colors and numbers too ("Large", "White", "3G"): what tells two alike things apart
+const allWords = (s) => new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+const wordsAlike = (a, b) => { const x = allWords(a), y = allWords(b); const shared = [...x].filter((w) => y.has(w)).length; return x.size + y.size ? shared / (x.size + y.size - shared) : 0; };
+/**
+ * Which of an order's things some emails name → Set of the things' names. Each name goes to its one likeliest thing: the
+ * same words exactly; else the most alike (by their words, then by every word: "Large Woven Basket" is the Large one).
+ * Two things alike to the end ("JASPER 1G" and "JASPER 3G" read the same way): neither, so a person is asked
+ */
 export function namedIn(items, names) {
   const out = new Set();
+  const same = (a, b) => String(a || '').toLowerCase().replace(/\s+/g, ' ').trim() === String(b || '').toLowerCase().replace(/\s+/g, ' ').trim();
   for (const n of names || []) {
-    let best = null, top = 0.6;
-    for (const it of items) { const sc = nameScore(n, it.name); if (sc >= top) { best = it; top = sc; } }
-    if (best) out.add(best.name);
+    const exact = items.filter((it) => same(n, it.name));
+    if (exact.length === 1) { out.add(exact[0].name); continue; }
+    const scored = items.map((it) => ({ it, a: nameScore(n, it.name), b: wordsAlike(n, it.name) })).filter((x) => x.a >= 0.6)
+      .sort((x, y) => y.a - x.a || y.b - x.b);
+    if (!scored.length) continue;
+    const [top, next] = scored;
+    if (next && Math.abs(next.a - top.a) < 1e-9 && Math.abs(next.b - top.b) < 1e-9) continue;
+    out.add(top.it.name);
   }
   return out;
 }

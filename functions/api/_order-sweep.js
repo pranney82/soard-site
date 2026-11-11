@@ -156,15 +156,36 @@ export async function retriage(env, ctx, st, budget) {
   if (cands.length && !take.length) return;
   const byBox = new Map();
   for (const r of take) byBox.set(r.mailbox, [...(byBox.get(r.mailbox) || []), r]);
+  const meta = HEADERS.map((x) => `&metadataHeaders=${x}`).join('');
+  // One that can't be looked at again: gone from Gmail (deleted), or its inbox can't be opened any more (a removed
+  // account), is let go with that said, and the rest go on. Anything else (Google failing for a moment) stops this turn,
+  // to try again next run; the same one failing five runs running is let go too
+  const letGo = (r, why) => env.DB.prepare("UPDATE order_mail SET detail = ?, updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'").bind(why, iso(ctx.now), r.mailbox, r.id).run();
   for (const [mailbox, list] of byBox) {
-    const token = await ctx.open(mailbox);
-    budget.meta -= list.length;
-    for (const msg of await metadata(token, list.map((r) => r.id), ctx.fetchImpl)) {
+    let token;
+    try { token = await ctx.open(mailbox); } catch (err) {
+      if (!/Gmail answered 404|not found|unauthorized|deleted|suspended|invalid_grant/i.test(err.message) && (st.retriageFails = (st.retriageFails || 0) + 1) < 5) throw err;
+      for (const r of list) await letGo(r, 'looked at again: its inbox can’t be opened');
+      st.retriageFails = 0;
+      continue;
+    }
+    for (const r of list) {
+      budget.meta -= 1;
+      let msg;
+      try { msg = await gmail(token, `/messages/${r.id}?format=metadata${meta}`, ctx.fetchImpl); } catch (err) {
+        if (err.status === 404) { await letGo(r, 'looked at again: gone from Gmail'); continue; }
+        if ((st.retriageFails = (st.retriageFails || 0) + 1) < 5) throw err;
+        await letGo(r, `looked at again: ${String(err.message).slice(0, 80)}`);
+        st.retriageFails = 0;
+        continue;
+      }
+      st.retriageFails = 0;
       const t = orderTriage(msg, ctx);
+      // Still not a store's order mail: left as it was (better rules some day may take it)
       if (!t) continue;
       const h = msg.payload?.headers;
       await env.DB.prepare("UPDATE order_mail SET state = 'queued', kind = ?, store = ?, msgid = ?, source = 'again', updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'")
-        .bind(t.kind, t.store, header(h, 'Message-ID') || null, iso(ctx.now), mailbox, msg.id).run();
+        .bind(t.kind, t.store, header(h, 'Message-ID') || null, iso(ctx.now), mailbox, r.id).run();
     }
   }
   // Where the next run starts: after the last one looked at, or (none of these left) after this page; none at all: done

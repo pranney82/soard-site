@@ -60,9 +60,13 @@ const writeQueue = (q) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify
 const QUEUEABLE = new Set(['receive', 'other', 'house', 'undo', 'shelf', 'decide', 'out', 'price']);
 const CANT_KEEP = 'No connection, and this phone can’t keep it for later (its storage is off). Try again with signal';
 // What one waiting request holds: a load's boxes, a shipment's check-ins, a take-back's boxes, or one thing
-// (a decide's items are answers, not check-ins: it's one thing, sent and settled whole)
-const tapsIn = (q) => Array.isArray(q.body?.items) && q.body.items.length > 0 && q.body.items.every((x) => x.tap);
-const partsOf = (q) => (tapsIn(q) ? q.body.items.map((x) => x.tap) : Array.isArray(q.body?.taps) ? q.body.taps : [q.body?.tap || q.id]);
+// Batches, by what they are: a shipment's check-ins and a load's boxes (items, each with its tap) and a take-back's
+// boxes (taps), each answered on its own (results). Anything else is one thing, sent and settled whole: an answer, a
+// price, a shelf move for several check-ins
+const BATCHES = { receive: 'items', out: 'items', undo: 'taps' };
+const tapsIn = (q) => BATCHES[q.action] === 'items' && Array.isArray(q.body?.items) && q.body.items.length > 0 && q.body.items.every((x) => x.tap);
+const takesBack = (q) => BATCHES[q.action] === 'taps' && Array.isArray(q.body?.taps);
+const partsOf = (q) => (tapsIn(q) ? q.body.items.map((x) => x.tap) : takesBack(q) ? q.body.taps : [q.body?.tap || q.id]);
 // How what landed is said: boxes out, check-ins, anything else a change
 const nounOf = (action) => (action === 'out' ? 'box' : ['receive', 'other', 'house'].includes(action) ? 'check-in' : 'change');
 const NOUNS = { box: 'boxes', 'check-in': 'check-ins', change: 'changes' };
@@ -190,7 +194,7 @@ async function flushOnce({ mine = new Set() } = {}) {
         break;
       }
       state.signedOut = false;
-      const many = tapsIn(q) || Array.isArray(q.body?.taps);
+      const many = tapsIn(q) || takesBack(q);
       const byTap = new Map((out.results || []).map((x) => [x.tap, x]));
       const retry = [];
       const why = new Map();
@@ -206,7 +210,7 @@ async function flushOnce({ mine = new Set() } = {}) {
       count(q, parts.filter((t) => landed.has(t)));
       if (retry.length) {
         // It keeps its place: what follows may need it first (a box's check-in before the box)
-        const body = tapsIn(q) ? { ...q.body, items: q.body.items.filter((x) => retry.includes(x.tap)) } : { ...q.body, taps: retry };
+        const body = tapsIn(q) ? { ...q.body, items: q.body.items.filter((x) => retry.includes(x.tap)) } : takesBack(q) ? { ...q.body, taps: retry } : q.body;
         writeQueue(readQueue().map((e) => (e.id === q.id ? { ...e, body, tried: true } : e)));
         break;
       }
@@ -653,6 +657,28 @@ function bindPrices(kid, list) {
     } catch (err) { toast(`Not saved: ${clean(err.message)}`); return; }
     $('priceask').innerHTML = `<div class="done-line">${ICON.tick}<span>${esc(queued ? 'Saved on this phone. It goes when the connection is back' : 'Saved. On the budget in a minute')}</span></div>`;
   };
+}
+
+/**
+ * One check-in, by its label (SOARD's own, scanned or opened by its QR; or a box found already checked in): when it
+ * came and by whom, where it is (a tap moves it), Print this label again. The same box is never checked in a second
+ * time; what of the thing hasn't come yet is checked in from its own sheet
+ */
+function labelSheet(kid, it, tap, box = null, { keep = false } = {}) {
+  const r = (it.receipts || []).find((x) => x.id === tap);
+  if (!r) { itemSheet(kid, it, { keep }); return; }
+  const of = Math.max(1, r.boxes || 1);
+  const out = (it.receipts || []).some((x) => x.kind === 'out' && !x.undone && x.ref === tap && (!box || !x.box || Number(x.box) === Number(box)));
+  const more = !isHere(it) && it.status !== 'not';
+  openSheet(`${head(kidTitle(kid), { kid: true, sub: esc([box && of > 1 ? `Box ${box} of ${of}` : of > 1 ? `${of} boxes` : null, `Checked in ${dayOf(r.at)}${byWho(r)}`].filter(Boolean).join(' · ')) })}
+    <p class="item-name">${esc(it.name)}</p>
+    ${r.undone ? '<p class="why-line">This check-in was undone.</p>' : out ? '<div class="shelf-callout static"><span class="who">Loaded</span><b>At the house</b></div>'
+      : `<button class="shelf-callout" type="button" data-move="${esc(tap)}" aria-label="Move it to another shelf"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><span class="sc-shelf"><b>${esc(shelfName(r.shelf) || 'Shelf')}</b>${ICON.chev}</span></button>`}
+    <div class="sheet-foot">${r.undone ? '' : `<button class="btn btn-primary btn-big" type="button" id="labelagain" data-focus>Print ${box || of === 1 ? 'this label' : 'its labels'} again</button>`}
+      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button>${more ? '<button class="btn btn-text" type="button" id="checkmore">Check in the rest of it</button>' : ''}</div></div>`, { keep });
+  bindMoves(kid);
+  if ($('labelagain')) $('labelagain').onclick = async () => { try { toast(printSaid((await send('reprint', { tap, ...(box ? { box } : {}) })).print).text); } catch (err) { toast(err.message); } };
+  if ($('checkmore')) $('checkmore').onclick = () => itemSheet(kid, it, { keep: true });
 }
 
 /** Something already here: when it came, where it is, Print again, Undo, another shelf */
@@ -1199,14 +1225,19 @@ async function ownLabel(dataUrl) {
   const parse = (raw) => { const m = /\/admin\/checkin\/\?r=([^&#\s]+)(?:&b=(\d+))?/.exec(String(raw || '')); return m ? { r: decodeURIComponent(m[1]), b: Number(m[2]) || null } : null; };
   try {
     if ('BarcodeDetector' in window) {
-      const codes = await new window.BarcodeDetector({ formats: ['qr_code'] }).detect(img);
-      for (const c of codes) { const x = parse(c.rawValue); if (x) return x; }
+      // The code nearest the middle of the photo (a neighbour's label at its edge isn't the box)
+      const cx = img.naturalWidth / 2, cy = img.naturalHeight / 2;
+      const codes = (await new window.BarcodeDetector({ formats: ['qr_code'] }).detect(img))
+        .map((c) => { const b = c.boundingBox || {}; return { c, d: ((b.x || 0) + (b.width || 0) / 2 - cx) ** 2 + ((b.y || 0) + (b.height || 0) / 2 - cy) ** 2 }; })
+        .sort((a, b) => a.d - b.d);
+      for (const { c } of codes) { const x = parse(c.rawValue); if (x) return x; }
       return null;
     }
     const jsQR = (await import('./jsqr.js')).default;
     const c = document.createElement('canvas');
     const ctx = c.getContext('2d', { willReadFrequently: true });
-    for (const k of [1, 0.6]) {
+    // The middle of the photo first, then all of it
+    for (const k of [0.6, 1]) {
       const w0 = img.naturalWidth * k, h0 = img.naturalHeight * k;
       const scale = Math.min(1, 1000 / Math.max(w0, h0));
       c.width = Math.round(w0 * scale); c.height = Math.round(h0 * scale);
@@ -1221,7 +1252,7 @@ async function ownLabel(dataUrl) {
 function openOwn({ r, b }) {
   for (const k of state.kids) {
     const it = k.items.find((i) => (i.receipts || []).some((x) => x.id === r));
-    if (it) { itemSheet(k, it, { ref: r, box: b, keep: Boolean(sheetEl()) }); return; }
+    if (it) { labelSheet(k, it, r, b, { keep: Boolean(sheetEl()) }); return; }
   }
   openSheet(`${head('One of our labels', { sub: 'Its check-in isn’t on the list any more' })}
     <p class="why-line">Its makeover may be finished, or the check-in was undone.</p>
@@ -1229,6 +1260,8 @@ function openOwn({ r, b }) {
 }
 
 function showFound({ found, label, likely = [] }, preview) {
+  // A box of its order is in already (one number on every box of a shipment): said, while what's waiting is offered
+  if (found?.alsoIn) found.how = `${found.how} · ${found.alsoIn.name} is in already`;
   // This very box was checked in already (its label scanned then): where it is, never offered again
   if (found?.already) {
     const a = found.already;
@@ -1239,7 +1272,7 @@ function showFound({ found, label, likely = [] }, preview) {
       <div class="shelf-callout static"><span class="who">${face(k, 36)}${esc(a.short)}${a.out ? '' : '’s shelf'}</span><b>${esc(a.out ? 'At the house' : shelfName(a.shelf) || 'Shelf')}</b></div>
       <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan the next box</button>
       <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button>${it && !a.out ? '<button class="btn btn-text" type="button" id="seeit">Print again or move it</button>' : ''}</div></div>`, { keep: true });
-    if ($('seeit')) $('seeit').onclick = () => itemSheet(k, it, { keep: true });
+    if ($('seeit')) $('seeit').onclick = () => (a.tap ? labelSheet(k, it, a.tap, null, { keep: true }) : itemSheet(k, it, { keep: true }));
     return;
   }
   // Its email is about one of several orders (the same thing on each, and no order number): which one, by a tap
@@ -1463,7 +1496,8 @@ function openFromLink() {
   if (shelf) { shelfSheet(shelf); return; }
   for (const k of state.kids) {
     const it = k.items.find((i) => (i.receipts || []).some((x) => x.id === r));
-    if (it) { itemSheet(k, it, { ref: r, box }); return; }
+    // Loading out: that box onto the truck. Checking in: that check-in, never the same box checked in again
+    if (it) { if (state.mode === 'out') itemSheet(k, it, { ref: r, box }); else labelSheet(k, it, r, box); return; }
   }
   toast('That label’s item isn’t on the list any more (its makeover may be finished).');
 }

@@ -120,6 +120,7 @@ export async function onRequestPost(context) {
     const out = {};
     let jobId = null;
     let print = null;
+    let printBox = null;
     // Labels printed again because what's on them changed (a check-in moved to another shelf)
     let reprint = [];
     if (q.get('receive') && Array.isArray(body.items)) {
@@ -197,10 +198,16 @@ export async function onRequestPost(context) {
       // One check-in, or a shipment's for one kid: moved to that shelf, and their labels printed again with it (the
       // ones on the boxes say the old shelf)
       const taps = Array.isArray(body.taps) ? body.taps.map(String).slice(0, 60) : [String(body.tap || '')];
-      for (const t of taps) jobId = (await moveShelf(env.DB, t, String(body.shelf || ''))).jobId;
-      out.shelf = String(body.shelf);
-      // Its labels are to print again (now, or when the printer's ready, like any that never printed)
+      // All of them saved first, or none moves (a shipment's boxes go together)
       for (const t of taps) {
+        if (!(await env.DB.prepare('SELECT 1 FROM kid_receipts WHERE id = ?').bind(t).first())) return Response.json({ success: false, error: 'That check-in isn’t saved yet. Try again in a moment.' }, { status: 404, headers });
+      }
+      const moved = [];
+      for (const t of taps) { const m = await moveShelf(env.DB, t, String(body.shelf || '')); jobId = m.jobId; if (m.moved) moved.push(t); }
+      out.shelf = String(body.shelf);
+      // The labels of what moved print again (now, or when the printer's ready, like any that never printed). A move
+      // sent again (its answer was lost) moves nothing, and prints nothing twice
+      for (const t of moved) {
         await env.DB.prepare("UPDATE kid_receipts SET printed_at = NULL WHERE id = ? AND kind = 'receive' AND undone_at IS NULL").bind(t).run();
         const r = await env.DB.prepare("SELECT * FROM kid_receipts WHERE id = ? AND kind = 'receive' AND undone_at IS NULL").bind(t).first();
         if (r) reprint.push(r);
@@ -208,7 +215,9 @@ export async function onRequestPost(context) {
     } else if (q.get('reprint')) {
       const r = await env.DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(String(body.tap || '')).first();
       if (!r) return Response.json({ success: false, error: 'That check-in isn’t saved yet.' }, { status: 404, headers });
-      print = r;
+      // One box's label (its own label scanned), or all of them
+      const box = Math.round(Number(body.box) || 0);
+      if (box >= 1 && box <= Math.max(1, r.boxes || 1)) printBox = { r, box }; else print = r;
     } else if (q.get('decide')) {
       const items = Array.isArray(body.items) ? body.items.slice(0, 40) : [];
       if (!items.length) return Response.json({ success: false, error: 'Pick whose it is.' }, { status: 400, headers });
@@ -283,6 +292,7 @@ export async function onRequestPost(context) {
       out.placed = { kid: String(whose.decision.kid), things: kid ? kid.items.filter((i) => i.order?.key === String(body.orderKey)).length : 0, look: view.needsLook.some((x) => x.key === String(body.orderKey)) };
     }
     if (print) out.print = await printFor(context, [print], view, { again: Boolean(q.get('reprint')) });
+    if (printBox) out.print = await printLabels(env, labelsFor(view, printBox.r).slice(printBox.box - 1, printBox.box));
     if (reprint.length) out.print = await printFor(context, reprint, view);
     // JobTread now, for the kid it changed: the answer says whether it's there
     if (jobId) out.jt = await writeKidNow(env, jobId);

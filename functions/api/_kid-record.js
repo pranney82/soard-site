@@ -291,7 +291,7 @@ export async function moveShelf(DB, tap, shelf, { now = new Date().toISOString()
   }
   await DB.prepare('UPDATE kid_receipts SET shelf = ? WHERE id = ?').bind(shelf, tap).run();
   await releaseEmpty(DB, r.job_id);
-  return { jobId: r.job_id, itemId: r.item_id, shelf };
+  return { jobId: r.job_id, itemId: r.item_id, shelf, moved: r.shelf !== shelf };
 }
 
 /** A kid's shelves past their first one that have nothing on them now are free again (a mis-tap doesn't keep a shelf) */

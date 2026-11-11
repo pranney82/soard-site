@@ -110,3 +110,47 @@ test('the Order status field brought to the four: Received renamed At the Office
   assert.equal(await letGoOldStatuses(jtEnv, { fetchImpl }), true);
   assert.deepEqual(field.options, ['Not ordered', 'Ordered', 'At the Office', 'At the house']);
 });
+
+test('Nov 11 review: a hand-set status from before the four stands (its word as JobTread says it now) until the line has news', async () => {
+  const { withHand, lineValues } = await import('../functions/api/_kid-jt.js');
+  const o = { store: 'Shop', orderNumber: 'A1', at: '2026-11-02T15:00:00Z', cents: 12900 };
+  const head = { name: 'Raincan Shower Head', qty: 1, got: 0, status: 'ordered', order: o, receipts: [] };
+  const valve = { name: 'Shower Valve', qty: 1, got: 0, status: 'not', order: null, receipts: [] };
+  const computed = lineValues([head, valve]);
+  const a = withHand(computed, { status: 'Ordered', details: computed.details, shelf: null }, { status: 'Ordered', details: computed.details, shelf: null }, { status: { value: 'Ordered', basis: 'Partly ordered' } });
+  assert.deepEqual([a.values.status, a.hand.status], ['Ordered', { value: 'Ordered', basis: 'Not ordered' }]);
+  // Their Received is At the Office now (JobTread renamed it)
+  const here = { ...head, got: 1, status: 'here', shelf: '3', receipts: [{ kind: 'receive', units: 1, at: '2026-11-09T15:00:00Z' }] };
+  const c2 = lineValues([here, { ...valve, status: 'ordered', order: o }]);
+  const b = withHand(c2, { status: 'Received', details: c2.details, shelf: 'Shelf 3' }, { status: 'At the Office', details: c2.details, shelf: 'Shelf 3' }, { status: { value: 'Received', basis: 'Partly received' } });
+  assert.equal(b.values.status, 'At the Office');
+  // The site's own Received, renamed by JobTread, isn't taken for a person's
+  const c = withHand(c2, { status: 'Received', details: c2.details, shelf: 'Shelf 3' }, { status: 'At the Office', details: c2.details, shelf: 'Shelf 3' }, {});
+  assert.deepEqual([c.values.status, c.hand.status], ['Ordered', undefined]);
+  // News on the line: the site's status wins
+  const d = withHand(lineValues([here, { ...valve, ...here, name: 'Shower Valve' }]), b.values, b.values, b.hand);
+  assert.equal(d.values.status, 'At the Office');
+});
+
+test('Nov 11 review: things alike but for a size: the exact name wins, and a name that fits both names neither', async () => {
+  const { namedIn } = await import('../functions/api/_kid-match.js');
+  const items = [{ name: 'Large Woven Storage Basket' }, { name: 'Small Woven Storage Basket' }];
+  assert.deepEqual([...namedIn(items, ['Large Woven Storage Basket'])], ['Large Woven Storage Basket']);
+  assert.deepEqual([...namedIn(items, ['Woven Storage Basket - Large'])], ['Large Woven Storage Basket']);
+  assert.deepEqual([...namedIn(items, ['Woven Storage Basket'])], []);
+  assert.deepEqual([...namedIn(items, ['Large Woven Storage Basket', 'Small Woven Storage Basket'])].sort(), ['Large Woven Storage Basket', 'Small Woven Storage Basket']);
+  assert.deepEqual([...namedIn([{ name: 'JASPER 1G Universal Plate' }, { name: 'JASPER 3G Universal Plate' }], ['Universal Plate'])], []);
+});
+
+test('Nov 11 review: a shelf move sent again (its answer was lost) moves nothing and prints nothing twice; one box’s label prints alone', async () => {
+  await mail('o1', 'Shop', daysAgo(3), { kind: 'delivered', orderNumber: 'S-101', jobPo: 'NICO', items: [{ name: 'Felt Engraved Wall Tile' }] });
+  const it = (await view()).kids.find((k) => k.jobId === 'j-nico').items.find((i) => i.order);
+  await receive(env.DB, { tap: 'tap-move-0001', jobId: 'j-nico', itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: 1, boxes: 3 });
+  await post('shelf', { taps: ['tap-move-0001'], shelf: '9' });
+  await env.DB.prepare("UPDATE kid_receipts SET printed_at = 'printed'").run();
+  await post('shelf', { taps: ['tap-move-0001'], shelf: '9' });
+  assert.equal((await env.DB.prepare("SELECT printed_at FROM kid_receipts WHERE id = 'tap-move-0001'").first()).printed_at, 'printed', 'the same move again: nothing to print again');
+  const missing = await post('shelf', { taps: ['tap-move-0001', 'tap-not-saved'], shelf: '4' });
+  assert.equal(missing.success, false);
+  assert.equal((await env.DB.prepare("SELECT shelf FROM kid_receipts WHERE id = 'tap-move-0001'").first()).shelf, '9', 'one not saved: none moves');
+});

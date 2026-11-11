@@ -219,15 +219,20 @@ export function findBox(view, reads, label, { keyOf = orderKeys(reads), nameOf =
     return all.find((x) => x.kid && x.items.length) || all.find((x) => x.look) || all.find((x) => x.unplaced) || all.find((x) => x.kid) || all.find((x) => x.known?.things.length) || all[0];
   };
   const keysOf = (hit) => [...new Set(reads.filter(hit).map(keyOf))];
-  // This very box, checked in already (its label was scanned then): where it is
-  for (const t of label.trackingNumbers || []) {
-    for (const k of view.kids) {
-      for (const it of k.items) {
-        const r = (it.receipts || []).find((x) => x.kind === 'receive' && !x.undone && x.track && sameTracking(x.track, t));
-        if (r) return { already: { kid: k.jobId, short: k.short, item: it.id, name: it.name, shelf: r.shelf || null, at: r.at, who: r.who || null, out: it.status === 'out' }, how: `Tracking …${clean(t).slice(-6)}`, track: clean(t) };
+  // This very box, checked in already (its label was scanned then): where it is. Asked after its order: a box of it
+  // still waiting is offered first (a carrier prints one master number on every box of a shipment)
+  const alreadyIn = () => {
+    for (const t of label.trackingNumbers || []) {
+      for (const k of view.kids) {
+        for (const it of k.items) {
+          const r = (it.receipts || []).find((x) => x.kind === 'receive' && !x.undone && x.track && sameTracking(x.track, t));
+          if (r) return { already: { kid: k.jobId, short: k.short, item: it.id, tap: r.id, name: it.name, shelf: r.shelf || null, at: r.at, who: r.who || null, out: it.status === 'out' }, how: `Tracking …${clean(t).slice(-6)}`, track: clean(t) };
+        }
       }
     }
-  }
+    return null;
+  };
+  const seen = alreadyIn();
   for (const t of label.trackingNumbers || []) {
     const hits = reads.filter((x) => (x.read.tracking || []).some((tr) => sameTracking(tr.number, t)));
     const how = `Tracking …${clean(t).slice(-6)}`;
@@ -235,8 +240,14 @@ export function findBox(view, reads, label, { keyOf = orderKeys(reads), nameOf =
     const which = hits.length && hits.every((x) => keyOf.maybe?.(x)) ? [...new Set(hits.flatMap((x) => keyOf.maybe(x)))] : null;
     if (which) return { which, how, track: clean(t) };
     const keys = [...new Set(hits.filter((x) => !keyOf.maybe?.(x)).map(keyOf))];
-    if (keys.length) return { ...ofOrders(keys, how), track: clean(t) };
+    if (keys.length) {
+      const found = { ...ofOrders(keys, how), track: clean(t) };
+      // Its order has nothing waiting (all checked in): this box is the one checked in, where it is
+      if (seen && (!found.kid || !found.items.length)) return seen;
+      return seen && found.kid ? { ...found, alsoIn: { name: seen.already.name, at: seen.already.at } } : found;
+    }
   }
+  if (seen) return seen;
   for (const o of [...(label.orderNumbers || []), ...(label.references || [])]) {
     const keys = keysOf((x) => !isCarrier(x.store) && (sameOrder(x.read.orderNumber, o) || inOrder(x.read.orderNumber, o)));
     if (keys.length) return ofOrders(keys, `Order ${orderDigits(o) || o}`);
