@@ -81,3 +81,32 @@ test('a shipment’s boxes for one kid moved to another shelf: all of them move,
   assert.equal(p.success, true);
   assert.equal(p.print.setUp, false, 'no printer set up: they keep waiting');
 });
+
+test('the Order status field brought to the four: Received renamed At the Office, At the house added, the Partly ones let go only once no line or hand edit has them', async () => {
+  const { fieldIds, letGoOldStatuses } = await import('../functions/api/_kid-jt.js');
+  const field = { id: 'f-status', name: 'Order status', type: 'option', options: ['Not ordered', 'Partly ordered', 'Ordered', 'Partly received', 'Received'] };
+  const others = ['Order details', 'Shelf', 'Also bought'].map((name, i) => ({ id: `f-${i}`, name, type: 'text', options: [] }));
+  const updates = [];
+  const fetchImpl = async (url, init) => {
+    const q = JSON.parse(init.body).query;
+    if (q.organization) return new Response(JSON.stringify({ organization: { customFields: { nodes: [field, ...others] } } }));
+    if (q.updateCustomField) {
+      updates.push(q.updateCustomField.$.options);
+      field.options = q.updateCustomField.$.options.map((o) => (typeof o === 'string' ? o : o.rename.to));
+      return new Response(JSON.stringify({ updateCustomField: {} }));
+    }
+    return new Response('not faked', { status: 400 });
+  };
+  const jtEnv = { DB: env.DB, JOBTREAD_GRANT_KEY: 'k' };
+  await fieldIds(jtEnv, { fetchImpl });
+  assert.deepEqual(updates[0], ['Not ordered', 'Ordered', { rename: { from: 'Received', to: 'At the Office' } }, 'At the house', 'Partly ordered', 'Partly received']);
+  // A line still says an old one: they stay
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS kid_jt_lines (job_id TEXT NOT NULL, item_id TEXT NOT NULL, kind TEXT, wrote TEXT, hand TEXT, planned TEXT, wrote_at TEXT, error TEXT, PRIMARY KEY (job_id, item_id))');
+  await env.DB.prepare("INSERT INTO kid_jt_lines (job_id, item_id, kind, wrote, hand, wrote_at) VALUES ('j-nico', 'n-bed', 'line', ?, '{}', 'x')").bind(JSON.stringify({ status: 'Partly received' })).run();
+  assert.equal(await letGoOldStatuses(jtEnv, { fetchImpl }), false);
+  assert.equal(updates.length, 1);
+  // Every line written with the four: they go
+  await env.DB.prepare("UPDATE kid_jt_lines SET wrote = ?").bind(JSON.stringify({ status: 'Ordered' })).run();
+  assert.equal(await letGoOldStatuses(jtEnv, { fetchImpl }), true);
+  assert.deepEqual(field.options, ['Not ordered', 'Ordered', 'At the Office', 'At the house']);
+});

@@ -4,7 +4,7 @@
  * Peter, Nov 9 2026: "i really just care about ordering and updating in JT, then
  * receiving and updating in JT". Every open makeover's budget lines that SOARD
  * buys or receives get three cost item fields (hidden from families):
- *   Order status   Not ordered · Partly ordered · Ordered · Partly received · Received
+ *   Order status   Not ordered · Ordered · At the Office · At the house (the line's part furthest behind)
  *   Order details  each part: when, where, order number, price; how many came, when, which shelf
  *   Shelf          where it is at the Office ("Shelf 7", "Floor")
  * and everything bought on top of the selections is added to the kid's budget at
@@ -38,7 +38,12 @@ import { ensureRecord, readState, writeState, readRecord, shelfName, SHELVES } f
 import { costCodes } from './_job-ledger.js';
 import { sortAllowances } from './_kid-allow.js';
 
-export const STATUSES = ['Not ordered', 'Partly ordered', 'Ordered', 'Partly received', 'Received'];
+// Where a line is, as Peter put it (Nov 11 2026: "simplify the JT order status to ordered, office, check out"): its
+// part furthest behind says it, and Order details says each part
+export const STATUSES = ['Not ordered', 'Ordered', 'At the Office', 'At the house'];
+// The options before: Received is At the Office now (a rename, so no line loses its value); the Partly ones go once
+// no line or hand edit has them (every line is written again with the new ones first)
+export const OLD_STATUSES = { Received: 'At the Office', 'Partly received': null, 'Partly ordered': null };
 export const FIELDS = {
   status: { name: 'Order status', type: 'option', options: STATUSES, maxValuesAllowed: 1 },
   details: { name: 'Order details', type: 'text' },
@@ -46,7 +51,7 @@ export const FIELDS = {
   also: { name: 'Also bought', type: 'boolean' },
 };
 export const ALSO_GROUP = 'Also bought';
-export const REHEARSAL_V = 6; // 6: moved next to an allowance by an update too, and a run cut off half-way cleaned up; 5: a line next to an allowance, the allowance down by it, moved to Also bought (Nov 11 2026); 2: the cost code JobTread requires on a new line; 3: and the cost type; 4: an update asks for nothing back (Nov 10 2026)
+export const REHEARSAL_V = 7; // 7: the four statuses (Received renamed At the Office, At the house added); // 6: moved next to an allowance by an update too, and a run cut off half-way cleaned up; 5: a line next to an allowance, the allowance down by it, moved to Also bought (Nov 11 2026); 2: the cost code JobTread requires on a new line; 3: and the cost type; 4: an update asks for nothing back (Nov 10 2026)
 const EVERY_MS = 2 * 60 * 1000;
 const WRITES_A_RUN = 24;
 const RUN_MS = 20 * 1000;
@@ -97,17 +102,15 @@ export function partLine(it) {
   return `${it.qty > 1 ? `${it.name} (${it.qty})` : it.name}: ${bits.join('; ')}`;
 }
 
-/** A line's status from its parts; an allowance (decor) line is never complete, so it's only ever "Partly" */
-export function lineStatus(items, { allowance = false } = {}) {
+/**
+ * Where one part is: 0 not ordered · 1 ordered (or part of it here, the rest coming) · 2 at the Office · 3 at the house
+ * (all of it went out at load-out, or straight there)
+ */
+const stageOf = (i) => (i.status === 'out' || i.status === 'house' ? 3 : i.status === 'here' ? 2 : i.order || i.source === 'donated' || i.also || i.status === 'partly' || i.status === 'ordered' ? 1 : 0);
+/** A line's status: its part furthest behind (a shower system is At the Office when every part of it is) */
+export function lineStatus(items) {
   if (!items.length) return null;
-  const done = items.filter((i) => i.status === 'here' || i.status === 'house' || i.status === 'out').length;
-  const some = items.filter((i) => i.status === 'partly' || i.status === 'here' || i.status === 'house' || i.status === 'out').length;
-  const coming = items.filter((i) => i.order || i.source === 'donated' || i.also || i.status !== 'not').length;
-  if (allowance) return some ? 'Partly received' : coming ? 'Partly ordered' : null;
-  if (done === items.length) return 'Received';
-  if (some) return 'Partly received';
-  if (coming === items.length) return 'Ordered';
-  return coming ? 'Partly ordered' : 'Not ordered';
+  return STATUSES[Math.min(...items.map(stageOf))];
 }
 
 /** What a line's three fields should say → { status, details, shelf } */
@@ -118,7 +121,7 @@ export function lineValues(items, { allowance = false } = {}) {
   const allOut = !atOffice.length && items.some((i) => i.sent);
   let details = items.map(partLine).join('\n');
   if (details.length > DETAILS_MAX) details = `${details.slice(0, DETAILS_MAX - 1)}…`;
-  return { status: lineStatus(items, { allowance }), details, shelf: shelves.length ? shelves.map(shelfName).join(', ') : allOut ? 'At the house' : null };
+  return { status: lineStatus(items), details, shelf: shelves.length ? shelves.map(shelfName).join(', ') : allOut ? 'At the house' : null };
 }
 
 /** Each JobTread line the site writes, from the view → [{ jobId, kid, itemId, also, allowance, items }] */
@@ -130,7 +133,7 @@ export function linesOf(view) {
       if (it.gone) continue;
       const id = it.also ? it.also.costItemId || `pending:${it.also.key}` : it.itemId;
       const l = byLine.get(id) || { jobId: k.jobId, kid: k.short, itemId: id, also: it.also || null, allowance: false, items: [] };
-      // A decor allowance, or a line whose products aren't known one by one: never complete, so only ever "Partly"
+      // A line whose products aren't known one by one (what's bought for it is each its own part)
       if (it.allowance || it.allocated) l.allowance = true;
       l.items.push(it);
       byLine.set(id, l);
@@ -151,7 +154,7 @@ export function withHand(values, last, now, hand = {}) {
   if (now?.status != null && now.status !== values.status && now.status !== (last ? last.status : undefined)) {
     h.status = { value: now.status, basis: last ? last.status : values.status };
   }
-  if (h.status && h.status.basis !== values.status) delete h.status;
+  if (h.status && (h.status.basis !== values.status || !STATUSES.includes(h.status.value))) delete h.status;
   // Lines in Order details the site didn't write: a person's note, every line of it, kept at the bottom
   if (now?.details && now.details !== (last?.details ?? null)) {
     const mine = new Set([...String(last?.details || '').split('\n'), ...String(values.details || '').split('\n')].map((l) => l.trim()));
@@ -186,7 +189,11 @@ export async function fieldIds(env, { fetchImpl = fetch } = {}) {
   const ids = {};
   for (const [k, f] of Object.entries(FIELDS)) {
     const found = have.get(f.name.toLowerCase());
-    if (found) { ids[k] = found.id; continue; }
+    if (found) {
+      ids[k] = found.id;
+      if (k === 'status') await settleOptions(env, found, { fetchImpl });
+      continue;
+    }
     const made = await pave(env.JOBTREAD_GRANT_KEY, {
       createCustomField: {
         $: { organizationId: SOARD_ORG_ID, targetType: 'costItem', type: f.type, name: f.name, minValuesRequired: 0, showOnSpecifications: false, ...(f.options ? { options: f.options } : {}), ...(f.maxValuesAllowed ? { maxValuesAllowed: f.maxValuesAllowed } : {}) },
@@ -198,6 +205,38 @@ export async function fieldIds(env, { fetchImpl = fetch } = {}) {
   }
   _fields = { env, ids };
   return ids;
+}
+
+/**
+ * The Order status field's options, brought to the four: Received renamed At the Office (the lines that say it keep
+ * it), At the house added. The old Partly ones stay until no line or hand edit has them (letGo), then go
+ */
+async function settleOptions(env, field, { fetchImpl = fetch, letGo = false } = {}) {
+  const have = (Array.isArray(field.options) ? field.options : []).map((o) => (typeof o === 'string' ? o : o?.name || o?.value)).filter(Boolean);
+  const renamed = (to) => Object.keys(OLD_STATUSES).find((from) => OLD_STATUSES[from] === to && have.includes(from) && !have.includes(to));
+  const want = STATUSES.map((s) => (renamed(s) ? { rename: { from: renamed(s), to: s } } : s));
+  const old = letGo ? [] : have.filter((o) => !STATUSES.includes(o) && !want.some((w) => w.rename?.from === o));
+  const next = [...want, ...old];
+  const plain = next.map((o) => (typeof o === 'string' ? o : o.rename.to));
+  if (plain.length === have.length && plain.every((o, i) => o === have[i])) return false;
+  await pave(env.JOBTREAD_GRANT_KEY, { updateCustomField: { $: { id: field.id, options: next } } }, fetchImpl);
+  field.options = plain;
+  return true;
+}
+
+/** Once every line says one of the four (none, nor a hand edit, says an old one): the old options go → true if they did */
+export async function letGoOldStatuses(env, { fetchImpl = fetch } = {}) {
+  await ensure(env.DB);
+  const rows = (await env.DB.prepare('SELECT wrote, hand FROM kid_jt_lines').all()).results || [];
+  const old = (v) => v && !STATUSES.includes(v);
+  if (rows.some((r) => old(parse(r.wrote, {})?.status) || old(parse(r.hand, {})?.status?.value))) return false;
+  const data = await pave(env.JOBTREAD_GRANT_KEY, {
+    organization: { $: { id: SOARD_ORG_ID }, customFields: { $: { size: 100, where: ['targetType', '=', 'costItem'] }, nodes: { id: {}, name: {}, type: {}, options: {} } } },
+  }, fetchImpl);
+  const field = (data?.organization?.customFields?.nodes || []).find((f) => String(f.name).trim().toLowerCase() === FIELDS.status.name.toLowerCase());
+  if (!field) return false;
+  await settleOptions(env, field, { fetchImpl, letGo: true });
+  return true;
 }
 
 /** A cost item's three fields as JobTread has them now → { status, details, shelf } | null (gone) */
@@ -483,19 +522,19 @@ export async function rehearse(env, { fetchImpl = fetch, now = new Date().toISOS
     const shower = (got) => fake('Rehearsal hand shower', { qty: 2, got, status: got >= 2 ? 'here' : got ? 'partly' : 'ordered', order: ordered, shelf: got ? '3' : null, receipts: got ? [{ kind: 'receive', units: got, at: now }] : [] });
     const first = await writeLine(env, ids, line([valve, shower(0)]), { fetchImpl, now });
     const read1 = await readLine(env, ids, lineId, { fetchImpl });
-    step('written', first.wrote && read1?.status === 'Partly received' && read1.shelf === 'Shelf 3' && /Rehearsal valve \(2\): ordered/.test(read1.details || ''), JSON.stringify(read1));
+    step('written', first.wrote && read1?.status === 'Ordered' && read1.shelf === 'Shelf 3' && /Rehearsal valve \(2\): ordered/.test(read1.details || ''), JSON.stringify(read1));
     const second = await writeLine(env, ids, line([valve, shower(0)]), { fetchImpl, now });
     step('nothing new, nothing written', !second.wrote);
     // A person sets the status by hand in JobTread and types a note
-    await pave(env.JOBTREAD_GRANT_KEY, { updateCostItem: { $: { id: lineId, customFieldValues: { [ids.status]: 'Ordered', [ids.details]: `${read1.details}\nAsked the store to rush it` } } } }, fetchImpl);
+    await pave(env.JOBTREAD_GRANT_KEY, { updateCostItem: { $: { id: lineId, customFieldValues: { [ids.status]: 'At the house', [ids.details]: `${read1.details}\nAsked the store to rush it` } } } }, fetchImpl);
     // One of the two showers comes in: still partly received, so the hand-set status stands, and the note stays
     await writeLine(env, ids, line([valve, shower(1)]), { fetchImpl, now });
     const read3 = await readLine(env, ids, lineId, { fetchImpl });
-    step('a hand edit kept', read3?.status === 'Ordered' && /\nNote: Asked the store to rush it$/.test(read3.details || '') && /hand shower \(2\): ordered .*; 1 of 2 here/.test(read3.details || ''), JSON.stringify(read3));
+    step('a hand edit kept', read3?.status === 'At the house' && /\nNote: Asked the store to rush it$/.test(read3.details || '') && /hand shower \(2\): ordered .*; 1 of 2 here/.test(read3.details || ''), JSON.stringify(read3));
     // The other comes in: the line's status moves, so the site's wins; the note still stays
     const fourth = await writeLine(env, ids, line([valve, shower(2)]), { fetchImpl, now });
     const read4 = await readLine(env, ids, lineId, { fetchImpl });
-    step('news after a hand edit', fourth.wrote && read4?.status === 'Received' && /\nNote: Asked the store to rush it$/.test(read4.details || '') && /all 2 here/.test(read4.details || ''), JSON.stringify(read4));
+    step('news after a hand edit', fourth.wrote && read4?.status === 'At the Office' && /\nNote: Asked the store to rush it$/.test(read4.details || '') && /all 2 here/.test(read4.details || ''), JSON.stringify(read4));
     // Back to the start for the next rehearsal
     await pave(env.JOBTREAD_GRANT_KEY, { updateCostItem: { $: { id: lineId, customFieldValues: { [ids.status]: null, [ids.details]: null, [ids.shelf]: null } } } }, fetchImpl);
     await env.DB.prepare("DELETE FROM kid_jt_lines WHERE job_id = ? AND item_id = ?").bind(SANDBOX_JOB_ID, lineId).run();
@@ -743,6 +782,10 @@ export async function maybeWriteKidItems(env, { fetchImpl = fetch, now = Date.no
     if (now - (st.shelvesAt || 0) > 60 * 60 * 1000) {
       st.shelvesAt = now;
       await freeShelves(env, await checkinView(env, { photos: false, strict: true }), { fetchImpl }).catch((err) => r.errors.push(`shelves: ${err.message}`));
+    }
+    // Every line written with the four statuses (none left behind, no error): the old options go from the field
+    if (mode === 'on' && !st.oldStatusesGone && !(r.left > 0) && !r.errors.length) {
+      st.oldStatusesGone = await letGoOldStatuses(env, { fetchImpl }).then((gone) => gone || null).catch((err) => { r.errors.push(`statuses: ${err.message}`); return null; });
     }
     Object.assign(st, { mode, behind: r.left > 0, last: { ...r, errors: r.errors.slice(0, 5) }, error: r.errors.length ? r.errors.slice(0, 3).join(' · ').slice(0, 500) : null, runningUntil: 0 });
     await writeState(env.DB, 'jt', st);

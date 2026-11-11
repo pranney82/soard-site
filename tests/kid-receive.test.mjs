@@ -149,32 +149,35 @@ test('cancelled: the whole order puts its items back; part of it asks a person',
   assert.equal(v.needsLook.find((o) => o.orderNumber === 'A1'), undefined);
 });
 
-test('a line’s status and details, from its parts; an allowance line is never complete', () => {
+test('a line’s status: its part furthest behind (Not ordered · Ordered · At the Office · At the house), and its details', () => {
   const o = { store: 'Shop', orderNumber: 'A1', at: '2026-11-02T15:00:00Z', cents: 12900 };
   const here = { name: 'Head', qty: 1, got: 1, status: 'here', shelf: '3', order: o, receipts: [{ kind: 'receive', units: 1, at: '2026-11-09T15:00:00Z' }] };
   const valve = { name: 'Valve', qty: 2, got: 1, status: 'partly', shelf: '3', order: o, receipts: [{ kind: 'receive', units: 1, at: '2026-11-09T15:00:00Z' }] };
   const not = { name: 'Bar', qty: 1, got: 0, status: 'not', order: null, receipts: [] };
   const donated = { name: 'Sink', qty: 1, got: 0, status: 'not', source: 'donated', order: null, receipts: [] };
   assert.equal(lineStatus([not]), 'Not ordered');
-  assert.equal(lineStatus([{ ...not, order: o, status: 'ordered' }, not]), 'Partly ordered');
+  assert.equal(lineStatus([{ ...not, order: o, status: 'ordered' }, not]), 'Not ordered', 'a part not ordered yet: the line isn’t');
   assert.equal(lineStatus([{ ...not, order: o, status: 'ordered' }, donated]), 'Ordered', 'a donated part is coming');
-  assert.equal(lineStatus([here, valve]), 'Partly received');
-  assert.equal(lineStatus([here, { ...here, status: 'house' }]), 'Received');
-  assert.equal(lineStatus([here], { allowance: true }), 'Partly received');
+  assert.equal(lineStatus([here, valve]), 'Ordered', 'one valve of two here: the other is still coming');
+  assert.equal(lineStatus([here, { ...here, status: 'house' }]), 'At the Office');
+  assert.equal(lineStatus([{ ...here, status: 'out' }, { ...here, status: 'house' }]), 'At the house');
   assert.equal(partLine(valve), 'Valve (2): ordered Nov 2, from Shop, order A1, $129.00; 1 of 2 here Nov 9, Shelf 3');
   assert.equal(partLine(donated), 'Sink: donated, coming');
   assert.equal(partLine(not), 'Bar: not ordered yet');
-  assert.deepEqual(lineValues([here, valve, not]), { status: 'Partly received', details: `${partLine(here)}\n${partLine(valve)}\n${partLine(not)}`, shelf: 'Shelf 3' });
-  assert.deepEqual(STATUSES, ['Not ordered', 'Partly ordered', 'Ordered', 'Partly received', 'Received']);
+  assert.deepEqual(lineValues([here, valve, not]), { status: 'Not ordered', details: `${partLine(here)}\n${partLine(valve)}\n${partLine(not)}`, shelf: 'Shelf 3' });
+  assert.deepEqual(STATUSES, ['Not ordered', 'Ordered', 'At the Office', 'At the house']);
 });
 
 test('a person’s edit in JobTread stands: their status until the line moves, their note always', () => {
   const last = { status: 'Ordered', details: 'Head: ordered', shelf: null };
-  const now = { status: 'Received', details: 'Head: ordered\nCalled the store', shelf: null };
+  const now = { status: 'At the Office', details: 'Head: ordered\nCalled the store', shelf: null };
   const a = withHand({ status: 'Ordered', details: 'Head: ordered', shelf: null }, last, now, {});
-  assert.deepEqual(a.values, { status: 'Received', details: 'Head: ordered\nNote: Called the store', shelf: null });
-  const b = withHand({ status: 'Partly received', details: 'Head: here', shelf: 'Shelf 1' }, a.values, a.values, a.hand);
-  assert.equal(b.values.status, 'Partly received', 'the site’s news wins');
+  assert.deepEqual(a.values, { status: 'At the Office', details: 'Head: ordered\nNote: Called the store', shelf: null });
+  const b = withHand({ status: 'At the house', details: 'Head: here', shelf: 'Shelf 1' }, a.values, a.values, a.hand);
+  assert.equal(b.values.status, 'At the house', 'the site’s news wins');
+  // A hand edit made with an option that's gone (before the four) doesn't stand
+  const c = withHand({ status: 'Ordered', details: 'Head: ordered', shelf: null }, last, { ...now, status: 'Partly received' }, {});
+  assert.equal(c.values.status, 'Ordered');
   assert.equal(b.values.details, 'Head: here\nNote: Called the store');
 });
 
@@ -230,7 +233,7 @@ test('JobTread: the fields made once, each line written once, Also bought made o
   const bean = [...jt.items.values()].find((i) => i.name === 'Bean Bag Chair');
   assert.deepEqual([bean.unitCost, bean.quantity, bean.isSelected, bean.costTypeId, bean.costCodeId, bean.values[ids.also]], [80, 1, true, 't-mat', 'c-fur', true]);
   assert.equal(jt.groups[0].name, 'Also bought');
-  assert.equal(jt.items.get('r-shower').values[ids.status], 'Partly ordered');
+  assert.equal(jt.items.get('r-shower').values[ids.status], 'Not ordered', 'a part of it not ordered yet');
   assert.match(jt.items.get('r-shower').values[ids.details], /Raincan Shower Head: ordered Oct 30, from Shop, order A1, \$129\.00\nShower Valve \(2\): not ordered yet/);
   assert.equal(jt.items.get('r-lamp').values[ids.status], 'Not ordered');
   jt.calls.length = 0;
@@ -240,7 +243,8 @@ test('JobTread: the fields made once, each line written once, Also bought made o
   const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
   await receive(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 1 });
   await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
-  assert.deepEqual([jt.items.get('r-shower').values[ids.status], jt.items.get('r-shower').values[ids.shelf]], ['Partly received', 'Shelf 1']);
+  // The head is here and the valves aren't ordered: the line is as far as its part furthest behind; its shelf shows
+  assert.deepEqual([jt.items.get('r-shower').values[ids.status], jt.items.get('r-shower').values[ids.shelf]], ['Not ordered', 'Shelf 1']);
   // Asked twice for the same Also bought line (a retry): one line
   const again = await makeAlso(env, ids, { key: bean.globalId, jobId: 'j-rowan', name: 'Bean Bag Chair', qty: 1, cents: 8000 }, { fetchImpl: jt.fetch });
   assert.equal([...jt.items.values()].filter((i) => i.globalId === bean.globalId).length, 1);
@@ -363,9 +367,9 @@ test('review fixes: an Also bought line asked for twice at once is made once', a
 
 test('review fixes: a hand-set status gives way to news; every line of a typed note stays, even one starting Note:', () => {
   const site = { status: 'Ordered', details: 'Head: ordered', shelf: null };
-  const person = { status: 'Received', details: 'Head: ordered\nCalled the store\nThey ship Friday\nNote: back order', shelf: null };
-  const news = withHand({ status: 'Partly received', details: 'Head: 1 of 2 here', shelf: 'Shelf 1' }, site, person, {});
-  assert.equal(news.values.status, 'Partly received', 'the check-in is news');
+  const person = { status: 'At the house', details: 'Head: ordered\nCalled the store\nThey ship Friday\nNote: back order', shelf: null };
+  const news = withHand({ status: 'At the Office', details: 'Head: 1 of 2 here', shelf: 'Shelf 1' }, site, person, {});
+  assert.equal(news.values.status, 'At the Office', 'the check-in is news');
   assert.equal(news.values.details, 'Head: 1 of 2 here\nNote: Called the store\nThey ship Friday\nback order');
   const first = withHand({ status: 'Not ordered', details: 'Head: not ordered yet', shelf: null }, null, { status: 'Ordered', details: 'Ordered by phone' }, {});
   assert.deepEqual([first.values.status, first.hand.note], ['Ordered', 'Ordered by phone'], 'what was there before the site’s first write is kept');
@@ -429,7 +433,7 @@ test('Nov 10 live check: a line read as one whole part takes each thing ordered 
   assert.ok(sensory.every((i) => i.status === 'ordered'));
   assert.equal(v.needsLook.filter((o) => ['S7', 'S8'].includes(o.orderNumber)).length, 0, 'none of them asks “another one?”');
   const l = linesOf(v).find((x) => x.itemId === 'a-sensory');
-  assert.equal(lineValues(l.items, { allowance: l.allowance }).status, 'Partly ordered', 'never “Ordered”: the line’s full list isn’t known');
+  assert.equal(lineValues(l.items, { allowance: l.allowance }).status, 'Ordered', 'what’s ordered for it says where the line is');
 });
 
 test('check-out: a scanned label sends its check-in to the house once; when all of it is out the shelf frees, and JobTread says where', async () => {
@@ -459,7 +463,7 @@ test('check-out: a scanned label sends its check-in to the house once; when all 
   v = await view();
   assert.deepEqual(kidOf(v, 'Rowan S.').shelves, [], 'everything out: the shelf is free for the next kid');
   vals = lineValues(linesOf(v).find((x) => x.itemId === 'r-shower').items);
-  assert.deepEqual([vals.status, vals.shelf], ['Received', 'At the house']);
+  assert.deepEqual([vals.status, vals.shelf], ['At the house', 'At the house']);
   await assert.rejects(checkOut(env.DB, { tap: tap(), ref: 'not-a-real-label' }), /isn’t one of SOARD’s/);
 });
 
