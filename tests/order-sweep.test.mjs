@@ -287,3 +287,22 @@ test('gate 1: emails read before reading got better are read again, once', async
   const after = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
   assert.equal(after.readerV, READER_V);
 });
+
+test('Nov 11: read again and the AI doesn’t answer: the old read stands (its items and order number), with the new tracking number added', async () => {
+  const subject = 'Your order has shipped';
+  aiAnswers[subject] = { kind: 'shipped', orderNumber: 'W555', items: [{ name: 'Oak Step Stool', sku: '', quantity: 1, price: '$45.00' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
+  mail({ box: PAT, at: T0 - DAY, from: 'Wayfair <shipping@wayfair.com>', subject, text: 'Good news: your things are on the way. Track This Package UPS # 1z12d1r20300649284' });
+  await run(T0);
+  let r = JSON.parse((await rows()).find((x) => x.state === 'read').read);
+  assert.equal(r.orderNumber, 'W555');
+  // Read by the version before, which missed the lower-case UPS number; then read again, and the AI says nothing useful
+  await env.DB.prepare("UPDATE order_mail SET read = json_set(read, '$.v', 2, '$.tracking', json('[]')) WHERE state = 'read'").run();
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st, readerV: 2 })).run();
+  delete aiAnswers[subject];
+  await run(T0 + 4 * MIN);
+  const row = (await rows()).find((x) => x.subject === subject || x.state === 'read');
+  assert.equal(row.state, 'read', 'never dropped as not an order');
+  r = JSON.parse(row.read);
+  assert.deepEqual([r.orderNumber, r.items.length, r.v, r.tracking.map((t) => t.number)], ['W555', 1, READER_V, ['1Z12D1R20300649284']]);
+});

@@ -224,6 +224,10 @@ async function readOne(env, ctx, row) {
   // Read again with better rules: it stays 'read' (its old read in use) until the new one is saved
   const again = row.state === 'read';
   if (!again) await env.DB.prepare("UPDATE order_mail SET state = 'working', updated_at = ? WHERE mailbox = ? AND id = ?").bind(iso(ctx.now), row.mailbox, row.id).run();
+  // A read again counts its try first: one that keeps cutting a run off can't be picked first forever
+  else await env.DB.prepare('UPDATE order_mail SET tries = COALESCE(tries, 0) + 1 WHERE mailbox = ? AND id = ?').bind(row.mailbox, row.id).run();
+  let before = null;
+  if (again) { try { before = JSON.parse(row.read || 'null'); } catch { before = null; } }
   try {
     // The same email from another inbox (an orders@ copy) already read: this one is that one
     const twin = row.msgid ? await env.DB.prepare("SELECT mailbox, id FROM order_mail WHERE msgid = ? AND state = 'read' AND NOT (mailbox = ? AND id = ?) LIMIT 1").bind(row.msgid, row.mailbox, row.id).first() : null;
@@ -244,6 +248,14 @@ async function readOne(env, ctx, row) {
       const fromHtml = html ? htmlText(withAltText(html)) : '';
       const words = fromHtml.length >= 200 ? fromHtml : text || fromHtml;
       const ai = await aiRead(env, { subject, from, sentAt, text: words });
+      if (again && before && (!ai || ai.kind === 'not_order')) {
+        // Read again and the AI didn't answer (or now calls it not an order): the old read stands, with only what the
+        // better rules found added (a tracking number). A good read is never swapped for an empty one: losing its
+        // order number or items would take the kid's line back to Not ordered in JobTread
+        const tracking = [...(before.tracking || [])];
+        for (const t of read.tracking || []) if (!tracking.some((x) => x.number === t.number)) tracking.push(t);
+        return settle(env, ctx, row, 'read', { ...before, tracking, v: READER_V }, summary({ ...before, tracking }));
+      }
       if (ai?.kind === 'not_order') return settle(env, ctx, row, 'skipped', null, 'not an order email, by its words');
       read = withAi(read, ai);
       if (!ai) read.aiMissed = true;
