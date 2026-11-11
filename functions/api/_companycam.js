@@ -160,7 +160,8 @@ export async function itemComments(env, kind, itemId, { fetchImpl = fetch } = {}
   try {
     list = await ccAll(env, path, { max: 100, fetchImpl });
   } catch (e) {
-    if (!(e instanceof CompanyCamError) || e.status !== 404) throw e;
+    // v1 answers a video's comments with 401 (seen Nov 11 2026): not there to be had, so v2 is asked
+    if (!(e instanceof CompanyCamError) || ![401, 403, 404].includes(e.status)) throw e;
     const token = String(env?.COMPANYCAM_TOKEN || '').trim();
     const res = await fetchImpl(`${CC_V2}${path}?per_page=${PAGE}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
     // v2 refuses the site's key (seen Nov 11 2026): a video's comments aren't to be had here, so it has none to carry

@@ -67,7 +67,7 @@ function companycam(url) {
   if ((m = path.match(/^\/projects\/(\d+)\/photos$/))) return w.gone.has(m[1]) ? json({ data: null, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404) : page([...w.photos.values()].filter((p) => p.project_id === m[1]));
   // Comments: v1 has them for photos; a video's are asked of v2
   if ((m = path.match(/^\/photos\/(\d+)\/comments$/))) return page(w.comments.get(m[1]) || []);
-  if ((m = path.match(/^\/videos\/(\d+)\/comments$/))) return json({ data: null, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404);
+  if ((m = path.match(/^\/videos\/(\d+)\/comments$/))) return json({ data: null, errors: [{ code: 'unauthorized', message: 'Unauthorized' }], meta: {} }, 401); // as v1 answers
   if ((m = path.match(/^\/v2\/videos\/(\d+)\/comments$/))) return w.noVideoComments ? json({ errors: [w.noVideoComments] }, w.noVideoComments === 'Unauthorized' ? 401 : 404) : json(w.comments.get(m[1]) || []);
   // v1 lists a video by its original upload; v2 (a bare array, page by page) by its stream on Mux
   if ((m = path.match(/^\/projects\/(\d+)\/videos$/))) return page([...w.videos.values()].filter((v) => v.project_id === m[1]).map((v) => ({ ...v, status: v.status === 'processed' ? 'active' : v.status, playback_url: `https://companycam-video.s3.amazonaws.com/uploads/${v.id}.mov`, format: 'mov' })));
