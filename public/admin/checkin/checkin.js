@@ -37,6 +37,10 @@ const face = (kid, size) => (kid?.photo
   : `<span class="face ini" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px" aria-hidden="true">${esc(String(kid?.short || '?')[0])}</span>`);
 const faceOf = (short, size) => face(state.kids.find((k) => k.short === short), size);
 const kidById = (id) => state.kids.find((k) => k.jobId === id);
+// Every open makeover's kid, to say whose something is: one with nothing on the list yet (only allowances on their
+// budget) is who an allowance buy is for
+const pickKids = () => (state.everyKid?.length ? state.everyKid.map((k) => kidById(k.jobId) || { ...k, items: [], others: 0 }) : state.kids);
+const anyKid = (id) => kidById(id) || pickKids().find((k) => k.jobId === id);
 
 const ICON = {
   chev: '<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
@@ -300,6 +304,10 @@ function overlayQueue() {
     } else if (q.action === 'undo') {
       const taps = new Set(q.body?.taps || [q.body?.tap]);
       for (const k of state.kids) for (const i of k.items) for (const r of i.receipts || []) if (taps.has(r.id) && !r.undone) { r.undone = true; touched.add(i); }
+    } else if (q.action === 'decide' && (q.body?.items || []).some((x) => x.itemName === '*')) {
+      // Whose it is, said on this phone: its card stops asking (the site puts it on the kid's list when it gets it)
+      state.shipments = state.shipments.filter((x) => !(x.unplaced && x.key === q.body.orderKey));
+      state.needsLook = state.needsLook.filter((x) => x.key !== q.body.orderKey);
     } else if (q.action === 'receive' || q.action === 'house') {
       for (const b of bodies) {
         const i = kidById(b.jobId)?.items.find((x) => x.itemId === b.itemId && x.partKey === b.partKey);
@@ -338,7 +346,7 @@ function toast(text) {
 }
 
 function apply(view) {
-  Object.assign(state, { kids: view.kids || [], needsLook: view.needsLook || [], shelves: view.shelves || [], shipments: view.shipments || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
+  Object.assign(state, { kids: view.kids || [], everyKid: view.everyKid || [], needsLook: view.needsLook || [], shelves: view.shelves || [], shipments: view.shipments || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
   overlayQueue();
   pruneLoad();
   $('mode').hidden = !state.practice || readQueue().length > 0;
@@ -838,10 +846,10 @@ function wrongKidSheet(fromKid, it) {
   const here = (k) => (k === fromKid && !it.also?.pending ? (it.also ? (it.also.allowItemId ? `allow:${it.also.allowItemId}` : 'also') : `line:${it.id}`) : '');
   const draw = () => {
     openSheet(`${head('Where does it go?', { sub: esc(it.name), one: true })}
-      <div class="kidpick">${state.kids.map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k === kid}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
+      <div class="kidpick">${pickKids().map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k.jobId === kid.jobId}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
       <div class="field"><label for="where">${esc(kid.short)}’s</label><select id="where">${optionsFor(kid, { current: here(kid), guess: here(kid) })}</select></div>
       <button class="btn btn-primary btn-big" type="button" id="save" data-focus>Move it</button>`, { keep: true });
-    document.querySelectorAll('#sheet-root [data-pick]').forEach((b) => { b.onclick = () => { kid = kidById(b.dataset.pick); draw(); }; });
+    document.querySelectorAll('#sheet-root [data-pick]').forEach((b) => { b.onclick = () => { kid = anyKid(b.dataset.pick); draw(); }; });
     $('save').onclick = async () => {
       const value = $('where').value;
       if (kid === fromKid && value === here(kid)) { await close(); return; }
@@ -857,11 +865,12 @@ function wrongKidSheet(fromKid, it) {
 
 /** Something else that came: for which kid, what, what it cost; it goes on their budget, next to the allowance it's bought under (or Also bought) */
 function otherSheet() {
-  if (!state.kids.length) return;
-  let kidId = state.filter !== 'All' ? state.kids.find((k) => k.short === state.filter)?.jobId || state.kids[0].jobId : state.kids[0].jobId;
+  const kids = pickKids();
+  if (!kids.length) return;
+  let kidId = (state.filter !== 'All' && kids.find((k) => k.short === state.filter)?.jobId) || kids[0].jobId;
   let donated = false;
   openSheet(`${head('Something else')}
-    <div class="field"><span class="label-above">For</span><div class="kidpick">${state.kids.map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k.jobId === kidId}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div></div>
+    <div class="field"><span class="label-above">For</span><div class="kidpick">${kids.map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k.jobId === kidId}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div></div>
     <div class="field"><label for="what">What is it?</label><input id="what" type="text" placeholder="Bean bag chair" autocomplete="off" enterkeyhint="next" /></div>
     <div class="field two"><div class="field"><label for="cost">What it cost</label><input id="cost" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off" /></div>
       <button class="chip toggle" type="button" id="donated" aria-pressed="false">Donated</button></div>
@@ -877,7 +886,7 @@ function otherSheet() {
     const name = input.value.trim();
     if (!name) { input.focus(); input.placeholder = 'Type what it is first'; return; }
     const cents = Math.round(Number(String($('cost').value).replace(/[^0-9.]/g, '')) * 100) || null;
-    const kid = kidById(kidId);
+    const kid = anyKid(kidId);
     const it = { id: `typed:${Date.now()}`, name, line: 'Also bought', qty: 1, source: donated ? 'donated' : 'buy', status: 'not', order: null, receipts: [] };
     printed(kid, it, { units: 1, boxes: vals.boxes, other: { name, cents: donated ? null : cents, donated } });
   };
@@ -923,16 +932,16 @@ function looksSheet(keep = false) {
 function lookSheet(n) {
   const o = state.needsLook[n];
   if (!o) return;
-  let kid = kidById(o.kid) || null;
+  let kid = anyKid(o.kid) || null;
   const draw = () => {
     openSheet(`${head(esc(o.store), { sub: esc([o.po ? `PO “${o.po}”` : null, `ordered ${ago(o.at)}`, o.buyer ? `by ${o.buyer}` : null, o.orderNumber ? `order ${o.orderNumber}` : null].filter(Boolean).join(' · ')) })}
       ${o.why ? `<p class="why-line">${esc(o.why)}</p>` : ''}
-      <div class="field"><span class="label-above">Whose is it?</span><div class="kidpick">${state.kids.map((k) => `<button class="chip has-face${k.jobId === o.kid ? ' hint' : ''}" type="button" data-assign="${esc(k.jobId)}" aria-pressed="${k === kid}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div></div>
+      <div class="field"><span class="label-above">Whose is it?</span><div class="kidpick">${pickKids().map((k) => `<button class="chip has-face${k.jobId === o.kid ? ' hint' : ''}" type="button" data-assign="${esc(k.jobId)}" aria-pressed="${k.jobId === kid?.jobId}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div></div>
       ${kid ? `<div class="pick">${o.items.map((i, x) => `<div class="look"><b>${esc(i.name)}</b><span class="why">${esc(i.look)}</span>
         <select data-item="${x}" aria-label="Where ${esc(i.name)} goes">${optionsFor(kid, { undo: Boolean(o.undo), current: i.current || '', guess: i.current || (i.guesses?.[kid.jobId] ? `line:${i.guesses[kid.jobId]}` : 'also') })}</select></div>`).join('')}</div>
         <button class="btn btn-primary btn-big" type="button" id="save" data-focus>Save</button>` : ''}
       <button class="btn btn-text" type="button" id="notkid">Not a kid’s</button>`, { keep: true });
-    document.querySelectorAll('#sheet-root [data-assign]').forEach((b) => { b.onclick = () => { kid = kidById(b.dataset.assign); draw(); }; });
+    document.querySelectorAll('#sheet-root [data-assign]').forEach((b) => { b.onclick = () => { kid = anyKid(b.dataset.assign); draw(); }; });
     const settle = async (items) => {
       try { await sendOrKeep('decide', { orderKey: o.key, items }); } catch (err) { toast(err.message); return; }
       state.needsLook = state.needsLook.filter((x) => x !== o);
@@ -1052,7 +1061,9 @@ async function read(image, preview) {
   openSheet(`${head('<span class="with-spin"><span class="spin" aria-hidden="true"></span>Reading the label</span>', { sub: '' })}
     <img class="photo" src="${preview}" alt="The photo of the box's label" />`, { label: 'Reading the label' });
   try {
+    // The answer brings the list as it is now (an order read since this page loaded is on it): drawn behind the sheet
     const out = await send('scan', { image });
+    render();
     showFound(out, preview);
   } catch (err) {
     openSheet(`${head('Couldn’t read that label', { sub: esc(err instanceof Offline ? 'No connection. Pick it from the list.' : err.message) })}
@@ -1063,8 +1074,10 @@ async function read(image, preview) {
 }
 
 function showFound({ found, label, likely = [] }, preview) {
+  // Its order is in Needs a look (its things fit more than one kid, or its PO names none): each thing to its kid
+  if (found?.look) { const n = state.needsLook.findIndex((x) => x.key === found.look); if (n >= 0) { lookSheet(n); return; } }
   // Its order is known and nobody's yet: whose is it? (then it checks in like any shipment)
-  if (found?.unplaced) { const sh = state.shipments.find((x) => x.key === found.unplaced); if (sh) { whoseSheet(sh, { how: found.how, keep: true }); return; } }
+  if (found?.unplaced) { whoseSheet(state.shipments.find((x) => x.key === found.unplaced) || shipOfKnown(found.known), { how: found.how, keep: true }); return; }
   if (found?.known) { knownSheet(found, preview); return; }
   const kid = found && kidById(found.kid);
   const items = kid ? found.items.map((id) => kid.items.find((i) => i.id === id)).filter((i) => i && !isHere(i)) : [];
@@ -1132,42 +1145,57 @@ function showFound({ found, label, likely = [] }, preview) {
     <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div></div>`, { keep: true });
 }
 
+/** A box's order the site knows from its emails (the scan's answer) as a shipment to ask about */
+const shipOfKnown = (k) => ({ key: k.key, store: k.store, orderNumber: k.orderNumber, orderedAt: k.at, buyer: k.buyer, things: k.things || [], items: [], unplaced: true,
+  stage: k.stage || 'ordered', shippedAt: k.shippedAt || null, outAt: k.outAt || null, pickupAt: k.pickupAt || null, deliveredAt: k.deliveredAt || null, expected: k.expected || null });
+
 /**
- * An order nobody's placed (no PO, and its things fit no one's selections: bought on an allowance, or for the office):
- * what's in it, and whose it is. A kid: placed as for a PO with their name (their selections, an allowance, or Also
- * bought), and its shipment opens, to check in and print. Not a kid's: off the list for good
+ * Whose an order is. Nobody's yet (no PO, and its things fit no one's selections: bought on an allowance, or for the
+ * office), or a kid's by mistake (from: the kid it's on now). A kid: placed as for a PO with their name (their
+ * selections, an allowance, or Also bought), and its shipment opens, to check in and print. Not a kid's: off the list
+ * for good. Moving it off a kid takes back what was checked in for them (its labels name them), to check in again
  */
-function whoseSheet(sh, { how = '', keep = false } = {}) {
-  const things = sh.things || [];
-  openSheet(`${head(esc(sh.store), { sub: esc([how, sh.orderNumber ? `Order ${sh.orderNumber}` : null, sh.buyer ? `${sh.buyer} ordered it` : null, shipStatus(sh)[1]].filter(Boolean).join(' · ')) })}
+function whoseSheet(sh, { how = '', keep = false, from = null } = {}) {
+  const was = from ? kidById(from) : null;
+  const things = sh.things || sh.items.map((i) => { const it = itemOfId(i.id); return it ? { name: it.orderedAs || it.name, qty: it.qty } : null; }).filter(Boolean);
+  // Checked in for the kid it's on: those check-ins come back off, so new labels print for the right kid
+  const ins = was ? sh.items.flatMap((i) => (itemOfId(i.id)?.receipts || []).filter((r) => r.kind === 'receive' && !r.undone)) : [];
+  const boxes = ins.reduce((t, r) => t + Math.max(1, r.boxes || 1), 0);
+  openSheet(`${head(esc(sh.store), { sub: esc([how, sh.orderNumber ? `Order ${sh.orderNumber}` : null, sh.buyer ? `${sh.buyer} ordered it` : null, was ? null : shipStatus(sh)[1]].filter(Boolean).join(' · ')) })}
     <div class="pick">${things.map((t) => `<div class="look"><b>${esc(t.name)}</b>${t.qty > 1 ? `<span>${t.qty} of them</span>` : ''}</div>`).join('') || '<div class="look"><span>Its emails name no things</span></div>'}</div>
     <span class="label-above">Whose is it?</span>
-    <div class="kidpick">${state.kids.map((k) => `<button class="chip has-face" type="button" data-whose="${esc(k.jobId)}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
+    <div class="kidpick">${pickKids().map((k) => `<button class="chip has-face" type="button" data-whose="${esc(k.jobId)}"${was ? ` aria-pressed="${k.jobId === was.jobId}"` : ''}>${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
+    ${boxes ? `<p class="why-line">${esc(`${plural(boxes, 'box', 'boxes')} of it ${boxes === 1 ? 'is' : 'are'} on ${was.short}’s shelf. Another kid takes ${boxes === 1 ? 'it' : 'them'} off, to check in again with new labels.`)}</p>` : ''}
     <div class="btn-row"><button class="btn btn-text" type="button" id="notkid">Not a kid’s</button></div>`, { keep, label: `${sh.store}: whose is it?` });
   const answer = async (decision, btn) => {
+    if (was && decision.kid === was.jobId) { await close(); return; }
     const buttons = [...document.querySelectorAll('#sheet-root button')];
+    const stop = (why) => { buttons.forEach((b) => { b.disabled = false; }); btn.classList.remove('working'); tones.warn(); toast(`Not saved: ${clean(why)}`); };
     buttons.forEach((b) => { b.disabled = true; });
     btn.classList.add('working');
+    // What was checked in for the wrong kid comes back first (behind anything still waiting to be sent)
+    if (ins.length) {
+      let u;
+      try { u = await undoTaps(ins.map((r) => r.id)); } catch (err) { stop(err.message); return; }
+      if (u.refused.size) { stop([...u.refused.values()][0]); return; }
+    }
     let r;
     try {
-      r = await sendOrKeep('decide', { orderKey: sh.key, items: [{ itemName: '*', decision }] });
-    } catch (err) {
-      buttons.forEach((b) => { b.disabled = false; });
-      btn.classList.remove('working');
-      tones.warn();
-      toast(`Not saved: ${clean(err.message)}`);
-      return;
-    }
+      r = await sendOrKeep('decide', { orderKey: sh.key, ...(was ? { from: was.jobId } : {}), items: [{ itemName: '*', decision }] });
+    } catch (err) { stop(err.message); return; }
     if (decision.type === 'notKid') { tones.undo(); await close(); render(); toast(`${sh.store}: not a kid’s, off the list`); return; }
-    const kid = kidById(decision.kid);
-    if (r.queued) { await close(); toast(`${kid?.short || 'Their'}’s. It goes on their list when the connection is back`); return; }
-    // Placed: its shipment, ready to check in and print
+    const kid = anyKid(decision.kid);
+    if (r.queued) { await close(); render(); toast(`${kid?.short || 'Their'}’s. It goes on their list when the connection is back`); return; }
+    // What the site placed: its shipment, ready to check in and print; anything it couldn't place is asked about
+    const placed = r.out?.placed;
     const now = state.shipments.find((x) => x.key === sh.key && !x.unplaced);
+    const look = state.needsLook.findIndex((x) => x.key === sh.key);
     tones.ok();
-    if (now && waitingOf(now).length) { shipmentSheet(now.key, { keep: true, how: `${kid?.short}’s` }); return; }
+    if (placed?.things && now && waitingOf(now).length) { shipmentSheet(now.key, { keep: true, how: `${kid?.short}’s` }); return; }
+    if (look >= 0) { lookSheet(look); return; }
     await close();
     render();
-    toast(`${sh.store}: ${kid?.short}’s`);
+    toast(placed?.things ? `${sh.store}: ${kid?.short}’s` : `Saved, but nothing in it went on ${kid?.short}’s list`);
   };
   document.querySelectorAll('#sheet-root [data-whose]').forEach((b) => { b.onclick = () => answer({ type: 'kid', kid: b.dataset.whose }, b); });
   $('notkid').onclick = () => answer({ type: 'notKid' }, $('notkid'));
@@ -1176,8 +1204,9 @@ function whoseSheet(sh, { how = '', keep = false } = {}) {
 /** A box whose order the emails know but no list has (marked not a kid's, too old, or no things read): whose it is, or typed in */
 function knownSheet(found, preview) {
   const k = found.known;
-  if (k.things?.length) { whoseSheet({ key: k.key, store: k.store, orderNumber: k.orderNumber, orderedAt: k.at, things: k.things, items: [], stage: 'ordered', unplaced: true }, { how: `${found.how} · on no list`, keep: true }); return; }
-  openSheet(`${head(esc(k.store), { sub: esc([found.how, k.orderNumber ? `Order ${k.orderNumber}` : null, `ordered ${dayOf(k.at)}`].join(' · ')) })}
+  const sh = shipOfKnown(k);
+  if (k.things?.length) { whoseSheet(sh, { how: `${found.how} · on no list`, keep: true }); return; }
+  openSheet(`${head(esc(k.store), { sub: esc([found.how, k.orderNumber ? `Order ${k.orderNumber}` : null, shipStatus(sh)[1]].filter(Boolean).join(' · ')) })}
     <p class="why-line">Its emails don’t say what’s in it. Scan the packing slip or the product’s box, or type it in.</p>
     <img class="photo" src="${preview}" alt="The photo of the box's label" />
     <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan the packing slip or the product’s box</button>
@@ -2357,13 +2386,24 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
   };
   const labelCount = () => [...ticked].reduce((t, id) => t + boxes.get(id), 0);
   const goWords = () => (ticked.size ? `Check in and print ${plural(labelCount(), 'label')}` : 'Tick what came');
+  // One kid's: the wrong kid is one tap to change, for the whole order (Peter, Nov 11 2026: "i accidently picked the
+  // wrong kid and am on the check in screen with no way to change the kid"). Not once a box of it is on the truck
+  const kids = [...new Set(sh.items.map((i) => kidOfItem(i.id)?.jobId).filter(Boolean))];
+  const loaded = sh.items.some((i) => (itemOfId(i.id)?.receipts || []).some((r) => r.kind !== 'receive' && !r.undone));
+  const wrong = kids.length === 1 && !loaded ? '<button class="btn btn-text" type="button" id="shipwrong">Wrong kid</button>' : '';
+  const house = sh.house && waiting.length ? '<button class="btn btn-text" type="button" id="shiphouse">Not coming here: it went to the house</button>' : '';
+  // The rest of the order a person has to place: in Needs a look
+  const lookAt = state.needsLook.findIndex((x) => x.key === sh.key);
+  const lookN = lookAt >= 0 ? state.needsLook[lookAt].items.length : 0;
   // The order number is on the line already: the match says only what else it was
   const sub = [sh.orderNumber ? `Order ${sh.orderNumber}` : null, words, how && !(sh.orderNumber && how.includes(sh.orderNumber)) ? how : null].filter(Boolean).join(' · ');
   openSheet(`${head(esc(sh.store), { sub: esc(sub) })}
     ${waiting.length ? [...byKid].map(([jobId, list]) => { const k = kidById(jobId); return `<div class="pick">${many ? `<div class="look kid-row">${face(k, 32)}<b>${esc(k.short)}</b><span>${esc(k.shelf || 'Next free shelf')}</span></div>` : ''}${list.map(row).join('')}</div>`; }).join('') : ''}
     ${done.length ? `<div class="label-above">On shelves</div><div class="pick">${done.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return it ? `<div class="look ship-row done">${face(k, 32)}<span class="sr-name">${esc(it.name)}</span><span class="sr-sub">${esc(k.short)}</span><span class="tag-here">${esc(it.status === 'house' ? 'House' : it.status === 'out' ? 'Loaded' : shelfName(it.shelf) || 'Here')}</span></div>` : ''; }).join('')}</div>` : ''}
+    ${lookN ? `<div class="pick"><button class="look" type="button" data-look="${lookAt}"><b>${esc(lookN === 1 ? '1 more thing in it needs a look' : `${lookN} more things in it need a look`)}</b><span>Where each one goes</span></button></div>` : ''}
     ${waiting.length ? `<div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="shipgo" data-focus>${goWords()}</button>
-      ${sh.house ? '<button class="btn btn-text" type="button" id="shiphouse">Not coming here: it went to the house</button>' : ''}</div>` : ''}`, { keep });
+      ${wrong || house ? `<div class="btn-row">${wrong}${house}</div>` : ''}</div>` : wrong ? `<div class="btn-row">${wrong}</div>` : ''}`, { keep });
+  if ($('shipwrong')) $('shipwrong').onclick = () => whoseSheet(sh, { from: kids[0], keep: true, how: `On ${kidById(kids[0])?.short}’s list` });
   const refresh = () => { const b = $('shipgo'); if (b) { b.textContent = goWords(); b.disabled = !ticked.size; } };
   document.querySelectorAll('#sheet-root [data-shipitem]').forEach((c) => { c.onchange = () => { if (c.checked) ticked.add(c.dataset.shipitem); else ticked.delete(c.dataset.shipitem); refresh(); }; });
   document.querySelectorAll('#sheet-root [data-boxes]').forEach((el) => {

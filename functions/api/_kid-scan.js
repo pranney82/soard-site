@@ -19,8 +19,13 @@ import { viaGateway, aiCapped } from './_ai.js';
 import { imageKind } from './_image-types.js';
 import { answerOf } from './_vendor-read.js';
 import { READERS } from './_score-scans.js';
-import { kidFromPo, tokensOf, groupKey, orderGroups } from './_kid-match.js';
-import { orderKeyOf } from './_kid-checkin.js';
+import { kidFromPo, tokensOf, orderGroups, orderKeys, isCarrier } from './_kid-match.js';
+import { orderMail, mailStage } from './_kid-checkin.js';
+
+// Cancelled, refunded, sent back: about an order, never what's in a box
+const UNDO = new Set(['cancelled', 'refund', 'return']);
+/** A name line as printed ("ATTN: DYLAN", "c/o Linzi Berkowitz") → the name */
+const nameOn = (line) => String(line || '').replace(/^\s*(attn|attention|c\/o|care of|deliver to|ship to|name|po)\b[\s.:#-]*/i, '').trim();
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const TIMEOUT_MS = 25 * 1000;
@@ -134,7 +139,9 @@ export function storeOfTracking(numbers, reads) {
     if (/^TBA\d{6,}/.test(c)) return 'Amazon';
     if (/^1Z[A-Z0-9]{6}/.test(c)) {
       const account = c.slice(0, 8);
-      const r = reads.find((x) => (x.read.tracking || []).some((tr) => clean(tr.number).startsWith(account)));
+      // The store's own email with that account (a carrier's would say only "UPS")
+      const with_ = reads.filter((x) => (x.read.tracking || []).some((tr) => clean(tr.number).startsWith(account)));
+      const r = with_.find((x) => !isCarrier(x.store));
       if (r) return r.store;
     }
   }
@@ -145,12 +152,14 @@ export function storeOfTracking(numbers, reads) {
  * Which kid and items a read label is → one of
  *   { kid, short, items: [item ids], how, exact? }   the kid's (exact: its own order, by tracking, order or model number)
  *   { kid, short, items: [], done, exact, order }     its order is all checked in already
- *   { unplaced: order key, how, exact }               its order is known and nobody's: whose is it?
- *   { known: { key, store, orderNumber, at, things }, how }   its order is in the emails but on no list
+ *   { look: order key, how, exact }                  its order is in Needs a look: each thing in it to its kid
+ *   { unplaced: order key, how, exact, known }        its order is known and nobody's: whose is it?
+ *   { known: { key, store, orderNumber, at, buyer, things, stage, …when }, how }   its order is in the emails but on no list
  *   null
- * view: checkinView(); reads: the order emails read ({ id, store, read })
+ * view: checkinView(); reads: the order emails read ({ id, store, read }); keyOf: which order each is, nameOf: who
+ * ordered (checkinData's, so an order is the one the view has)
  */
-export function findBox(view, reads, label) {
+export function findBox(view, reads, label, { keyOf = orderKeys(reads), nameOf = (m) => String(m || '').split('@')[0] || null } = {}) {
   const coming = (i) => i.status === 'ordered' || i.status === 'partly';
   const ordered = view.kids.flatMap((k) => k.items.filter(coming).map((i) => ({ kid: k, item: i })));
   // exact: the box's own order (its tracking or order number, or the product's model): its shipment opens. Anything
@@ -165,25 +174,38 @@ export function findBox(view, reads, label) {
     const kid = hits[0].kid;
     return { kid: kid.jobId, short: kid.short, items: hits.filter((h) => h.kid === kid).map((h) => h.item.id), how, exact: true };
   };
-  // The order the email is about (a shipping email with no order number: by its tracking number); a kid's, nobody's
-  // yet (whose is it?), or known but on no list. Never "nothing found" for a box the emails know
-  const keyOf = orderKeyOf(reads);
-  const groups = new Map(orderGroups(reads).map((g) => [g.key, g]));
-  const ofOrder = (r, how) => {
-    const key = keyOf(r);
+  // The order the emails say it is (every email about one order is that order: its store's, a carrier's, a shipping
+  // email with no order number); a kid's, in Needs a look (each thing to its kid), nobody's yet (whose is it?), or known
+  // but on no list. Never "nothing found" for a box the emails know
+  const groups = new Map(orderGroups(reads.filter((r) => !UNDO.has(r.read.kind)), keyOf).map((g) => [g.key, g]));
+  const mail = orderMail(reads.filter((r) => !UNDO.has(r.read.kind)), keyOf);
+  const knownOf = (key) => {
+    const g = groups.get(key);
+    const t = mail.get(key) || {};
+    return { key, store: g?.store || keyOf.storeOf?.(reads.find((r) => keyOf(r) === key)) || '', orderNumber: g?.orderNumber || null, at: g?.at || null, buyer: g?.buyer ? nameOf(g.buyer) : null,
+      things: (g?.items || []).map((i) => ({ name: i.name, qty: Math.max(1, Math.round(Number(i.quantity) || 1)) })),
+      stage: mailStage(t), shippedAt: t.shippedAt || null, outAt: t.outAt || null, pickupAt: t.pickupAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null };
+  };
+  const ofOrder = (key, how) => {
     const kid = fromOrder(key, how);
     if (kid) return kid;
-    if ((view.shipments || []).some((s) => s.key === key && s.unplaced)) return { unplaced: key, how, exact: true };
-    const g = groups.get(key);
-    return { known: { key, store: r.store, orderNumber: r.read.orderNumber || null, at: g?.at || r.at, things: (g?.items || []).map((i) => ({ name: i.name, qty: Math.max(1, Math.round(Number(i.quantity) || 1)) })) }, how };
+    if ((view.needsLook || []).some((x) => x.key === key)) return { look: key, how, exact: true };
+    if ((view.shipments || []).some((s) => s.key === key && s.unplaced)) return { unplaced: key, how, exact: true, known: knownOf(key) };
+    return { known: knownOf(key), how };
   };
+  // Two orders in one box (one tracking number): a kid's first, then one to look at, nobody's, known
+  const ofOrders = (keys, how) => {
+    const all = keys.map((k) => ofOrder(k, how));
+    return all.find((x) => x.kid && x.items.length) || all.find((x) => x.look) || all.find((x) => x.unplaced) || all.find((x) => x.kid) || all.find((x) => x.known?.things.length) || all[0];
+  };
+  const keysOf = (hit) => [...new Set(reads.filter(hit).map(keyOf))];
   for (const t of label.trackingNumbers || []) {
-    const r = reads.find((x) => (x.read.tracking || []).some((tr) => sameTracking(tr.number, t)));
-    if (r) return ofOrder(r, `Tracking …${clean(t).slice(-6)}`);
+    const keys = keysOf((x) => (x.read.tracking || []).some((tr) => sameTracking(tr.number, t)));
+    if (keys.length) return ofOrders(keys, `Tracking …${clean(t).slice(-6)}`);
   }
   for (const o of [...(label.orderNumbers || []), ...(label.references || [])]) {
-    const r = reads.find((x) => sameOrder(x.read.orderNumber, o) || inOrder(x.read.orderNumber, o));
-    if (r) return ofOrder(r, `Order ${orderDigits(o) || o}`);
+    const keys = keysOf((x) => !isCarrier(x.store) && (sameOrder(x.read.orderNumber, o) || inOrder(x.read.orderNumber, o)));
+    if (keys.length) return ofOrders(keys, `Order ${orderDigits(o) || o}`);
   }
   for (const ref of label.references || []) {
     const po = kidFromPo(ref, view.kids.map((k) => ({ id: k.jobId, name: k.name })));
@@ -201,8 +223,7 @@ export function findBox(view, reads, label) {
   // narrow it to the things it is
   const jobs = view.kids.map((k) => ({ id: k.jobId, name: k.name }));
   for (const line of label.names || []) {
-    const said = String(line).replace(/^\s*(attn|attention|c\/o|care of|deliver to|ship to|name|po)\b[\s.:#-]*/i, '');
-    const po = kidFromPo(said, jobs);
+    const po = kidFromPo(nameOn(line), jobs);
     const kid = po?.kid && view.kids.find((k) => k.jobId === po.kid);
     if (!kid) continue;
     const mine = ordered.filter((x) => x.kid === kid);
@@ -238,8 +259,7 @@ export function findBox(view, reads, label) {
  * ]. What counts: the store (on the label, or told by its tracking number), the label's own words for what's in it
  * against each thing's name and line, who ordered it (a staff name on the label: "Linzi"), and delivered lately
  */
-export function likelyBoxes(view, reads, label, { now = Date.now(), max = 6 } = {}) {
-  const keyOf = orderKeyOf(reads);
+export function likelyBoxes(view, reads, label, { now = Date.now(), max = 6, keyOf = orderKeys(reads) } = {}) {
   const delivered = new Map();
   for (const r of reads) {
     if (r.read.kind !== 'delivered' && r.read.kind !== 'out') continue;
@@ -249,12 +269,17 @@ export function likelyBoxes(view, reads, label, { now = Date.now(), max = 6 } = 
     if (!delivered.has(k) || delivered.get(k) < at) delivered.set(k, at);
   }
   const words = (s) => new Set(String(s || '').toLowerCase().replace(/&/g, ' and ').split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !['the', 'and', 'inc', 'llc', 'com', 'store', 'logistics', 'supply'].includes(w)));
-  const store = label.store || storeOfTracking(label.trackingNumbers, reads) || '';
-  const from = words(store);
+  // The store the label prints, and the one its tracking number says (a warehouse ships for the store: "TRADEWINDS
+  // LOGISTICS" on a box of Plank Hardware's, by its UPS account)
+  const from = new Set([label.store, storeOfTracking(label.trackingNumbers, reads)].flatMap((s) => [...words(s)]));
   const sameStore = (s) => from.size > 0 && [...words(s)].some((w) => from.has(w));
-  // A staff name on the label says who ordered it only when few orders are theirs: Clareece's is on nearly every box
-  const named = new Set((label.names || []).map((n) => String(n).trim().split(/\s+/)[0].toLowerCase()).filter((w) => w.length > 1));
-  const buyersOf = [...view.kids.flatMap((k) => k.items.map((i) => i.order?.buyer)), ...(view.shipments || []).filter((x) => x.unplaced).map((x) => x.buyer)].filter(Boolean).map((b) => String(b).toLowerCase());
+  // A staff name on the label says who ordered it only when few orders are theirs (Clareece's is on nearly every box):
+  // counted by orders, one each, however many things are in it
+  const named = new Set((label.names || []).map((n) => nameOn(n).split(/\s+/)[0].toLowerCase()).filter((w) => w.length > 1));
+  const buyerOf = new Map();
+  for (const k of view.kids) for (const i of k.items) if (i.order?.key && i.order.buyer) buyerOf.set(i.order.key, i.order.buyer);
+  for (const x of view.shipments || []) if (x.unplaced && x.buyer) buyerOf.set(x.key, x.buyer);
+  const buyersOf = [...buyerOf.values()].map((b) => String(b).toLowerCase());
   const firsts = new Set([...named].filter((n) => buyersOf.length && buyersOf.filter((b) => b === n).length / buyersOf.length <= 0.3));
   const printed = [...(label.items || []), ...(label.models || [])].filter(Boolean);
   const said = (name) => printed.find((p) => wordsShare({ name }, [p]) >= 0.5) || printed[0];

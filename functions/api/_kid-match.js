@@ -128,15 +128,94 @@ function candidates(item, lines, templates) {
 /** Which order an email belongs to: store + order number; with none, the PO and the first item; else the email alone */
 export const groupKey = (r) => (r.read.orderNumber ? `${r.store}|${r.read.orderNumber}` : r.read.jobPo && r.read.items?.[0] ? `${r.store}|po:${r.read.jobPo}|${r.read.items[0].name}` : `${r.store}|email:${r.id}`);
 
-/** The emails about one order, together */
-export function orderGroups(reads) {
-  const groups = new Map();
+const lower = (x) => String(x || '').toLowerCase().trim();
+// A carrier's own email ("Your FedEx package is on its way") is about a store's order, never an order of its own
+const CARRIER = /^(fedex( freight| ground)?|ups|usps|dhl|ontrac|lasership|ltl select|amazon logistics|veho|uniuni|ups freight)$/i;
+export const isCarrier = (store) => CARRIER.test(String(store || '').trim());
+const orderNo = (n) => String(n || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const storeNo = (s) => String(s || '').toLowerCase().replace(/^the\s+/, '').replace(/[^a-z0-9]/g, '');
+const trackNo = (t) => String(t?.number || t || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/**
+ * One key for each order, whichever of its emails is read: emails are about one order when they share the store and
+ * its number ("#8MK7RPPS5F" and "8MK7RPPS5F" alike), or a tracking number (a carrier's own email included), or, an
+ * email with no number of its own, the store and a thing they both name. The key is the one the order always had (its
+ * store's email with an order number), so answers kept by it still find it; keep(members) names the email whose key
+ * something is kept by already (a person's answer, a budget line), when one of the order's other emails has it.
+ * reads: every kind (orders, shipping, cancellations) → (read) → its order's key; .storeOf, .numberOf alike
+ */
+export function orderKeys(reads, { keep = null } = {}) {
+  const id = (r) => `${r.mailbox}|${r.id}`;
+  const parent = new Map(reads.map((r) => [id(r), id(r)]));
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const numbered = (r) => orderNo(r.read.orderNumber).length >= 4 && !CARRIER.test(String(r.store || '').trim());
+  const numberOf = (r) => `${storeNo(r.store)}|${orderNo(r.read.orderNumber)}`;
+  // Each order's own numbers: a tracking number or a thing's name never makes two numbered orders one (Amazon sends
+  // two orders in one box; the same lamp is bought twice for two kids)
+  const nums = new Map(reads.map((r) => [id(r), new Set(numbered(r) ? [numberOf(r)] : [])]));
+  const join = (a, b, loose = false) => {
+    const x = find(a), y = find(b);
+    if (x === y) return;
+    const nx = nums.get(x), ny = nums.get(y);
+    if (loose && nx.size && ny.size && ![...ny].some((n) => nx.has(n))) return;
+    parent.set(y, x);
+    for (const n of ny) nx.add(n);
+  };
+  const firstBy = new Map();
+  const link = (k, r, loose) => { if (firstBy.has(k)) join(firstBy.get(k), id(r), loose); else firstBy.set(k, id(r)); };
+  for (const r of reads) if (numbered(r)) link(`n|${numberOf(r)}`, r, false);
+  for (const r of reads) for (const t of r.read.tracking || []) { const c = trackNo(t); if (c.length >= 8) link(`t|${c}`, r, true); }
+  // Still on its own with no number: the same store's numbered order that names the same thing, the latest one before
+  // it (a shipping email follows its order), else the first one after
   for (const r of reads) {
-    const key = groupKey(r);
-    const g = groups.get(key) || { key, store: r.store, orderNumber: r.read.orderNumber || null, po: null, at: r.at, kinds: [], items: [], later: [], buyer: r.mailbox };
+    if (nums.get(find(id(r))).size) continue;
+    const names = new Set((r.read.items || []).map((i) => lower(i.name)).filter(Boolean));
+    if (!names.size) continue;
+    const same = reads.filter((x) => numbered(x) && storeNo(x.store) === storeNo(r.store) && (x.read.items || []).some((i) => names.has(lower(i.name))));
+    const before = same.filter((x) => String(x.at) <= String(r.at)).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+    const other = before || same.sort((a, b) => String(a.at).localeCompare(String(b.at)))[0];
+    if (other) join(id(other), id(r), true);
+  }
+  // The order's own key: its store's email with an order number (the oldest); else its oldest email's. One of its
+  // emails whose key something is kept by already keeps it
+  const rank = (x) => (CARRIER.test(String(x.store || '').trim()) ? 2 : 0) + (numbered(x) ? 0 : 1);
+  const rep = new Map();
+  const members = new Map();
+  for (const r of [...reads].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
+    const root = find(id(r));
+    if (!rep.has(root) || rank(r) < rank(rep.get(root))) rep.set(root, r);
+    members.set(root, [...(members.get(root) || []), r]);
+  }
+  if (keep) {
+    for (const [root, list] of members) {
+      const keys = [...new Map([rep.get(root), ...list].map((r) => [groupKey(r), r])).values()];
+      if (keys.length < 2) continue;
+      const kept = keep(keys);
+      if (kept) rep.set(root, kept);
+    }
+  }
+  const keys = new Map(reads.map((r) => [id(r), groupKey(rep.get(find(id(r))))]));
+  const stores = new Map(reads.map((r) => [id(r), rep.get(find(id(r))).store]));
+  const numbers = new Map(reads.map((r) => [id(r), rep.get(find(id(r))).read.orderNumber || null]));
+  const keyOf = (r) => keys.get(id(r)) || groupKey(r);
+  keyOf.storeOf = (r) => stores.get(id(r)) || r.store;
+  keyOf.numberOf = (r) => (numbers.has(id(r)) ? numbers.get(id(r)) : r.read.orderNumber || null);
+  return keyOf;
+}
+
+/** The emails about one order, together (keyOf: orderKeys over every email read, so an order's emails are one order) */
+export function orderGroups(reads, keyOf = null) {
+  const groups = new Map();
+  const of = keyOf || orderKeys(reads);
+  for (const r of reads) {
+    const key = of(r);
+    const g = groups.get(key) || { key, store: of.storeOf ? of.storeOf(r) : r.store, orderNumber: of.numberOf ? of.numberOf(r) : r.read.orderNumber || null, po: null, at: r.at, lastAt: r.at, kinds: [], items: [], later: [], buyer: r.mailbox };
     g.kinds.push(r.read.kind);
     g.po ||= r.read.jobPo || null;
     if (r.at < g.at) g.at = r.at;
+    if (r.at > g.lastAt) g.lastAt = r.at;
+    // The buyer is whoever got the store's own email (a carrier's might have gone to anyone)
+    if (!CARRIER.test(String(r.store || '').trim()) && r.read.kind === 'order') g.buyer = r.mailbox;
     // What was ordered comes from the order email; a shipping or delivered email names the same things its own way
     // ("Raincan Showerhead…"), and counted again they'd be things nobody ordered
     const into = r.read.kind === 'order' ? g.items : g.later;

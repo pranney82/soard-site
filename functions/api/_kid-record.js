@@ -118,7 +118,7 @@ export async function readRecord(DB) {
   ]);
   return {
     receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null, box: r.box || null })),
-    decisions: new Map(decisions.map((d) => [d.key, { ...parse(d.decision, {}), by: d.by_email, at: d.at }])),
+    decisions: new Map(decisions.map((d) => [d.key, { ...parse(d.decision, {}), orderKey: d.order_key, by: d.by_email, at: d.at }])),
     also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, qty: a.qty || null, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, allowItemId: a.allow_item_id || null, offByHand: a.off_by_hand || null, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
     shelves: new Map(shelves.map((s) => [s.shelf, s.job_id])),
     // Sorted onto an allowance (itemId) or not (null); none yet: not sorted
@@ -299,9 +299,11 @@ export async function decide(DB, { orderKey, itemName, decision } = {}, { by = n
   if (['line', 'also', 'kid'].includes(decision.type) && !decision.kid) throw bad('Pick the kid.');
   if (decision.type === 'line' && (!decision.itemId || !decision.partKey)) throw bad('Pick the line.');
   const clean = { type: decision.type, ...(decision.kid ? { kid: String(decision.kid) } : {}), ...(decision.type === 'line' ? { itemId: String(decision.itemId), partKey: String(decision.partKey) } : {}) };
+  // The answer it replaces: that kid's budget lines are written again (another phone answered first)
+  const before = parse((await DB.prepare('SELECT decision FROM kid_decisions WHERE key = ?').bind(decisionKey(orderKey, itemName)).first())?.decision, {});
   await DB.prepare('INSERT OR REPLACE INTO kid_decisions (key, order_key, item_name, decision, by_email, at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(decisionKey(orderKey, itemName), String(orderKey), String(itemName).slice(0, 300), JSON.stringify(clean), by, now).run();
-  return clean;
+  return { ...clean, ...(before?.kid && before.kid !== clean.kid ? { was: String(before.kid) } : {}) };
 }
 
 /**

@@ -103,11 +103,13 @@ test('Nov 11: the POST answers with the likely boxes and keeps a record of the s
   aiAnswer = { trackingNumbers: ['TBA123456789000'], orderNumbers: [], po: '', store: 'Shop', items: [], boxTotal: 0, references: [] };
   const body = await (await post({ image: JPEG })).json();
   assert.equal(body.found, null);
-  assert.deepEqual(body.likely.map((x) => x.short), ['Rowan S.']);
+  // The label says Shop, its tracking number says Amazon: either store's box can be it
+  assert.deepEqual(body.likely.map((x) => x.short).sort(), ['Ava E.', 'Rowan S.']);
+  assert.ok(Array.isArray(body.view?.kids) && Array.isArray(body.view?.shipments), 'the list as it is now comes with the answer');
   const scans = (await env.DB.prepare('SELECT label, found, likely FROM kid_scans').all()).results;
   assert.equal(scans.length, 1);
   assert.equal(JSON.parse(scans[0].label).trackingNumbers[0], 'TBA123456789000');
-  assert.equal(scans[0].likely, 1);
+  assert.equal(scans[0].likely, 2);
 });
 
 test('Nov 11: the product’s own box (its model number or its name), and the kid’s name on the label, find it', async () => {
@@ -146,7 +148,10 @@ test('Peter’s Container Store box: its tracking finds its order, nobody’s ye
   const reads = await orderReads(env.DB);
   // The label: UPS tracking, the shipper's references, Clareece and Liam Agans as who it's to
   const label = { ...blank, trackingNumbers: ['1Z 12D 1R2 03 0064 9275'], references: ['146890757', 'L210769544'], names: ['CLAREECE CUNNINGHAM', 'LIAM AGANS'] };
-  assert.deepEqual(findBox(view, reads, label), { unplaced: 'The Container Store|899120272624', how: 'Tracking …649275', exact: true });
+  const asked = findBox(view, reads, label);
+  assert.deepEqual([asked.unplaced, asked.how, asked.exact], ['The Container Store|899120272624', 'Tracking …649275', true]);
+  // What the page needs to ask, even when its list is older than the order
+  assert.deepEqual([asked.known.store, asked.known.orderNumber, asked.known.stage, asked.known.things.map((t) => t.qty)], ['The Container Store', '899120272624', 'delivered', [2, 1]]);
   // Clareece: it's Ava's. Its things are Ava's now (bought on top of her selections), and the box finds her shipment
   await decide(env.DB, { orderKey: sh.key, itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } });
   view = await checkinView(env);

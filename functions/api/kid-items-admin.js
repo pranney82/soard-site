@@ -22,9 +22,9 @@
  */
 import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
-import { checkinView, orderReads } from './_kid-checkin.js';
+import { checkinView, checkinData } from './_kid-checkin.js';
 import { readLabel, findBox, likelyBoxes } from './_kid-scan.js';
-import { receive, undoMany, moveShelf, decide, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
+import { receive, undoMany, moveShelf, decide, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord, WHOLE_ORDER } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { shelfLabel } from './_kid-labels.js';
 import { keepSort } from './_kid-allow.js';
@@ -100,14 +100,16 @@ export async function onRequestPost(context) {
       if (!m) return Response.json({ success: false, error: 'That isn’t a photo the site can read. Take it again.' }, { status: 400, headers });
       const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
       const label = await readLabel(env, bytes);
-      const [view, reads] = [await checkinView(env, { photos: false }), await orderReads(env.DB)];
-      const found = findBox(view, reads, label);
-      const likely = found ? [] : likelyBoxes(view, reads, label);
+      // The list as it is now (the page's may be older than the email this box's order came in), matched to the label the
+      // way it was made, and sent back with the answer so the page opens the order the site found
+      const { view, reads, keyOf, nameOf } = await checkinData(env);
+      const found = findBox(view, reads, label, { keyOf, nameOf });
+      const likely = found ? [] : likelyBoxes(view, reads, label, { keyOf });
       // Every scan kept (what was read, what it found; never the photo), so a miss can be looked into
       await env.DB.prepare('CREATE TABLE IF NOT EXISTS kid_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, by_email TEXT, label TEXT, found TEXT, likely INTEGER)').run().catch(() => {});
       await env.DB.prepare('INSERT INTO kid_scans (at, by_email, label, found, likely) VALUES (?, ?, ?, ?, ?)')
         .bind(new Date().toISOString(), await who(request, env), JSON.stringify(label), found ? JSON.stringify(found) : null, likely.length).run().catch(() => {});
-      return Response.json({ success: true, label, found, likely }, { headers });
+      return Response.json({ success: true, label, found, likely, view: { ...view, printer: await printerStatus(env) } }, { headers });
     }
     await ensureRecord(env.DB);
     const by = await who(request, env);
@@ -199,6 +201,8 @@ export async function onRequestPost(context) {
       for (const it of items) {
         const d = await decide(env.DB, { orderKey: body.orderKey, itemName: it.itemName, decision: it.decision }, { by });
         if (d.kid) kids.add(d.kid);
+        // Whoever it was before (another phone's answer, a whole order moved): their lines come off
+        if (d.was) kids.add(d.was);
       }
       // Whoever had it before is written too (Wrong kid moves it off them)
       for (const k of [...kids, ...(body.from ? [String(body.from)] : [])]) context.waitUntil?.(writeKidNow(env, k));
@@ -216,6 +220,13 @@ export async function onRequestPost(context) {
       return Response.json({ success: false, error: 'Nothing to do' }, { status: 400, headers });
     }
     const view = await checkinView(env);
+    // A whole order said to be a kid's: how much of it is on their list now (the rest is in Needs a look), so the page
+    // says what really happened
+    const whose = q.get('decide') && body.items?.find((x) => x.itemName === WHOLE_ORDER && x.decision?.type === 'kid');
+    if (whose) {
+      const kid = view.kids.find((k) => k.jobId === String(whose.decision.kid));
+      out.placed = { kid: String(whose.decision.kid), things: kid ? kid.items.filter((i) => i.order?.key === String(body.orderKey)).length : 0, look: view.needsLook.some((x) => x.key === String(body.orderKey)) };
+    }
     if (print) out.print = await printFor(context, [print], view, { again: Boolean(q.get('reprint')) });
     // JobTread now, for the kid it changed: the answer says whether it's there
     if (jobId) out.jt = await writeKidNow(env, jobId);

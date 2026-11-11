@@ -11,7 +11,7 @@
  * JobTread always say the same thing.
  */
 
-import { matchOrder, orderGroups, templateLines, namesOf, fit, tokensOf, groupKey } from './_kid-match.js';
+import { matchOrder, orderGroups, orderKeys, groupKey, templateLines, namesOf, fit, tokensOf } from './_kid-match.js';
 import { loadCostRecords } from './_makeover-costs.js';
 import { matchProject } from './_reveals.js';
 import { readRecord, readState, decisionKey, alsoKey, shelfName, SHELVES, FLOOR, outState, WHOLE_ORDER } from './_kid-record.js';
@@ -22,6 +22,8 @@ const UNPLACED_DAYS = 30;
 const UNDO_KINDS = new Set(['cancelled', 'refund', 'return']);
 // Where a shipment is: the order kinds, and a delay email (its new expected day, never a sign it shipped)
 const SHIP_KINDS = new Set([...ORDER_KINDS, 'delayed']);
+// Every email about an order, to tell which emails are one order
+const ALL_KINDS = new Set([...SHIP_KINDS, ...UNDO_KINDS]);
 
 // strict: the JobTread writer's view, where a failed read must stop the run, never look like an empty list
 async function rows(DB, sql, strict = false) {
@@ -93,7 +95,15 @@ const OPEN = new Set(['not', 'ordered']);
  * → { practice, since, kids: [{ jobId, name, short, shelves, photo, others, allowances, items }], needsLook, orders, shelves }
  * Each item: { id, itemId, partKey, name, line, qty, source, status, got, shelf, order, orderedAs, before, receipts, also?, allowance? }
  */
-export async function checkinView(env, { photos = true, strict = false } = {}) {
+export async function checkinView(env, opts = {}) {
+  return (await checkinData(env, opts)).view;
+}
+
+/**
+ * The view, with the emails it was made from and which order each is (the scan matches a label to them the same way)
+ * → { view, reads, keyOf, nameOf: (mailbox) → who ordered, by first name }
+ */
+export async function checkinData(env, { photos = true, strict = false } = {}) {
   const DB = env.DB;
   const record = await readRecord(DB);
   // Lines the site made itself (Also bought) were read as selections before the reader knew them: never parts
@@ -188,26 +198,40 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     return alsoItem(kid, key, name, { ...opts, allow });
   };
 
+  // Which emails are one order (its number, a tracking number, a thing both name), each order by the key it's always
+  // had; one whose answers or budget lines are kept by another of its emails' keys keeps that one
+  const all = await orderReads(DB, ALL_KINDS, strict);
+  const said = new Set([...record.decisions.values()].map((d) => d.orderKey).filter(Boolean));
+  const alsoKeys = new Set(record.also.filter((a) => !a.typed).map((a) => a.key));
+  const keyOf = orderKeys(all, {
+    keep: (members) => members.find((r) => said.has(groupKey(r)))
+      || members.find((r) => (r.read.items || []).some((i) => kids.some((k) => alsoKeys.has(alsoKey(groupKey(r), i.name, k.jobId))))) || null,
+  });
   // Cancelled, refunded or sent back: the whole order (every item named) undoes it; anything less is for a person
   const undoes = new Map();
-  for (const g of orderGroups(await orderReads(DB, UNDO_KINDS, strict))) undoes.set(g.key, g);
+  for (const g of orderGroups(all.filter((r) => UNDO_KINDS.has(r.read.kind)), keyOf)) undoes.set(g.key, g);
 
-  const reads = await orderReads(DB, ORDER_KINDS, strict);
-  const elsewhere = new Set(reads.filter((r) => r.read.shipTo === 'elsewhere').map((r) => `${r.store}|${r.read.orderNumber}`));
+  const reads = all.filter((r) => ORDER_KINDS.has(r.read.kind));
+  const elsewhere = new Set(reads.filter((r) => r.read.shipTo === 'elsewhere').map(keyOf));
   const needsLook = [];
   let orders = 0;
   // Orders nobody's placed (no PO, and nothing in them fits a selection): bought on an allowance, or for the office.
   // Each shows as a shipment asking whose it is, until a person says (a kid, or not a kid's)
   const unplaced = [];
-  for (const g of orderGroups(reads)) {
-    // A person's answer for the whole order: not a kid's (it's gone from the list), or whose (as a PO with their name)
-    const said = record.decisions.get(decisionKey(g.key, WHOLE_ORDER));
-    if (said?.type === 'notKid' || said?.type === 'cancelled') continue;
-    const m = matchOrder(g, { jobs, lines, staff, templates, kid: said?.type === 'kid' && kidOf.has(said.kid) ? said.kid : null });
+  for (const g of orderGroups(reads, keyOf)) {
+    // A person's answer for the whole order (not a kid's, cancelled, or whose: as a PO with their name), and for each
+    // thing in it: the newer one stands (Whose is it? after Needs a look, or Wrong kid after Whose is it?)
+    const whole = record.decisions.get(decisionKey(g.key, WHOLE_ORDER));
+    const wholeKid = whole?.type === 'kid' && kidOf.has(whole.kid) ? whole.kid : null;
+    const dropped = whole?.type === 'notKid' || whole?.type === 'cancelled';
+    const answerOf = (name) => { const d = record.decisions.get(decisionKey(g.key, name)); return d && (!whole || String(d.at || '') >= String(whole.at || '')) ? d : null; };
+    if (dropped && !g.items.some((it) => answerOf(it.name))) continue;
+    const m = matchOrder(g, { jobs, lines, staff, templates, kid: wholeKid });
+    // Cancelled whole by the store: off the list, unless a person said whose it is after that (the box came anyway)
     const undo = undoes.get(g.key);
-    const whole = undo && undo.items.length && g.items.every((it) => undo.items.some((u) => lower(u.name) === lower(it.name)));
-    if (whole) continue;
-    const order = { key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: firstOf.get(String(g.buyer || '').toLowerCase()) || String(g.buyer || '').split('@')[0], ...(elsewhere.has(`${g.store}|${g.orderNumber}`) ? { elsewhere: true } : {}) };
+    const allUndone = undo && undo.items.length && g.items.every((it) => undo.items.some((u) => lower(u.name) === lower(it.name)));
+    if (allUndone && !(wholeKid && String(whole.at || '') > String(undo.lastAt || ''))) continue;
+    const order = { key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: firstOf.get(String(g.buyer || '').toLowerCase()) || String(g.buyer || '').split('@')[0], ...(elsewhere.has(g.key) ? { elsewhere: true } : {}) };
     const before = Boolean(since && g.at < since);
     const byName = new Map((m.items || []).map((x) => [x.name, x]));
     const looks = [];
@@ -217,7 +241,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
       const qty = Math.max(1, Math.round(Number(it.quantity) || 1));
       // The reader keeps an item's price in cents; an older read had it as written
       const cents = Number.isFinite(Number(it.cents)) && Number(it.cents) > 0 ? Math.round(Number(it.cents)) : priceCents(it.price);
-      const d = record.decisions.get(decisionKey(g.key, it.name));
+      const d = answerOf(it.name);
       const put = (kid, target) => { Object.assign(target, { order: { ...order, cents }, orderedAs: it.name, before }); current.set(it.name, target.also ? (target.also.allowItemId ? `allow:${target.also.allowItemId}` : 'also') : `line:${target.id}`); placed++; };
       if (d) {
         // A person said: that answer stands over the matcher's
@@ -242,7 +266,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
         else looks.push({ name: it.name, look: 'its line changed: which one now?' });
         continue;
       }
-      if (!['placed', 'look'].includes(m.decision)) continue;
+      if (dropped || !['placed', 'look'].includes(m.decision)) continue;
       const x = byName.get(it.name);
       const kid = m.kid ? kidOf.get(m.kid) : null;
       if (!x || x.look || !kid) { looks.push({ name: it.name, look: x?.look || 'which kid?' }); continue; }
@@ -259,15 +283,16 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     }
     if (placed || looks.length) orders++;
     // Part of the order cancelled or refunded: each item nobody has answered for is asked about ("Cancelled" is an answer)
-    const partly = undo && !whole && (placed || looks.length) ? (undo.kinds.includes('cancelled') ? 'cancelled' : 'refunded') : null;
+    const partly = undo && !allUndone && (placed || looks.length) ? (undo.kinds.includes('cancelled') ? 'cancelled' : 'refunded') : null;
     const asked = new Set(looks.map((x) => x.name));
     if (partly) {
       for (const it of g.items) {
-        if (!asked.has(it.name) && !record.decisions.get(decisionKey(g.key, it.name))) looks.push({ name: it.name, look: `part of the order was ${partly}: is this one?`, current: current.get(it.name) || null });
+        if (!asked.has(it.name) && !answerOf(it.name)) looks.push({ name: it.name, look: `part of the order was ${partly}: is this one?`, current: current.get(it.name) || null });
       }
     }
-    // Nobody's: no thing in it placed by an answer, nothing to ask item by item, not going to a house, and recent
-    if (m.decision === 'unplaced' && !placed && !looks.length && !order.elsewhere && Date.now() - Date.parse(g.at) < UNPLACED_DAYS * 86400e3) {
+    // Nobody's: no thing in it placed by an answer, nothing to ask item by item, not going to a house, not cancelled or
+    // sent back (any of it: the rest is asked about once it's someone's), and recent
+    if (m.decision === 'unplaced' && !placed && !looks.length && !order.elsewhere && !undo && Date.now() - Date.parse(g.at) < UNPLACED_DAYS * 86400e3) {
       unplaced.push({ key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: order.buyer,
         things: g.items.map((it) => ({ name: it.name, qty: Math.max(1, Math.round(Number(it.quantity) || 1)), cents: Number.isFinite(Number(it.cents)) && Number(it.cents) > 0 ? Math.round(Number(it.cents)) : priceCents(it.price) })) });
     }
@@ -296,6 +321,8 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
       || (r.partKey === 'also' && !record.also.some((a) => a.key === r.itemId && a.typed) ? kid.items.find((x) => lower(x.orderedAs) === lower(r.name)) : null)
       // Checked in on an allowance by the page before Nov 11 2026 (a part "allow:…" of the allowance line): the thing bought on it now
       || (String(r.partKey).startsWith('allow:') ? kid.items.find((x) => x.also?.allowItemId === r.itemId && (lower(x.orderedAs) === lower(r.name) || lower(x.name) === lower(r.name))) : null);
+    // Undone, and what it was for is on no list now (moved to another kid, another order): nothing to show
+    if (!it && r.undoneAt) continue;
     if (!it) {
       const l = r.partKey === 'also' ? null : lineOf.get(`${r.jobId}|${r.itemId}`);
       it = { id: `${r.itemId}|${r.partKey}`, itemId: r.itemId, partKey: r.partKey, name: r.name || 'Checked in', line: l?.lineName || r.line || 'A line that changed', qty: 0, cents: null, source: 'buy', order: null, receipts: [], gone: !l };
@@ -318,7 +345,13 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     const here = kids.flatMap((k) => k.items.filter((i) => (i.status === 'here' || i.status === 'partly') && (i.shelves || [i.shelf]).includes(s)).map(() => k.jobId));
     return { shelf: s, name: shelfName(s), kid: kid?.jobId || (s === FLOOR ? null : record.shelves.get(s) || null), things: here.length };
   });
-  return { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, await orderReads(DB, SHIP_KINDS, strict), unplaced) };
+  // Every open makeover's kid, for "whose is it?": a kid whose budget has only allowances yet is who an allowance buy is for
+  const everyKid = kids.map(({ jobId, name, short, photo, shelf, shelves: s, allowances }) => ({ jobId, name, short, photo, shelf, shelves: s, allowances }))
+    .sort((a, b) => String(a.short).localeCompare(String(b.short)));
+  const view = { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), everyKid, open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, all.filter((r) => SHIP_KINDS.has(r.read.kind)), unplaced, keyOf) };
+  // Who ordered, as the page says it ("Clareece")
+  const nameOf = (email) => firstOf.get(String(email || '').toLowerCase()) || String(email || '').split('@')[0] || null;
+  return { view, reads: all, keyOf, nameOf };
 }
 
 /** For an item a person places: each kid's likeliest open part ({ [jobId]: item id }), by the designer's words */
@@ -363,15 +396,8 @@ const sameThing = (named, it) => {
  * joins its order by its tracking number.
  * → [{ key, store, orderNumber, orderedAt, stage, shippedAt, outAt, deliveredAt, expected, checkedAt, house, items: [{ kid, id, delivered }] }]
  */
-/** An email's order: its own, or (a shipping email with no order number, "store|email:…") the order with the same tracking number */
-export function orderKeyOf(reads) {
-  const byTracking = new Map();
-  for (const r of reads) if (r.read.orderNumber) for (const t of r.read.tracking || []) byTracking.set(t.number, groupKey(r));
-  return (r) => { const k = groupKey(r); if (!k.includes('|email:')) return k; return (r.read.tracking || []).map((t) => byTracking.get(t.number)).find(Boolean) || k; };
-}
-
-export function shipmentsOf(kids, reads, unplaced = []) {
-  const keyOf = orderKeyOf(reads);
+/** Where each order is by its emails: key → { shippedAt, outAt, deliveredAt, pickupAt, expected, deliveredNames, deliveredAll, house } */
+export function orderMail(reads, keyOf = orderKeys(reads)) {
   const mail = new Map();
   for (const r of [...reads].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
     const k = keyOf(r);
@@ -390,6 +416,14 @@ export function shipmentsOf(kids, reads, unplaced = []) {
     }
     mail.set(k, t);
   }
+  return mail;
+}
+
+/** Where an order is from its emails alone: delivered · pickup · out · shipped · ordered · house */
+export const mailStage = (t = {}) => (t.house ? 'house' : t.deliveredAt ? 'delivered' : t.pickupAt ? 'pickup' : t.outAt ? 'out' : t.shippedAt ? 'shipped' : 'ordered');
+
+export function shipmentsOf(kids, reads, unplaced = [], keyOf = orderKeys(reads)) {
+  const mail = orderMail(reads, keyOf);
   // A delivered email whose names match none of the order's things: it's about this order, so all of it
   const anyNamed = new Map();
   for (const k of kids) for (const it of k.items) {
@@ -419,7 +453,7 @@ export function shipmentsOf(kids, reads, unplaced = []) {
   // Nobody's orders: a shipment like any other (delivered, on the way), its things by name, asking whose it is
   for (const u of unplaced) {
     const t = mail.get(u.key) || {};
-    const stage = t.house ? 'house' : t.deliveredAt ? 'delivered' : t.pickupAt ? 'pickup' : t.outAt ? 'out' : t.shippedAt ? 'shipped' : 'ordered';
+    const stage = mailStage(t);
     if (stage === 'house') continue;
     out.push({ key: u.key, store: u.store, orderNumber: u.orderNumber || null, orderedAt: u.at, buyer: u.buyer, unplaced: true, things: u.things, items: [], stage, house: false, shippedAt: t.shippedAt || null, outAt: t.outAt || null, pickupAt: t.pickupAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null, checkedAt: null });
   }
