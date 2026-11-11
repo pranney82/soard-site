@@ -117,6 +117,48 @@ export function photoImageUrl(photo) {
   return u?.url || u?.uri || null;
 }
 
+// ─── Videos ─────────────────────────────────────────────────────────
+
+const CC_V2 = 'https://api.companycam.com/v2';
+/**
+ * A project's videos, newest first: [{ id, status, playback_url, captured_at, duration, … }].
+ * CompanyCam documents the list on its v2 API (a bare array, page by page),
+ * so that's where it's asked when v1 has no such list.
+ */
+export async function projectVideos(env, projectId, { max = 500, fetchImpl = fetch } = {}) {
+  try {
+    return await ccAll(env, `/projects/${id(projectId)}/videos`, { max, fetchImpl });
+  } catch (e) {
+    if (!(e instanceof CompanyCamError) || e.status !== 404) throw e;
+  }
+  const token = String(env?.COMPANYCAM_TOKEN || '').trim();
+  if (!token) throw new CompanyCamError('COMPANYCAM_TOKEN is not set', { code: 'no_token' });
+  const out = [];
+  for (let page = 1; out.length < max && page <= 50; page++) {
+    const res = await fetchImpl(`${CC_V2}/projects/${id(projectId)}/videos?page=${page}&per_page=${PAGE}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (res.status === 404) break;
+    if (!res.ok) throw new CompanyCamError(`CompanyCam returned ${res.status} listing videos`, { status: res.status, retryAfter: Number(res.headers.get('Retry-After')) || null });
+    const body = await res.json().catch(() => null);
+    const list = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [];
+    out.push(...list);
+    if (list.length < PAGE) break;
+  }
+  return out.slice(0, max);
+}
+
+/**
+ * A processed video as one MP4 file, or null. CompanyCam's videos live on Mux,
+ * which plays them as a stream (…/<id>.m3u8) and also hands out the whole
+ * video at its best quality (…/<id>/highest.mp4).
+ */
+export function videoFileUrl(video) {
+  if (video?.status && video.status !== 'processed') return null;
+  const m = String(video?.playback_url || '').match(/^https:\/\/stream\.mux\.com\/([A-Za-z0-9]+)\.m3u8(?:\?|$)/);
+  return m ? `https://stream.mux.com/${m[1]}/highest.mp4` : null;
+}
+
 /** The text and stickers someone drew on a photo, as words ("" when there's no markup) */
 export function markupText(photo) {
   const a = photo?.annotations;

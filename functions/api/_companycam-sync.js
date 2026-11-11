@@ -244,14 +244,19 @@ export function tagIdsFor(kind, ccTags, tags) {
   return ids.slice(0, 10);
 }
 
-/** A JobTread upload request for a file at `url`: JobTread fetches it, or the site carries the bytes if it can't */
-export async function uploadToJobTread(env, url, fetchImpl) {
+/**
+ * A JobTread upload request for a file at `url`: JobTread fetches it, or the
+ * site carries the bytes if it can't. A video is never carried (carry: false):
+ * up to 100 MB won't fit in a Worker's memory, so JobTread's own fetch is the only way.
+ */
+export async function uploadToJobTread(env, url, fetchImpl, { carry = true } = {}) {
   try {
     const up = await jt(env, { createUploadRequest: { $: { organizationId: SOARD_ORG_ID, url }, createdUploadRequest: { id: {} } } }, fetchImpl);
     const id = up?.createUploadRequest?.createdUploadRequest?.id;
     if (id) return id;
+    if (!carry) throw new Error('JobTread didn’t take the file');
   } catch (e) {
-    if (!/JobTread returned 4\d\d/.test(e.message)) throw e;
+    if (!carry || !/JobTread returned 4\d\d/.test(e.message)) throw e;
   }
   const res = await fetchImpl(url, { signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error(`CompanyCam’s file returned ${res.status}`);

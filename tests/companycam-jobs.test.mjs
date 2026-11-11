@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { maybeCheckJobs, jobsFacts, nudgeJobsFor } from '../functions/api/_companycam-jobs.js';
+import { videoFileUrl } from '../functions/api/_companycam.js';
 import { takeEvent } from '../functions/api/_companycam-sync.js';
 
 const T0 = Date.parse('2026-10-21T15:00:00Z');
@@ -21,7 +22,7 @@ const at = (m) => T0 + m * MIN;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 let w; let env; let realFetch;
 
-const newWorld = () => ({ jobs: new Map(), files: new Map(), projects: new Map(), photos: new Map(), writes: [], slack: [], next: 100, now: T0 });
+const newWorld = () => ({ jobs: new Map(), files: new Map(), projects: new Map(), photos: new Map(), videos: new Map(), gone: new Set(), writes: [], slack: [], next: 100, now: T0 });
 const fid = () => `f${++w.next}`;
 
 function jobtread(body) {
@@ -46,7 +47,10 @@ function jobtread(body) {
   }
   w.writes.push({ op, args: q.$ });
   if (op === 'deleteFile') { w.files.delete(q.$.id); return json({}); }
-  if (op === 'createUploadRequest') return json({ createUploadRequest: { createdUploadRequest: { id: `up${w.writes.length}` } } });
+  if (op === 'createUploadRequest') {
+    if (String(q.$.url || '').includes('Refused')) return new Response('file is too large', { status: 400 });
+    return json({ createUploadRequest: { createdUploadRequest: { id: `up${w.writes.length}` } } });
+  }
   if (op === 'createFile') { const id = fid(); w.files.set(id, { id, jobId: q.$.targetId, targetType: q.$.targetType, folder: q.$.folder || null, tags: q.$.fileTagIds || [], name: q.$.name, createdAt: new Date(w.now).toISOString(), by: null }); return json({ createFile: { createdFile: { id } } }); }
   throw new Error(`unexpected JobTread call ${op}`);
 }
@@ -56,7 +60,15 @@ function companycam(url) {
   let m;
   const page = (data) => json({ data, errors: [], meta: { has_next: false } });
   if (path === '/projects') return page([...w.projects.values()].filter((p) => !!p.archived === (url.searchParams.get('archived') === 'true')));
-  if ((m = path.match(/^\/projects\/(\d+)\/photos$/))) return page([...w.photos.values()].filter((p) => p.project_id === m[1]));
+  if ((m = path.match(/^\/projects\/(\d+)\/photos$/))) return w.gone.has(m[1]) ? json({ data: null, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404) : page([...w.photos.values()].filter((p) => p.project_id === m[1]));
+  // Videos are listed only on CompanyCam's v2 API: a bare array, page by page
+  if ((m = path.match(/^\/projects\/(\d+)\/videos$/))) return json({ data: null, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404);
+  if ((m = path.match(/^\/v2\/projects\/(\d+)\/videos$/))) {
+    const all = [...w.videos.values()].filter((v) => v.project_id === m[1]);
+    const pg = Number(url.searchParams.get('page') || 1);
+    const per = Number(url.searchParams.get('per_page') || 50);
+    return json(all.slice((pg - 1) * per, pg * per));
+  }
   if ((m = path.match(/^\/photos\/(\d+)$/))) return w.photos.has(m[1]) ? json({ data: w.photos.get(m[1]), errors: [], meta: {} }) : json({ data: {}, errors: [{ code: 'not_found', message: 'Not found' }], meta: {} }, 404);
   throw new Error(`unexpected CompanyCam call ${path}`);
 }
@@ -74,6 +86,9 @@ const project = (id, name, { street = '5 Sample Rd', created = '2026-02-11T00:00
 function photo(id, projectId, { created = at(-24 * 60) } = {}) {
   w.photos.set(id, { id, project_id: projectId, status: 'active', processing_status: 'processed', created_at: new Date(created).toISOString(), uris: [{ type: 'original', url: `https://cdn.example.com/${id}.jpg` }] });
   w.projects.get(projectId).photo_count += 1;
+}
+function video(id, projectId, { status = 'processed', playback = `Mux${id}`, created = at(-24 * 60) } = {}) {
+  w.videos.set(id, { id, project_id: projectId, created_at: Math.floor(created / 1000), status, playback_url: status === 'processed' ? `https://stream.mux.com/${playback}.m3u8` : `https://uploads.example.com/${id}.mov`, format: status === 'processed' ? 'm3u8' : 'mov', duration: 30 });
 }
 const copy = (jobId, photoId, { by = 'CompanyCam', created = at(-60 * 24 * 30), comments = false } = {}) => { const id = fid(); w.files.set(id, { id, jobId, name: `CompanyCam ${photoId}`, createdAt: new Date(created).toISOString(), by, comments }); return id; };
 const run = (m, o = {}) => { w.now = at(m); return maybeCheckJobs(env, { fetchImpl: fakeFetch, now: at(m), force: true, ...o }); };
@@ -323,4 +338,118 @@ test('a project given a home has its photos copied there once, untagged, into it
   assert.deepEqual([st['900'].missing, st['900'].copied, st['910'].missing], [0, 2, 0]);
   const orph = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_jobs_state WHERE key = 'orphans'").first('value'));
   assert.deepEqual(orph.list.map((p) => p.id), ['920'], 'only the project with no home is left');
+});
+
+// Videos (Nov 11 2026, days before CompanyCam closes): the whole MP4 of each, fetched by JobTread itself
+test('a job’s CompanyCam videos are copied whole, as MP4s JobTread fetches itself, two a run, until none is missing', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  for (const id of ['7700101', '7700102', '7700103']) video(id, '500');
+  video('7700104', '500', { status: 'processing' }); // still being processed at CompanyCam
+  await run(0);
+  const ups = w.writes.filter((x) => x.op === 'createUploadRequest').map((x) => x.args.url);
+  assert.deepEqual(ups, ['https://stream.mux.com/Mux7700101/highest.mp4', 'https://stream.mux.com/Mux7700102/highest.mp4'], 'JobTread is handed the MP4; the site never fetches it (Mux isn’t in the fake)');
+  assert.deepEqual(names('j1'), ['CompanyCam 7700101', 'CompanyCam 7700102']);
+  let r = await row('j1');
+  assert.deepEqual([r.cc_videos, r.video_copies, r.videos_missing], [4, 2, 2]);
+  await run(11);
+  assert.ok(names('j1').includes('CompanyCam 7700103'), 'the job came round in 10 minutes for the rest');
+  r = await row('j1');
+  assert.equal(r.videos_missing, 1, 'the one still processing waits');
+  w.videos.get('7700104').status = 'processed';
+  w.videos.get('7700104').playback_url = 'https://stream.mux.com/Mux7700104.m3u8';
+  await run(22);
+  r = await row('j1');
+  assert.deepEqual([r.videos_missing, r.problem], [0, null]);
+  const before = w.files.size;
+  await run(83);
+  assert.equal(w.files.size, before, 'nothing copied twice');
+  const facts = await jobsFacts(env);
+  assert.deepEqual([facts.audit.videos, facts.audit.videosMissing], [4, 0]);
+  assert.ok(w.slack.some((m) => /videos? copied/.test(m.text || '')), 'Slack hears the videos with the photos');
+});
+
+test('a video JobTread refuses is named and tried again; the job’s other videos still go', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  video('7700110', '500', { playback: 'Refused7700110' });
+  video('7700111', '500');
+  await run(0);
+  assert.deepEqual(names('j1'), ['CompanyCam 7700111']);
+  const r = await row('j1');
+  assert.equal(r.problem, 'videos');
+  assert.match(r.detail, /video 7700110: JobTread returned 400/);
+  assert.equal(r.videos_missing, 1);
+  const facts = await jobsFacts(env);
+  assert.equal(facts.audit.videoErrors.length, 1);
+  assert.deepEqual(facts.audit.errors, [], 'the job’s photos were still checked');
+});
+
+test('every job whose videos were never looked at is due at once, closed ones too', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  closedJob();
+  video('7700120', '800');
+  await run(0);
+  await run(1);
+  assert.ok(names('j4').includes('CompanyCam 7700120'));
+  // As the jobs looked at before videos came: checked an hour ago, videos never
+  await env.DB.prepare('UPDATE companycam_jobs SET cc_videos = NULL, video_copies = NULL, videos_missing = NULL, checked_at = ?').bind(at(30)).run();
+  video('7700121', '800');
+  await run(31);
+  await run(32);
+  assert.ok(names('j4').includes('CompanyCam 7700121'), 'the closed job didn’t wait its week');
+});
+
+test('a placed project someone deleted in CompanyCam has its photos and videos copied to its job; a living one’s deleted photos are not', async () => {
+  project('700', 'Max Family (2026) (022)', { street: '4 Race Dr' }); // deleted in CompanyCam, still listed
+  job('j7', 'Max Family (2026)', { street: '4 Race Dr' });
+  for (const id of ['3007001', '3007002']) { photo(id, '700'); w.photos.get(id).status = 'deleted'; }
+  video('7700130', '700');
+  project('710', 'Repair visit', { street: '2 Fix St' });
+  photo('3007101', '710');
+  photo('3007102', '710');
+  w.photos.get('3007102').status = 'deleted'; // a person deleted this one: it stays out
+  job('j8', 'Repair Family (2025)', { street: '2 Fix St', closedOn: '2025-02-01', createdAt: '2024-12-01T00:00:00Z' });
+  const placed = [
+    { project: '700', targetType: 'job', targetId: 'j7', folder: null, deletedProject: true },
+    { project: '710', targetType: 'job', targetId: 'j8', folder: null },
+  ];
+  await run(0, { placed });
+  assert.deepEqual(names('j7').filter((n) => /3007|7700130/.test(n)), ['CompanyCam 3007001', 'CompanyCam 3007002', 'CompanyCam 7700130']);
+  assert.deepEqual(names('j8').filter((n) => /3007/.test(n)), ['CompanyCam 3007101']);
+  const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_jobs_state WHERE key = 'placed'").first('value'));
+  assert.deepEqual([st['700'].missing, st['700'].videos, st['700'].videosMissing, st['700'].error], [0, 1, 0, null]);
+  const facts = await jobsFacts(env);
+  assert.equal(facts.placed.videosMissing, 0);
+});
+
+test('a placed project CompanyCam no longer shows is an error, not taken as empty', async () => {
+  w.gone.add('730');
+  await run(0, { placed: [{ project: '730', targetType: 'job', targetId: 'j7', folder: null, deletedProject: true }] });
+  const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_jobs_state WHERE key = 'placed'").first('value'));
+  assert.match(st['730'].error, /doesn’t show this project any more/);
+  assert.equal((await jobsFacts(env)).placed.errors, 1);
+});
+
+test('a video’s file is Mux’s whole MP4, only once CompanyCam has processed it', () => {
+  assert.equal(videoFileUrl({ status: 'processed', playback_url: 'https://stream.mux.com/AbC012xyz.m3u8' }), 'https://stream.mux.com/AbC012xyz/highest.mp4');
+  assert.equal(videoFileUrl({ status: 'processed', playback_url: 'https://stream.mux.com/AbC012xyz.m3u8?token=1' }), 'https://stream.mux.com/AbC012xyz/highest.mp4');
+  assert.equal(videoFileUrl({ status: 'processing', playback_url: 'https://uploads.example.com/a.mov' }), null);
+  assert.equal(videoFileUrl({ status: 'processed', playback_url: 'https://elsewhere.example.com/a.m3u8' }), null);
+  assert.equal(videoFileUrl({}), null);
+});
+
+test('a video JobTread’s own link already brought isn’t copied again, and a new one in the linked project waits its hour', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  video('7700140', '500');
+  copy('j1', '7700140'); // JobTread's link brought it, under its own name
+  video('7700141', '500', { created: at(-5) }); // taken five minutes ago
+  await run(0);
+  assert.deepEqual(w.writes.filter((x) => x.op === 'createUploadRequest'), [], 'nothing copied: one is there, one is JobTread’s to bring');
+  assert.equal((await row('j1')).videos_missing, 1);
+  await run(70);
+  assert.ok(names('j1').includes('CompanyCam 7700141'), 'the site brings it once JobTread’s hour is up');
+  assert.equal(names('j1').filter((n) => n === 'CompanyCam 7700140').length, 1, 'never twice');
 });
