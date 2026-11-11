@@ -89,10 +89,13 @@
   .hds-item:focus-visible::after { box-shadow: inset 0 0 0 3px var(--c-dark), inset 0 0 0 5px var(--c-yellow); }
   /* The one open in the viewer */
   .hds-item[aria-current='true']::after { box-shadow: inset 0 0 0 3px var(--c-yellow), inset 0 0 0 4px var(--c-dark); }
+  /* Each picture's badge (BEFORE, EXISTING, PROPOSED), the design section's look at the strip's size */
   .hds-tag {
-    position: absolute; left: 5px; bottom: 5px; z-index: 1; padding: 3px 7px; border-radius: 999px;
-    background: var(--c-dark); color: #fff; font-size: 10.5px; font-weight: 700; line-height: 1.2; letter-spacing: 0.02em;
+    position: absolute; left: 5px; top: 5px; z-index: 1; padding: 3px 6px 2px; border-radius: 5px;
+    background: var(--c-dark); color: #fff; font-size: 9.5px; font-weight: 800; line-height: 1.2; letter-spacing: 0.06em; text-transform: uppercase;
+    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.92);
   }
+  .hds-tag--proposed { background: var(--c-yellow); color: var(--c-dark); }
 
   @media (max-width: 960px) {
     .hero { --hds-w: clamp(76px, 23vw, 92px); --hds-h: 88px; --hds-gap: 10px; }

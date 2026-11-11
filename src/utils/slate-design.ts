@@ -9,9 +9,11 @@
  *   the kid → the room today (before photos, drifting) → the floor plan today
  *   → the new plan, wiped in over it → the design boards
  *
- * The line above the frame names each one ("BEFORE · Dylan's room today",
- * "THE PLAN · The new floor plan") and a row of steps at its end shows where
- * it is in the story; nothing is written on the pictures. Nothing is
+ * Each picture carries what it is, strongly, on itself: BEFORE on the room's
+ * photos (nobody may take the old room for the finished one), EXISTING and
+ * PROPOSED on the plans (the slide's badge). The line above the frame says
+ * the rest ("Dylan's room today", "The new floor plan", "THE LOOK · The
+ * design") and a row of steps at its end shows where it is in the story. Nothing is
  * shown before it has loaded; a picture that can't load is skipped. The
  * screen asks again every few minutes, so a change made in Admin → Kids
  * arrives on its own.
@@ -142,7 +144,9 @@ export function startSlateDesign(o: Options) {
       if (img) { img.classList.remove('drift'); void img.offsetWidth; if (!still && !reduced) img.classList.add('drift'); }
     }
     at = i;
-    chipFor(next.slide || kidChip);
+    // A picture with its badge has its kind on it: the line just describes it
+    const s = next.slide;
+    chipFor(s ? (s.badge ? { kicker: '', caption: s.caption } : s) : kidChip);
     const hold = Math.max(1000, HOLD_MS[next.slide?.kind || 'kid'] * pace) + (wipe ? WIPE_MS : 0);
     markStep(i, still ? 0 : hold);
     clearTimeout(timer);
@@ -172,11 +176,18 @@ export function startSlateDesign(o: Options) {
     if (!slides.length) { at = 0; steps.replaceChildren(); steps.hidden = true; chipFor(null); return; }
     for (const s of slides) {
       const layer = document.createElement('div');
-      layer.className = `slide slide--${s.kind}${s.kind === 'before' ? '' : ' paper'}`;
+      layer.className = `slide slide--${s.kind}${s.kind === 'before' ? '' : ' paper'}${s.badge ? ' has-badge' : ''}`;
       const img = document.createElement('img');
       img.alt = '';
       img.decoding = 'async';
       layer.append(img);
+      // What it is, on the picture (it wipes in with the new plan, over the old one's)
+      if (s.badge) {
+        const badge = document.createElement('span');
+        badge.className = 'slide-badge';
+        badge.textContent = s.badge;
+        layer.append(badge);
+      }
       show.append(layer);
       const b: Built = { slide: s, layer, ready: false, failed: false };
       built.push(b);

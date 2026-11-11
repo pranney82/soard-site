@@ -32,10 +32,16 @@ export const DESIGN_LEAD_MS = 60 * 60 * 1000;
 export const BEFORE_SHOWN = 6;
 export const BEFORE_SUGGESTED = 6;
 
+/**
+ * badge: what a picture is, in one word, on the picture itself wherever it's shown (the starting-soon screen, the live
+ * page's design, the strip beside the video, the viewer). Peter, Nov 11 2026: the plans have to say whether they're
+ * existing or proposed, and a before photo has to say so strongly enough that nobody takes the old room for our work.
+ */
+export const BEFORE_BADGE = 'Before';
 export const PLAN_KINDS = [
-  { id: 'as-built', label: 'As-built', long: 'As-built drawing', kicker: 'The plan', caption: 'The floor plan today', captionAfter: 'The floor plan before' },
-  { id: 'proposed', label: 'Proposed', long: 'Proposed drawing', kicker: 'The plan', caption: 'The new floor plan' },
-  { id: 'board', label: 'Design board', long: 'Design board', kicker: 'The look', caption: 'The design' },
+  { id: 'as-built', label: 'As-built', long: 'As-built drawing', badge: 'Existing', kicker: 'The plan', caption: 'The floor plan today', captionAfter: 'The floor plan before' },
+  { id: 'proposed', label: 'Proposed', long: 'Proposed drawing', badge: 'Proposed', kicker: 'The plan', caption: 'The new floor plan' },
+  { id: 'board', label: 'Design board', long: 'Design board', badge: '', kicker: 'The look', caption: 'The design' },
 ];
 const KIND = Object.fromEntries(PLAN_KINDS.map((k) => [k.id, k]));
 
@@ -79,7 +85,8 @@ const possessive = (name) => (/s$/i.test(name || '') ? `${name}’` : `${name}�
 /**
  * What the reveal shows, in the order the story goes: the room today, its
  * floor plan, the new plan, then the look. Each slide:
- * { kind: 'before'|'as-built'|'proposed'|'board', url, alt, kicker, caption, crop, w?, h? }
+ * { kind: 'before'|'as-built'|'proposed'|'board', url, alt, badge, kicker, caption, crop, w?, h? }
+ * badge ('Before', 'Existing', 'Proposed'; '' for a board) goes on the picture; kicker and caption say the rest.
  * after: the reveal has started, so the room isn't "today" any more ("Dylan’s room before").
  */
 export function revealSlides(kid, { after = false } = {}) {
@@ -91,7 +98,7 @@ export function revealSlides(kid, { after = false } = {}) {
     .map((p) => ({
       kind: 'before', url: p.before, crop: false,
       alt: String(p.beforeAlt || '').trim() || `${name ? possessive(name) : 'The'} room before the makeover`,
-      kicker: 'Before', caption: String(p.room || '').trim() || room,
+      badge: BEFORE_BADGE, kicker: 'Before', caption: String(p.room || '').trim() || room,
     }));
   const plans = (kid?.plans || []).filter((p) => usable(p?.url) && addressChecked(p));
   const drawings = (k) => plans.filter((p) => planKind(p) === k).map((p) => {
@@ -99,6 +106,7 @@ export function revealSlides(kid, { after = false } = {}) {
     return {
       kind: k, url: p.url, crop: needsTitleCrop(p),
       alt: label || KIND[k].long,
+      badge: KIND[k].badge,
       kicker: KIND[k].kicker,
       // A board's own caption says what it is ("Bathroom design board"); a plan says which plan it is
       caption: k === 'board' ? (label && !looksLikeFileName(label) ? label : KIND[k].caption) : (after && KIND[k].captionAfter) || KIND[k].caption,

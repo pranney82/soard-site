@@ -93,11 +93,16 @@
   /* Drawings and boards on paper: whole, never cropped by the card */
   .ldz-paper { background: #fff; border: 1px solid var(--c-border); box-shadow: 0 18px 40px rgba(30, 31, 37, 0.07); padding: 60px clamp(14px, 2vw, 24px) clamp(14px, 2vw, 24px); }
   .ldz-boards .ldz-paper { padding-top: clamp(14px, 2vw, 24px); }
-  .ldz-tag {
-    position: absolute; top: 14px; left: 14px; z-index: 1; display: inline-flex; align-items: center; gap: 8px;
-    background: var(--c-dark); color: #fff; border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600; line-height: 1.2;
+  /* What a picture is, on it: BEFORE on the room's photos, EXISTING and PROPOSED on the plans. Solid and ringed in white
+     so it reads on any photo; the new plan's is the yellow one (the strip's and the starting-soon screen's look) */
+  .ldz-badge {
+    position: absolute; top: 12px; left: 12px; z-index: 1; padding: 7px 12px 6px; border-radius: 8px;
+    background: var(--c-dark); color: #fff; font-size: 13px; font-weight: 800; line-height: 1.1; letter-spacing: 0.12em; text-transform: uppercase;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 6px 18px rgba(0, 0, 0, 0.2);
   }
-  .ldz-boards .ldz-tag { position: static; margin: 12px 0 0; background: none; color: var(--c-text); padding: 0; font-size: 15px; }
+  .ldz-badge--proposed { background: var(--c-yellow); color: var(--c-dark); }
+  /* A plan's or a board's caption, under it */
+  .ldz-cap { margin: 12px 0 0; color: var(--c-text); font-size: 15px; font-weight: 600; line-height: 1.35; }
 
   @media (max-width: 768px) {
     .ldz-grid--photos, .ldz-grid--photos[data-n='4'] { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -141,14 +146,20 @@
   }
   .ldv--pinned.ldv--wide .ldv__bar { --pin-w: calc(var(--ldp-hw) * 1.7778); min-height: calc(var(--ldp-top) + var(--ldp-hw) + 12px); }
   .ldv--pinned .ldv__caption { display: block; grid-column: 1; grid-row: 1; font-size: 15.5px; -webkit-line-clamp: unset; }
-  .ldv--pinned .ldv__kicker { display: block; margin: 0 0 6px; }
   .ldv--pinned .ldv__count { grid-column: 1; grid-row: 2; font-size: 13.5px; }
   .ldv--pinned .ldv__bar > form { grid-column: 2; grid-row: 1; margin-top: -4px; }
   @media (prefers-reduced-motion: reduce) { .ldv.ldv--side, .ldv.ldv--pinned { animation: none; } }
   .ldv__bar { display: flex; align-items: center; gap: 16px; padding: max(14px, env(safe-area-inset-top)) clamp(14px, 3vw, 28px) 10px; }
   .ldv__caption { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-  .ldv__kicker { margin-right: 10px; }
-  .ldv__kicker { color: var(--c-yellow); font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+  .ldv__kicker { margin-right: 10px; color: var(--c-yellow); font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+  /* A picture's badge leads its caption, as on the picture: white for the room before and the existing plan, yellow for the proposed */
+  .ldv__kicker:is([data-kind='before'], [data-kind='as-built'], [data-kind='proposed']) {
+    display: inline-block; padding: 5px 9px 4px; border-radius: 6px; background: #fff; color: #16171b;
+    font-weight: 800; letter-spacing: 0.12em; vertical-align: 1px;
+  }
+  .ldv__kicker[data-kind='proposed'] { background: var(--c-yellow); }
+  /* On a phone, beside the small video: the badge on its own line above the caption */
+  .ldv.ldv--pinned .ldv__kicker { display: table; margin: 0 0 8px; }
   .ldv__count { color: rgba(255, 255, 255, 0.7); font-size: 14px; font-variant-numeric: tabular-nums; }
   /* The picture always fits the space between the bar and the arrows, whatever its shape and the screen's */
   .ldv__stage { position: relative; min-height: 0; margin: 8px clamp(8px, 3vw, 28px); touch-action: pinch-zoom; }

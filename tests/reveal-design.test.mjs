@@ -37,6 +37,9 @@ test('the slides tell the story in order: before photos (six at most), as-built,
   assert.equal(s[7].caption, 'The new floor plan');
   assert.equal(s[8].caption, 'Therapy room design board');
   assert.equal(s[8].kicker, 'The look');
+  // Each picture says what it is, on it (Peter, Nov 11 2026): the room before, the existing plan, the proposed one
+  assert.deepEqual(s.map((x) => x.badge), [...Array(BEFORE_SHOWN).fill('Before'), 'Existing', 'Proposed', '']);
+  assert.equal(revealSlides(DYLAN, { after: true })[6].badge, 'Existing', 'still the existing plan after the reveal');
   // Sizes go along when known
   assert.deepEqual([s[7].w, s[7].h], [2400, 1600]);
   assert.equal(s[6].w, undefined);

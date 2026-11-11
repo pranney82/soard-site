@@ -18,6 +18,9 @@
  *       The room today   before photos ("The room before" once the reveal has started)
  *       The plan         the as-built and proposed drawings, side by side
  *       The look         the design boards
+ *     Every picture carries its badge, on it, in each place (the section, the
+ *     strip, the viewer): BEFORE on the room's photos, EXISTING and PROPOSED
+ *     on the plans (Peter, Nov 11 2026).
  *     Each card keeps its picture's shape before the picture arrives (read off
  *     a tiny copy first), so nothing below it jumps.
  * A picture that can't load leaves both, and the viewer.
@@ -137,13 +140,17 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     });
   }
 
+  /** What a picture is, on it ('Before', 'Existing', 'Proposed'): the same badge in the section, the strip and the viewer */
+  const badge = (s: DesignSlide, cls: string) => (s.badge ? el('span', `${cls} ${cls}--${s.kind}`, s.badge) : null);
+
   /** One picture card in the section, opening the viewer at its place among the pictures that loaded */
-  function item(s: DesignSlide, width: number, label: string, tag: boolean) {
+  function item(s: DesignSlide, width: number, label: string) {
     const li = el('li');
     const b = el('button', `ldz-item${s.kind === 'before' ? '' : ' ldz-paper'}`);
     b.type = 'button';
-    b.setAttribute('aria-label', `Enlarge: ${label}`);
-    if (tag && s.kind !== 'before') b.append(el('span', 'ldz-tag', straight(s.caption)));
+    b.setAttribute('aria-label', `Enlarge: ${s.badge ? `${s.badge}, ` : ''}${label}`);
+    const tag = badge(s, 'ldz-badge');
+    if (tag) b.append(tag);
     const pic = el('span', 'ldz-pic');
     const img = el('img');
     img.alt = straight(s.alt);
@@ -177,17 +184,18 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     return { wrap, noteEl };
   }
 
-  /** One picture in the strip beside the video: a small card, a plan with its tag ("Today", "New") */
-  function railItem(s: DesignSlide, label: string, tag: string) {
+  /** One picture in the strip beside the video: a small card with its badge */
+  function railItem(s: DesignSlide, label: string) {
     const li = el('li');
     const b = el('button', `hds-item${s.kind === 'before' ? '' : ' hds-paper'}`);
     b.type = 'button';
-    b.setAttribute('aria-label', `See it big: ${label}`);
+    b.setAttribute('aria-label', `See it big: ${s.badge ? `${s.badge}, ` : ''}${label}`);
     const img = el('img');
     img.alt = '';
     img.decoding = 'async';
     b.append(img);
-    if (tag) b.append(el('span', 'hds-tag', tag));
+    const tag = badge(s, 'hds-tag');
+    if (tag) b.append(tag);
     img.addEventListener('error', () => drop(s), { once: true });
     void slideSrc(s, 320).then((src) => { if (!cards.get(s)?.includes(li)) return; if (src) img.src = src; else drop(s); });
     b.addEventListener('click', () => open(s));
@@ -197,7 +205,7 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     return li;
   }
 
-  function drawRail(next: DesignSlide[], isAfter: boolean) {
+  function drawRail(next: DesignSlide[]) {
     if (!railScroll) return;
     const groups: [string, DesignSlide[]][] = [
       ['Before', next.filter((x) => x.kind === 'before')],
@@ -213,9 +221,8 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
       wrap.append(el('p', 'hds-label', title), ul);
       ul.append(...list.map((x, i) => {
         const caption = straight(x.caption);
-        const label = x.kind === 'before' ? `before photo ${i + 1} of ${list.length}, ${caption}` : caption;
-        const tag = x.kind === 'as-built' ? (isAfter ? 'Before' : 'Today') : x.kind === 'proposed' ? 'New' : '';
-        return railItem(x, label, tag);
+        const label = x.kind === 'before' ? `photo ${i + 1} of ${list.length}, ${caption}` : caption;
+        return railItem(x, label);
       }));
       recounts.push(() => { if (!ul.children.length) wrap.remove(); });
       out.push(wrap);
@@ -244,7 +251,7 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     if (befores.length) {
       const ul = el('ul', 'ldz-grid ldz-grid--photos');
       const { wrap } = part(isAfter ? 'The room before' : 'The room today', ul);
-      ul.append(...befores.map((x, i) => item(x, befores.length === 1 ? 1600 : 900, `before photo ${i + 1} of ${befores.length}`, false)));
+      ul.append(...befores.map((x, i) => item(x, befores.length === 1 ? 1600 : 900, `photo ${i + 1} of ${befores.length}`)));
       const recount = () => { ul.dataset.n = String(ul.children.length); if (!ul.children.length) wrap.remove(); };
       recount();
       recounts.push(recount);
@@ -262,7 +269,12 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
         noteEl.hidden = !pair;
         if (!ul.children.length) wrap.remove();
       };
-      ul.append(...plans.map((x) => item(x, plans.length === 1 ? 1800 : 1200, straight(x.caption), true)));
+      // The badge on the drawing says which plan it is; its caption sits under it, as a board's does
+      ul.append(...plans.map((x) => {
+        const li = item(x, plans.length === 1 ? 1800 : 1200, straight(x.caption));
+        li.append(el('p', 'ldz-cap', straight(x.caption)));
+        return li;
+      }));
       recount();
       recounts.push(recount);
       out.push(wrap);
@@ -271,9 +283,9 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
       const ul = el('ul', `ldz-grid ldz-boards ${boards.length === 1 ? 'ldz-grid--one' : 'ldz-grid--boards'}`);
       const { wrap } = part('The look', ul);
       ul.append(...boards.map((x) => {
-        const li = item(x, boards.length === 1 ? 1800 : 1200, straight(x.caption), false);
+        const li = item(x, boards.length === 1 ? 1800 : 1200, straight(x.caption));
         // A board's caption sits under it, outside the picture
-        li.append(el('p', 'ldz-tag', straight(x.caption)));
+        li.append(el('p', 'ldz-cap', straight(x.caption)));
         return li;
       }));
       recounts.push(() => { if (!ul.children.length) wrap.remove(); });
@@ -281,7 +293,7 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     }
     holdPlace(() => {
       parts.replaceChildren(...out);
-      drawRail(next, isAfter);
+      drawRail(next);
       section.hidden = false;
     });
     mark(true);
@@ -341,7 +353,8 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     if (!img) return;
     shown = s;
     const i = slides.indexOf(s);
-    const k = vq<HTMLElement>('kicker'); if (k) k.textContent = s.kicker;
+    // The badge leads the caption ("BEFORE  Dylan's room today", "PROPOSED  The new floor plan"); a board keeps its kicker
+    const k = vq<HTMLElement>('kicker'); if (k) { k.textContent = s.badge || s.kicker; k.dataset.kind = s.badge ? s.kind : ''; }
     const c = vq<HTMLElement>('caption'); if (c) c.textContent = straight(s.caption);
     const n = vq<HTMLElement>('count'); if (n) n.textContent = slides.length > 1 ? `${i + 1} of ${slides.length}` : '';
     img.alt = straight(s.alt);

@@ -20,6 +20,8 @@ export interface DesignSlide {
   kind: DesignKind;
   url: string;
   alt: string;
+  /** What it is, in one word, on the picture itself: 'Before', 'Existing', 'Proposed' ('' or missing: a board) */
+  badge?: string;
   kicker: string;
   caption: string;
   /** Still has its title block: shown cropped above it */
