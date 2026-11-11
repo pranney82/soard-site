@@ -27,7 +27,7 @@ import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
 import { checkinView, checkinData } from './_kid-checkin.js';
 import { readLabel, findBox, likelyBoxes, mergeLabels } from './_kid-scan.js';
-import { receive, undoMany, moveShelf, decide, answeredAt, setPrice, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord, WHOLE_ORDER } from './_kid-record.js';
+import { receive, undoMany, moveShelf, decide, decisionKey, answeredAt, setPrice, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord, WHOLE_ORDER } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { shelfLabel } from './_kid-labels.js';
 import { keepSort } from './_kid-allow.js';
@@ -217,6 +217,15 @@ export async function onRequestPost(context) {
       // Wrong kid after things were checked in: those check-ins come back off the first kid's shelf in the same step as
       // the answer, so the two never land apart. A box of it on the truck stops it before anything changes
       const undo = Array.isArray(body.undo) ? body.undo.map(String).slice(0, 60) : [];
+      // Whose the whole order is was answered since this answer was given (it waited on a phone): that one stands, and
+      // nothing here changes, the take-back with it
+      const whole = items.find((x) => x.itemName === WHOLE_ORDER);
+      const newer = whole ? await env.DB.prepare('SELECT decision, at FROM kid_decisions WHERE key = ?').bind(decisionKey(String(body.orderKey || ''), WHOLE_ORDER)).first() : null;
+      if (newer && String(newer.at || '') > at) {
+        out.stale = { decision: JSON.parse(newer.decision || '{}'), at: newer.at };
+        items.length = 0;
+        undo.length = 0;
+      }
       if (undo.length) {
         for (const tap of undo) {
           const onTruck = await env.DB.prepare("SELECT 1 FROM kid_receipts WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(tap).first();

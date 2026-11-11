@@ -327,15 +327,19 @@ export async function decide(DB, { orderKey, itemName, decision, things = null }
   if (['line', 'also', 'kid'].includes(decision.type) && !decision.kid) throw bad('Pick the kid.');
   if (decision.type === 'line' && (!decision.itemId || !decision.partKey)) throw bad('Pick the line.');
   const clean = { type: decision.type, ...(decision.kid ? { kid: String(decision.kid) } : {}), ...(decision.type === 'line' ? { itemId: String(decision.itemId), partKey: String(decision.partKey) } : {}) };
-  // The answer it replaces: that kid's budget lines are written again (another phone answered first)
-  const before = parse((await DB.prepare('SELECT decision FROM kid_decisions WHERE key = ?').bind(decisionKey(orderKey, itemName)).first())?.decision, {});
+  // The answer there now. One given later than this one stands (this one was kept on a phone with no connection and
+  // only now arrives): nothing changes. Else it's replaced, and whoever it named has their budget lines written again
+  const row = await DB.prepare('SELECT decision, at FROM kid_decisions WHERE key = ?').bind(decisionKey(orderKey, itemName)).first();
+  const before = parse(row?.decision, {});
+  if (row && String(row.at || '') > String(now)) return { ...before, stale: true };
   await DB.prepare('INSERT OR REPLACE INTO kid_decisions (key, order_key, item_name, decision, by_email, at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(decisionKey(orderKey, itemName), String(orderKey), String(itemName).slice(0, 300), JSON.stringify(clean), by, now).run();
   // Whose the whole order is, said with its things in front of the person (Whose is it?): those things are that kid's,
-  // whatever was said of them before ("Not a kid's" one by one in Needs a look, then the box came and it's Ava's).
-  // Wrong kid shows only what's on the list, so a thing that's the office's or was cancelled stays so
+  // whatever was said of them before ("Not a kid's" one by one in Needs a look, then the box came and it's Ava's), but
+  // not what was said of one since. Wrong kid shows only what's on the list, so a thing that's the office's or was
+  // cancelled stays so
   if (itemName === WHOLE_ORDER && clean.type === 'kid' && Array.isArray(things)) {
-    for (const name of things.slice(0, 60)) await DB.prepare('DELETE FROM kid_decisions WHERE key = ?').bind(decisionKey(orderKey, String(name))).run();
+    for (const name of things.slice(0, 60)) await DB.prepare('DELETE FROM kid_decisions WHERE key = ? AND at <= ?').bind(decisionKey(orderKey, String(name)), now).run();
   }
   return { ...clean, ...(before?.kid && before.kid !== clean.kid ? { was: String(before.kid) } : {}) };
 }

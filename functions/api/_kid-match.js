@@ -34,6 +34,28 @@ export function tokensOf(text) {
 }
 const compact = (s) => norm(s).replace(/[^a-z0-9]/g, '');
 
+/**
+ * How alike two names of a thing are, 0 to 1: the words they share, of the shorter's ("Duvet Cover" in "Duvet Cover -
+ * Oat / Queen"), or of both; one name's model number in the other is 1. Under 0.6, not the same thing
+ */
+export function nameScore(a, b) {
+  const x = new Set(tokensOf(a)), y = new Set(tokensOf(b));
+  if (!x.size || !y.size) { const p = String(a || '').toLowerCase().trim(); return p && p === String(b || '').toLowerCase().trim() ? 1 : 0; }
+  const shared = [...x].filter((w) => y.has(w)).length;
+  const small = Math.min(x.size, y.size);
+  return Math.max(shared / (x.size + y.size - shared), small >= 2 ? shared / small * 0.95 : 0);
+}
+/** Which of an order's things some emails name (each name to its one likeliest thing) → Set of the things' names */
+export function namedIn(items, names) {
+  const out = new Set();
+  for (const n of names || []) {
+    let best = null, top = 0.6;
+    for (const it of items) { const sc = nameScore(n, it.name); if (sc >= top) { best = it; top = sc; } }
+    if (best) out.add(best.name);
+  }
+  return out;
+}
+
 /** A kid's names from the job: "Lizzie Francis (2026)" → { first: 'lizzie', last: 'francis' }; a school or practice has none */
 export function namesOf(jobName) {
   const words = String(jobName || '').replace(/\(\d{4}\)/, '').trim().split(/\s+/);
@@ -148,7 +170,7 @@ const trackNo = (t) => String(t?.number || t || '').toUpperCase().replace(/[^A-Z
  * reads: every kind (orders, shipping, cancellations) → (read) → its order's key; .storeOf, .numberOf: the order's store
  * and number as its store's own email says them
  */
-export function orderKeys(reads, { settled = null } = {}) {
+export function orderKeys(reads, { settled = null, alone = null } = {}) {
   const id = (r) => `${r.mailbox}|${r.id}`;
   const parent = new Map(reads.map((r) => [id(r), id(r)]));
   const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
@@ -184,6 +206,10 @@ export function orderKeys(reads, { settled = null } = {}) {
     if (orders.size === 1) join(id(fits[0]), id(r), true);
     else if (orders.size > 1) maybe.set(id(r), fits);
   }
+  // About one of several orders: the whole of what it was joined to (a carrier's email with its tracking number too),
+  // while none of it has a number of its own
+  const maybeOf = new Map();
+  for (const [x, fits] of maybe) { const root = find(x); if (!nums.get(root).size) maybeOf.set(root, [...(maybeOf.get(root) || []), ...fits]); }
   // Each order's emails, and the one that names it: its store's email with an order number (the oldest)
   const rank = (x) => (CARRIER.test(String(x.store || '').trim()) ? 2 : 0) + (numbered(x) ? 0 : 1);
   const best = (list) => list.reduce((b, r) => (!b || rank(r) < rank(b) || (rank(r) === rank(b) && String(r.at) < String(b.at)) ? r : b), null);
@@ -195,6 +221,9 @@ export function orderKeys(reads, { settled = null } = {}) {
     for (const r of list) byOwn.set(groupKey(r), [...(byOwn.get(groupKey(r)) || []), r]);
     const repKey = groupKey(best(list));
     const kept = settled && byOwn.size > 1 ? [...byOwn].filter(([k, rs]) => settled(k, rs)).map(([k]) => k) : [];
+    // Something kept by one of its keys: an email the matcher places on a kid by itself stays its own too, as it was
+    // (a person answered the others knowing it was there: "Not a kid's" to a duplicate of it)
+    if (kept.length && alone) for (const [k, rs] of byOwn) if (!kept.includes(k) && alone(k, rs)) kept.push(k);
     // The rest of the order goes with the key it's called by: its own, or the one answer kept it by
     const home = kept.length === 0 ? repKey : kept.includes(repKey) ? repKey : kept.sort((a, b) => rank(best(byOwn.get(a))) - rank(best(byOwn.get(b))))[0];
     const parts = new Map([[home, []]]);
@@ -206,12 +235,9 @@ export function orderKeys(reads, { settled = null } = {}) {
   }
   const keyOf = (r) => keys.get(id(r)) || groupKey(r);
   // An email about one of several orders (and joined to nothing since): their keys, else null
-  const uses = new Map();
-  for (const k of keys.values()) uses.set(k, (uses.get(k) || 0) + 1);
   keyOf.maybe = (r) => {
-    const fits = maybe.get(id(r));
-    if (!fits || uses.get(keys.get(id(r))) > 1) return null;
-    return [...new Set(fits.map((x) => keys.get(id(x))))];
+    const fits = maybeOf.get(find(id(r)));
+    return fits ? [...new Set(fits.map((x) => keys.get(id(x))))] : null;
   };
   keyOf.storeOf = (r) => names.get(id(r))?.store || r.store;
   keyOf.numberOf = (r) => (names.has(id(r)) ? names.get(id(r)).read.orderNumber || null : r.read.orderNumber || null);

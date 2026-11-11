@@ -107,6 +107,32 @@ async function sendOrKeep(action, body) {
   }
 }
 
+/**
+ * Sent in its turn: behind anything still waiting on this phone, so it never overtakes what it's about (Wrong kid's
+ * take-back of a check-in the phone hasn't sent yet). Nothing waiting: sent now, or kept → { out } | { queued: true }
+ */
+async function sendInTurn(action, body) {
+  if (!readQueue().length) return sendOrKeep(action, body);
+  if (action === 'decide' && !body.at) body = { ...body, at: new Date().toISOString() };
+  const id = body.tap || newTap();
+  if (!writeQueue([...readQueue(), { id, action, body: { ...body, tap: id }, at: Date.now() }])) throw new Error(CANT_KEEP);
+  showQueue();
+  overlayQueue();
+  const f = await flush({ mine: new Set([id]) });
+  if (f.landed.has(id)) return { out: f.answers.get(id) || {} };
+  if (f.refused.has(id)) throw Object.assign(new Error(f.refused.get(id).why), { status: f.refused.get(id).status });
+  return { queued: true };
+}
+
+/** The list as the site has it now (after something kept on the phone was refused: what it drew comes off) */
+async function refreshView() {
+  try {
+    const res = await fetch('/api/kid-items-admin?checkin=1', { headers: { Accept: 'application/json' } });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.success) { apply(body); render(); }
+  } catch { /* no connection: the next answer brings it */ }
+}
+
 // Refused for good: the item or line is gone, or it was already settled. Anything else (a sign-in that ran out, the
 // site down, a box the site didn't answer for) waits on the phone and is tried again
 const FOR_GOOD = new Set([400, 404, 409]);
@@ -195,6 +221,8 @@ async function flushOnce({ mine = new Set() } = {}) {
       // A sheet that will draw the list as it closes (the done sheet) does it then, so its rows can fade
       if (!state.renderOnClose) render();
     }
+    // Something refused: what the phone drew for it (a card hidden, a check-in taken back) is redrawn as the site has it
+    if (refused.size) refreshView();
     // What waited on the phone has landed: said once, with anything the site refused, by name
     const said = [...savedBy].map(([k, n]) => `${plural(n, k, NOUNS[k])} saved`);
     if (said.length || saidNot.length) toast([said.join(' · '), saidNot.length ? `Not saved: ${saidNot.join('; ')}` : ''].filter(Boolean).join('. '));
@@ -1139,11 +1167,11 @@ async function fromFile(file) {
 }
 
 async function read(image, preview) {
-  // SOARD's own label (its QR): that check-in, at once, with no reading
-  const own = await ownLabel(image);
-  if (own) { openOwn(own); return; }
   openSheet(`${head('<span class="with-spin"><span class="spin" aria-hidden="true"></span>Reading the label</span>', { sub: state.scanAdd ? 'With the photo before' : '' })}
     <img class="photo" src="${preview}" alt="The photo of the box's label" />`, { label: 'Reading the label' });
+  // SOARD's own label (its QR): that check-in, with no reading by the site
+  const own = await ownLabel(image);
+  if (own) { openOwn(own); return; }
   try {
     // The answer brings the list as it is now (an order read since this page loaded is on it): drawn behind the sheet.
     // Another photo of the same box goes with what the ones before it said
@@ -1328,8 +1356,10 @@ function whoseSheet(sh, { how = '', keep = false, from = null } = {}) {
     // Sent together, kept together with no connection: they never land apart
     let r;
     try {
-      r = await sendOrKeep('decide', { tap: newTap(), orderKey: sh.key, things: things.map((t) => t.name), ...(was ? { from: was.jobId } : {}), ...(ins.length ? { undo: ins.map((x) => x.id) } : {}), items: [{ itemName: '*', decision }] });
+      r = await sendInTurn('decide', { tap: newTap(), orderKey: sh.key, things: things.map((t) => t.name), ...(was ? { from: was.jobId } : {}), ...(ins.length ? { undo: ins.map((x) => x.id) } : {}), items: [{ itemName: '*', decision }] });
     } catch (err) { stop(err.message); return; }
+    // Someone answered whose it is since (this waited on the phone): theirs stands, nothing changed
+    if (r.out?.stale) { tones.warn(); await close(); render(); toast(`${sh.store}: answered since by someone else, as ${r.out.stale.decision?.kid ? `${anyKid(r.out.stale.decision.kid)?.short || 'another kid'}’s` : 'not a kid’s'}`); return; }
     if (decision.type === 'notKid' || decision.type === 'cancelled') { tones.undo(); await close(); render(); toast(`${sh.store}: ${decision.type === 'cancelled' ? 'cancelled' : 'not a kid’s'}, off the list`); return; }
     const kid = anyKid(decision.kid);
     if (r.queued) { await close(); render(); toast(`${kid?.short || 'Their'}’s. It goes on their list when the connection is back`); return; }
@@ -2517,7 +2547,9 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
   const someDelivered = waiting.some((i) => i.delivered);
   const boxes = new Map(waiting.map((i) => [i.id, pick?.length === 1 && pick.includes(i.id) ? Math.max(1, preset) : 1]));
   // A label scanned: what it matched. Else what the delivered email named (when it named some); else all of it
-  const ticked = new Set(waiting.map((i) => i.id).filter((id) => (pick ? pick.includes(id) : !someDelivered || waiting.find((i) => i.id === id).delivered)));
+  // What went to a house (its emails say so) isn't ticked: it isn't coming here
+  const toHouse = waiting.filter((i) => itemOfId(i.id)?.order?.elsewhere);
+  const ticked = new Set(waiting.map((i) => i.id).filter((id) => !toHouse.some((h) => h.id === id) && (pick ? pick.includes(id) : !someDelivered || waiting.find((i) => i.id === id).delivered)));
   for (const i of waiting) if (!state.shipTaps.has(i.id)) state.shipTaps.set(i.id, newTap());
   const taps = state.shipTaps;
   const byKid = new Map();
@@ -2526,7 +2558,7 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
   const row = (i) => {
     const it = itemOfId(i.id), k = kidOfItem(i.id);
     const left = it.qty - (it.got || 0);
-    const sub = [many ? null : k.short, it.line, left > 1 ? `${left} of them` : null, someDelivered && !i.delivered && !pick ? 'Not delivered yet' : null].filter(Boolean).join(' · ');
+    const sub = [many ? null : k.short, it.line, left > 1 ? `${left} of them` : null, it.order?.elsewhere ? 'Shipped to the house' : someDelivered && !i.delivered && !pick ? 'Not delivered yet' : null].filter(Boolean).join(' · ');
     return `<label class="look ship-row${many ? ' no-face' : ''}"><input type="checkbox" data-shipitem="${esc(i.id)}"${ticked.has(i.id) ? ' checked' : ''} />
       ${many ? '' : face(k, 32)}<span class="sr-name">${esc(it.name)}</span>
       <span class="sr-sub">${esc(sub)}</span>
@@ -2539,7 +2571,7 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
   const kids = [...new Set(sh.items.map((i) => kidOfItem(i.id)?.jobId).filter(Boolean))];
   const loaded = sh.items.some((i) => (itemOfId(i.id)?.receipts || []).some((r) => r.kind !== 'receive' && !r.undone));
   const wrong = kids.length === 1 && !loaded ? '<button class="btn btn-text" type="button" id="shipwrong">Wrong kid</button>' : '';
-  const house = sh.house && waiting.length ? '<button class="btn btn-text" type="button" id="shiphouse">Not coming here: it went to the house</button>' : '';
+  const house = sh.house && waiting.length ? `<button class="btn btn-text" type="button" id="shiphouse">${toHouse.length && toHouse.length < waiting.length ? `Not coming here: ${toHouse.length === 1 ? '1 went' : `${toHouse.length} went`} to the house` : 'Not coming here: it went to the house'}</button>` : '';
   // The rest of the order a person has to place: in Needs a look
   const lookAt = state.needsLook.findIndex((x) => x.key === sh.key);
   const lookN = lookAt >= 0 ? state.needsLook[lookAt].items.length : 0;
@@ -2567,7 +2599,8 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
     });
   });
   if ($('shiphouse')) $('shiphouse').onclick = async () => {
-    for (const i of waiting.filter((x) => ticked.has(x.id))) {
+    // What its emails say went to the house; else what's ticked
+    for (const i of toHouse.length ? toHouse : waiting.filter((x) => ticked.has(x.id))) {
       const it = itemOfId(i.id), k = kidOfItem(i.id);
       try { await sendOrKeep('house', { tap: newTap(), jobId: k.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line }); } catch (err) { toast(err.message); return; }
     }

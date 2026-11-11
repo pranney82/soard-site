@@ -369,3 +369,97 @@ test('one email to the house naming some of an order’s things: the rest still 
   const card = v.shipments.find((s) => s.unplaced);
   assert.deepEqual([card?.key, card?.things.map((t) => t.name)], ['Faire|#FB20001', ['Wool Throw']]);
 });
+
+// ─── Review of 11f01e96 (Nov 11 2026) ───
+
+const minsAgo = (n) => new Date(Date.now() - n * 60e3).toISOString();
+
+test('a cancel naming nothing after the order shipped is part of it: what came stays, each thing is asked, nothing comes off the budget', async () => {
+  await mail('o1', 'Maple Market', daysAgo(9), { kind: 'order', orderNumber: 'MM-30017', jobPo: 'AVA', items: [{ name: 'Cloud Pendant Light', cents: 4500 }, { name: 'Linen Throw Pillow', cents: 2500 }, { name: 'Brass Bookends Pair', cents: 3900 }], tracking: [] });
+  await mail('s1', 'Maple Market', daysAgo(7), { kind: 'shipped', orderNumber: 'MM-30017', items: [{ name: 'Cloud Pendant Light' }, { name: 'Linen Throw Pillow' }], tracking: [{ carrier: 'UPS', number: '1ZMM30017000000001' }] });
+  await mail('x1', 'Maple Market', daysAgo(2), { kind: 'cancelled', orderNumber: 'MM-30017', items: [], tracking: [] });
+  const v = await view();
+  assert.deepEqual(thingsOf(v, 'j-ava'), ['Brass Bookends Pair', 'Cloud Pendant Light', 'Linen Throw Pillow']);
+  assert.deepEqual(v.needsLook.map((x) => [x.undo, x.items.length]), [['cancelled', 3]]);
+});
+
+test('the whole order cancelled, the box came anyway, “Whose is it?” → Ava’s: it’s hers and nothing is asked again', async () => {
+  const things = [{ name: 'Rattan Wall Mirror', cents: 6400 }];
+  await mail('o1', 'Hollow Home', daysAgo(6), { kind: 'order', orderNumber: 'HH-90002', items: things, tracking: [] });
+  await mail('x1', 'Hollow Home', daysAgo(3), { kind: 'cancelled', orderNumber: 'HH-90002', items: things, tracking: [] });
+  assert.equal((await post('decide', { orderKey: 'Hollow Home|HH-90002', things: ['Rattan Wall Mirror'], at: new Date().toISOString(), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }] }).then((r) => r.json())).success, true);
+  const v = await view();
+  assert.deepEqual([thingsOf(v, 'j-ava'), v.needsLook], [['Rattan Wall Mirror'], []]);
+});
+
+test('a late answer (kept on a phone) never beats a newer one: the newer “whose” stands, and so does a newer “Not a kid’s” of a thing', async () => {
+  await mail('o1', 'Hollow Home', daysAgo(2), { kind: 'order', orderNumber: 'HH-70002', items: [{ name: 'Woven Floor Pouf', cents: 5200 }], tracking: [] });
+  const key = 'Hollow Home|HH-70002';
+  await post('decide', { orderKey: key, things: ['Woven Floor Pouf'], at: minsAgo(2), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-rowan' } }] });
+  const late = await (await post('decide', { orderKey: key, things: ['Woven Floor Pouf'], at: minsAgo(10), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }] })).json();
+  assert.equal(late.stale?.decision?.kid, 'j-rowan', 'the page is told the newer answer stands');
+  assert.deepEqual([thingsOf(await view(), 'j-ava'), thingsOf(await view(), 'j-rowan')], [[], ['Woven Floor Pouf']]);
+
+  await mail('o2', 'Pine Supply', daysAgo(2), { kind: 'order', orderNumber: 'PS-51003', items: [{ name: 'Velvet Storage Bin', cents: 2400 }, { name: 'Packing Tape 6-Roll', cents: 1800 }], tracking: [] });
+  const k2 = 'Pine Supply|PS-51003';
+  await post('decide', { orderKey: k2, things: ['Velvet Storage Bin', 'Packing Tape 6-Roll'], at: minsAgo(3), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }] });
+  await post('decide', { orderKey: k2, from: 'j-ava', at: minsAgo(1), items: [{ itemName: 'Packing Tape 6-Roll', decision: { type: 'notKid' } }] });
+  await post('decide', { orderKey: k2, things: ['Velvet Storage Bin', 'Packing Tape 6-Roll'], at: minsAgo(10), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }] });
+  assert.deepEqual(thingsOf(await view(), 'j-ava').filter((n) => !/Pouf/.test(n)), ['Velvet Storage Bin']);
+});
+
+test('a late Wrong kid takes nothing back: a newer answer stands, and the first kid’s check-in stays', async () => {
+  await mail('o1', 'Hollow Home', daysAgo(3), { kind: 'order', orderNumber: 'HH-61005', items: [{ name: 'Woven Floor Pouf', cents: 5200 }], tracking: [] });
+  const key = 'Hollow Home|HH-61005';
+  await post('decide', { orderKey: key, things: ['Woven Floor Pouf'], at: minsAgo(5), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }] });
+  const pouf = (await view()).kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.name === 'Woven Floor Pouf');
+  await receive(env.DB, { tap: 'tap-pouf-0001', jobId: 'j-ava', itemId: pouf.itemId, partKey: pouf.partKey, name: pouf.name, line: pouf.line, units: 1, boxes: 1 });
+  const r = await (await post('decide', { orderKey: key, from: 'j-ava', undo: ['tap-pouf-0001'], at: minsAgo(20), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-rowan' } }] })).json();
+  assert.ok(r.stale);
+  const row = await env.DB.prepare("SELECT undone_at FROM kid_receipts WHERE id = 'tap-pouf-0001'").first();
+  assert.equal(row.undone_at, null);
+});
+
+test('an email to the house names a thing its own way: that thing went to the house (no “Whose is it?” for it, “Ships elsewhere” on the row)', async () => {
+  await mail('o1', 'Hollow Home', daysAgo(5), { kind: 'order', orderNumber: 'HH-82005', items: [{ name: 'Linen Duvet Cover Queen, Oat', cents: 8900 }], tracking: [] });
+  await mail('s1', 'Hollow Home', daysAgo(3), { kind: 'shipped', orderNumber: 'HH-82005', shipTo: 'elsewhere', items: [{ name: 'Duvet Cover - Oat / Queen' }], tracking: [{ carrier: 'UPS', number: '1ZHH82005000000001' }] });
+  await mail('o2', 'Hollow Home', daysAgo(5), { kind: 'order', orderNumber: 'HH-82006', jobPo: 'AVA', items: [{ name: 'Linen Duvet Cover Queen, Oat', cents: 8900 }, { name: 'Cloud Pendant Light' }], tracking: [] });
+  await mail('s2', 'Hollow Home', daysAgo(3), { kind: 'shipped', orderNumber: 'HH-82006', shipTo: 'elsewhere', items: [{ name: 'Duvet Cover - Oat / Queen' }], tracking: [{ carrier: 'UPS', number: '1ZHH82006000000001' }] });
+  await mail('d2', 'Hollow Home', daysAgo(1), { kind: 'delivered', orderNumber: 'HH-82006', shipTo: 'elsewhere', items: [{ name: 'Duvet Cover - Oat / Queen' }], tracking: [{ carrier: 'UPS', number: '1ZHH82006000000001' }] });
+  const v = await view();
+  assert.deepEqual(v.shipments.filter((s) => s.unplaced).map((s) => s.key), []);
+  const ava = v.kids.find((k) => k.jobId === 'j-ava').items.filter((i) => i.order?.key === 'Hollow Home|HH-82006');
+  assert.deepEqual(ava.map((i) => [i.name, Boolean(i.order.elsewhere)]).sort(), [['Cloud Pendant Light', false], ['Linen Duvet Cover Queen, Oat', true]]);
+  const sh = v.shipments.find((s) => s.key === 'Hollow Home|HH-82006');
+  assert.deepEqual([sh.stage, sh.house], ['ordered', true], 'the lamp is still coming to the Office (the house’s delivery isn’t the Office’s)');
+});
+
+test('the same garland on two orders and the carrier’s own email for the box: still no order of its own, and the box offers both orders', async () => {
+  const g = [{ name: 'Felt Star Garland', quantity: 1, cents: 2200 }];
+  await mail('o1', 'Juniper Gifts', daysAgo(9), { kind: 'order', orderNumber: '#JG10001', jobPo: 'AVA', items: g, tracking: [] });
+  await mail('o2', 'Juniper Gifts', daysAgo(6), { kind: 'order', orderNumber: '#JG10002', jobPo: 'ROWAN', items: g, tracking: [] });
+  await mail('s1', 'Juniper Gifts', daysAgo(4), { kind: 'shipped', orderNumber: null, items: g, tracking: [{ carrier: 'FedEx', number: '771234567891' }] });
+  await mail('c1', 'FedEx', daysAgo(3), { kind: 'out', orderNumber: null, items: [], tracking: [{ carrier: 'FedEx', number: '771234567891' }] });
+  const { view: v, reads, keyOf } = await checkinData(env, { photos: false });
+  assert.equal(v.shipments.filter((s) => s.unplaced).length, 0);
+  assert.deepEqual(findBox(v, reads, { ...blank, trackingNumbers: ['771234567891'] }, { keyOf }).which?.sort(), ['Juniper Gifts|#JG10001', 'Juniper Gifts|#JG10002']);
+});
+
+test('a thing the matcher put on a kid’s line from its own email stays, when a person answered its duplicate “Not a kid’s” before the emails were one', async () => {
+  await line('j-ava', 'Ava Example (2026)', 'a-garland', 'Decor', 'Felt Star Garland', [part('Felt Star Garland')]);
+  await line('j-ava', 'Ava Example (2026)', 'a-wreath', 'Door Wreath', 'Wool Pom Wreath', [part('Wool Pom Wreath')]);
+  await mail('o1', 'Juniper Gifts', daysAgo(9), { kind: 'order', orderNumber: '#JG20001', jobPo: 'AVA', items: [{ name: 'Felt Star Garland', cents: 2200 }, { name: 'Wool Pom Wreath', cents: 3400 }], tracking: [] });
+  await mail('s1', 'Juniper Gifts', daysAgo(6), { kind: 'shipped', orderNumber: null, jobPo: 'AVA', items: [{ name: 'Felt Star Garland' }], tracking: [{ carrier: 'USPS', number: '9400111899220000000007' }] });
+  // Before: the duplicate on the order email was answered "Not a kid's" (the same garland)
+  await decide(env.DB, { orderKey: 'Juniper Gifts|#JG20001', itemName: 'Felt Star Garland', decision: { type: 'notKid' } });
+  const v = await view();
+  const st = Object.fromEntries(v.kids.find((k) => k.jobId === 'j-ava').items.filter((i) => ['a-garland', 'a-wreath'].includes(i.itemId)).map((i) => [i.name, i.status]));
+  assert.deepEqual(st, { 'Felt Star Garland': 'ordered', 'Wool Pom Wreath': 'ordered' });
+});
+
+test('a refund naming a thing its own way: that thing is asked about', async () => {
+  await mail('o1', 'Maple Market', daysAgo(6), { kind: 'order', orderNumber: 'MM-40018', jobPo: 'AVA', items: [{ name: 'Cloud Pendant Light', cents: 4500 }, { name: 'Mini Desk Fan, White 6in', cents: 1900 }], tracking: [] });
+  await mail('r1', 'Maple Market', daysAgo(1), { kind: 'refund', orderNumber: 'MM-40018', items: [{ name: 'Mini Desk Fan - White' }], tracking: [] });
+  const v = await view();
+  assert.deepEqual(v.needsLook.map((x) => [x.undo, x.items.map((i) => i.name)]), [['refunded', ['Mini Desk Fan, White 6in']]]);
+});
