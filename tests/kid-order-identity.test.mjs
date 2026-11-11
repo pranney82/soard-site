@@ -484,3 +484,28 @@ test('Nov 11 review 2: a box checked in from one of two orders its email could b
   ({ view: v, reads, keyOf } = await checkinData(env, { photos: false }));
   assert.equal(findBox(v, reads, label, { keyOf }).already?.short, 'Ava E.');
 });
+
+test('Nov 11 review 3: Wrong kid’s taken-back check-in says where its box went (its old label leads there)', async () => {
+  await mail('o1', 'Hollow Home', daysAgo(3), { kind: 'order', orderNumber: 'HH-61009', items: [{ name: 'Woven Floor Pouf', cents: 5200 }], tracking: [] });
+  const key = 'Hollow Home|HH-61009';
+  await post('decide', { orderKey: key, things: ['Woven Floor Pouf'], at: minsAgo(5), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }] });
+  const pouf = (await view()).kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.name === 'Woven Floor Pouf');
+  await receive(env.DB, { tap: 'tap-pouf-0009', jobId: 'j-ava', itemId: pouf.itemId, partKey: pouf.partKey, name: pouf.name, line: pouf.line, units: 1, boxes: 1 });
+  await post('decide', { orderKey: key, from: 'j-ava', undo: ['tap-pouf-0009'], things: ['Woven Floor Pouf'], items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-rowan' } }] });
+  const row = await env.DB.prepare("SELECT undone_at, moved_to FROM kid_receipts WHERE id = 'tap-pouf-0009'").first();
+  assert.ok(row.undone_at);
+  assert.deepEqual(JSON.parse(row.moved_to), { kid: 'j-rowan', order: key });
+});
+
+test('Nov 11 review 3: box 2 of a shipment whose email could be either of two orders (one master number): what’s still waiting in the order box 1 went to is offered', async () => {
+  const g = [{ name: 'Felt Star Garland', quantity: 1, cents: 2200 }, { name: 'Moon Night Light', quantity: 1, cents: 1800 }];
+  await mail('o1', 'Juniper Gifts', daysAgo(9), { kind: 'order', orderNumber: '#JG40001', jobPo: 'AVA', items: g, tracking: [] });
+  await mail('o2', 'Juniper Gifts', daysAgo(6), { kind: 'order', orderNumber: '#JG40002', jobPo: 'ROWAN', items: g, tracking: [] });
+  await mail('s1', 'Juniper Gifts', daysAgo(4), { kind: 'shipped', orderNumber: null, items: g, tracking: [{ carrier: 'FedEx', number: '612399990001' }] });
+  let { view: v, reads, keyOf } = await checkinData(env, { photos: false });
+  const garland = v.kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.order?.key === 'Juniper Gifts|#JG40001' && /Garland/.test(i.name));
+  await receive(env.DB, { tap: 'tap-g-0001', jobId: 'j-ava', itemId: garland.itemId, partKey: garland.partKey, name: garland.name, line: garland.line, units: 1, boxes: 1, track: '612399990001' });
+  ({ view: v, reads, keyOf } = await checkinData(env, { photos: false }));
+  const box2 = findBox(v, reads, { ...blank, trackingNumbers: ['612399990001'] }, { keyOf });
+  assert.deepEqual([box2.short, box2.items.length, box2.alsoIn?.name], ['Ava E.', 1, 'Felt Star Garland']);
+});

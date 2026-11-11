@@ -187,3 +187,14 @@ test('Nov 11 review 2: a person’s status from before the four, moved onto the 
   await writeLine(jtEnv, ids, { ...line, items: [arrived(head), arrived(valve)] }, { fetchImpl });
   assert.equal(jt.status, 'At the Office', 'news on the line: the site’s status');
 });
+
+test('Nov 11 review 3: an undone check-in is left out of a shelf move (a move that waited on the phone lands after the undo)', async () => {
+  const { undoMany } = await import('../functions/api/_kid-record.js');
+  await mail('o1', 'Shop', daysAgo(3), { kind: 'delivered', orderNumber: 'S-102', jobPo: 'NICO', items: [{ name: 'Felt Engraved Wall Tile' }] });
+  const it = (await view()).kids.find((k) => k.jobId === 'j-nico').items.find((i) => i.order);
+  await receive(env.DB, { tap: 'tap-undone-0001', jobId: 'j-nico', itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: 1, boxes: 1 });
+  await undoMany(env.DB, ['tap-undone-0001']);
+  const r = await post('shelf', { taps: ['tap-undone-0001'], shelf: '6' });
+  assert.equal(r.success, false);
+  assert.equal((await env.DB.prepare("SELECT shelf FROM kid_receipts WHERE id = 'tap-undone-0001'").first()).shelf, '1');
+});

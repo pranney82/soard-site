@@ -27,13 +27,21 @@
  *   - The same email in several inboxes (orders@ copies) is read once.
  */
 
-import { normEmail } from './_board-roles.js';
+import { normEmail, founderEmails, peopleRows } from './_board-roles.js';
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
 import { mailboxes, orgDomains, gmail, header, partsOf, bytesOf, htmlText } from './_mailbox.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 import { readOrderEmail, orderKind, withAi, withAltText, ORDER_SCHEMA, ORDER_PROMPT, storeOf } from './_order-read.js';
 
 const STAFF_DOMAIN = 'soardcharity.com';
+// orders@ is a Google group, the address on stores' accounts: a group has no inbox of its own, so its mail is read where
+// it's delivered. Agent Gracie (automation@, an inbox the sweep reads) is kept a member who gets every email (Peter,
+// Nov 11 2026: "add orders to the email you are searching through"). Looked at once a day
+export const ORDERS_GROUP = 'orders@soardcharity.com';
+export const ORDERS_INBOX = 'automation@soardcharity.com';
+const GROUP_MEMBER_SCOPE = 'https://www.googleapis.com/auth/admin.directory.group.member';
+const FEED_EVERY_MS = 24 * 60 * 60 * 1000;
+const FEED_RETRY_MS = 60 * 60 * 1000;
 const EVERY_MS = 3 * 60 * 1000;
 const BUSY_MS = 60 * 1000;
 const LIST_MS = 6 * 1000;        // listing inboxes stops starting new ones here
@@ -154,44 +162,48 @@ export async function retriage(env, ctx, st, budget, boxes = null) {
   const take = cands.slice(0, Math.min(RETRIAGE_A_RUN, Math.max(0, budget.meta)));
   // No header budget left this run: the same ones next run
   if (cands.length && !take.length) return;
-  const byBox = new Map();
-  for (const r of take) byBox.set(r.mailbox, [...(byBox.get(r.mailbox) || []), r]);
   const meta = HEADERS.map((x) => `&metadataHeaders=${x}`).join('');
   // One that can't be looked at again is let go with that said, and the rest go on: gone from Gmail (deleted), or in an
-  // inbox no longer among the staff's (a removed account). Anything else (Google failing for a moment, its sign-in
-  // refused while its settings change) stops this turn to try again next run; the same email, or the same inbox,
-  // failing five runs is let go then. Counted for each, so one that's fine never resets another's count
+  // inbox no longer among the staff's (a removed account). A staff inbox that can't be opened (its sign-in refused while
+  // Google's settings change) holds its emails until it opens: the look stops just before them, to go on next run.
+  // Google failing on one email (a 500) five runs, counted for that email alone, lets it go
   const letGo = (r, why) => env.DB.prepare("UPDATE order_mail SET detail = ?, updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'").bind(why, iso(ctx.now), r.mailbox, r.id).run();
   const fails = (st.retriageFails && typeof st.retriageFails === 'object') ? st.retriageFails : (st.retriageFails = {});
-  const failed = (k) => (fails[k] = (fails[k] || 0) + 1) >= 5;
-  for (const [mailbox, list] of byBox) {
-    let token;
-    try { token = await ctx.open(mailbox); delete fails[mailbox]; } catch (err) {
-      const gone = boxes && !boxes.includes(mailbox);
-      if (!gone && !failed(mailbox)) throw err;
-      for (const r of list) await letGo(r, 'looked at again: its inbox can’t be opened');
-      delete fails[mailbox];
+  const tokens = new Map();
+  let done = 0;
+  for (const r of take) {
+    if (!tokens.has(r.mailbox)) {
+      try { tokens.set(r.mailbox, await ctx.open(r.mailbox)); } catch (err) {
+        if (boxes && !boxes.includes(r.mailbox)) tokens.set(r.mailbox, null);
+        else break;
+      }
+    }
+    const token = tokens.get(r.mailbox);
+    if (!token) { await letGo(r, 'looked at again: its inbox can’t be opened'); done++; continue; }
+    budget.meta -= 1;
+    const k = `${r.mailbox}|${r.id}`;
+    let msg;
+    try { msg = await gmail(token, `/messages/${r.id}?format=metadata${meta}`, ctx.fetchImpl); } catch (err) {
+      if (err.status === 404) { await letGo(r, 'looked at again: gone from Gmail'); delete fails[k]; done++; continue; }
+      if ((fails[k] = (fails[k] || 0) + 1) < 5) break;
+      await letGo(r, `looked at again: ${String(err.message).slice(0, 80)}`);
+      delete fails[k];
+      done++;
       continue;
     }
-    for (const r of list) {
-      budget.meta -= 1;
-      const k = `${r.mailbox}|${r.id}`;
-      let msg;
-      try { msg = await gmail(token, `/messages/${r.id}?format=metadata${meta}`, ctx.fetchImpl); } catch (err) {
-        if (err.status === 404) { await letGo(r, 'looked at again: gone from Gmail'); delete fails[k]; continue; }
-        if (!failed(k)) throw err;
-        await letGo(r, `looked at again: ${String(err.message).slice(0, 80)}`);
-        delete fails[k];
-        continue;
-      }
-      delete fails[k];
-      const t = orderTriage(msg, ctx);
-      // Still not a store's order mail: left as it was (better rules some day may take it)
-      if (!t) continue;
-      const h = msg.payload?.headers;
-      await env.DB.prepare("UPDATE order_mail SET state = 'queued', kind = ?, store = ?, msgid = ?, source = 'again', updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'")
-        .bind(t.kind, t.store, header(h, 'Message-ID') || null, iso(ctx.now), mailbox, r.id).run();
-    }
+    delete fails[k];
+    done++;
+    const t = orderTriage(msg, ctx);
+    // Still not a store's order mail: left as it was (better rules some day may take it)
+    if (!t) continue;
+    const h = msg.payload?.headers;
+    await env.DB.prepare("UPDATE order_mail SET state = 'queued', kind = ?, store = ?, msgid = ?, source = 'again', updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'")
+      .bind(t.kind, t.store, header(h, 'Message-ID') || null, iso(ctx.now), r.mailbox, r.id).run();
+  }
+  // Stopped part way (an inbox to wait for, Google failing for a moment): next run starts at the first not done
+  if (done < take.length) {
+    if (done) st.retriageAfter = [take[done - 1].at, take[done - 1].id];
+    return;
   }
   // Where the next run starts: after the last one looked at, or (none of these left) after this page; none at all: done
   const lastOf = (r) => [r.at, r.id];
@@ -441,6 +453,8 @@ export async function maybeSweepOrders(env, { fetchImpl = fetch, now = Date.now(
     Object.assign(st, { lastRunAt: now, runningUntil: now + 45000 });
     await writeState(env.DB, st);
     st = await sweep(env, st, { fetchImpl, now });
+    const feed = st.ordersFeed || {};
+    if (now - (feed.at || 0) > (feed.ok ? FEED_EVERY_MS : FEED_RETRY_MS)) st.ordersFeed = await keepOrdersFeed(env, { fetchImpl, now }).catch((err) => ({ ok: false, at: now, error: err.message }));
     await writeState(env.DB, st);
     return st;
   } catch (err) {
@@ -448,6 +462,47 @@ export async function maybeSweepOrders(env, { fetchImpl = fetch, now = Date.now(
     await writeState(env.DB, { ...st, error: err.message, runningUntil: 0 }).catch(() => {});
     return null;
   }
+}
+
+/**
+ * orders@'s mail reaches an inbox the sweep reads: Agent Gracie a member of the group, getting every email. Added when
+ * she isn't one, her delivery set to every email when it isn't (a digest or no email would hold the mail back). Asks
+ * Google as a Workspace admin founder (as the board group does, ./_board-group.js) → { ok, at, did?, error? }
+ */
+export async function keepOrdersFeed(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const at = now;
+  const api = `https://admin.googleapis.com/admin/directory/v1/groups/${encodeURIComponent(ORDERS_GROUP)}/members`;
+  const call = async (token, method, url, body) => {
+    const res = await fetchImpl(url, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const data = await res.json().catch(() => null);
+    return { status: res.status, ok: res.ok, data };
+  };
+  let subjects = [];
+  try {
+    const dir = JSON.parse((await env.DB.prepare("SELECT data FROM staff_state WHERE key = 'directory'").first())?.data || '{}');
+    subjects = [...new Set([dir.subject, ...founderEmails(await peopleRows(env.DB))].filter(Boolean))];
+  } catch { /* nothing read yet */ }
+  if (!subjects.length) return { ok: false, at, error: 'No Workspace admin to ask Google as' };
+  let last = 'Google didn’t answer';
+  for (const subject of subjects) {
+    let token;
+    try { token = await accessToken(env, subject, { fetchImpl, now, scope: GROUP_MEMBER_SCOPE }); } catch (err) { last = err.message; continue; }
+    const got = await call(token, 'GET', `${api}/${encodeURIComponent(ORDERS_INBOX)}`);
+    if (got.status === 403) { last = `Google: ${got.data?.error?.message || 'not allowed'}`; continue; }
+    if (got.ok) {
+      if (got.data?.delivery_settings === 'ALL_MAIL') return { ok: true, at };
+      const fixed = await call(token, 'PATCH', `${api}/${encodeURIComponent(ORDERS_INBOX)}`, { delivery_settings: 'ALL_MAIL' });
+      return fixed.ok ? { ok: true, at, did: `Agent Gracie gets every email to ${ORDERS_GROUP} now (was ${got.data?.delivery_settings || 'not set'})` } : { ok: false, at, error: `Google: ${fixed.data?.error?.message || fixed.status}` };
+    }
+    if (got.status === 404) {
+      const added = await call(token, 'POST', api, { email: ORDERS_INBOX, role: 'MEMBER', delivery_settings: 'ALL_MAIL' });
+      if (added.ok) return { ok: true, at, did: `Agent Gracie added to ${ORDERS_GROUP}, every email` };
+      // The group itself isn't there (404 again): said plainly
+      return { ok: false, at, error: added.status === 404 ? `${ORDERS_GROUP} isn’t a Google group` : `Google: ${added.data?.error?.message || added.status}` };
+    }
+    last = `Google: ${got.data?.error?.message || got.status}`;
+  }
+  return { ok: false, at, error: last };
 }
 
 const pct = (n, of) => (of ? Math.round((100 * n) / of) : null);
@@ -511,6 +566,8 @@ export async function orderSweepStatus(env, { now = Date.now() } = {}) {
     key: Boolean(env.GOOGLE_CALENDAR_KEY), ai: Boolean(env.AI?.run), watching: true,
     startedAt: st.startedAt ? iso(st.startedAt) : null, lastSweptAt: st.lastSweptAt ? iso(st.lastSweptAt) : null,
     error: st.error || null, inboxes: st.inboxes || 0, backfilling: Boolean(st.backfilling),
+    // orders@ read through Agent Gracie: whether she's a member getting every email (Automations shows a problem)
+    ordersFeed: st.ordersFeed ? { ok: Boolean(st.ordersFeed.ok), at: st.ordersFeed.at ? new Date(st.ordersFeed.at).toISOString() : null, error: st.ordersFeed.error || null } : null,
     states, stores, recent,
   };
 }

@@ -160,7 +160,7 @@ export function withHand(values, last, now, hand = {}) {
   // stood (the change of words is no news on the line)
   if (h.status) {
     h.status.value = renamed(h.status.value);
-    if (!STATUSES.includes(h.status.basis)) h.status.basis = values.status;
+    if (!STATUSES.includes(h.status.basis)) h.status.basis = STATUSES.includes(renamed(h.status.basis)) ? renamed(h.status.basis) : values.status;
   }
   if (h.status && (h.status.basis !== values.status || !STATUSES.includes(h.status.value))) delete h.status;
   // Lines in Order details the site didn't write: a person's note, every line of it, kept at the bottom

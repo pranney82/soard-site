@@ -373,3 +373,53 @@ test('Nov 11 review 2: the look again counts each email’s and each inbox’s f
   assert.deepEqual([byId.get(cart.id).state, byId.get(cart.id).kind], ['read', 'delivered'], 'the cart was looked at once Sam’s inbox opened');
   assert.equal(JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data).triageV, 2);
 });
+
+test('Nov 11: orders@ (a group, the address on stores’ accounts) is read through Agent Gracie: added as a member getting every email, her delivery fixed when it isn’t, and a group that isn’t there said plainly', async () => {
+  const { keepOrdersFeed, ORDERS_GROUP, ORDERS_INBOX } = await import('../functions/api/_order-sweep.js');
+  await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: ACCOUNTS, subject: PAT })).run();
+  let member = null, group = true;
+  const calls2 = [];
+  const fetchImpl = async (url, init = {}) => {
+    const u = String(url);
+    if (u === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'tok:admin', expires_in: 3600 });
+    calls2.push(`${init.method} ${u.replace(/^https:\/\/admin\.googleapis\.com\/admin\/directory\/v1/, '')}`);
+    if (!group) return Response.json({ error: { message: 'Resource Not Found: groupKey' } }, { status: 404 });
+    if (init.method === 'GET') return member ? Response.json(member) : Response.json({ error: { message: 'Resource Not Found: memberKey' } }, { status: 404 });
+    const body = JSON.parse(init.body);
+    member = { email: ORDERS_INBOX, role: 'MEMBER', ...(member || {}), ...body };
+    return Response.json(member);
+  };
+  clearTokenCache();
+  const a = await keepOrdersFeed(env, { fetchImpl, now: T0 });
+  assert.deepEqual([a.ok, member.delivery_settings, calls2.map((c) => c.split(' ')[0])], [true, 'ALL_MAIL', ['GET', 'POST']]);
+  assert.match(calls2[1], new RegExp(`groups/${encodeURIComponent(ORDERS_GROUP)}/members$`));
+  // Someone set her to a daily digest in Google: put back to every email
+  member.delivery_settings = 'DIGEST';
+  calls2.length = 0;
+  const b = await keepOrdersFeed(env, { fetchImpl, now: T0 });
+  assert.deepEqual([b.ok, member.delivery_settings, calls2.map((c) => c.split(' ')[0])], [true, 'ALL_MAIL', ['GET', 'PATCH']]);
+  // Already right: nothing changes
+  calls2.length = 0;
+  assert.deepEqual([(await keepOrdersFeed(env, { fetchImpl, now: T0 })).did, calls2.map((c) => c.split(' ')[0])], [undefined, ['GET']]);
+  group = false;
+  member = null;
+  assert.match((await keepOrdersFeed(env, { fetchImpl, now: T0 })).error, /isn’t a Google group/);
+});
+
+test('Nov 11 review 3: a staff inbox whose sign-in Google refuses keeps its emails for the look again until it opens, however long', async () => {
+  const cart = mail({ box: SAM, at: T0 - DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Bathroom Storage Cart...', text: 'Your package arrived.' });
+  await run(T0);
+  const st0 = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  await env.DB.prepare("UPDATE order_mail SET state = 'skipped', kind = NULL, store = NULL, read = NULL, detail = NULL WHERE id = ?").bind(cart.id).run();
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st0, triageV: 1 })).run();
+  aiAnswers['Arrived: Your Bathroom Storage Cart...'] = { kind: 'delivered', orderNumber: '2000155-53264812', items: [{ name: 'Bathroom Storage Cart', quantity: 1, price: '' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
+  refuseBoxes.add(SAM);
+  for (let i = 1; i <= 8; i++) { clearTokenCache(); await run(T0 + i * 4 * MIN); }
+  let r = (await rows()).find((x) => x.id === cart.id);
+  assert.deepEqual([r.state, r.detail], ['skipped', null], 'held, never let go');
+  refuseBoxes.clear();
+  clearTokenCache();
+  await run(T0 + 40 * MIN);
+  r = (await rows()).find((x) => x.id === cart.id);
+  assert.deepEqual([r.state, r.kind], ['read', 'delivered']);
+});

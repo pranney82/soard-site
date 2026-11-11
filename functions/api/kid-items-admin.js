@@ -93,7 +93,7 @@ const labelsFor = (view, receipt) => {
  * work when its caller leaves, and waitUntil keeps it, so a check-in saved always gets its labels
  */
 function printFor(context, receipts, view, opts = {}) {
-  const run = printReceipts(context.env, receipts, (r) => labelsFor(view, r), opts);
+  const run = printReceipts(context.env, receipts, opts.labels || ((r) => labelsFor(view, r)), opts);
   context.waitUntil?.(run.catch(() => {}));
   return run;
 }
@@ -206,7 +206,7 @@ export async function onRequestPost(context) {
       // The ones saved move together. One never saved (undone on the phone before it was sent) is left out; none saved:
       // nothing to move
       const taps = [];
-      for (const t of asked) if (await env.DB.prepare('SELECT 1 FROM kid_receipts WHERE id = ?').bind(t).first()) taps.push(t);
+      for (const t of asked) if (await env.DB.prepare("SELECT 1 FROM kid_receipts WHERE id = ? AND kind = 'receive' AND undone_at IS NULL").bind(t).first()) taps.push(t);
       if (!taps.length) return Response.json({ success: false, error: 'That check-in isn’t saved yet. Try again in a moment.' }, { status: 404, headers });
       const moved = [];
       for (const t of taps) { const m = await moveShelf(env.DB, t, String(body.shelf || '')); jobId = m.jobId; if (m.moved) moved.push(t); }
@@ -251,6 +251,9 @@ export async function onRequestPost(context) {
         // Never saved (it was refused when it was sent): nothing to take back
         const bad = undone.find((x) => x.error && x.status !== 404);
         if (bad) return Response.json({ success: false, error: bad.error }, { status: bad.status || 409, headers });
+        // Where those boxes went: their old labels lead to that kid's check-in of the order, never this kid's again
+        const to = whole?.decision?.type === 'kid' ? JSON.stringify({ kid: String(whole.decision.kid), order: String(body.orderKey || '') }) : null;
+        if (to) for (const t of undo) await env.DB.prepare('UPDATE kid_receipts SET moved_to = ? WHERE id = ?').bind(to, t).run();
       }
       const kids = new Set();
       for (const it of items) {
@@ -300,7 +303,17 @@ export async function onRequestPost(context) {
     }
     if (print) out.print = await printFor(context, [print], view, { again: Boolean(q.get('reprint')) });
     if (printBox) out.print = await printLabels(env, labelsFor(view, printBox.r).slice(printBox.box - 1, printBox.box));
-    if (reprint.length) out.print = await printFor(context, reprint, view);
+    // A moved check-in's labels again, for its boxes still at the Office (one on the truck keeps its label)
+    if (reprint.length) {
+      const loaded = new Map();
+      for (const r of reprint) {
+        const outs = (await env.DB.prepare("SELECT box FROM kid_receipts WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(r.id).all()).results || [];
+        loaded.set(r.id, outs.some((o) => !o.box) ? 'all' : new Set(outs.map((o) => Number(o.box))));
+      }
+      out.print = await printFor(context, reprint.filter((r) => loaded.get(r.id) !== 'all'), view, {
+        labels: (r) => labelsFor(view, r).filter((_, n) => !(loaded.get(r.id) instanceof Set && loaded.get(r.id).has(n + 1))),
+      });
+    }
     // JobTread now, for the kid it changed: the answer says whether it's there
     if (jobId) out.jt = await writeKidNow(env, jobId);
     return Response.json({ success: true, ...out, view: { ...(out.jt === 'written' ? await checkinView(env) : view), printer: await printerStatus(env) } }, { headers });

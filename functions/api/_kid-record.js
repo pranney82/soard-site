@@ -62,7 +62,8 @@ const SCHEMA = [
 // the printer took a check-in's labels (a retry from the phone prints only what never reached it)
 // Nov 11 (later): track, the tracking number of the box whose label was scanned to check it in (scanned again: it says
 // where that box is, never offers it again)
-const RECEIPT_COLUMNS = ['ref TEXT', 'box INTEGER', 'printed_at TEXT', 'track TEXT'];
+// moved_to: taken back by Wrong kid, the kid and order its box went to ({ kid, order }): its old label leads there
+const RECEIPT_COLUMNS = ['ref TEXT', 'box INTEGER', 'printed_at TEXT', 'track TEXT', 'moved_to TEXT'];
 // Nov 11 2026: where a bought-on-top line sits (next to an allowance, or Also bought), and how many, for its cost
 const ALSO_COLUMNS = ['allow_item_id TEXT', 'qty INTEGER', 'off_by_hand TEXT'];
 // Nov 11 2026: the amount before a write (a write that never landed is told from a person's change) and why it's left alone
@@ -124,7 +125,7 @@ export async function readRecord(DB) {
     all(DB, 'SELECT key, cents, by_email, at FROM kid_prices'),
   ]);
   return {
-    receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null, box: r.box || null, printedAt: r.printed_at || null, track: r.track || null })),
+    receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null, box: r.box || null, printedAt: r.printed_at || null, track: r.track || null, movedTo: parse(r.moved_to, null) })),
     decisions: new Map(decisions.map((d) => [d.key, { ...parse(d.decision, {}), orderKey: d.order_key, by: d.by_email, at: d.at }])),
     also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, qty: a.qty || null, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, allowItemId: a.allow_item_id || null, offByHand: a.off_by_hand || null, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
     shelves: new Map(shelves.map((s) => [s.shelf, s.job_id])),

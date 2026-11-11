@@ -245,7 +245,15 @@ async function undoTaps(taps) {
   const local = new Set();
   const tried = new Set();
   const q = [];
+  let movesDropped = false;
   for (const x of readQueue()) {
+    // A shelf move waiting for this check-in: it isn't sent (the check-in won't be anywhere to move)
+    if (x.action === 'shelf' && Array.isArray(x.body?.taps) && x.body.taps.some((t) => want.has(t))) {
+      const rest = x.body.taps.filter((t) => !want.has(t));
+      if (rest.length) q.push({ ...x, body: { ...x.body, taps: rest } });
+      movesDropped = true;
+      continue;
+    }
     const items = Array.isArray(x.body?.items) ? x.body.items : null;
     if (!items) {
       if (want.has(x.body?.tap)) { local.add(x.body.tap); if (x.tried) tried.add(x.body.tap); continue; }
@@ -256,7 +264,7 @@ async function undoTaps(taps) {
     if (keep.length) q.push(keep.length === items.length ? x : { ...x, body: { ...x.body, items: keep } });
   }
   const res = { ok: new Set(), refused: new Map(), waiting: new Set(), answers: new Map(), signIn: false };
-  if (local.size && writeQueue(q)) {
+  if ((local.size || movesDropped) && writeQueue(q) && local.size) {
     // Off the phone: off the list too
     for (const k of state.kids) for (const i of k.items) {
       const before = (i.receipts || []).length;
@@ -683,18 +691,24 @@ function labelSheet(kid, it, tap, box = null, { keep = false } = {}) {
   const p = outStateOf(it).per.get(tap);
   const out = Boolean(p && (box ? p.boxes.has(Number(box)) : p.full));
   const loadedSome = !out && p && p.boxes.size ? `${p.boxes.size} of ${p.total} boxes loaded` : null;
-  // What of the thing hasn't come yet (or, this check-in undone, all of it): checked in from its own sheet
-  const more = !isHere(it);
+  // What of the thing hasn't come yet (or, this check-in undone, all of it): checked in from its own sheet. Undone
+  // because its order went to another kid (Wrong kid): that kid's waiting thing, never this kid's line again
+  const toKid = r.undone && r.movedTo ? anyKid(r.movedTo.kid) : null;
+  const movedTo = toKid ? { k: toKid, ship: state.shipments.find((x) => x.key === r.movedTo.order && !x.unplaced) } : null;
+  const more = !isHere(it) && !movedTo;
   openSheet(`${head(kidTitle(kid), { kid: true, sub: esc([box && of > 1 ? `Box ${box} of ${of}` : of > 1 ? `${of} boxes` : null, `Checked in ${dayOf(r.at)}${byWho(r)}`].filter(Boolean).join(' · ')) })}
     <p class="item-name">${esc(it.name)}</p>
     ${r.undone ? '<p class="why-line">This check-in was undone.</p>' : out ? '<div class="shelf-callout static"><span class="who">Loaded</span><b>At the house</b></div>'
       : `<button class="shelf-callout" type="button" data-move="${esc(tap)}" aria-label="Move it to another shelf"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><span class="sc-shelf"><b>${esc(shelfName(r.shelf) || 'Shelf')}</b>${ICON.chev}</span></button>`}
     ${loadedSome ? `<p class="why-line">${esc(loadedSome)}</p>` : ''}
-    <div class="sheet-foot">${r.undone ? (more ? '<button class="btn btn-primary btn-big" type="button" id="checkmore" data-focus>Check it in</button>' : '') : `<button class="btn btn-primary btn-big" type="button" id="labelagain" data-focus>Print ${box || of === 1 ? 'this label' : 'its labels'} again</button>`}
+    ${movedTo ? `<p class="why-line">${esc(`This box is ${movedTo.k.short}’s now.`)}</p>` : ''}
+    <div class="sheet-foot">${r.undone ? (movedTo ? (movedTo.ship ? `<button class="btn btn-primary btn-big" type="button" id="checkthere" data-focus>${esc(`Check it in for ${movedTo.k.short}`)}</button>` : '') : more ? '<button class="btn btn-primary btn-big" type="button" id="checkmore" data-focus>Check it in</button>' : '') : `<button class="btn btn-primary btn-big" type="button" id="labelagain" data-focus>Print ${box || of === 1 ? 'this label' : 'its labels'} again</button>`}
       <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button>${more && !r.undone ? `<button class="btn btn-text" type="button" id="checkmore">${it.got ? 'Check in the rest of it' : 'Check it in'}</button>` : ''}</div></div>`, { keep });
   bindMoves(kid);
   if ($('labelagain')) $('labelagain').onclick = async () => { try { toast(printSaid((await send('reprint', { tap, ...(box ? { box } : {}) })).print).text); } catch (err) { toast(err.message); } };
   if ($('checkmore')) $('checkmore').onclick = () => itemSheet(kid, it, { keep: true });
+  // That kid's check-in of the order (what of it is still to check in)
+  if ($('checkthere')) $('checkthere').onclick = () => (movedTo.ship ? shipmentSheet(movedTo.ship.key, { keep: true }) : close());
 }
 
 /** Something already here: when it came, where it is, Print again, Undo, another shelf */
