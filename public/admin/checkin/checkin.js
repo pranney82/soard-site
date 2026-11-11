@@ -733,6 +733,7 @@ async function scan() {
   const cam = document.createElement('div');
   cam.className = 'cam';
   cam.innerHTML = `<video autoplay playsinline muted></video><div class="frame" aria-hidden="true"></div><div class="flash"></div>
+    <div class="cam-top"><b class="cam-count">Label, packing slip or the product’s box</b></div>
     <button class="cam-close" type="button" aria-label="Close the camera">${ICON.x}</button>
     <button class="shutter" type="button" aria-label="Take the photo"></button>`;
   document.body.appendChild(cam);
@@ -805,7 +806,7 @@ function showFound({ found, label, likely = [] }, preview) {
   const cards = keys.slice(0, 8).map((k) => shipCard(state.shipments.find((x) => x.key === k), { compact: true })).join('');
   openSheet(`${head(cards ? 'Which shipment is it?' : 'Couldn’t match this box', { sub: bits.length ? `Read: ${bits.map(esc).join(' · ')}` : 'Nothing readable on the label' })}
     ${cards ? `<div class="ship-pick">${cards}</div>` : `<img class="photo" src="${preview}" alt="The photo of the box's label" />`}
-    <button class="btn ${cards ? '' : 'btn-primary '}btn-big" type="button" data-rescan="1"${cards ? '' : ' data-focus'}>Scan the packing slip inside</button>
+    <button class="btn ${cards ? '' : 'btn-primary '}btn-big" type="button" data-rescan="1"${cards ? '' : ' data-focus'}>Scan the packing slip or the product’s box</button>
     <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div>`, { keep: true });
 }
 

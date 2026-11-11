@@ -109,3 +109,18 @@ test('Nov 11: the POST answers with the likely boxes and keeps a record of the s
   assert.equal(JSON.parse(scans[0].label).trackingNumbers[0], 'TBA123456789000');
   assert.equal(scans[0].likely, 1);
 });
+
+test('Nov 11: the product’s own box (its model number or its name), and the kid’s name on the label, find it', async () => {
+  const { checkinView, orderReads } = await import('../functions/api/_kid-checkin.js');
+  // An Amazon order for Rowan with no tracking number anywhere (Amazon's emails never carry it)
+  await order('m5', 'Amazon', { kind: 'delivered', orderNumber: '111-0000000-0000001', jobPo: 'ROWAN', items: [{ name: 'Raincan Shower Head 52214-CZ' }], tracking: [] });
+  const view = await checkinView(env);
+  const reads = await orderReads(env.DB);
+  const by = (label) => findBox(view, reads, { trackingNumbers: ['TBA987654321000'], orderNumbers: [], po: '', store: 'Amazon', items: [], references: [], models: [], names: [], ...label });
+  assert.equal(by({}), null, 'Amazon’s own tracking number alone: nothing to go on');
+  const head = view.kids.find((k) => k.short === 'Rowan S.').items.find((i) => i.name === 'Raincan Shower Head');
+  assert.deepEqual([by({ models: ['52214-CZ'] })?.short, by({ models: ['52214-CZ'] })?.items, by({ models: ['52214-CZ'] })?.how], ['Rowan S.', [head.id], 'Model 52214-CZ'], 'the model number on the product’s box');
+  assert.equal(by({ items: ['Delta Raincan 52214 CZ Shower Head Chrome'] })?.short, 'Rowan S.', 'its name on its box');
+  assert.equal(by({ names: ['ATTN: ROWAN'] })?.short, 'Rowan S.', '“Attn: Rowan” on the label');
+  assert.equal(by({ names: ['Clareece Cunningham'] }), null, 'a staff member’s name isn’t a kid');
+});

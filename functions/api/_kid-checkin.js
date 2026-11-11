@@ -124,7 +124,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
       if (p.source === 'buy' || p.source === 'donated') {
         // "Lighting: Wayfair Louis Parisian Globe" on the Lighting line reads as the product alone
         const name = p.name.toLowerCase().startsWith(`${l.lineName.toLowerCase()}:`) ? p.name.slice(l.lineName.length + 1).trim() || p.name : p.name;
-        kid.items.push({ id: `${l.itemId}|${partKey}`, itemId: l.itemId, partKey, part: p.name, name, line: l.lineName, qty: Math.max(1, Math.round(p.quantity || 1)), cents: p.cents || null, source: p.source, order: null, receipts: [], ...(p.whole ? { whole: true } : {}) });
+        kid.items.push({ id: `${l.itemId}|${partKey}`, itemId: l.itemId, partKey, part: p.name, name, line: l.lineName, qty: Math.max(1, Math.round(p.quantity || 1)), cents: p.cents || null, source: p.source, order: null, receipts: [], ...(p.model ? { model: p.model } : {}), ...(p.whole ? { whole: true } : {}) });
       } else kid.others++;
     });
   }

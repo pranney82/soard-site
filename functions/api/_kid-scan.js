@@ -34,16 +34,20 @@ export const LABEL_SCHEMA = {
     items: { type: 'array', items: { type: 'string' } },
     boxTotal: { type: 'number' },
     references: { type: 'array', items: { type: 'string' } },
+    models: { type: 'array', items: { type: 'string' } },
+    names: { type: 'array', items: { type: 'string' } },
   },
-  required: ['trackingNumbers', 'orderNumbers', 'po', 'store', 'items', 'boxTotal', 'references'],
+  required: ['trackingNumbers', 'orderNumbers', 'po', 'store', 'items', 'boxTotal', 'references', 'models', 'names'],
 };
 const LABEL_PROMPT = [
-  'You read the photo of a shipping label or packing slip on a box delivered to an office. Answer in JSON only.',
+  'You read the photo of something delivered to an office: a box\'s shipping label, its packing slip, or the product\'s own box or tag. Answer in JSON only.',
   'trackingNumbers: every carrier tracking number printed (UPS 1Z…, FedEx, USPS, Amazon TBA…), digits and letters only, no spaces.',
   'orderNumbers: order numbers printed (e.g. "Order # 111-1234567-1234567", "Order: W123456789").',
   'po: what is printed as PO, P.O., Job, Job Name or Reference, else "".',
   'store: the store or sender, else "".',
-  'items: the products a packing slip lists, as written, else an empty list.',
+  'items: the products named: each one a packing slip lists, or the product\'s own name printed on its box or tag, as written, else an empty list.',
+  'models: model numbers, SKUs and item numbers printed (e.g. "52214-CZ", "Model # 7800", "SKU 1001234567"), as printed, else an empty list.',
+  'names: people\'s names printed, each line on its own as printed: Ship to, Deliver to, Attn, Attention, c/o, PO or Name lines (e.g. "ATTN: DYLAN"), else an empty list.',
   'boxTotal: when the label says which box of how many ("1 of 3", "PKG 2/3", "Box 1 of 2"), the how many (3); else 0.',
   'references: every other number printed as Ref, Reference, Ref 1, Ref 2, Invoice, Customer, Dept, Shipment or PO, as printed (stores often put their order number there), else an empty list.',
   'Never guess: leave a field empty when it isn\'t printed.',
@@ -84,6 +88,8 @@ export async function readLabel(env, bytes) {
           items: (a.items || []).map((n) => String(n).trim()).filter(Boolean).slice(0, 20),
           boxTotal: Number.isInteger(Number(a.boxTotal)) && Number(a.boxTotal) > 1 && Number(a.boxTotal) <= 20 ? Number(a.boxTotal) : 0,
           references: (a.references || []).map((n) => String(n).trim()).filter((n) => n.length >= 4).slice(0, 8),
+          models: (a.models || []).map((n) => String(n).trim()).filter((n) => n.length >= 4).slice(0, 10),
+          names: (a.names || []).map((n) => String(n).trim()).filter(Boolean).slice(0, 8),
         };
       }
     } catch (err) {
@@ -109,6 +115,13 @@ const orderDigits = (s) => clean(String(s || '').replace(/\b(order|ord|no|number
 const sameOrder = (a, b) => { const x = orderDigits(a), y = orderDigits(b); return x.length >= 5 && x === y; };
 // A label's reference with the order number inside it ("SO-359672268-01"), long enough not to be chance
 const inOrder = (order, ref) => { const x = orderDigits(order), y = orderDigits(ref); return x.length >= 7 && y.length > x.length && y.includes(x); };
+
+const compactAll = (list) => (list || []).map((x) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '')).join('|');
+/** How much of a printed product name an ordered item's words cover (the best of the names printed) */
+const wordsShare = (item, names) => {
+  const words = new Set(tokensOf(`${item.name} ${item.orderedAs || ''}`));
+  return Math.max(0, ...names.map((n) => { const t = tokensOf(n); return t.length ? t.filter((w) => words.has(w)).length / t.length : 0; }));
+};
 
 /**
  * Which kid and items a read label is → { kid, short, items: [item ids], how } | null
@@ -138,8 +151,26 @@ export function findBox(view, reads, label) {
     const kid = po?.kid && view.kids.find((k) => k.jobId === po.kid);
     if (kid) return { kid: kid.jobId, short: kid.short, items: kid.items.filter((i) => i.status === 'ordered' || i.status === 'partly').map((i) => i.id), how: `Reference “${ref}”` };
   }
+  // The product's own model number (on its box, its tag or the packing slip) against the designer's: one kid, these items
+  const printed = compactAll([...(label.models || []), ...(label.items || [])]);
+  if (printed) {
+    const hits = ordered.filter(({ item }) => { const m = compactAll([item.model]); return m.length >= 4 && printed.includes(m); });
+    const kids = new Set(hits.map((h) => h.kid.jobId));
+    if (kids.size === 1) return { kid: hits[0].kid.jobId, short: hits[0].kid.short, items: hits.map((h) => h.item.id), how: `Model ${hits[0].item.model}` };
+  }
+  // The kid's name on the label ("Attn: Dylan" in the address, or the PO box): that kid; the slip's or the box's names
+  // narrow it to the things it is
+  const jobs = view.kids.map((k) => ({ id: k.jobId, name: k.name }));
+  for (const line of label.names || []) {
+    const said = String(line).replace(/^\s*(attn|attention|c\/o|care of|deliver to|ship to|name|po)\b[\s.:#-]*/i, '');
+    const po = kidFromPo(said, jobs);
+    const kid = po?.kid && view.kids.find((k) => k.jobId === po.kid);
+    if (!kid) continue;
+    const mine = ordered.filter((x) => x.kid === kid);
+    const named = (label.items || []).length ? mine.filter(({ item }) => wordsShare(item, label.items) >= 0.5) : [];
+    return { kid: kid.jobId, short: kid.short, items: (named.length ? named : mine).map((x) => x.item.id), how: `${kid.short} on the label` };
+  }
   if (label.po) {
-    const jobs = view.kids.map((k) => ({ id: k.jobId, name: k.name }));
     const po = kidFromPo(label.po, jobs);
     const kid = po?.kid && view.kids.find((k) => k.jobId === po.kid);
     if (kid) return { kid: kid.jobId, short: kid.short, items: kid.items.filter(coming).map((i) => i.id), how: `PO “${label.po}”` };
@@ -148,14 +179,13 @@ export function findBox(view, reads, label) {
   if ((label.items || []).length) {
     const scored = [];
     for (const { kid, item } of ordered) {
-      const words = new Set(tokensOf(`${item.name} ${item.orderedAs || ''}`));
-      const best = Math.max(0, ...label.items.map((n) => { const t = tokensOf(n); return t.length ? t.filter((w) => words.has(w)).length / t.length : 0; }));
+      const best = wordsShare(item, label.items);
       if (best >= 0.5) scored.push({ kid, item, best });
     }
     const kids = new Set(scored.map((s) => s.kid.jobId));
     if (kids.size === 1) {
       const kid = scored[0].kid;
-      return { kid: kid.jobId, short: kid.short, items: scored.sort((a, b) => b.best - a.best).map((s) => s.item.id), how: 'Packing slip' };
+      return { kid: kid.jobId, short: kid.short, items: scored.sort((a, b) => b.best - a.best).map((s) => s.item.id), how: 'Its name on the box' };
     }
   }
   return null;
