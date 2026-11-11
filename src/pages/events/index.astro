@@ -355,7 +355,7 @@ const heroFrameAttrs = heroUrl
        else a look back at the latest year of events
        ═══════════════════════════════════════════ -->
   {heroEvent ? (
-    <section class="hero hero--event">
+    <section class="hero hero--event" data-whole>
       <div class="hero-inner">
         <div class="hero-text">
           <div class="hero-badges">
@@ -433,9 +433,10 @@ const heroFrameAttrs = heroUrl
           </div>
         </HeroFrame>
       </div>
+      <span data-whole-end hidden></span>
     </section>
   ) : heroIsRecap ? (
-    <section class="hero hero--recap">
+    <section class="hero hero--recap" data-whole>
       <div class="hero-inner">
         <div class="hero-text">
           <div class="hero-badges">
@@ -522,9 +523,10 @@ const heroFrameAttrs = heroUrl
           </div>
         </div>
       </div>
+      <span data-whole-end hidden></span>
     </section>
   ) : (
-    <section class="hero">
+    <section class="hero" data-whole>
       <div class="hero-inner">
         <div class="hero-text">
           <p class="hero-eyebrow">Events & Fundraisers</p>
@@ -550,6 +552,7 @@ const heroFrameAttrs = heroUrl
           </div>
         </div>
       </div>
+      <span data-whole-end hidden></span>
     </section>
   )}
 

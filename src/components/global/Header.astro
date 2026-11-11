@@ -121,9 +121,10 @@ function isGroupActive(group: NavGroup) {
 ---
 
 <header class="site-header" id="site-header" transition:persist="site-header">
-  <div class="header-inner">
+  <!-- data-whole: the menu and Donate show together once the whole bar has arrived (global.css); the logo from the start -->
+  <div class="header-inner" data-whole>
     {/* Logo — imagedelivery.net auto-negotiates AVIF/WebP via Accept header */}
-    <a href="/" class="logo" aria-label="Sunshine on a Ranney Day, home">
+    <a href="/" class="logo" aria-label="Sunshine on a Ranney Day, home" data-whole-keep>
         <img
           src={cfRaw(LOGO_ID, 'w=512,q=85')}
           srcset={_cfSrcset(LOGO_ID, [256, 384, 512, 768])}
@@ -230,6 +231,7 @@ function isGroupActive(group: NavGroup) {
         </span>
       </button>
     </div>
+    <span data-whole-end hidden></span>
   </div>
 </header>
 

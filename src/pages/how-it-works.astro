@@ -248,7 +248,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
   <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
 
   <!-- ══════ HERO · Editorial split ══════ -->
-  <section class="hero">
+  <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
         <p class="hero-eyebrow">How It Works</p>
@@ -280,6 +280,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
         </div>
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- ══════ CASE FILE · rail + chapters ══════ -->

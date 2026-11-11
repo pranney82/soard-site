@@ -85,7 +85,7 @@ const personLd = {
 >
 
   <!-- ══════ HERO: editorial split (no data-reveal: LCP) ══════ -->
-  <section class={memorial ? 'hero hero--memorial' : 'hero'}>
+  <section class={memorial ? 'hero hero--memorial' : 'hero'} data-whole>
     <div class="hero-inner">
       <div class="hero-text">
         <p class="hero-eyebrow">{eyebrow}</p>
@@ -136,6 +136,7 @@ const personLd = {
         <span class="hero-stat-label" set:html={stat.label} />
       </div>
     )}
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- ══════ BIO + DETAILS ══════ -->

@@ -77,7 +77,7 @@ const breadcrumbs = [
   <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial Split ══════ -->
-  <section class="hero" data-af-lang-scope>
+  <section class="hero" data-af-lang-scope data-whole>
     <div class="hero-inner">
       <div class="hero-text">
         <p class="hero-eyebrow" data-af-t="heroEyebrow">{w('heroEyebrow')}</p>
@@ -113,6 +113,7 @@ const breadcrumbs = [
         </div>
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- ══════ THE APPLICATION ══════ -->

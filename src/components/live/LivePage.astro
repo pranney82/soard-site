@@ -64,7 +64,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 ---
 
 <div class="live-page" data-view="loading" data-next={heroNext ? '' : undefined}>
-<section class="hero" id="live-hero" data-phase="loading" data-orientation="portrait" data-kid={kid?.slug || ''} data-generic-lead={GENERIC_LEAD} data-generic-photo={cfRaw(fallbackImage, 'w=640,h=800,fit=cover,gravity=face,q=82')}>
+<section class="hero" id="live-hero" data-phase="loading" data-orientation="portrait" data-kid={kid?.slug || ''} data-generic-lead={GENERIC_LEAD} data-generic-photo={cfRaw(fallbackImage, 'w=640,h=800,fit=cover,gravity=face,q=82')} data-whole>
   <div class="hero-inner">
     <div class="hero-text">
       <p class="hero-eyebrow"><span class="hero-eyebrow__dot" aria-hidden="true"></span><span data-live="eyebrow">Live reveal</span></p>
@@ -98,6 +98,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       {!kid && <HeroUpcoming />}
     </div>
   </div>
+  <span data-whole-end hidden></span>
 </section>
 
 <!-- The room's design, from an hour before the reveal (empty until /api/reveal-design says so) -->
@@ -896,7 +897,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       // The hero's rows as JobTread has them now (the build wrote the last copy's)
       drawHeroRows(list);
       if (rendered && last) render(last, lastMeta);
-      else if (page && !pageKid) holdPlace(() => setAttr(page, 'data-next', list.length > 0));
+      // Before the live state is in, the list fills the frame only between reveals: not when the server already drew the
+      // page for a reveal that's on (data-view 'upcoming' and the rest), or the frame would flash the list
+      else if (page && !pageKid && (page.dataset.view === 'loading' || page.dataset.view === 'idle')) holdPlace(() => setAttr(page, 'data-next', list.length > 0));
     });
     refreshUpcoming();
     // The live state can't be read (its request failed, or hangs): rather than a page with no sign-up at all, show it as

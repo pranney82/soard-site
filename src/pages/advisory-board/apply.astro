@@ -46,7 +46,7 @@ const logo = 'brand-logo-light-bg-display';
   <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(photoId, 'w=360,h=450,fit=cover,gravity=face,q=65')} 360w, ${cfRaw(photoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w`} imagesizes="(max-width:768px) 60vw, 340px" fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial Split ══════ -->
-  <section class="hero">
+  <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
         <p class="hero-eyebrow"><a href="/advisory-board/">Advisory Board</a></p>
@@ -73,6 +73,7 @@ const logo = 'brand-logo-light-bg-display';
         <div class="hero-accent" aria-hidden="true"></div>
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- ══════ THE APPLICATION ══════ -->

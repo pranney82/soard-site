@@ -4,6 +4,15 @@
    ═══════════════════════════════════════════ */
 
 /* ─── CSS Custom Properties ─────────────── */
+/* ── Whole when it shows ─────────────────────────────────────────────
+   On a slow connection the browser draws a page while it's still arriving. A block whose pieces lay each other out
+   (the menu bar: its items centred between the logo and Donate; a hero: its words centred beside its picture) would
+   move as each piece lands, and everything under it with them. Marked data-whole, its children stay invisible, their
+   space kept, until its last child [data-whole-end] has arrived; then it all shows at once, in place, and nothing has
+   moved. A child marked data-whole-keep (the logo) shows from the start. Browsers without :has() skip the rule and draw
+   as they always did. Every data-whole needs its data-whole-end, last (tests/whole-blocks.test.mjs checks). */
+[data-whole]:not(:has(> [data-whole-end])) > :not([data-whole-keep]) { visibility: hidden; }
+
 :root {
   /* Brand Colors — per official brand guidelines */
   --c-yellow: #FFDA24;

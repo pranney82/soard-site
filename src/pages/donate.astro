@@ -91,7 +91,7 @@ const breadcrumbs = [
   <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(donateHeroPhoto, [400, 640, 800, 1024, 1280])} imagesizes="(max-width: 480px) calc(100vw - 64px), (max-width: 768px) 420px, (max-width: 1200px) 41vw, 500px" fetchpriority="high" />
 
   <!-- ══════ 1. HERO — Editorial Split ══════ -->
-  <section class="hero">
+  <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
         <div class="section-label">Give Today</div>
@@ -132,6 +132,7 @@ const breadcrumbs = [
         </div>
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <MediaLogos theme="dark" linked={true} />

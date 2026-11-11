@@ -195,7 +195,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial ══════ -->
-  <section class="hero" aria-label="Introduction">
+  <section class="hero" aria-label="Introduction" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
         <p class="hero-eyebrow">{heroEyebrow}</p>
@@ -222,6 +222,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
       </div>
     </div>
 
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- ══════ UP NEXT — what's happening right now ══════ -->

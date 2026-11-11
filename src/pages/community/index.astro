@@ -88,7 +88,7 @@ const breadcrumbs = [
   <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', aspectRatio: 1.25 })} imagesizes="(max-width:768px) 80vw, (max-width:1200px) 38vw, 420px" fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial Split (matches apply/donate/home) ══════ -->
-  <section class="hero">
+  <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
         <p class="hero-eyebrow">Community Projects</p>
@@ -130,6 +130,7 @@ const breadcrumbs = [
       <span class="hero-stat-num">{totalImpact}</span>
       <span class="hero-stat-label">children reached<br/>through partnerships</span>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- ══════ PROJECTS GRID ══════ -->

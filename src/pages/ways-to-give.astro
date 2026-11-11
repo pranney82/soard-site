@@ -73,7 +73,7 @@ const jsonLd = {
   <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial Split ══════ -->
-  <section class="hero">
+  <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
         <p class="hero-eyebrow">Ways to Give</p>
@@ -114,6 +114,7 @@ const jsonLd = {
         </div>
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- ══════ ANCHOR NAV ══════ -->
