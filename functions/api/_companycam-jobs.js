@@ -56,7 +56,7 @@
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { slackPost } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
-import { companycamOn, CompanyCamError, ccAll, getPhoto, projectPhotos, photoImageUrl, projectVideos, videoFileUrl } from './_companycam.js';
+import { companycamOn, CompanyCamError, ccAll, getPhoto, projectPhotos, photoImageUrl, projectVideos, videoFileUrl, videoShape } from './_companycam.js';
 import { uploadToJobTread } from './_companycam-sync.js';
 
 export const COPY = true;    // copy what a job is missing
@@ -228,7 +228,8 @@ async function projectIndex(env, { fetchImpl, now, force = false }) {
  * MP4 itself; one it refuses is named in `errors` and tried again next time,
  * and the rest still go. A video in the project JobTread is still linked to
  * (`linked`) waits its hour, so JobTread's own sync goes first.
- * → { videos, missing, copied, errors }
+ * → { videos, missing, copied, errors, noFile } (noFile: how one missing video
+ * that gave no file looked, so a video CompanyCam describes some new way is seen)
  */
 export async function copyVideos(env, target, projects, { have, fetchImpl = fetch, copy = COPY, limit = VIDEOS_PER_RUN, folder = null, deadline = Infinity, linked = null, now = Date.now() } = {}) {
   const all = [];
@@ -257,7 +258,8 @@ export async function copyVideos(env, target, projects, { have, fetchImpl = fetc
     }
     missing = missing.filter((v) => !have.has(String(v.id)));
   }
-  return { videos: videos.length, missing: missing.length, copied, errors };
+  const stuck = missing.find((v) => !videoFileUrl(v));
+  return { videos: videos.length, missing: missing.length, copied, errors, noFile: stuck ? { id: String(stuck.id), ...videoShape(stuck) } : null };
 }
 
 // ─── One job ────────────────────────────────────────────────────────
@@ -357,9 +359,11 @@ export async function checkJob(env, job, index, { fetchImpl = fetch, now = Date.
     // Videos: the whole MP4 of each, fetched by JobTread itself
     let vid = null;
     let videoError = null;
+    let videoNote = null; // not a problem (a video still processing), kept so a new shape is seen
     try {
       vid = await copyVideos(env, { targetType: 'job', targetId: job.id }, [...sources.keys()], { have, fetchImpl, copy, deadline, linked: job.companycamId, now });
       if (vid.errors.length) videoError = vid.errors[0];
+      else if (vid.noFile) videoNote = `video ${vid.noFile.id} gave no file yet: status ${vid.noFile.status}, processing ${vid.noFile.processing}, playback ${vid.noFile.playback}; fields ${vid.noFile.fields}`.slice(0, 300);
     } catch (e) {
       videoError = `videos: ${errText(e)}`;
     }
@@ -376,7 +380,7 @@ export async function checkJob(env, job, index, { fetchImpl = fetch, now = Date.
       other_projects: held.length ? JSON.stringify(held) : null,
       copied: (prior?.copied || 0) + copiedNow, removed: (prior?.removed || 0) + removedNow,
       problem: !sources.size ? 'no-project' : videoError ? 'videos' : null,
-      detail: !sources.size ? 'No CompanyCam project for this job' : videoError, checked_at: now,
+      detail: !sources.size ? 'No CompanyCam project for this job' : videoError || videoNote, checked_at: now,
     };
     await saveJob(DB, row, now);
     return { row, copied: copiedNow, removed: removedNow, videos: vid?.copied || 0 };

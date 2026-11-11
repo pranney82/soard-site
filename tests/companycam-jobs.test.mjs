@@ -430,6 +430,22 @@ test('a video’s file is Mux’s whole MP4, only once CompanyCam has processed 
   assert.equal(videoFileUrl({ status: 'processing', playback_url: 'https://uploads.example.com/a.mov' }), null);
   assert.equal(videoFileUrl({ status: 'processed', playback_url: 'https://elsewhere.example.com/a.m3u8' }), null);
   assert.equal(videoFileUrl({}), null);
+  // v1 says ready the way it does for photos
+  assert.equal(videoFileUrl({ status: 'active', processing_status: 'processed', playback_url: 'https://stream.mux.com/AbC012xyz.m3u8' }), 'https://stream.mux.com/AbC012xyz/highest.mp4');
+  assert.equal(videoFileUrl({ status: 'active', processing_status: 'processing', playback_url: 'https://stream.mux.com/AbC012xyz.m3u8' }), null);
+  assert.equal(videoFileUrl({ status: 'deleted', processing_status: 'processed', playback_url: 'https://stream.mux.com/AbC012xyz.m3u8' }), null);
+  assert.equal(videoFileUrl({ status: 'active', uris: [{ type: 'hls', url: 'https://stream.mux.com/Zz9.m3u8' }] }), 'https://stream.mux.com/Zz9/highest.mp4');
+});
+
+test('a video that gives no file is noted on its job (how CompanyCam described it), not counted as a problem', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  video('7700150', '500', { status: 'processing' });
+  await run(0);
+  const r = await row('j1');
+  assert.equal(r.problem, null);
+  assert.match(r.detail, /video 7700150 gave no file yet: status processing/);
+  assert.doesNotMatch(r.detail, /uploads\.example\.com\/7700150/, 'never the link itself');
 });
 
 test('a video JobTread’s own link already brought isn’t copied again, and a new one in the linked project waits its hour', async () => {

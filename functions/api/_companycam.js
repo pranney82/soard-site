@@ -148,16 +148,31 @@ export async function projectVideos(env, projectId, { max = 500, fetchImpl = fet
   return out.slice(0, max);
 }
 
+const NOT_READY = new Set(['pending', 'processing', 'processing_error', 'failed', 'uploading', 'deleted']);
+const MUX = /^https:\/\/stream\.mux\.com\/([A-Za-z0-9]+)\.m3u8(?:\?|$)/;
 /**
- * A processed video as one MP4 file, or null. CompanyCam's videos live on Mux,
+ * A ready video as one MP4 file, or null. CompanyCam's videos live on Mux,
  * which plays them as a stream (…/<id>.m3u8) and also hands out the whole
- * video at its best quality (…/<id>/highest.mp4).
+ * video at its best quality (…/<id>/highest.mp4). Ready is said two ways:
+ * v2's status "processed", or v1's status "active" with processing_status
+ * "processed" (as its photos are); anything still on its way, or deleted, waits.
  */
 export function videoFileUrl(video) {
-  if (video?.status && video.status !== 'processed') return null;
-  const m = String(video?.playback_url || '').match(/^https:\/\/stream\.mux\.com\/([A-Za-z0-9]+)\.m3u8(?:\?|$)/);
-  return m ? `https://stream.mux.com/${m[1]}/highest.mp4` : null;
+  const states = [video?.status, video?.processing_status].map((s) => String(s || '').toLowerCase());
+  if (states.some((s) => NOT_READY.has(s))) return null;
+  const urls = [video?.playback_url, video?.url, ...(Array.isArray(video?.uris) ? video.uris.map((u) => u?.url || u?.uri) : [])];
+  for (const u of urls) {
+    const m = String(u || '').match(MUX);
+    if (m) return `https://stream.mux.com/${m[1]}/highest.mp4`;
+  }
+  return null;
 }
+
+/** What CompanyCam said about a video that gave no file, for the record: its fields and states, never a link */
+export const videoShape = (video) => ({
+  fields: Object.keys(video || {}).sort().join(','), status: video?.status ?? null, processing: video?.processing_status ?? null,
+  playback: video?.playback_url ? String(video.playback_url).replace(/^(https?:\/\/[^/]+).*$/, '$1') : null,
+});
 
 /** The text and stickers someone drew on a photo, as words ("" when there's no markup) */
 export function markupText(photo) {
