@@ -62,6 +62,7 @@ import { orgCheckFacts } from './_org-facts.js';
 import { aiWatchFacts } from './_ai-watch.js';
 import { companycamFacts } from './_companycam-sync.js';
 import { jobsFacts } from './_companycam-jobs.js';
+import { tagsFacts } from './_file-tags.js';
 import { applicationSettings, pickApplication } from './_applications.js';
 import { capFacts, lastCapNotice } from './_application-cap.js';
 import { trackingState } from './_email-log.js';
@@ -523,6 +524,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     // Counts, times and on/off only: no names, ids or photos
     companycam: await settle(() => companycamFacts(env)),
     companycamJobs: await settle(() => jobsFacts(env)),
+    // Tag names and role names only (_file-tags.js)
+    fileTags: await settle(() => tagsFacts(DB)),
     // Mercury through the relay: account names and kinds only (_mercury.js)
     mercury: await settle(() => mercuryFacts(env, fetchImpl)),
     jobCosts: await settle(() => jobCostFacts(DB)),

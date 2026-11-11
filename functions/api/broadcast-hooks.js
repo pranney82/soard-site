@@ -35,6 +35,7 @@ import { maybeSlackPreview } from './_slack-preview.js';
 import { maybeRunEventRecaps } from './_event-recap.js';
 import { maybeRunNewsletterDrafts } from './_newsletter-drafts.js';
 import { maybeRunCompanyCam } from './_companycam-sync.js';
+import { maybeKeepTags } from './_file-tags.js';
 import { maybeCheckJobs } from './_companycam-jobs.js';
 import { maybeCapSelfTest } from './_application-cap.js';
 import { maybeTrackEmails } from './_email-log.js';
@@ -133,6 +134,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunNewsletterDrafts(env));
     // CompanyCam for families in review: their project, home-visit photos to JobTread, the hand-over to the job (see _companycam-sync.js)
     context.waitUntil(maybeRunCompanyCam(env));
+    // Hourly: JobTread's five file tags (Before, During, After, Design, Plans) kept, with exactly who sees each (see _file-tags.js)
+    context.waitUntil(maybeKeepTags(env));
     // Every open job's CompanyCam photos against JobTread's copies, about hourly (see _companycam-jobs.js)
     context.waitUntil(maybeCheckJobs(env));
     // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)

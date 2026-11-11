@@ -607,6 +607,23 @@ const MAP = { t: 'SOARD', children: [
           touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-sync.js (broadcast-hooks.js) · companycam-webhook.js · _companycam.js; the job’s link in _applicant-approved.js',
           info: 'Built and proven end to end on Oct 21, 2026, then switched off by Peter. COMPANYCAM_CUSTOMER_STAGE set to on in Cloudflare turns it back on. Its webhook, the CompanyCam key and the copies already made stay; the check below uses them.',
           live: (f) => (!env(f) ? null : f.env.companycamCustomerStage ? ON('On: families in review get a CompanyCam project.') : OFF('Off: the home visit happens at the job. COMPANYCAM_CUSTOMER_STAGE on in Cloudflare turns it back on.')) },
+        { t: 'JobTread file tags', s: 'live', k: 'schedule',
+          when: 'Every hour, on the heartbeat.',
+          does: 'Keeps JobTread’s five file tags, Before, During and After (photos and videos by when they were taken), Design and Plans, each seen by exactly who it should be: partners, trades, design partners and photographers on the job see the photos; partners and design partners the design; partners, trades and design partners the plans. Never families, the board or anyone outside a job. A role added to a tag by hand comes off, and families come off the old .BeforePics. Nobody is notified.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_file-tags.js (broadcast-hooks.js)',
+          info: 'Made Nov 11, 2026 (Peter: kid photos in JobTread, “best in class setup and ideally less tags”, families see no photos or design). The tags start empty: photos go on them as the site sorts each job’s photos, so nothing is shown to anyone new until then. In Kind, COI and W-9 stay staff only, as they are.',
+          live: (f) => {
+            if (!env(f)) return null;
+            const t = f.fileTags;
+            if (!t || t.error) return null;
+            const l = t.last;
+            if (!l) return ATTN('It hasn’t run yet. It rides on the heartbeat, so check the Heartbeat entry.');
+            if (stale(l.at, 3 * HOUR)) return ATTN(`Hasn’t run since ${stamp(l.at)}. It rides on the heartbeat.`, l.at);
+            if (l.error) return ATTN(`JobTread didn’t answer: ${l.error}`, l.at);
+            if (l.missingRoles?.length) return ATTN(`JobTread has no ${l.missingRoles.join(', ')} role, so ${l.missingRoles.length === 1 ? 'it' : 'they'} can’t be given the tags.`, l.at);
+            const did = [l.made?.length && `made ${l.made.join(', ')}`, l.removed?.length && `took ${plural(l.removed.length, 'role')} off`].filter(Boolean).join('; ');
+            return ON(`${(t.kept || []).length} tags kept with their audiences${did ? ` (this run: ${did})` : ''}.`, l.at);
+          } },
         { t: 'CompanyCam photos on every job', s: 'live', k: 'schedule',
           when: 'Every open job (not TEST) about once an hour, a couple a minute on the heartbeat. A new photo in a job’s project moves that job to the front (CompanyCam’s webhook).',
           does: 'Copies to each job any CompanyCam photo or video it doesn’t have, under JobTread’s own name (“CompanyCam 123…”). A job’s photos come from the project it’s linked to, the project its own earlier photos came from, and a project at the same address under the family’s name. A photo in the project JobTread is still linked to waits an hour, so JobTread’s own sync goes first. It never relinks a job: relinking makes JobTread copy every photo again. Second copies JobTread makes are removed. Slack hears once a pass what was copied and removed.',
