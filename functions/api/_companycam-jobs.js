@@ -61,9 +61,9 @@
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
-import { slackPost } from './_broadcast-notify.js';
+import { slackPost, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
-import { companycamOn, CompanyCamError, ccAll, getPhoto, projectPhotos, photoImageUrl, projectVideos, videoFileUrl, videoShape, itemComments, commentsNote } from './_companycam.js';
+import { companycamOn, CompanyCamError, ccAll, getPhoto, projectPhotos, photoImageUrl, projectVideos, videoFileUrl, videoShape, itemComments, commentsNote, isOriginalUpload, signFileLink } from './_companycam.js';
 import { uploadToJobTread } from './_companycam-sync.js';
 
 export const COPY = true;    // copy what a job is missing
@@ -272,7 +272,13 @@ export async function copyVideos(env, target, projects, { have, gone = new Set()
     for (const v of due.slice(0, limit)) {
       if (Date.now() > deadline) break; // the next run takes it
       try {
-        const uploadRequestId = await uploadToJobTread(env, videoFileUrl(v), fetchImpl, { carry: false });
+        // An original upload's address is too long for JobTread: it's given the site's short, signed link that streams it
+        let url = videoFileUrl(v);
+        if (isOriginalUpload(url)) {
+          const q = await signFileLink(env, { videoId: v.id, projectId: v.project_id || v.source, now });
+          url = `${SITE_ORIGIN}/api/companycam-file?${new URLSearchParams(q)}`;
+        }
+        const uploadRequestId = await uploadToJobTread(env, url, fetchImpl, { carry: false });
         await jt(env, { createFile: { $: { name: ccName(v.id), targetType: target.targetType, targetId: target.targetId, uploadRequestId, ...(folder ? { folder } : {}) }, createdFile: { id: {} } } }, fetchImpl);
         have.add(String(v.id));
         copied += 1;

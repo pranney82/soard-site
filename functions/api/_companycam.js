@@ -178,6 +178,8 @@ export const commentsNote = (comments) => (comments || [])
   .map((c) => `${String(c.creator_name || '').trim() ? `${String(c.creator_name).trim()}: ` : ''}${String(c.content).trim()}`).join('\n').slice(0, 2000);
 
 const NOT_READY = new Set(['pending', 'processing', 'processing_error', 'failed', 'uploading', 'deleted']);
+/** Whether a video file address is CompanyCam's original upload (a long signed address JobTread can't take, over 1024 characters) */
+export const isOriginalUpload = (url) => ORIGINAL.test(String(url || ''));
 const MUX = /^https:\/\/stream\.mux\.com\/([A-Za-z0-9]+)\.m3u8(?:\?|$)/;
 const ORIGINAL = /^https:\/\/companycam-video\.s3\.amazonaws\.com\/[^?#]+\.(mp4|mov|m4v)(?:[?#]|$)/i;
 /**
@@ -253,6 +255,38 @@ async function hmac(algo, key, message, encoding) {
   const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: algo }, false, ['sign']);
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', k, typeof message === 'string' ? enc.encode(message) : message));
   return encoding === 'hex' ? [...sig].map((b) => b.toString(16).padStart(2, '0')).join('') : btoa(String.fromCharCode(...sig));
+}
+
+// ─── The site's own short link to a video's original upload ─────────
+// JobTread takes a file by address only up to 1024 characters, and CompanyCam's
+// signed address for an original is longer, so JobTread is given a short,
+// signed, hours-long link to /api/companycam-file instead, which streams it.
+
+const FILE_LINK_TTL_MS = 6 * 60 * 60 * 1000;
+const fileLinkKey = async (env) => {
+  const token = String(env?.COMPANYCAM_TOKEN || '').trim();
+  return token ? hmac('SHA-256', token, 'soard-site companycam file link v1', 'hex') : null;
+};
+const fileLinkMessage = ({ v, p, e }) => `${v}.${p}.${e}`;
+
+/** The short link's query for one video: { v, p, e, s } (video, project, expiry in ms, signature) */
+export async function signFileLink(env, { videoId, projectId, now = Date.now() }) {
+  const key = await fileLinkKey(env);
+  if (!key) return null;
+  const q = { v: String(videoId), p: String(projectId), e: String(now + FILE_LINK_TTL_MS) };
+  return { ...q, s: await hmac('SHA-256', key, fileLinkMessage(q), 'hex') };
+}
+
+/** A short link's query, checked: signed with this site's key and not yet expired */
+export async function checkFileLink(env, { v, p, e, s } = {}, now = Date.now()) {
+  if (![v, p, e, s].every((x) => typeof x === 'string' && x) || !/^\d+$/.test(v) || !/^\d+$/.test(p) || !/^\d+$/.test(e) || Number(e) < now) return false;
+  const key = await fileLinkKey(env);
+  if (!key) return false;
+  const want = await hmac('SHA-256', key, fileLinkMessage({ v, p, e }), 'hex');
+  if (want.length !== s.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ s.charCodeAt(i);
+  return diff === 0;
 }
 
 /** The webhook's signing token: worked out from COMPANYCAM_TOKEN, so a new API token means a new webhook token */

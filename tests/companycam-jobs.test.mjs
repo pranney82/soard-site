@@ -13,7 +13,9 @@ import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 import { maybeCheckJobs, jobsFacts, nudgeJobsFor } from '../functions/api/_companycam-jobs.js';
-import { videoFileUrl } from '../functions/api/_companycam.js';
+import { videoFileUrl, signFileLink, checkFileLink } from '../functions/api/_companycam.js';
+import { onRequestGet as fileGet, onRequestHead as fileHead } from '../functions/api/companycam-file.js';
+import { readFileSync } from 'node:fs';
 import { takeEvent } from '../functions/api/_companycam-sync.js';
 
 const T0 = Date.parse('2026-10-21T15:00:00Z');
@@ -453,7 +455,10 @@ test('when CompanyCam’s v2 won’t answer the key, each video’s original upl
   job('j1', 'Ava Stone (2026)', { companycamId: '500' });
   video('7700160', '500');
   await run(0);
-  assert.deepEqual(w.writes.filter((x) => x.op === 'createUploadRequest').map((x) => x.args.url), ['https://companycam-video.s3.amazonaws.com/uploads/7700160.mov']);
+  const [url] = w.writes.filter((x) => x.op === 'createUploadRequest').map((x) => x.args.url);
+  // JobTread takes an address only up to 1024 characters: it gets the site's short signed link, which streams the original
+  assert.match(url, /^https:\/\/sunshineonaranneyday\.com\/api\/companycam-file\?v=7700160&p=500&e=\d+&s=[0-9a-f]{64}$/);
+  assert.ok(url.length < 300);
   assert.deepEqual(names('j1'), ['CompanyCam 7700160']);
   assert.equal((await row('j1')).videos_missing, 0);
 });
@@ -577,4 +582,48 @@ test('when CompanyCam turns comment look-ups away, the job is back in 10 minutes
   await run(11);
   r = await row('j1');
   assert.deepEqual([r.problem, r.notes_left, desc('j1', '3009001')], [null, 0, 'Clare C: Kitchenette']);
+});
+
+test('the short link streams the video’s original upload to whoever holds it, for six hours, and nothing else', async () => {
+  w.v2Refused = true;
+  project('500', 'Ava Stone (2026) (019)');
+  video('7700200', '500');
+  const s3 = [];
+  const fetchImpl = async (input, init) => {
+    const u = String(typeof input === 'string' ? input : input.url);
+    if (u.startsWith('https://companycam-video.s3.amazonaws.com/')) { s3.push(u); return new Response('MOVIEBYTES', { headers: { 'Content-Type': 'video/quicktime', 'Content-Length': '10' } }); }
+    return fakeFetch(input, init);
+  };
+  const q = await signFileLink(env, { videoId: '7700200', projectId: '500', now: at(0) });
+  const get = (query, now = at(1)) => {
+    const realNow = Date.now;
+    Date.now = () => now;
+    return fileGet({ env, request: new Request(`https://sunshineonaranneyday.com/api/companycam-file?${new URLSearchParams(query)}`), fetchImpl }).finally(() => { Date.now = realNow; });
+  };
+  const ok = await get(q);
+  assert.equal(ok.status, 200);
+  assert.equal(await ok.text(), 'MOVIEBYTES');
+  assert.equal(ok.headers.get('content-type'), 'video/quicktime');
+  assert.match(ok.headers.get('content-disposition'), /CompanyCam 7700200\.mov/);
+  assert.equal(ok.headers.get('cache-control'), 'private, no-store');
+  assert.equal(s3.length, 1);
+  // Tampered, for another video, expired, or with no key: 404, and CompanyCam's file isn't touched
+  assert.equal((await get({ ...q, v: '7700201' })).status, 404);
+  assert.equal((await get({ ...q, s: q.s.replace(/.$/, (c) => (c === '0' ? '1' : '0')) })).status, 404);
+  assert.equal((await get(q, Number(q.e) + 1)).status, 404);
+  assert.equal((await get({ v: q.v, p: q.p })).status, 404);
+  assert.equal(await checkFileLink({}, q, at(1)), false);
+  assert.equal(s3.length, 1);
+  // A video not in that project, even with a good signature for it: 404
+  const other = await signFileLink(env, { videoId: '9999999', projectId: '500', now: at(0) });
+  assert.equal((await get(other)).status, 404);
+  const head = await (async () => { const realNow = Date.now; Date.now = () => at(1); try { return await fileHead({ env, request: new Request(`https://sunshineonaranneyday.com/api/companycam-file?${new URLSearchParams(q)}`, { method: 'HEAD' }), fetchImpl }); } finally { Date.now = realNow; } })();
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get('content-length'), '10');
+});
+
+test('the short link is open to JobTread (no sign-in) for reading only', () => {
+  const mw = readFileSync(new URL('../functions/api/_middleware.js', import.meta.url), 'utf8');
+  assert.match(mw, /PUBLIC_GET_ROUTES\.push\('\/api\/companycam-file'\)/);
+  assert.doesNotMatch(mw, /PUBLIC_ROUTES\.push\([^)]*'\/api\/companycam-file'/);
 });
