@@ -20,7 +20,7 @@
  * before. Anything that goes wrong serves the page as built.
  */
 
-import { revealShortDate, revealWhen, windowShort, inviteData, possessive } from '../src/utils/reveals-client.ts';
+import { revealShortDate, revealWhen, windowShort, inviteData, possessive, signupOf } from '../src/utils/reveals-client.ts';
 import { kidFeed } from '../src/utils/upcoming-rows.ts';
 import { fullPageRequest, PAGE_REUSE } from './_apply-bar.js';
 
@@ -47,13 +47,14 @@ export function revealLine(r) {
     + `<a class="hero__reveal-add hero__reveal-add--feed" href="${esc(kidFeed(r.slug))}" aria-label="${esc(`Add to calendar: ${possessive(r.name)} reveal`)}">${CALENDAR(16)}<span>Add to calendar</span></a></div>`;
 }
 
-/** The schedule's upcoming reveals, as the page script reads them, or null when not known in time */
-export async function upcomingReveals(context, waitMs = WAIT_MS) {
+/** /api/reveals as the page script reads it: { upcoming, signup }, or null when not known in time */
+export async function edgeSchedule(context, waitMs = WAIT_MS) {
   const url = new URL('/api/reveals', context.request.url).toString();
   const read = (body) => {
     if (!body) return null;
-    if (Array.isArray(body.upcoming)) return body.upcoming;
-    return Array.isArray(body.reveals) ? body.reveals.map((r) => ({ ...r, confirmed: true, rooms: [] })) : null;
+    const upcoming = Array.isArray(body.upcoming) ? body.upcoming
+      : Array.isArray(body.reveals) ? body.reveals.map((r) => ({ ...r, confirmed: true, rooms: [] })) : null;
+    return upcoming && { upcoming, signup: signupOf(body.signup) };
   };
   const cache = typeof caches !== 'undefined' ? caches.default : null;
   if (cache) {
@@ -76,6 +77,12 @@ export async function upcomingReveals(context, waitMs = WAIT_MS) {
   // An edge that has never read one waits only briefly
   return Promise.race([ask, new Promise((done) => setTimeout(() => done(null), waitMs))]);
 }
+
+/** The schedule a part of the page was drawn from, for its data-schedule (read back by scheduleOnPage, src/utils/reveals-client.ts) */
+export const scheduleAttr = ({ upcoming, signup }) => JSON.stringify({ upcoming, signup });
+
+/** The schedule's upcoming reveals, as the page script reads them, or null when not known in time */
+export const upcomingReveals = (context, waitMs = WAIT_MS) => edgeSchedule(context, waitMs).then((s) => s?.upcoming ?? null);
 
 /** The kid page or the kids list with the reveal days in it; anything else exactly as it came */
 export function addReveals(res, { kid = null, cards = [] } = {}) {

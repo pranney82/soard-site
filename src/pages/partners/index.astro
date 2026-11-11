@@ -36,6 +36,12 @@ import { heroHtml, type HeroPart } from '../../utils/hero-words';
 
 /* ── Impact Moment (admin-editable via site settings) ── */
 const heroPhoto = siteSettings.partnerPhoto || 'kids/oakley/photo-15';
+// The hero photo's box where it sits centered on its own row (phones): one set of numbers for the
+// box's width (--frame-*) and the photo's sizes, so the box has its width from the first paint
+// (sized by the photo, it was 0 wide until the photo arrived) and the photo downloads at that width
+const FRAME = { phoneVw: 85, max: 360 };
+const heroSizes = `(max-width: ${Math.floor((FRAME.max * 100) / FRAME.phoneVw)}px) ${FRAME.phoneVw}vw, (max-width: 768px) ${FRAME.max}px, 420px`;
+const frameVars = `--frame-phone: min(${FRAME.phoneVw}vw, ${FRAME.max}px); --frame-max: ${FRAME.max}px`;
 
 /* ── Partner Testimonial (admin-editable) ── */
 const impactQuote = siteSettings.partnerQuote || "Seeing the look on a child\u2019s face when they walk into their new room \u2014 that\u2019s why we show up every build day.";
@@ -98,7 +104,7 @@ const hero = {
 >
 
   <!-- Preload hero LCP image -->
-  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=640,h=800,fit=cover,gravity=auto,q=65')} 640w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=640,h=800,fit=cover,gravity=auto,q=65')} 640w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`} imagesizes={heroSizes} fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial Split ══════ -->
   <section class="hero" data-whole>
@@ -112,12 +118,12 @@ const hero = {
           <a href="mailto:info@soardcharity.com?subject=Partnership%20Inquiry" class="btn btn-outline-dark btn-lg">Become a Partner &rarr;</a>
         </div>
       </div>
-      <div class="hero-photo-wrap">
+      <div class="hero-photo-wrap" style={frameVars}>
         <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhoto)}')`}>
           <img
             src={cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')}
             srcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=640,h=800,fit=cover,gravity=auto,q=65')} 640w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`}
-            sizes="(max-width:768px) 85vw, 420px"
+            sizes={heroSizes}
             alt="Partners and volunteers working together on a SOARD room build"
             width="800" height="1000"
             fetchpriority="high"
@@ -779,11 +785,8 @@ const hero = {
     .hero-text { text-align: center; }
     .hero-lead { max-width: 100%; margin-inline: auto; }
     .hero-ctas { justify-content: center; }
-    /* Centered by auto margins, the photo's box sized itself to the photo,
-       so it was 0 wide until the photo arrived and then pushed the page down
-       ~400px on a phone. Its width is now the size it settled at (the photo's
-       own sizes, 85vw, at most 360px) */
-    .hero-photo-wrap { width: min(85vw, 360px); max-width: 360px; margin: 0 auto; }
+    /* Its width from the first paint: the same numbers as the photo's sizes (FRAME above) */
+    .hero-photo-wrap { width: var(--frame-phone); max-width: var(--frame-max); margin: 0 auto; }
     .hero-stat { left: -12px; bottom: -16px; padding: 14px 20px; }
     .hero-stat-num { font-size: 28px; }
   }

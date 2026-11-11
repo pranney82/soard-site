@@ -52,6 +52,13 @@ const closedMessage = app.closedMessage || `The ${appYear} application period is
 /* ── Photos (from admin, with fallbacks) ── */
 const ap = siteSettings.applyPhotos || {};
 const heroPhotoId = ap.hero || 'kids/griffin/hero';
+// The hero photo's box where it sits centered on its own row (phones, and tablets up to 960px):
+// one set of numbers for the box's width (--frame-*) and the photo's sizes, so the box has its
+// width from the first paint (sized by the photo, it was 0 wide until the photo arrived) and
+// the photo downloads at the width it shows
+const FRAME = { phoneVw: 80, tabletVw: 38, max: 380 };
+const heroSizes = `(max-width: ${Math.floor((FRAME.max * 100) / FRAME.phoneVw)}px) ${FRAME.phoneVw}vw, (max-width: 768px) ${FRAME.max}px, (max-width: 1200px) ${FRAME.tabletVw}vw, 420px`;
+const frameVars = `--frame-phone: min(${FRAME.phoneVw}vw, ${FRAME.max}px); --frame-tablet: min(${FRAME.tabletVw}vw, ${FRAME.max}px); --frame-max: ${FRAME.max}px`;
 const storyPhotoId = ap.story || 'kids/eli/photo-01';
 const selectionPhotoId = ap.selection || 'kids/georgia/photo-01';
 const buildPhotoId = ap.build || storyPhotoId; // Step 4 — set in admin → Kids on Site → Apply Page
@@ -123,7 +130,7 @@ const hero = {
   jsonLd={faqJsonLd}
 >
   {/* The hero photo starts with the page, at the size it shows (the same srcset and sizes as the img below) */}
-  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })} imagesizes="(max-width: 768px) 80vw, (max-width: 1200px) 38vw, 420px" fetchpriority="high" />
+  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })} imagesizes={heroSizes} fetchpriority="high" />
 
   <!-- ══════ HERO — Oversized editorial, no data-reveal (LCP) ══════ -->
   <section class="hero" data-whole>
@@ -138,13 +145,13 @@ const hero = {
           <a href="/kids/" class="btn btn-outline-dark">Meet the Kids</a>
         </div>
       </div>
-      <div class="hero-frame">
+      <div class="hero-frame" style={frameVars}>
         <div class="hero-accent" aria-hidden="true"></div>
         <div class="hero-photo" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
           <img
             src={cfRaw(heroPhotoId, 'w=640,h=800,fit=cover,gravity=face,q=82')}
             srcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
-            sizes="(max-width: 768px) 80vw, (max-width: 1200px) 38vw, 420px"
+            sizes={heroSizes}
             alt="A child seeing their newly transformed dream room for the first time"
             width="640"
             height="800"
@@ -1541,11 +1548,8 @@ const hero = {
     .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
     .hero-lead { margin-inline: auto; }
     .hero-ctas { justify-content: center; }
-    /* Centered by auto margins, the frame sized itself to the photo, so it was
-       0 wide until the photo arrived and then pushed the page down. Its width
-       is now the size it settled at: the photo's own sizes (38vw here, 80vw
-       on phones), at most 380px */
-    .hero-frame { width: min(38vw, 380px); max-width: 380px; margin: 0 auto; }
+    /* Its width from the first paint: the same numbers as the photo's sizes (FRAME above) */
+    .hero-frame { width: var(--frame-tablet); max-width: var(--frame-max); margin: 0 auto; }
     .hero-stat { position: relative; bottom: auto; right: auto; margin: -20px auto 0; width: fit-content; }
 
     .story-inner { grid-template-columns: 1fr; gap: 40px; }
@@ -1567,7 +1571,7 @@ const hero = {
     .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
     .hero-photo--small { display: none; }
     .hero-photo { border-radius: 18px; }
-    .hero-frame { width: min(80vw, 380px); }
+    .hero-frame { width: var(--frame-phone); }
     .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
 
     .status-inner { flex-direction: column; text-align: center; gap: 12px; padding: 20px var(--space-lg); }

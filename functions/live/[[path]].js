@@ -35,7 +35,7 @@
  * static page untouched.
  */
 
-import { readState, readConfig, publicState, visibleState } from '../api/_broadcast.js';
+import { readState, readConfig, publicState, visibleState, publicReminders } from '../api/_broadcast.js';
 import { watchParty } from './_watch-party.js';
 import { revealSlides, designWindow } from '../../public/admin/reveal-design.js';
 import { revealOf } from '../api/reveal-design.js';
@@ -43,9 +43,11 @@ import { cachedReveals } from '../api/_reveals.js';
 import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
 import { barFor, addBar, PAGE_REUSE } from '../_apply-bar.js';
 import { cardFor } from '../_og-cards.js';
-import { upcomingReveals } from '../_kid-reveal.js';
+import { edgeSchedule, scheduleAttr } from '../_kid-reveal.js';
+import { onBands } from '../_upcoming-band.js';
 import { heroRowsHtml, rowsSignature, afterLine } from '../../src/utils/upcoming-rows.ts';
-import { plannedText, betweenText, ctasThatApply, ctaPicks } from '../../src/utils/live-hero-text.ts';
+import { plannedText, betweenText, ctasThatApply, ctaPicks, remindParts, remindWords } from '../../src/utils/live-hero-text.ts';
+import { inviteData, inviteLinks } from '../../src/utils/reveals-client.ts';
 import { messagesOpen, listShown } from '../api/_live-messages.js';
 import { emailConfigured } from '../api/_broadcast-notify.js';
 
@@ -180,6 +182,77 @@ export function visitorZone(request) {
 }
 
 /** The hero's "After Dylan: Max on Friday, November 20…" line, written (it follows the schedule, so the page is reused briefly) */
+/**
+ * The schedule the page was drawn from, left on the hero (data-schedule) for the page script to start from: it
+ * draws the status line, the buttons and the rows from the same list the server used, so none of them change when
+ * it starts. And the Coming up band drawn from it (./_upcoming-band.js), less the reveal the page is showing
+ * (current), as LivePage marks it.
+ */
+export function addSchedule(res, schedule, { zone, current = '' }) {
+  if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
+  const out = onBands(new HTMLRewriter(), schedule, zone, { current })
+    .on('#live-hero', setAttrs({ 'data-schedule': scheduleAttr(schedule) }))
+    .transform(res);
+  const headers = new Headers(out.headers);
+  if (!/no-store/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', PAGE_REUSE);
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
+  headers.delete('Content-Length');
+  return new Response(out.body, { status: out.status, headers });
+}
+
+/** The reveal a live page is showing, which its Coming up band leaves out: as drawPage in LivePage.astro decides it */
+export function showingKid(pub, pageKid = '') {
+  const phase = pub?.phase;
+  const view = phase === 'live' || phase === 'ending' ? 'live' : phase === 'replay' ? 'replay' : phase === 'scheduled' || phase === 'armed' ? 'upcoming' : 'idle';
+  if (view === 'idle') return '';
+  if (pageKid) return pub.kidSlug === pageKid ? pageKid : '';
+  return pub.kidSlug || '';
+}
+
+/**
+ * The reminder block (#remind) as the page script draws it on arrival, by the same rules (remindParts, remindWords in
+ * src/utils/live-hero-text.ts): there from the first paint, so nothing below the hero moves when the script starts,
+ * and a link to /live/#remind lands on the form as the page opens. facts: remindParts' (the browser's own alerts
+ * taken as possible, as for the hero's buttons); inviteFor: this page's child in the schedule, for the calendar link.
+ */
+export function remindFirstPaint(facts) {
+  const parts = remindParts(facts);
+  const words = remindWords(parts, { shown: parts.name, scope: 'all', hours: facts.reminders?.hours, view: facts.view, now: facts.now });
+  const invite = facts.inviteFor ? { ...inviteData(facts.inviteFor), href: inviteLinks(facts.inviteFor).copy } : { href: '/api/reminders?ics=1' };
+  return { parts, words, invite };
+}
+
+export function addRemind(res, { parts, words, invite }) {
+  if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
+  const text = (t) => ({ element(e) { e.setInnerContent(t); } });
+  const shown = (on) => setAttrs({ hidden: on ? null : '' });
+  const calendar = setAttrs({ 'data-invite': null, 'data-invite-name': null, 'data-invite-when': null, 'data-invite-set': null, ...invite });
+  let rw = new HTMLRewriter()
+    .on('[data-live="remind-block"]', shown(parts.block))
+    .on('[data-live="remind-label"]', text(parts.label))
+    .on('[data-live="remind-heading"]', text(words.heading))
+    .on('[data-live="remind-lead"]', setAttrs({ hidden: parts.on ? null : '', 'data-scope': words.scope }))
+    .on('[data-live="remind-lead"] [data-lead="all"]', { element(e) { e.setInnerContent(words.leadAll); e.setAttribute('aria-hidden', 'false'); } })
+    .on('[data-live="remind-lead"] [data-lead="one"]', { element(e) { e.setInnerContent(words.leadOne); e.setAttribute('aria-hidden', 'true'); } })
+    .on('[data-live="remind-scope"]', shown(words.scopeShown))
+    .on('[data-live="form-email"]', shown(parts.email))
+    .on('[data-live="remind-email-label"]', text(words.emailLabel))
+    .on('[data-live="push-btn"]', shown(parts.push))
+    .on('[data-live="calendar-link"]', { element(e) { calendar.element(e); if (!parts.calendar) e.setAttribute('hidden', ''); else e.removeAttribute('hidden'); } })
+    .on('#live-hero [data-live="cta-calendar"]', calendar)
+    // This form already signs up for every reveal: the Coming up band leaves its email card out
+    .on('.live-next [data-upnext]', setAttrs({ 'data-remind-here': words.remindHere ? '' : null }));
+  if (words.scopeOne) rw = rw.on('[data-live="scope-one"]', text(words.scopeOne));
+  const out = rw.transform(res);
+  const headers = new Headers(out.headers);
+  if (!/no-store/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', PAGE_REUSE);
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
+  headers.delete('Content-Length');
+  return new Response(out.body, { status: out.status, headers });
+}
+
 export function addAfterLine(res, text) {
   if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
   const out = new HTMLRewriter()
@@ -392,16 +465,15 @@ export async function onRequest(context) {
     if (isIndex && !liveNow) {
       try { bar = await barFor(context, url.pathname); } catch { bar = null; }
     }
-    // Between reveals the hero lists what's coming up: drawn from the schedule as it is now (null: not known in time,
-    // and the page goes out as built)
+    // The schedule as it is now (the edge copy of /api/reveals; null: not known in time, and the page goes out as built)
+    let schedule = null;
+    try { schedule = await edgeSchedule(context); } catch { schedule = null; }
+    // Between reveals the hero lists what's coming up, drawn from it
     let rows = null;
     // The reveal this page shows while it's still ahead (a child's page, or /live/ following one): the line naming the
     // two after it goes out written, as the page script would write it (afterLine), so nothing moves after load
     const lineKid = party ? '' : pageKid || (kid ? kid.slug : '');
-    if ((isIndex || lineKid) && !party) {
-      try { rows = await upcomingReveals(context); } catch { rows = null; }
-      rows = rows ? drawable(rows) : null;
-    }
+    if ((isIndex || lineKid) && !party && schedule) rows = drawable(schedule.upcoming);
     const line = rows && lineKid ? afterLine(rows, lineKid, kid?.name || '', visitorZone(request)) : '';
     // The hero as the page script will draw it before a reveal or between reveals, and the messages box with it
     const first = broadcast ? firstView({ state: broadcast.state, pub: broadcast.pub, pageKid, party, rows, tz: visitorZone(request) }) : null;
@@ -409,9 +481,9 @@ export async function onRequest(context) {
     if (first?.view === 'upcoming' && messagesOpen(broadcast.state, broadcast.config)) {
       try { messages = { kidName: broadcast.pub?.kidName || kid?.name || '', list: (await listShown(env, { broadcastId: broadcast.state.broadcastId })).messages || [] }; } catch { messages = null; }
     }
-    const res = await next(kid || party || bar || rows || first ? fresh(request) : request);
+    const res = await next(kid || party || bar || schedule || first ? fresh(request) : request);
     if (res.status === 404 && pageKid) return Response.redirect(`${url.origin}/live/${url.search}`, 302);
-    if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar || rows || first)) return res;
+    if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar || schedule || first)) return res;
     let design = null;
     if (party) {
       const slug = pageKid || broadcast.state.kidSlug || '';
@@ -431,6 +503,17 @@ export async function onRequest(context) {
     page = kid || party ? rewrite(page, { kid, party, messages: broadcast.config?.messages?.enabled !== false, design }) : page;
     if (rows && isIndex) page = addHeroRows(page, { list: rows, zone: visitorZone(request), between: !!broadcast && !kid && !ACTIVE.has(broadcast.state?.phase) });
     if (line) page = addAfterLine(page, line);
+    if (schedule) page = addSchedule(page, schedule, { zone: visitorZone(request), current: showingKid(broadcast?.pub, pageKid) });
+    // The reminder block, before a reveal or between reveals, once the schedule says whose day it is
+    if (first && schedule) {
+      const pub = broadcast.pub || {};
+      const inviteKid = pageKid || (first.view !== 'idle' ? pub.kidSlug || '' : '');
+      page = addRemind(page, remindFirstPaint({
+        reminders: publicReminders(broadcast.config || {}, env), canPush: true, view: first.view, pageKid,
+        scheduledAt: pub.scheduledAt || null, kidName: pub.kidName || '', kidSlug: pub.kidSlug || '',
+        inviteFor: inviteKid ? schedule.upcoming.find((r) => r.slug === inviteKid) : undefined,
+      }));
+    }
     return addBar(page, bar);
   } catch {
     return next();

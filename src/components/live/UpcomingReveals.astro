@@ -446,9 +446,9 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
 </style>
 
 <script>
-  import { readUpcoming, readSignup, type Signup } from '../../utils/reveals-client';
+  import { readUpcoming, readSignup, scheduleOnPage, type Signup } from '../../utils/reveals-client';
   import { upcomingAtBuild } from '../../utils/reveals-copy';
-  import { bandRowsHtml } from '../../utils/band-rows';
+  import { bandRowsHtml, bandShows } from '../../utils/band-rows';
   import { rowsSignature } from '../../utils/upcoming-rows';
   import { remindPromise } from '../../utils/live-banner';
   import { wireRemindForm } from '../../utils/remind-signup';
@@ -544,6 +544,7 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
     list.style.setProperty('--upn-line-bottom', `${list.offsetHeight - mid(nodes[nodes.length - 1])}px`);
   }
 
+  /** The schedule the server drew this band from, or null when it went out as built */
   async function setUp(section: HTMLElement) {
     if (section.dataset.ready) return;
     section.dataset.ready = '1';
@@ -559,8 +560,11 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
     // Everything is set up from what the build drew, before the schedule is asked for: the list rises in, the
     // live page's current reveal is left out, and nothing waits on an answer that may be slow or never come.
     // A schedule that can't be read changes nothing; settings that can't be read (undefined) leave the card as it is.
-    let all = upcomingAtBuild();
-    let signup: Signup | null | undefined;
+    // The server redrew the band from the schedule as it is now and left it on the band (data-schedule,
+    // functions/_upcoming-band.js): start from it, list and sign-up setting, so nothing is drawn again. Else the build's
+    const edge = scheduleOnPage(section);
+    let all = edge?.upcoming ?? upcomingAtBuild();
+    let signup: Signup | null | undefined = edge?.signup;
     // What the build drew (its signature), so the same list isn't drawn twice
     let drawn: string | null = list.dataset.sig ?? null;
     const keepEmpty = section.hasAttribute('data-keep-empty');
@@ -592,9 +596,8 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
       if (more) more.hidden = shown.length <= limit;
       if (shown.length) placeLine(list);
       section.toggleAttribute('data-empty', !shown.length);
-      // Nothing scheduled: the band goes, or (the events page) stays as the way to hear about the next one, while
-      // email sign-up is open, or not yet known not to be (its card says what the band offers)
-      section.hidden = !shown.length && !(keepEmpty && signup !== null && signup?.email !== false);
+      // Nothing scheduled: the band goes, or (the events page) stays as the way to hear about the next one (bandShows)
+      section.hidden = !bandShows(shown.length, keepEmpty, signup);
     });
     draw();
     section.addEventListener('upnext:current', draw);

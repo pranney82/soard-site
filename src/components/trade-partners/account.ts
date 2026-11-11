@@ -17,6 +17,7 @@
 import { WORDS, CERTIFICATION, type Words } from './account-words';
 import { TRADE_ES, requirementLines, startLang, keepLang, type Lang } from './words';
 import { prepare, pagePictures, thumbnail, isPdf, sizeText, MAX_BYTES } from './files';
+import { signInHtml, langButtonHtml } from './signin';
 
 type Step = 'company' | 'w9' | 'coi' | 'bank';
 const STEPS: Step[] = ['company', 'w9', 'coi', 'bank'];
@@ -101,7 +102,7 @@ function draw() {
 }
 
 function langButton() {
-  return `<button type="button" class="tpa-lang" data-act="lang" lang="${lang === 'es' ? 'en' : 'es'}">${esc(T.otherLang)}</button>`;
+  return langButtonHtml(T, lang);
 }
 
 // ─── Signing in ─────────────────────────────────────────────────────
@@ -111,21 +112,8 @@ const papersBefore = () => { try { return localStorage.getItem(SCOPE_KEY) === 'p
 
 function drawSignIn(message = '') {
   document.documentElement.classList.remove('tpa-focus');
-  root.replaceChildren(html(`
-    <div class="tpa-narrow">
-      <div class="tpa-card tpa-signin">
-        <div class="tpa-row"><p class="tpa-eyebrow">${esc(T.eyebrow)}</p>${langButton()}</div>
-        <h1 class="tpa-h1">${esc(T.signTitle)}</h1>
-        ${message ? `<p class="tpa-callout" role="alert">${esc(message)}</p>` : ''}
-        <p class="tpa-lead">${esc(T.signBody)}</p>
-        <form class="tpa-form" data-form="signin" novalidate>
-          <label class="tpa-field"><span class="tpa-label">${esc(T.emailLabel)}</span><input name="email" type="email" autocomplete="email" inputmode="email" required></label>
-          <button class="tpa-btn tpa-btn--primary tpa-btn--wide" type="submit">${esc(T.signBtn)}</button>
-          <p class="tpa-note" data-note role="status" aria-live="polite" hidden></p>
-        </form>
-        ${papersBefore() ? '' : `<p class="tpa-small">${esc(T.newHere)} <a href="/trade-partners/#start">${esc(T.workWithUs)}</a></p>`}
-      </div>
-    </div>`));
+  // The same card the page was built with (./signin.ts), so taking it over moves nothing
+  root.replaceChildren(html(signInHtml(T, lang, { message, papersBefore: papersBefore() })));
   const form = root.querySelector<HTMLFormElement>('[data-form=signin]')!;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

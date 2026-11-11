@@ -10,8 +10,9 @@
  * takes over. tz left out: the browser's own zone.
  */
 import { formatWhen, relativeUntil, revealLabel } from './live-when';
-import { runningLate } from './live-banner';
+import { runningLate, remindersUsable, remindPromise } from './live-banner';
 import { revealWhen, type UpcomingReveal } from './reveals-client';
+import type { ReminderOptions } from './live-client';
 
 /** The hero's lead when no reveal is set (LivePage.astro); /live/'s share card says the same */
 export const LIVE_GENERIC_LEAD = 'Room reveals stream live right here. Watch the moment a child sees their new room for the first time.';
@@ -92,4 +93,77 @@ export function ctasThatApply(f: CtaFacts): Record<string, boolean> {
 /** The buttons shown, in order: the first HERO_CTA_MAX for the moment of those that apply */
 export function ctaPicks(display: string, applies: (key: string) => boolean): string[] {
   return (HERO_CTAS[display] || HERO_CTAS.idle).filter(applies).slice(0, HERO_CTA_MAX);
+}
+
+// ── The reminder block (#remind) ────────────────────────────────────
+
+export interface RemindFacts {
+  /** The reminder options as /api/broadcast gives them (null: not known) */
+  reminders: ReminderOptions | null;
+  /** Whether this browser can take alerts (the server takes it as possible, as for the hero's buttons) */
+  canPush: boolean;
+  /** What the page shows: 'upcoming' (a reveal planned), 'idle' (between reveals), 'live', 'replay' */
+  view: string;
+  /** The child whose page this is ('' on /live/) */
+  pageKid: string;
+  /** The broadcast: when, and whose */
+  scheduledAt: string | null;
+  kidName: string;
+  kidSlug: string;
+  /** This page's child in the schedule (a child's page between reveals), for their day */
+  inviteFor?: Pick<UpcomingReveal, 'name' | 'startsAt'>;
+  now?: number;
+}
+
+/**
+ * Which parts of the reminder block show, by the facts alone: reminders that really go out (email, or alerts this
+ * browser can take), the calendar link while there's a date to add, and the child the block names. LivePage draws
+ * the block by this, and the server (functions/live/[[path]].js) writes it into the page the same way, so the block
+ * is there from the first paint and a link to #remind lands on it.
+ */
+export function remindParts(f: RemindFacts) {
+  const now = f.now ?? Date.now();
+  const on = remindersUsable(f.reminders, f.canPush);
+  const begun = !!f.scheduledAt && Date.parse(f.scheduledAt) <= now;
+  const calendar = (f.view === 'upcoming' && !begun) || (f.view === 'idle' && !!f.pageKid && !!f.inviteFor);
+  // A sign-up is for the reveal the block names, and otherwise for every reveal
+  const name = (f.view === 'upcoming' ? f.kidName : f.view === 'idle' && f.pageKid ? f.inviteFor?.name : '') || '';
+  return {
+    on,
+    email: on && !!f.reminders?.email,
+    push: on && !!f.reminders?.push && !!f.reminders?.pushKey && f.canPush,
+    calendar,
+    // Reminders off: the block is just the calendar link, or nothing when there's no date to add
+    block: on || calendar,
+    label: on ? 'Reminders' : 'Calendar',
+    /** The child the block names, and their slug ('' : every reveal) */
+    name,
+    slug: !name ? '' : f.view === 'upcoming' ? f.kidSlug || '' : f.pageKid,
+    /** When the named reveal is: only what can still be sent is promised (ten minutes out there's no "day before") */
+    planned: (f.view === 'upcoming' ? f.scheduledAt : f.view === 'idle' && f.pageKid ? f.inviteFor?.startsAt : null) || null,
+  };
+}
+
+/**
+ * The block's words for the child it names (shown: their name, '' for none) and the reveals picked ('one': just
+ * theirs). On first paint the block names remindParts' child with every reveal picked; the page script keeps
+ * whatever someone mid-sign-up chose.
+ */
+export function remindWords(parts: ReturnType<typeof remindParts>, { shown, scope, hours, view, now = Date.now() }: { shown: string; scope: 'all' | 'one'; hours?: number[]; view: string; now?: number }) {
+  const one = !!shown && scope === 'one';
+  return {
+    heading: shown
+      ? (parts.on ? `Don't miss ${shown}'s reveal` : `Save the date for ${shown}'s reveal`)
+      : !parts.on ? 'Save the date' : view === 'replay' ? 'Hear about the next reveal' : 'Never miss a reveal',
+    /** Which reveals: asked only when the block names a child and the form shows */
+    scopeShown: !!shown && parts.email,
+    scopeOne: shown ? `Just ${shown}'s` : '',
+    emailLabel: one ? `Email address for ${shown}'s reveal` : 'Email address for every reveal',
+    scope: (one ? 'one' : 'all') as 'one' | 'all',
+    // Both promises are written, and the one for the choice shows: the block keeps the taller one's height
+    leadAll: remindPromise(hours, { about: shown ? `every reveal, ${shown}'s included` : 'every reveal' }),
+    leadOne: shown ? remindPromise(hours, { about: `${shown}'s reveal`, dated: !!parts.planned, left: parts.planned ? Date.parse(parts.planned) - now : Infinity }) : '',
+    /** This form already signs up for every reveal: the Coming up band leaves its email card out */
+    remindHere: parts.email && !one,
+  };
 }

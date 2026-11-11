@@ -68,6 +68,12 @@ const totalImpact = livesImpacted.toLocaleString() + '+';
 
 /* ── Hero photos (editable via admin → Kids on Site → Community) ── */
 const heroPhotoId = siteSettings.communityPhotos?.hero || 'kids/camp-twin-lakes/hero';
+// The hero photo's box where it sits centered on its own row (phones): one set of numbers for the
+// box's width (--frame-*) and the photo's sizes, so the box has its width from the first paint
+// (sized by the photo, it was 0 wide until the photo arrived) and the photo downloads at that width
+const FRAME = { phoneVw: 80, max: 340 };
+const heroSizes = `(max-width: ${Math.floor((FRAME.max * 100) / FRAME.phoneVw)}px) ${FRAME.phoneVw}vw, (max-width: 768px) ${FRAME.max}px, (max-width: 1200px) 38vw, 420px`;
+const frameVars = `--frame-phone: min(${FRAME.phoneVw}vw, ${FRAME.max}px); --frame-max: ${FRAME.max}px`;
 const heroAccentPhotoId = siteSettings.communityPhotos?.accent || 'kids/summit-counseling-center/hero';
 
 /* ── Spotlight ── */
@@ -94,7 +100,7 @@ const hero = {
   breadcrumbs={breadcrumbs}
 >
   <!-- Preload hero LCP image -->
-  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', aspectRatio: 1.25 })} imagesizes="(max-width:768px) 80vw, (max-width:1200px) 38vw, 420px" fetchpriority="high" />
+  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', aspectRatio: 1.25 })} imagesizes={heroSizes} fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial Split (matches apply/donate/home) ══════ -->
   <section class="hero" data-whole>
@@ -108,13 +114,13 @@ const hero = {
           <a href="/apply/community-project/" class="btn btn-outline-dark" data-astro-reload>Apply for Your Organization</a>
         </div>
       </div>
-      <div class="hero-frame">
+      <div class="hero-frame" style={frameVars}>
         <div class="hero-accent" aria-hidden="true"></div>
         <div class="hero-photo" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
           <img
             src={cfRaw(heroPhotoId, 'w=640,h=800,fit=cover,q=82')}
             srcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', aspectRatio: 1.25 })}
-            sizes="(max-width:768px) 80vw, (max-width:1200px) 38vw, 420px"
+            sizes={heroSizes}
             alt="Community facility renovated by SOARD for children with special needs"
             width="640" height="800"
             class="lqip-img"
@@ -552,11 +558,8 @@ const hero = {
     .hero-inner { grid-template-columns: 1fr; gap: var(--space-xl); text-align: center; padding-inline: var(--space-lg); }
     .hero-lead { margin-inline: auto; margin-bottom: 28px; }
     .hero-ctas { justify-content: center; }
-    /* Centered by auto margins, the photo's box sized itself to the photo,
-       so it was 0 wide until the photo arrived and then pushed the page down
-       ~400px on a phone. Its width is now the size it settled at (the photo's
-       own sizes, 80vw, at most 340px) */
-    .hero-frame { width: min(80vw, 340px); max-width: 340px; margin: 0 auto; }
+    /* Its width from the first paint: the same numbers as the photo's sizes (FRAME above) */
+    .hero-frame { width: var(--frame-phone); max-width: var(--frame-max); margin: 0 auto; }
     .hero-photo--small { display: none; }
     .hero-photo { border-radius: 18px; }
     .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }

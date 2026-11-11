@@ -9,7 +9,7 @@
  * come", and their own invite button, RevealInvite.astro).
  */
 import { cfRaw } from './cf-image';
-import { windowTitle, revealTime, revealDateText, inviteData, possessive, otherYear, type UpcomingReveal } from './reveals-client';
+import { windowTitle, revealTime, revealDateText, inviteData, possessive, otherYear, shownZone, type UpcomingReveal, type Signup } from './reveals-client';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 const attrs = (o: Record<string, string>) => Object.entries(o).map(([k, v]) => `${k}="${esc(v)}"`).join(' ');
@@ -33,13 +33,13 @@ function roomsText(rooms: string[]): string {
 }
 
 
-function whenHtml(r: UpcomingReveal): string {
+function whenHtml(r: UpcomingReveal, tz: string): string {
   if (r.confirmed) {
     // In the visitor's own zone, as the live banner and the hero show it ("1:00 PM PST" in Los Angeles)
-    return `<div class="upn-when"><p class="upn-when__top">${esc(revealDateText(r, { weekday: 'long' }))}</p>`
+    return `<div class="upn-when"><p class="upn-when__top">${esc(revealDateText(r, { weekday: 'long' }, tz))}</p>`
       // Another year's date carries its year ("Jan 8, 2027"), as a tentative month does, so the timeline reads in order
-      + `<p class="upn-when__main">${esc(revealDateText(r, { month: 'short', day: 'numeric', ...(otherYear(r) ? { year: 'numeric' } : {}) }))}</p>`
-      + `<p class="upn-when__sub">${esc(revealTime(r) || 'Time to come')}</p></div>`;
+      + `<p class="upn-when__main">${esc(revealDateText(r, { month: 'short', day: 'numeric', ...(otherYear(r) ? { year: 'numeric' } : {}) }, tz))}</p>`
+      + `<p class="upn-when__sub">${esc(revealTime(r, tz) || 'Time to come')}</p></div>`;
   }
   // "Early" over "December"; another year's month carries its year on a line of its own, so it never runs into the dot
   const [part, ...rest] = windowTitle(r.window).split(' ');
@@ -50,7 +50,7 @@ function whenHtml(r: UpcomingReveal): string {
     + `<span class="upn-month" aria-hidden="true">${bar}</span></div>`;
 }
 
-function cardHtml(r: UpcomingReveal, i: number): string {
+function cardHtml(r: UpcomingReveal, i: number, tz: string): string {
   const src = photo(r.image, 192);
   // No photo (or it fails to load, see UpcomingReveals' error listener): the kid's initial in its place
   const initial = esc(r.name.trim().charAt(0).toUpperCase());
@@ -58,7 +58,7 @@ function cardHtml(r: UpcomingReveal, i: number): string {
     ? `<div class="upn-card__photo" data-initial="${initial}"><img src="${esc(src)}" srcset="${esc(src)} 1x, ${esc(photo(r.image, 288))} 1.5x, ${esc(photo(r.image, 384))} 2x" alt="" width="96" height="96" loading="${i < 3 ? 'eager' : 'lazy'}" decoding="async" /></div>`
     : `<div class="upn-card__photo upn-card__photo--blank" aria-hidden="true">${initial}</div>`;
   const label = r.confirmed
-    ? `${r.name}: reveal ${revealDateText(r, { weekday: 'long', month: 'long', day: 'numeric' })}${revealTime(r) ? ` at ${revealTime(r)}` : ''}. Read the story.`
+    ? `${r.name}: reveal ${revealDateText(r, { weekday: 'long', month: 'long', day: 'numeric' }, tz)}${revealTime(r, tz) ? ` at ${revealTime(r, tz)}` : ''}. Read the story.`
     : `${r.name}: reveal planned for ${r.window.label}. Read the story.`;
   const rooms = roomsText(r.rooms || []);
   const invite = `<button class="upn-add" type="button" ${attrs(inviteData(r))} aria-label="${esc(`Add to calendar: ${possessive(r.name)} reveal`)}">${CAL_ADD}<span>Add to calendar</span></button>`;
@@ -71,8 +71,21 @@ function cardHtml(r: UpcomingReveal, i: number): string {
     + `<div class="upn-card__foot">${foot}</div></div></article>`;
 }
 
-/** limit: rows after the first `limit` are marked data-more, for a band that opens on the next few (/reveals/) */
-export function bandRowsHtml(list: UpcomingReveal[], { limit = 0 }: { limit?: number } = {}): string {
+/**
+ * limit: rows after the first `limit` are marked data-more, for a band that opens on the next few (/reveals/).
+ * tz: the zone times are shown in, the visitor's own by default; the server passes the visitor's zone as Cloudflare
+ * knows it (functions/_upcoming-band.js), so its rows are the ones the page script would draw.
+ */
+export function bandRowsHtml(list: UpcomingReveal[], { limit = 0, tz = shownZone() }: { limit?: number; tz?: string } = {}): string {
   return list.map((r, i) => `<li class="upn-row${i === 0 ? ' is-next' : ''}"${limit && i >= limit ? ' data-more' : ''} data-slug="${esc(r.slug)}" data-state="${r.confirmed ? 'confirmed' : 'tentative'}" style="--i:${limit && i >= limit ? i - limit : i}">`
-    + `${whenHtml(r)}<span class="upn-node" aria-hidden="true"></span>${cardHtml(r, i)}</li>`).join('');
+    + `${whenHtml(r, tz)}<span class="upn-node" aria-hidden="true"></span>${cardHtml(r, i, tz)}</li>`).join('');
 }
+
+/**
+ * Whether a band shows: anything scheduled, or, with nothing scheduled, a band that stays as the way to hear about
+ * the next one (data-keep-empty, the events page) while email sign-up is open or not yet known not to be (its card
+ * says what the band offers). signup: as read from /api/reveals, null when it didn't say, undefined when not read.
+ * The page script and the server (functions/_upcoming-band.js) both decide by this.
+ */
+export const bandShows = (shownCount: number, keepEmpty: boolean, signup: Signup | null | undefined): boolean =>
+  shownCount > 0 || (keepEmpty && signup !== null && signup?.email !== false);

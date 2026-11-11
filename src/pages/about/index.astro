@@ -10,6 +10,7 @@
  * - Team photos from CF Images
  */
 import PageLayout from '../../layouts/PageLayout.astro';
+import FirstScreenEnd from '../../components/global/FirstScreenEnd.astro';
 import siteSettings from '../../content/site/settings.json';
 import FAQSection from '../../components/ui/FAQSection.astro';
 import { getFAQSchema } from '../../utils/schema';
@@ -88,6 +89,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
   heroLabel="About"
   heroTitle={'Our <em class="highlight">Story</em>'}
   heroSubtitle="How it all started and where we're headed"
+  firstScreenEnd
 >
   <link slot="head" rel="preload" as="image" imagesrcset={founderSrcset} imagesizes={founderSizes} fetchpriority="high" />
 
@@ -105,6 +107,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
       </div>
     </div>
   </section>
+  {/* The founders' photo sits centred beside their story: half the story painted moved it 110px when the rest came */}
+  <FirstScreenEnd />
 
   <!-- ══════ TRIPP — The Turning Point ══════ -->
   <section class="turning-point" aria-labelledby="tripp-heading">

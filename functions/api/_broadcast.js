@@ -1849,19 +1849,24 @@ async function runAdminAction(env, action, body, userEmail) {
 // ─── Public read ────────────────────────────────────────────────────
 
 /** Public state plus the bits the live page needs (push key, channel availability). */
+/** The reminder options as the live page has them (/api/broadcast's `reminders`; the server's first paint of /live/ too) */
+export function publicReminders(config, env) {
+  return {
+    enabled: !!config.reminders?.enabled,
+    hours: Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore : [24, 1],
+    email: notify.emailConfigured(env),
+    push: !!config.reminders?.push && !!config.vapid?.publicKey,
+    pushKey: config.reminders?.push ? (config.vapid?.publicKey || null) : null,
+  };
+}
+
 export async function publicPayload(env) {
   const { DB } = env;
   await ensureSchema(DB);
   const [config, state] = await Promise.all([readConfig(DB), readState(DB)]);
   return {
     state: publicState(state, config),
-    reminders: {
-      enabled: !!config.reminders?.enabled,
-      hours: Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore : [24, 1],
-      email: notify.emailConfigured(env),
-      push: !!config.reminders?.push && !!config.vapid?.publicKey,
-      pushKey: config.reminders?.push ? (config.vapid?.publicKey || null) : null,
-    },
+    reminders: publicReminders(config, env),
     messages: { enabled: config.messages?.enabled !== false },
     timezone: config.timezone,
     hub: !!env.LIVE_HUB,

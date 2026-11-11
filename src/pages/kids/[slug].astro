@@ -19,6 +19,7 @@
  * UX:   View Transitions, staggered scroll-reveals, no full-bleed images
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import FirstScreenEnd from '../../components/global/FirstScreenEnd.astro';
 import Button from '../../components/ui/Button.astro';
 import { getPublishedKids } from '../../utils/collections';
 import { getKidProfileSchema } from '../../utils/schema';
@@ -318,6 +319,7 @@ const planOrientation = (() => {
   datePublished={kid.year ? `${kid.year}-01-01` : undefined}
   dateModified={dateModified}
   noindex={isThinPage}
+  firstScreenEnd
 >
   {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroMobileSrcset} imagesizes={heroMobileSizes} fetchpriority="high" media="(max-width: 768px)" />}
   {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" media="(min-width: 769px)" />}
@@ -443,6 +445,8 @@ const planOrientation = (() => {
         </div>
       </div>
     </section>
+    {/* The hero's words sit centred beside the photo: half of them painted moved by up to 70px when the rest came */}
+    <FirstScreenEnd />
 
     {/* ═══ Live Reveal Video Modal ═══ */}
     {kid.revealVideoUrl && (

@@ -19,6 +19,7 @@
  */
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import RecapPhotos from './RecapPhotos.astro';
+import FirstScreenEnd from '../global/FirstScreenEnd.astro';
 import RecapSponsors from './RecapSponsors.astro';
 import {
   seriesOf, seriesEvents, isOver, yearOf, fmtDay, displayName, recapLead,
@@ -172,6 +173,8 @@ const ytId: string | null = !series && !streamId && ev.videoUrl ? youTubeId(ev.v
       </a>
     )}
   </section>
+  {/* The recap's words sit centred beside its photos (the page turns the wait on: events/[slug].astro) */}
+  <FirstScreenEnd />
 
   <!-- ═══ PHOTOS ═══ -->
   {photos.length > 0 ? (

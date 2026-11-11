@@ -35,6 +35,26 @@ export interface Signup { email: boolean; hours: number[] }
 interface Schedule { reveals: Reveal[]; upcoming: UpcomingReveal[]; signup: Signup | null; failed?: boolean }
 
 const TZ = 'America/New_York';
+
+/** The every-reveal email sign-up in an /api/reveals answer: open or not, and its notes. null when not said.
+ *  The server reads the same answer the same way (functions/_kid-reveal.js) */
+export function signupOf(raw: unknown): Signup | null {
+  const s = raw as Partial<Signup> | null | undefined;
+  return s && typeof s.email === 'boolean' ? { email: s.email, hours: Array.isArray(s.hours) ? s.hours.filter((h) => h === 24 || h === 1) : [24, 1] } : null;
+}
+
+/**
+ * The schedule the server drew a part of the page from (/api/reveals as it is at the edge), left on that part as
+ * data-schedule (functions/_kid-reveal.js, scheduleAttr) so its script starts from the same list and sign-up
+ * setting, and finds nothing to change. null when the server didn't draw it (the page as built).
+ */
+export function scheduleOnPage(el: HTMLElement | null | undefined): { upcoming: UpcomingReveal[]; signup: Signup | null } | null {
+  try {
+    const v = JSON.parse(el?.dataset.schedule || 'null');
+    return v && Array.isArray(v.upcoming) ? { upcoming: v.upcoming as UpcomingReveal[], signup: signupOf(v.signup) } : null;
+  } catch { return null; }
+}
+
 let pending: Promise<Schedule> | null = null;
 let pendingAt = 0;
 
@@ -50,9 +70,7 @@ function loadSchedule(): Promise<Schedule> {
         if (!body) { pendingAt = 0; return { reveals: [], upcoming: [], signup: null, failed: true }; } // the next ask tries again
         const reveals = Array.isArray(body?.reveals) ? body.reveals as Reveal[] : [];
         const upcoming = Array.isArray(body?.upcoming) ? body.upcoming as UpcomingReveal[] : reveals.map(r => ({ ...r, confirmed: true as const, rooms: [] }));
-        const s = body?.signup as Partial<Signup> | null | undefined;
-        const signup = s && typeof s.email === 'boolean' ? { email: s.email, hours: Array.isArray(s.hours) ? s.hours.filter((h) => h === 24 || h === 1) : [24, 1] } : null;
-        return { reveals, upcoming, signup };
+        return { reveals, upcoming, signup: signupOf(body?.signup) };
       })
       .catch(() => { pendingAt = 0; return { reveals: [], upcoming: [], signup: null, failed: true }; });
   }

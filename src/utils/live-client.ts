@@ -67,10 +67,15 @@ function createClient() {
   let pingTimer: ReturnType<typeof setInterval> | undefined;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const emit = () => { for (const l of listeners) { try { l(state, { reminders, timezone }); } catch { /* listener bug */ } } };
+  // Listeners hear nothing until /api/broadcast has answered: the reminder options and time zone come only with it, and
+  // the real-time hub's state (often first) without them read as "no reminders", so /live/ dropped its sign-up button
+  // and form for a moment and put them back. A state from the hub before then is kept, and heard with the answer.
+  let settled = false;
+  const emit = () => { if (!settled) return; for (const l of listeners) { try { l(state, { reminders, timezone }); } catch { /* listener bug */ } } };
 
   let unreachable = false;
-  const failed = () => { if (state) return; unreachable = true; fire('unreachable', {}); };
+  // No answer to wait for any more: whatever state the hub gave is heard (its reminders unknown)
+  const failed = () => { settled = true; if (state) { emit(); return; } unreachable = true; fire('unreachable', {}); };
   async function fetchState() {
     try {
       const res = await fetch('/api/broadcast', { cache: 'no-store' });
@@ -78,7 +83,12 @@ function createClient() {
       const data = await res.json();
       if (data?.state) {
         state = data.state; reminders = data.reminders || null; timezone = data.timezone || null;
+        settled = true;
         emit();
+      } else {
+        // Answered with no state yet (the hub has no snapshot): the hub's own, if it gave one, is heard now
+        settled = true;
+        if (state) emit();
       }
     } catch { failed(); }
   }
@@ -150,7 +160,7 @@ function createClient() {
   return {
     subscribe(l: Listener) {
       listeners.add(l);
-      if (state) l(state, { reminders, timezone });
+      if (state && settled) l(state, { reminders, timezone });
       return () => listeners.delete(l);
     },
     /** Count this page as a viewer (live pages only). Re-sent after reconnects. */

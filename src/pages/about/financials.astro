@@ -7,6 +7,7 @@
  * (verification + document ledger).
  */
 import PageLayout from '../../layouts/PageLayout.astro';
+import FirstScreenEnd from '../../components/global/FirstScreenEnd.astro';
 import financialsData from '../../content/site/financials.json';
 import siteSettings from '../../content/site/settings.json';
 import { cfUrl, cfSrcset, isCF } from '../../utils/cf-image';
@@ -99,6 +100,7 @@ const hero = {
     { name: 'Our Story', url: 'https://sunshineonaranneyday.com/about/' },
     { name: 'Financials', url: 'https://sunshineonaranneyday.com/about/financials/' },
   ]}
+  firstScreenEnd
 >
   <!-- Preload hero LCP image -->
   <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhoto, [400, 640, 1024, 1600])} imagesizes="(max-width:768px) 100vw, 50vw" fetchpriority="high" />
@@ -159,6 +161,8 @@ const hero = {
       </div>
     </div>
   </section>
+  {/* The hero's words sit centred beside the photo */}
+  <FirstScreenEnd />
 
   <!-- Contents page -->
   <section class="section section--sm section--gray">

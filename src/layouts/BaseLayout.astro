@@ -41,6 +41,8 @@ interface Props {
   datePublished?: string;
   dateModified?: string;
   noindex?: boolean;
+  /** The page marks where its first screen ends (<FirstScreenEnd />): the first paint waits for it */
+  firstScreenEnd?: boolean;
 }
 
 const {
@@ -54,6 +56,7 @@ const {
   datePublished,
   dateModified,
   noindex = false,
+  firstScreenEnd = false,
 } = Astro.props;
 
 const pathname = Astro.url.pathname.endsWith('/') ? Astro.url.pathname : `${Astro.url.pathname}/`;
@@ -183,13 +186,23 @@ const structuredData = buildSchemaGraph(...graphSchemas);
        project's Web Analytics and the zone's automatic setup, Nov 10 2026). */}
   <script is:inline>addEventListener('load',function(){setTimeout(function(){if(document.querySelector('script[src*="cloudflareinsights.com/beacon"]'))return;var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token": "43b83df2d48941e496276682ee4bf0a4"}');document.head.appendChild(s)},0)},{once:true})</script>
 
-  {/* Preload critical fonts: the body's, the headlines', and the italic word nearly every hero headline has ("the first
-      time", "room reveal"). Not preloaded, the italic arrived after the hero was drawn and nudged what follows it */}
+  {/* Every font face the site draws starts with the page: with font-display: optional a
+      face is used only if it's here within about 0.1 s of first use, and a face a page
+      needs anywhere (not only on the first screen) is first used when the page is laid
+      out, so one left to load on demand would show its stand-in for that page view.
+      All four, on every page, so no page can miss one (the regular serif is the only one
+      some pages don't use: 20 KB, kept in the cache for the rest of the visit). */}
   <link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/fonts/libre-baskerville-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/fonts/libre-baskerville-latin-400-italic.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/libre-baskerville-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
 
-  {/* Self-hosted fonts, and their stand-ins until they arrive.
+  {/* Self-hosted fonts, and their stand-ins. Text never moves when a font arrives
+    (Peter, Nov 10 2026: "Text never moves"): font-display: optional draws a face
+    only if it's here within about 0.1 s of first use; otherwise that page stays in
+    the stand-ins below, and the next page has the real fonts (from the cache, or,
+    after a page change without a reload, because text drawn after a face has
+    arrived uses it: checked in Chrome, Nov 10 2026).
     Metric-matched fallback faces: Georgia and Arial resized to the webfonts'
        advance widths and vertical metrics, one face per style and weight the
        site uses (bold and italic too: a browser faking bold from the regular
@@ -297,28 +310,28 @@ const structuredData = buildSchemaGraph(...graphSchemas);
       font-family: 'Libre Baskerville';
       font-style: normal;
       font-weight: 400;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/libre-baskerville-latin-400-normal.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Libre Baskerville';
       font-style: italic;
       font-weight: 400;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/libre-baskerville-latin-400-italic.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Libre Baskerville';
       font-style: normal;
       font-weight: 700;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/libre-baskerville-latin-700-normal.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Outfit';
       font-style: normal;
       font-weight: 100 900;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/outfit-latin-variable.woff2') format('woff2');
     }
   </style>
@@ -343,6 +356,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <script is:inline>
     (function(){var re=/i\.ytimg\.com\/vi(_webp)?\/([^/]+)\/maxresdefault\.(jpg|webp)/;function f(e){var i=e.target,s=i&&i.tagName==='IMG'&&(i.currentSrc||i.src),m=s&&re.exec(s);if(!m||(e.type==='load'&&i.naturalWidth>120))return;var p=i.closest('picture');if(p)p.querySelectorAll('source').forEach(function(x){x.remove()});i.style.aspectRatio='16/9';i.style.objectFit='cover';i.src='https://i.ytimg.com/vi/'+m[2]+'/hqdefault.jpg'}function g(i){var v=i.getAttribute('data-img-fallback'),n;if(v==='next'){i.style.display='none';if(n=i.nextElementSibling)n.style.display=''}else if(v&&(n=i.closest(v)))n.style.display='none'}document.addEventListener('load',f,true);document.addEventListener('error',function(e){f(e);var i=e.target;if(i&&i.tagName==='IMG'&&i.hasAttribute('data-img-fallback'))g(i)},true);document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('img[data-img-fallback]').forEach(function(i){if(i.complete&&i.decode)i.decode().catch(function(){if(i.complete&&!i.naturalWidth)g(i)})})})})();
   </script>
+
+  {/* The first paint waits until the page's first screen has arrived (src/components/global/FirstScreenEnd.astro) */}
+  {firstScreenEnd && <link rel="expect" href="#first-screen-end" blocking="render" />}
 
   {/* Page-specific head content (preloads, etc.) */}
   <slot name="head" />

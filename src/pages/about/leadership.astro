@@ -5,6 +5,7 @@
  * B&W→color photo treatment, JSON-LD structured data, and breadcrumbs.
  */
 import PageLayout from '../../layouts/PageLayout.astro';
+import FirstScreenEnd from '../../components/global/FirstScreenEnd.astro';
 import { getCollection } from 'astro:content';
 import { cfUrl } from '../../utils/cf-image';
 import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath, boardTitleLine } from '../../utils/team';
@@ -46,6 +47,7 @@ const breadcrumbs = [
   heroLabel="About"
   heroTitle={'Our <em class="highlight">Leadership</em>'}
   heroSubtitle="The people behind the mission"
+  firstScreenEnd
 >
 
   <!-- ══════ LEADERSHIP AT A GLANCE ══════ -->
@@ -110,6 +112,8 @@ const breadcrumbs = [
           </div>
         ))}
       </div>
+      {/* The founders sit side by side, centred: one painted alone moved over when the other came */}
+      <FirstScreenEnd />
 
       <!-- Staff grid -->
       <div class="team-grid">

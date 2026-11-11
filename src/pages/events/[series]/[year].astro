@@ -29,6 +29,6 @@ const path = `${series.path}${Astro.params.year}/`;
 const meta = recapMeta(ev, events, pageDoc, path);
 ---
 
-<BaseLayout title={meta.title} description={meta.description} og={meta.og} jsonLd={meta.jsonLd} breadcrumbs={meta.breadcrumbs}>
+<BaseLayout title={meta.title} description={meta.description} og={meta.og} jsonLd={meta.jsonLd} breadcrumbs={meta.breadcrumbs} firstScreenEnd>
   <EventRecap ev={ev} events={events} pageDoc={pageDoc} theme={series.key as 'gala' | 'golf'} themeName={series.key === 'gala' ? galaThemeName(ev) : ''} />
 </BaseLayout>

@@ -6,11 +6,24 @@
  * Kept out of search: it's only ever one company's page.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { WORDS } from '../../components/trade-partners/account-words';
+import { signInHtml } from '../../components/trade-partners/signin';
 ---
 
 <BaseLayout title="Your Trade-Partner Page" description="A trade partner’s page with Sunshine on a Ranney Day: W-9, insurance, payments and invoices." noindex={true}>
+  {/* Before anything is drawn: a link in the address or kept on this device opens the page
+      ("Opening your page…"), else the sign-in card shows; in the language account.ts will use
+      (kept choice, else the browser's); no "new here" line for a company signed in for papers.
+      Same keys as account.ts and words.ts (soard-tp-token, soard-tp-lang, soard-tp-scope). */}
+  <script is:inline slot="head">(function(){var d=document.documentElement,t=/(^|&)t=[^&]/.test(location.hash.slice(1));try{t=t||!!(sessionStorage.getItem('soard-tp-token')||localStorage.getItem('soard-tp-token'));var l=localStorage.getItem('soard-tp-lang');if(l==='es'||(l!=='en'&&/^es\b/i.test(navigator.language||'')))d.classList.add('tpa-es');if(localStorage.getItem('soard-tp-scope')==='papers')d.classList.add('tpa-papers')}catch(e){}if(t)d.classList.add('tpa-token')})()</script>
   <section class="tpa-section">
-    <div id="tpa" class="tpa" aria-live="polite"><p class="tpa-loading">Opening your page…</p></div>
+    {/* The page as account.ts will draw it, so its taking over moves nothing (../../components/trade-partners/signin.ts) */}
+    <div id="tpa" class="tpa" aria-live="polite">
+      <div class="tpa-pre tpa-only-en" set:html={signInHtml(WORDS.en, 'en')} />
+      <div class="tpa-pre tpa-only-es" lang="es" set:html={signInHtml(WORDS.es, 'es')} />
+      <p class="tpa-loading tpa-pre-loading tpa-only-en">{WORDS.en.loading}</p>
+      <p class="tpa-loading tpa-pre-loading tpa-only-es" lang="es">{WORDS.es.loading}</p>
+    </div>
   </section>
 </BaseLayout>
 
@@ -27,6 +40,12 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 </script>
 
 <style is:global>
+  /* ══════ Before the script: the head script's classes pick what shows ══════ */
+  .tpa-pre { display: contents; }
+  html.tpa-es .tpa-only-en, html:not(.tpa-es) .tpa-only-es,
+  html.tpa-token .tpa-pre, html:not(.tpa-token) .tpa-pre-loading,
+  html.tpa-papers .tpa-new-here { display: none; }
+
   /* ══════ Frame ══════ */
   .tpa-section { background: var(--c-cream); padding: clamp(28px, 6vh, 64px) 0 96px; min-height: 70vh; }
   .tpa { --tpa-ink: var(--c-dark); --tpa-soft: var(--c-text); --tpa-mute: var(--c-text-muted); --tpa-line: var(--c-border); --tpa-amber: #8E5B0E; color: var(--tpa-ink); }

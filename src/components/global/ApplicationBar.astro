@@ -17,10 +17,6 @@
  * "apply-bar:hidden" when it goes, and leaves when asked with
  * "apply-bar:step-aside".
  *
- * Its words are centred, so they wait for their own font (the inline script
- * below, at most 2.5 s): with the stand-in they'd be a few pixels wider or
- * narrower and move when Outfit arrived.
- *
  * The X closes it for the season: remembered in the browser, checked by the
  * inline script below before the bar paints, and in a cookie the server reads
  * (/api/application-bar-closed), which outlasts Safari's one-week limit on
@@ -45,17 +41,6 @@
       try { closed = localStorage.getItem('soard-application-dismissed'); } catch (e) {}
       if (closed === y || (';' + document.cookie.replace(/\s/g, '') + ';').indexOf(';soard_apply_bar=' + y + ';') > -1) {
         document.documentElement.classList.add('apply-bar-off');
-        return;
-      }
-      // Its words wait for their own font: centred, they would move when it arrived (its stand-in is close, never exact).
-      // Not at all when it's here already, and never more than 2.5 s
-      var f = document.fonts;
-      if (f && f.check && f.load && !f.check('700 13px Outfit')) {
-        var root = document.documentElement;
-        var done = function () { root.classList.remove('apply-bar-font'); };
-        root.classList.add('apply-bar-font');
-        Promise.all([f.load('700 13px Outfit'), f.load('400 14px Outfit')]).then(done, done);
-        setTimeout(done, 2500);
       }
     } catch (e) {}
   })();
@@ -192,8 +177,6 @@
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
   }
-  /* Until the bar's font is in (the inline script above): its space and colour show, its words wait */
-  :global(html.apply-bar-font) .apply-bar > * { visibility: hidden; }
   /* Hidden means hidden, whatever else styles it */
   .apply-bar[hidden],
   :global(html.apply-bar-off) .apply-bar { display: none !important; }
