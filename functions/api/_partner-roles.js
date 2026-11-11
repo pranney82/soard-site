@@ -310,6 +310,32 @@ export async function reconcileRoles(env, ctx, { fetchImpl = fetch, now = Date.n
 }
 
 /**
+ * Daily logs stay staff only (Peter, Nov 10 2026: "its for internal staff
+ * only, we will share specific things with them"): every role that isn't
+ * staff (partners, trades, design partners, photographers, families) is kept
+ * off "see every daily log" (readDailyLogs), so a role changed back in
+ * JobTread is set right on the next run. "See one shared with them"
+ * (showDailyLogs) is left alone, so a log shared on purpose still shows.
+ * Each change is logged with the role's permissions before.
+ * → { fixed: [role names] }
+ */
+export async function guardDailyLogs(env, { fetchImpl = fetch } = {}) {
+  const key = env.JOBTREAD_GRANT_KEY;
+  const fixed = [];
+  for (const r of await fetchRoles(key, fetchImpl)) {
+    const perms = Array.isArray(r.permissions) ? r.permissions : [];
+    if (r.type === 'internal' || !perms.some(staffOnlyPermission)) continue;
+    await pave(key, { updateRole: { $: { id: r.id, permissions: perms.filter((p) => !staffOnlyPermission(p)) } } }, fetchImpl);
+    fixed.push({ name: r.name, before: perms });
+  }
+  if (fixed.length && env.DB) {
+    await logAudit(env.DB, { userEmail: 'sync', action: 'updated', entityType: 'jobtread-roles', entityName: 'Roles in JobTread',
+      changes: { 'kept off every daily log': fixed.map((f) => f.name), before: fixed.map((f) => `${f.name}: ${f.before.join(', ')}`) } });
+  }
+  return { fixed: fixed.map((f) => f.name) };
+}
+
+/**
  * Vendor and Monetary Sponsor are deleted in JobTread once nobody has them
  * (people: every login outside staff, as this run left them), and remembered
  * as gone ('gone': { name: when }, "Sponsor" too, which JobTread never had).

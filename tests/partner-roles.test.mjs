@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readRoles } from '../functions/api/_partner-roles.js';
+import { readRoles, guardDailyLogs } from '../functions/api/_partner-roles.js';
 import { onRequestGet } from '../functions/api/partner-roles-admin.js';
 
 const ROLES = [
@@ -265,4 +265,30 @@ test('reveal and Demo Day invites: level roles and Trade Partners are partners o
   assert.deepEqual(sponsorGuests(g, 'isla', isSponsor).map((p) => p.name), ['Ann', 'Sal'], 'the sponsor’s Champion, and its person still on the old role; never someone else on that role, or the photographer');
   assert.deepEqual(sponsorGuests(g, null, isSponsor).map((p) => p.name), [], 'no kid, no sponsor');
   assert.deepEqual(sponsorGuests(g, 'isla', null).map((p) => p.name), [], 'no sponsors read, nobody');
+});
+
+test('daily logs stay staff only: any role that isn’t staff is kept off every daily log, a log shared on purpose still shows, and it’s logged', async () => {
+  const roles = [
+    { id: 'r-champ', name: 'Champion', type: 'vendor', permissions: ['readDailyLogs', 'showDailyLogs', 'readJobPlans'] },
+    { id: 'r-family', name: 'Makeover Family', type: 'customer', permissions: ['readDailyLogs', 'readJobTasks'] },
+    { id: 'r-trade', name: 'Trade Partner', type: 'vendor', permissions: ['showDailyLogs', 'readJobTasks'] },
+    { id: 'r-staff', name: 'Project Manager', type: 'internal', permissions: ['readDailyLogs', 'createDailyLogs'] },
+  ];
+  const updates = [];
+  const fetchImpl = async (_url, init) => {
+    const q = JSON.parse(init.body).query;
+    if (q.organization?.roles) return Response.json({ organization: { roles: { nodes: roles } } });
+    if (q.updateRole) { updates.push(q.updateRole.$); roles.find((r) => r.id === q.updateRole.$.id).permissions = q.updateRole.$.permissions; return Response.json({}); }
+    throw new Error(`unexpected ${JSON.stringify(q).slice(0, 80)}`);
+  };
+  const audits = [];
+  const DB = { prepare: (sql) => ({ bind: (...a) => ({ run: async () => { if (/audit/i.test(sql)) audits.push(a); return {}; } }) }) };
+  const r = await guardDailyLogs({ JOBTREAD_GRANT_KEY: 'k', DB }, { fetchImpl });
+  assert.deepEqual(r.fixed, ['Champion', 'Makeover Family']);
+  assert.deepEqual(updates, [
+    { id: 'r-champ', permissions: ['showDailyLogs', 'readJobPlans'] },
+    { id: 'r-family', permissions: ['readJobTasks'] },
+  ], 'only "see every daily log" goes; a shared one still shows; staff untouched');
+  assert.ok(audits.length >= 1, 'logged with the permissions before');
+  assert.deepEqual((await guardDailyLogs({ JOBTREAD_GRANT_KEY: 'k', DB }, { fetchImpl })).fixed, [], 'nothing to do the second time');
 });

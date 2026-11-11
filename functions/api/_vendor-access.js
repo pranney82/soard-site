@@ -98,7 +98,7 @@ import { slackPost } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { readContacts, saveContacts, isEmail } from './_sponsors.js';
 import { logAudit } from './_audit.js';
-import { roleMode, reconcileRoles, rolesView, readMemberships, isPartnerRole } from './_partner-roles.js';
+import { roleMode, reconcileRoles, rolesView, readMemberships, isPartnerRole, guardDailyLogs } from './_partner-roles.js';
 import { nameKey, wordsKey, domainOf, isSocial, kidUsage, nearPartners, cfId } from '../../public/admin/partners-shared.js';
 
 const RUN_EVERY_MS = 15 * 60 * 1000;
@@ -1786,6 +1786,10 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
         }, { fetchImpl, now, room });
         if (report.roles.error) report.problems.push(`Roles: ${report.roles.error}`);
       } catch (e) { report.problems.push(`Roles: ${e.message}`); }
+      // Daily logs stay staff only, whatever a role was changed to in JobTread
+      if (room()) {
+        try { report.dailyLogs = await guardDailyLogs(env, { fetchImpl }); } catch (e) { report.problems.push(`Daily logs: ${e.message}`); }
+      }
     }
 
     // Waiting on a job that's closed now, or for a company that no longer belongs there: nothing to wait for
@@ -1796,7 +1800,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       await patchKey(DB, 'state', {
         lastRunAt: at, lastError: report.problems.length ? { at, error: report.problems.slice(0, 3).join(' · ').slice(0, 300) } : null,
         lastRun: { at, added: report.added.length, taken: report.taken?.length || 0, made: report.made.length, combined: report.combined.length, contacts: report.contacts.length, waiting: waitingNow, near: Object.keys(near).length, more: report.more,
-          ...(report.roles ? { roles: report.roles } : {}) },
+          ...(report.roles ? { roles: report.roles } : {}), ...(report.dailyLogs?.fixed?.length ? { dailyLogsFixed: report.dailyLogs.fixed } : {}) },
       });
     }
     return report;
