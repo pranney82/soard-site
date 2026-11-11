@@ -87,7 +87,7 @@ async function answer(req) {
 
 const browser = await puppeteer.launch({ headless: 'shell', args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'] });
 const errors = [];
-async function open(width, { touch = false } = {}) {
+async function open(width, { touch = false, hash = '#messages/write' } = {}) {
   const page = await browser.newPage();
   await page.setViewport({ width, height: 1000, deviceScaleFactor: 1, hasTouch: touch, isMobile: touch });
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
@@ -102,7 +102,7 @@ async function open(width, { touch = false } = {}) {
     req.continue();
   });
   await page.evaluateOnNewDocument(() => { try { localStorage.clear(); } catch {} });
-  await page.goto(`${SITE}/admin/index.html#messages/write`, { waitUntil: 'networkidle2' });
+  await page.goto(`${SITE}/admin/index.html${hash}`, { waitUntil: 'networkidle2' });
   await until(page, () => !!document.querySelector('.we'), 20000);
   return page;
 }
@@ -199,6 +199,14 @@ try {
   ok(axe.length === 0, `axe finds nothing (${axeText(axe)})`);
   await page.screenshot({ path: join(OUT, '01-desktop.png') });
   await page.close();
+
+  console.log('A link to one email opens it (the SOARD connection for Claude hands these out)');
+  const one = [...store.values()].find((e) => e.subject === 'A Brighter Day Starts With You');
+  const linked = await open(1280, { hash: `#messages/write/${one.id}` });
+  const opened = await until(linked, () => document.querySelector('.we-edit input')?.value === 'A Brighter Day Starts With You', 8000);
+  ok(opened !== false, `#messages/write/${one.id} opens that email`);
+  ok(await linked.evaluate(() => document.querySelector('.we-item[aria-current="true"]')?.textContent.includes('A Brighter Day Starts With You')), 'and marks it in the list');
+  await linked.close();
 
   console.log('Phone, touch');
   const phone = await open(390, { touch: true });

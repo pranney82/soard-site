@@ -104,6 +104,20 @@ export function buildAdminView(jobs, kids, now = Date.now(), projects = []) {
   };
 }
 
+/**
+ * The admin's view (buildAdminView), read from JobTread at most once a minute
+ * per isolate: the Kids page's job links and reveal dates, and the SOARD
+ * connection for Claude (./_mcp-tools.js), which needs a kid's job for its invites.
+ */
+export async function revealsAdminView(env, { now = Date.now() } = {}) {
+  if (!memo || now - memo.at > MEMO_MS) {
+    // Hidden profiles too: a kid JobTread keeps off the site still links to its job here
+    const [jobs, kids, projects] = await Promise.all([fetchAllJobs(env.JOBTREAD_GRANT_KEY), loadAllKids(env.DB), loadAllProjects(env.DB)]);
+    memo = { at: now, value: { ...buildAdminView(jobs, kids, now, projects), updatedAt: new Date(now).toISOString() } };
+  }
+  return memo.value;
+}
+
 export async function onRequestGet(context) {
   const { env } = context;
   const headers = { 'Cache-Control': 'private, no-store' };
@@ -111,13 +125,7 @@ export async function onRequestGet(context) {
     return Response.json({ success: false, error: 'JOBTREAD_GRANT_KEY is not set', reveals: [], jobs: {} }, { status: 500, headers });
   }
   try {
-    const now = Date.now();
-    if (!memo || now - memo.at > MEMO_MS) {
-      // Hidden profiles too: a kid JobTread keeps off the site still links to its job here
-      const [jobs, kids, projects] = await Promise.all([fetchAllJobs(env.JOBTREAD_GRANT_KEY), loadAllKids(env.DB), loadAllProjects(env.DB)]);
-      memo = { at: now, value: { ...buildAdminView(jobs, kids, now, projects), updatedAt: new Date(now).toISOString() } };
-    }
-    return Response.json({ success: true, ...memo.value }, { headers });
+    return Response.json({ success: true, ...(await revealsAdminView(env)) }, { headers });
   } catch (err) {
     // 500, not 502: Cloudflare replaces 502 bodies with its own error page
     return Response.json({ success: false, error: err.message, reveals: [], jobs: {} }, { status: 500, headers });

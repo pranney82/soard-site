@@ -208,6 +208,11 @@ export function WriteEmail({ addToast = () => {} }) {
       setEmail(r.email); setStatus(r.status); setMissing(r.missing || []); setSaved('saved'); preview(r.email);
     } catch (e) { addToast(e.message, 'error'); }
   };
+  // A link to one email (#messages/write/em_…, as the SOARD connection for Claude hands out) opens it
+  useEffect(() => {
+    const m = /^#messages\/write\/(em_[a-z0-9]{8,24})$/.exec(location.hash);
+    if (m) open(m[1]);
+  }, []);
 
   const save = useCallback(async () => {
     if (inFlight.current) await inFlight.current.catch(() => null);

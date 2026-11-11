@@ -18,7 +18,11 @@ import { EmailFrame, WidthSwitch } from './email-sheet.js';
 const html = htm.bind(h);
 const API = '/api/email-words-admin';
 
-/** What each box says, under its name */
+/** What each box says, under its name (a part can say more for one kind of email) */
+const HINTS_FOR = {
+  // The recap's opening is the event page's thank-you note when it has one: change it there to change both
+  recap: { opening: 'Starts as the event page’s Thank-you note, set on the event in the admin. Words here change the email only. **Two stars** make words bold, *one star* sets a word in italics, and [words](https://a-link) makes a link.' },
+};
 const HINTS = {
   subject: 'What the inbox shows first.',
   preview: 'The gray line after the subject in the inbox.',
@@ -167,7 +171,7 @@ function EditWordsSheet({ emailKey, title, edited = false, onClose, onSaved, add
                 </div>
                 ${p.many ? html`<textarea id=${id} class="form-textarea" rows="5" maxlength=${p.max} value=${words[p.key] || ''} placeholder=${own[p.key] || ''} onInput=${(e) => set(p.key, e.target.value)} />`
                   : html`<input id=${id} class="form-input" maxlength=${p.max} value=${words[p.key] || ''} placeholder=${own[p.key] || ''} onInput=${(e) => set(p.key, e.target.value)} />`}
-                ${HINTS[p.key] ? html`<span class="form-hint">${HINTS[p.key]}</span>` : null}
+                ${(HINTS_FOR[d.kind]?.[p.key] || HINTS[p.key]) ? html`<span class="form-hint">${HINTS_FOR[d.kind]?.[p.key] || HINTS[p.key]}</span>` : null}
               </div>`;
             })}
             ${d.by && any ? html`<p class="ew-own">Last changed by ${who(d.by)}${d.at ? `, ${when(d.at)}` : ''}.</p>` : null}

@@ -142,11 +142,13 @@ async function rows(DB, sql, ...binds) {
 }
 /** Milliseconds since an event's last day (noon UTC that day, about the morning after in Atlanta) */
 const sinceOver = (ev, now) => now - Date.parse(`${lastDay(ev)}T12:00:00Z`);
-async function loadEvents(DB) {
+/** Every event the site has (each with its slug) */
+export async function loadEvents(DB) {
   const results = await rows(DB, 'SELECT slug, data FROM events');
   return results.map((r) => { try { return { ...JSON.parse(r.data), slug: r.slug }; } catch { return null; } }).filter(Boolean);
 }
-async function loadDocs(DB) {
+/** The series pages' own documents (the gala's and golf's photos and sponsors), by key */
+export async function loadDocs(DB) {
   const keys = SERIES.map((s) => s.doc);
   const results = await rows(DB, `SELECT key, data FROM site_config WHERE key IN (${keys.map(() => '?').join(', ')})`, ...keys);
   const out = {};
@@ -232,7 +234,7 @@ export async function monthReveals(env, month, today, { fetchImpl = fetch, sched
 }
 
 /** The page doc an event's recap reads (the Gala or Golf editor's), or null */
-const docFor = (ev, docs) => (seriesOf(ev) ? docs[seriesOf(ev).doc] || null : null);
+export const docFor = (ev, docs) => (seriesOf(ev) ? docs[seriesOf(ev).doc] || null : null);
 
 /**
  * Does the live recap page show the photos yet? Saved photos reach the site
