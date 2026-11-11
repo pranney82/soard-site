@@ -125,9 +125,9 @@ export async function onRequestPost(context) {
       const view = await checkinView(env);
       out.results = results;
       if (fresh.length) out.print = await printLabels(env, fresh.flatMap((r) => labelsFor(view, r)));
-      const said = [];
-      for (const j of jobs) said.push(await writeKidNow(env, j));
-      out.jt = said.length && said.every((x) => x === 'written') ? 'written' : said.includes('later') ? 'later' : said[0] || 'off';
+      // JobTread in the background: the done sheet doesn't wait on it, kid after kid (the heartbeat backs it up)
+      const write = (async () => { for (const j of jobs) await writeKidNow(env, j); })();
+      if (context.waitUntil) { context.waitUntil(write); out.jt = 'later'; } else { await write; out.jt = 'later'; }
       return Response.json({ success: true, ...out, view: { ...(await checkinView(env)), printer: await printerStatus(env) } }, { headers });
     }
     if (q.get('receive') || q.get('other')) {

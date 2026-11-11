@@ -137,7 +137,7 @@ export function findBox(view, reads, label) {
     if (!hits.length) {
       // The order is known and everything in it is checked in already (the second box of a shipment)
       const kid = view.kids.find((k) => k.items.some((i) => i.order?.key === key));
-      return kid ? { kid: kid.jobId, short: kid.short, items: [], done: true, exact: true, how } : null;
+      return kid ? { kid: kid.jobId, short: kid.short, items: [], done: true, exact: true, order: key, how } : null;
     }
     const kid = hits[0].kid;
     return { kid: kid.jobId, short: kid.short, items: hits.filter((h) => h.kid === kid).map((h) => h.item.id), how, exact: true };

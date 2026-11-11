@@ -187,7 +187,7 @@ function render() {
   let html = state.needsLook.length && !state.query && state.filter === 'All'
     ? `<button class="strip" type="button" id="looks"><b>Needs a look</b><span class="count-warn">${state.needsLook.length}</span>${ICON.chev}</button>` : '';
   // All kids: what's coming, by shipment, delivered first. One kid (or a search): their list
-  if (state.filter === 'All' && !state.query) { $('list').innerHTML = html + shipmentsHtml(); showPrinter(); return; }
+  if (state.filter === 'All' && !state.query) { $('list').innerHTML = shipmentsHtml(html); showPrinter(); return; }
   for (const kid of state.kids.filter((k) => state.filter === 'All' || k.short === state.filter)) {
     const items = kid.items.filter((it) => matches(kid, it));
     if (state.query && !items.length) continue;
@@ -242,12 +242,24 @@ function close() {
   if (sheet?.style.transform) { sheet.style.transition = 'transform 240ms cubic-bezier(0.32, 0, 0.67, 0)'; sheet.style.transform = 'translateY(100%)'; }
   scrim.classList.add('closing');
   clearTimeout(closeTimer);
-  return new Promise((resolve) => { closeTimer = setTimeout(() => { $('sheet-root').innerHTML = ''; resolve(); }, reduced() ? 0 : 240); });
+  return new Promise((resolve) => {
+    closeTimer = setTimeout(() => {
+      $('sheet-root').innerHTML = '';
+      // What changed while the sheet was up shows once it's gone; focus goes back to what opened it (or the next card)
+      if (state.renderOnClose) { state.renderOnClose = false; render(); }
+      const back = state.openedFrom && document.querySelector(state.openedFrom);
+      (back || document.querySelector('#list .ship, #list .row, #list button'))?.focus({ preventScroll: true });
+      state.openedFrom = null;
+      resolve();
+    }, reduced() ? 0 : 240);
+  });
 }
 
 /** A new sheet rises; a sheet turning into the next one keeps its place and eases to its new height */
 function openSheet(inner, { keep = false, label = '' } = {}) {
   clearTimeout(closeTimer);
+  // Where focus goes back to when it closes
+  if (!sheetEl()) { const a = document.activeElement; state.openedFrom = a?.dataset?.ship ? `[data-ship="${CSS.escape(a.dataset.ship)}"]` : a?.id ? `#${CSS.escape(a.id)}` : null; }
   const root = $('sheet-root');
   const sheet = sheetEl();
   if (keep && sheet && !root.querySelector('.scrim.closing')) {
@@ -793,9 +805,14 @@ function showFound({ found, label, likely = [] }, preview) {
   state.foundBoxes = Number(label?.boxTotal) || 1;
   // The box's own order (its tracking or order number, the product's model): its shipment, what it matched ticked
   if (kid && found.done) {
-    openSheet(`${head(`Everything from that order is checked in`, { sub: esc(`${kid.short} · ${found.how}`) })}
-      <button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan the next box</button>
-      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button></div>`, { keep: true });
+    // Its order is all checked in: where its box goes, and its labels again if this one lost its own
+    const sh = state.shipments.find((x) => x.key === found.order);
+    const ins = kid.items.filter((i) => sh && i.order?.key === sh.key).flatMap((i) => (i.receipts || []).filter((r) => r.kind === 'receive' && !r.undone));
+    openSheet(`${head('Everything from that order is checked in', { sub: esc(`${kid.short} · ${found.how}`) })}
+      <div class="shelf-callout static"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><b>${esc(kid.shelf || 'Shelf')}</b></div>
+      <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan the next box</button>
+      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button>${ins.length ? '<button class="btn btn-text" type="button" id="reprintall">Print its labels again</button>' : ''}</div></div>`, { keep: true });
+    if ($('reprintall')) $('reprintall').onclick = async () => { let said = null; for (const r of ins) { try { said = printSaid((await send('reprint', { tap: r.id })).print); } catch (err) { said = { text: err.message }; } } toast(said?.text || ''); };
     return;
   }
   const shipsOf = (list) => [...new Set(list.map((i) => state.shipments.find((x) => x.items.some((y) => y.id === i.id))?.key).filter(Boolean))];
@@ -827,13 +844,14 @@ function showFound({ found, label, likely = [] }, preview) {
   // number): the shipments it most likely came in (from the store the label names, delivered lately), then the rest
   // that were delivered and wait to be checked in, for one tap; or the packing slip inside
   const keys = [];
-  for (const x of likely) { const sh = state.shipments.find((s2) => s2.items.some((i) => i.id === x.item)); if (sh && sh.stage !== 'in' && !keys.includes(sh.key)) keys.push(sh.key); }
-  for (const sh of state.shipments) if (sh.stage === 'delivered' && !keys.includes(sh.key)) keys.push(sh.key);
+  // A box at the Office isn't one going to the house, or one checked in already
+  for (const x of likely) { const sh = state.shipments.find((s2) => s2.items.some((i) => i.id === x.item)); if (sh && !['in', 'house'].includes(stageOf(sh)) && !keys.includes(sh.key)) keys.push(sh.key); }
+  for (const sh of state.shipments) if (stageOf(sh) === 'delivered' && !keys.includes(sh.key)) keys.push(sh.key);
   const cards = keys.slice(0, 8).map((k) => shipCard(state.shipments.find((x) => x.key === k), { compact: true })).join('');
   openSheet(`${head(cards ? 'Which shipment is it?' : 'Couldn’t match this box', { sub: bits.length ? `Read: ${bits.map(esc).join(' · ')}` : 'Nothing readable on the label' })}
     ${cards ? `<div class="ship-pick">${cards}</div>` : `<img class="photo" src="${preview}" alt="The photo of the box's label" />`}
-    <button class="btn ${cards ? '' : 'btn-primary '}btn-big" type="button" data-rescan="1"${cards ? '' : ' data-focus'}>Scan the packing slip or the product’s box</button>
-    <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div>`, { keep: true });
+    <div class="sheet-foot"><button class="btn ${cards ? '' : 'btn-primary '}btn-big" type="button" data-rescan="1"${cards ? '' : ' data-focus'}>Scan the packing slip or the product’s box</button>
+    <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div></div>`, { keep: true });
 }
 
 // ─── Wiring ─────────────────────────────────────────────────────────
@@ -1427,14 +1445,13 @@ async function scanLabels(scope) {
 
 const kidOfItem = (id) => state.kids.find((k) => k.items.some((i) => i.id === id));
 const itemOfId = (id) => kidOfItem(id)?.items.find((i) => i.id === id);
-const when = (iso) => {
+const when = (iso, { cap = false } = {}) => {
   if (!iso) return '';
   const d = new Date(iso), now = new Date();
   const days = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / DAY);
-  if (days === 0) return `today ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
-  if (days === 1) return 'yesterday';
-  if (days < 7) return d.toLocaleDateString('en-US', { weekday: 'long' });
-  return dayOf(iso);
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s(AM|PM)$/, ' $1');
+  const out = days === 0 ? `today ${time}` : days === 1 ? 'yesterday' : days < 7 ? d.toLocaleDateString('en-US', { weekday: 'long' }) : dayOf(iso);
+  return cap ? out[0].toUpperCase() + out.slice(1) : out;
 };
 const expectedOn = (ymd) => {
   if (!ymd) return '';
@@ -1445,40 +1462,55 @@ const expectedOn = (ymd) => {
   if (days > 1 && days < 7) return d.toLocaleDateString('en-US', { weekday: 'long' });
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
-const shipStatus = (sh) => (sh.stage === 'delivered' ? ['delivered', `Delivered ${when(sh.deliveredAt)}`]
-  : sh.stage === 'pickup' ? ['out', 'Ready for pickup']
-  : sh.stage === 'house' ? ['ordered', 'Going to the house']
-  : sh.stage === 'out' ? ['out', 'Out for delivery']
-    : sh.stage === 'shipped' ? ['shipped', sh.expected ? `Arriving ${expectedOn(sh.expected)}` : 'On the way']
-      : sh.stage === 'in' ? ['in', `Checked in ${when(sh.checkedAt)}`] : ['ordered', `Ordered ${dayOf(sh.orderedAt)}`]);
 const waitingOf = (sh) => sh.items.filter((i) => { const it = itemOfId(i.id); return it && !isHere(it); });
+// Checked in on this phone and not sent yet: it counts as checked in, and says it's waiting
+const sendingOf = (sh) => sh.items.some((i) => (itemOfId(i.id)?.receipts || []).some((r) => r.waiting));
+/** The stage as the page shows it: a shipment all checked in on this phone is checked in, even before it's sent */
+const stageOf = (sh) => (sh.stage !== 'in' && !waitingOf(sh).length ? 'in' : sh.stage);
+// In a section that already says Delivered, the chip says only when
+const shipStatus = (sh) => {
+  const st = stageOf(sh);
+  if (st === 'in' && sendingOf(sh)) return ['out', 'Waiting to send'];
+  return st === 'delivered' ? ['delivered', when(sh.deliveredAt, { cap: true })]
+    : st === 'pickup' ? ['out', 'Ready for pickup']
+      : st === 'house' ? ['ordered', 'Going to the house']
+        : st === 'out' ? ['out', 'Out for delivery']
+          : st === 'shipped' ? ['shipped', sh.expected ? `Arriving ${expectedOn(sh.expected)}` : 'On the way']
+            : st === 'in' ? ['in', `Checked in ${when(sh.checkedAt)}`] : ['ordered', `Ordered ${dayOf(sh.orderedAt)}`];
+};
 
-/** One shipment: the store, where it is, the kids' faces and what's in it; tapping it checks it in */
+/** One shipment: the store, its order number, where it is, what's still to check in (with each kid's face) and what's on shelves */
 function shipCard(sh, { compact = false } = {}) {
   if (!sh) return '';
   const [cls, words] = shipStatus(sh);
   const waiting = waitingOf(sh);
-  const kidsIn = [...new Set(sh.items.map((i) => kidOfItem(i.id)?.jobId).filter(Boolean))].map(kidById);
-  const shown = sh.items.slice(0, compact ? 2 : 4);
-  return `<button class="ship card stage-${cls}" type="button" data-ship="${esc(sh.key)}" aria-label="${esc(`${sh.store}, ${words}, ${plural(sh.items.length, 'item')}`)}">
-    <span class="ship-head"><span class="ship-store"><b>${esc(sh.store)}</b>${sh.orderNumber ? `<span>Order ${esc(sh.orderNumber)}</span>` : ''}</span><span class="ship-chip ${cls}">${esc(words)}</span></span>
-    <span class="ship-items">${shown.map((i) => { const it = itemOfId(i.id); const k = kidOfItem(i.id); return it ? `<span class="ship-item${isHere(it) ? ' here' : ''}">${face(k, 24)}<span class="si-name">${esc(it.name)}</span>${isHere(it) ? `<span class="tag-here">${esc(shelfName(it.shelf) || 'Here')}</span>` : ''}</span>` : ''; }).join('')}
-      ${sh.items.length > shown.length ? `<span class="ship-more">and ${plural(sh.items.length - shown.length, 'more thing')}</span>` : ''}</span>
-    ${!compact && waiting.length ? `<span class="ship-go${cls === 'delivered' ? ' primary' : ''}">${waiting.length === sh.items.length ? (waiting.length === 1 ? 'Check it in' : `Check in all ${waiting.length}`) : `Check in the ${waiting.length} left`}${kidsIn.length > 1 ? ` · ${kidsIn.length} kids` : ''}</span>` : ''}
+  const here = sh.items.filter((i) => !waiting.includes(i));
+  const kidsWaiting = [...new Set(waiting.map((i) => kidOfItem(i.id)?.jobId).filter(Boolean))].map(kidById);
+  const shown = waiting.slice(0, compact ? 2 : 4);
+  const more = waiting.length - shown.length;
+  const label = `${sh.store}, ${words}${waiting.length ? `, ${waiting.length} to check in for ${kidsWaiting.map((k) => k.short).join(' and ')}` : ', all checked in'}`;
+  return `<button class="ship card stage-${cls}" type="button" data-ship="${esc(sh.key)}" aria-label="${esc(label)}">
+    <span class="ship-head"><b class="ship-name">${esc(sh.store)}</b><span class="ship-chip ${cls}">${esc(words)}</span>${sh.orderNumber ? `<span class="ship-order">Order ${esc(sh.orderNumber)}</span>` : ''}</span>
+    <span class="ship-items">${shown.map((i) => { const it = itemOfId(i.id); return it ? `<span class="ship-item">${face(kidOfItem(i.id), 24)}<span class="si-name">${esc(it.name)}</span></span>` : ''; }).join('')}
+      ${more > 0 ? `<span class="ship-more">and ${plural(more, 'more thing')}</span>` : ''}
+      ${here.length ? `<span class="ship-more">${here.length === sh.items.length ? (sendingOf(sh) ? `${plural(here.length, 'thing')} checked in on this phone` : `All ${plural(here.length, 'thing')} on shelves`) : `${here.length} on shelves`}</span>` : ''}</span>
+    ${!compact && waiting.length ? `<span class="ship-go"><span>${waiting.length === sh.items.length ? (waiting.length === 1 ? 'Check it in' : `Check in all ${waiting.length}`) : `Check in the ${waiting.length} left`}${kidsWaiting.length > 1 ? ` · ${kidsWaiting.length} kids` : ''}</span>${ICON.chev}</span>` : ''}
   </button>`;
 }
 
-function shipmentsHtml() {
+/** Check in, All: shipments by stage; Needs a look below what's on the way, so what arrived leads */
+function shipmentsHtml(looks = '') {
   const weekAgo = Date.now() - 7 * DAY;
+  const at = (st) => state.shipments.filter((x) => stageOf(x) === st);
   const groups = {
-    delivered: state.shipments.filter((x) => x.stage === 'delivered' && Date.parse(x.deliveredAt || 0) >= weekAgo),
-    out: state.shipments.filter((x) => x.stage === 'out'),
-    pickup: state.shipments.filter((x) => x.stage === 'pickup'),
-    house: state.shipments.filter((x) => x.stage === 'house'),
-    shipped: state.shipments.filter((x) => x.stage === 'shipped'),
-    earlier: state.shipments.filter((x) => x.stage === 'delivered' && Date.parse(x.deliveredAt || 0) < weekAgo),
-    ordered: state.shipments.filter((x) => x.stage === 'ordered'),
-    in: state.shipments.filter((x) => x.stage === 'in' && Date.parse(x.checkedAt || 0) >= Date.now() - 3 * DAY),
+    delivered: at('delivered').filter((x) => Date.parse(x.deliveredAt || 0) >= weekAgo),
+    pickup: at('pickup'),
+    out: at('out'),
+    shipped: at('shipped'),
+    earlier: at('delivered').filter((x) => Date.parse(x.deliveredAt || 0) < weekAgo),
+    ordered: at('ordered'),
+    house: at('house'),
+    in: at('in').filter((x) => sendingOf(x) || Date.parse(x.checkedAt || 0) >= Date.now() - 3 * DAY),
   };
   const open = (k) => state.openShips?.has(k);
   const section = (k, title, list, folded = false) => {
@@ -1490,6 +1522,7 @@ function shipmentsHtml() {
     + section('pickup', 'Ready for pickup', groups.pickup)
     + section('out', 'Out for delivery', groups.out)
     + section('shipped', 'On the way', groups.shipped)
+    + looks
     + section('earlier', 'Delivered more than a week ago', groups.earlier, true)
     + section('ordered', 'Ordered, not shipped yet', groups.ordered, true)
     + section('house', 'Shipped to the house', groups.house, true)
@@ -1498,8 +1531,9 @@ function shipmentsHtml() {
 }
 
 /**
- * A shipment: each thing in it with its kid, ticked to check in, and how many boxes it came in; one tap checks them
- * all in and prints every label. What's here already shows where it is
+ * A shipment: what came, by kid (each kid's face and shelf once), each thing ticked when its delivered email named it
+ * (what isn't delivered yet sits below, unticked), and how many boxes it came in; one tap checks them in and prints
+ * every label. What's here already shows where it is
  */
 function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = false } = {}) {
   const sh = state.shipments.find((x) => x.key === key);
@@ -1507,23 +1541,47 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
   const [, words] = shipStatus(sh);
   const waiting = waitingOf(sh);
   const done = sh.items.filter((i) => !waiting.includes(i));
+  const someDelivered = waiting.some((i) => i.delivered);
   const boxes = new Map(waiting.map((i) => [i.id, pick?.length === 1 && pick.includes(i.id) ? Math.max(1, preset) : 1]));
-  const ticked = new Set(waiting.map((i) => i.id).filter((id) => !pick || pick.includes(id)));
+  // A label scanned: what it matched. Else what the delivered email named (when it named some); else all of it
+  const ticked = new Set(waiting.map((i) => i.id).filter((id) => (pick ? pick.includes(id) : !someDelivered || waiting.find((i) => i.id === id).delivered)));
   for (const i of waiting) if (!state.shipTaps.has(i.id)) state.shipTaps.set(i.id, newTap());
   const taps = state.shipTaps;
+  const byKid = new Map();
+  for (const i of [...waiting].sort((a, b) => Number(ticked.has(b.id)) - Number(ticked.has(a.id)))) { const k = kidOfItem(i.id); byKid.set(k.jobId, [...(byKid.get(k.jobId) || []), i]); }
+  const many = byKid.size > 1;
   const row = (i) => {
     const it = itemOfId(i.id), k = kidOfItem(i.id);
-    return `<div class="look ship-row"><label class="sr-check"><input type="checkbox" data-shipitem="${esc(i.id)}"${ticked.has(i.id) ? ' checked' : ''} aria-label="Check in ${esc(it.name)}" /></label>
-      ${face(k, 32)}<span class="sr-body"><b>${esc(it.name)}</b><span>${esc([k.short, it.line, it.qty - (it.got || 0) > 1 ? `${it.qty - (it.got || 0)} of them` : null].filter(Boolean).join(' · '))}</span></span>
-      <span class="mini-step" data-boxes="${esc(i.id)}"><button type="button" data-bstep="-1" aria-label="One box fewer">−</button><output>${boxes.get(i.id)}</output><button type="button" data-bstep="1" aria-label="One box more">+</button></span></div>`;
+    const left = it.qty - (it.got || 0);
+    const sub = [many ? null : k.short, it.line, left > 1 ? `${left} of them` : null, someDelivered && !i.delivered && !pick ? 'Not delivered yet' : null].filter(Boolean).join(' · ');
+    return `<label class="look ship-row${many ? ' no-face' : ''}"><input type="checkbox" data-shipitem="${esc(i.id)}"${ticked.has(i.id) ? ' checked' : ''} />
+      ${many ? '' : face(k, 32)}<span class="sr-name">${esc(it.name)}</span>
+      <span class="sr-sub">${esc(sub)}</span>
+      <span class="mini-step" data-boxes="${esc(i.id)}"><button type="button" data-bstep="-1" aria-label="${esc(it.name)}: one box fewer">−</button><output aria-label="Boxes">${boxes.get(i.id)}</output><button type="button" data-bstep="1" aria-label="${esc(it.name)}: one box more">+</button></span></label>`;
   };
   const labelCount = () => [...ticked].reduce((t, id) => t + boxes.get(id), 0);
   const goWords = () => (ticked.size ? `Check in and print ${plural(labelCount(), 'label')}` : 'Tick what came');
-  openSheet(`${head(esc(sh.store), { sub: esc([sh.orderNumber ? `Order ${sh.orderNumber}` : null, words, how].filter(Boolean).join(' · ')) })}
-    ${waiting.length ? `<div class="label-above ship-boxes-h"><span>What came</span><span>Boxes</span></div><div class="pick">${waiting.map(row).join('')}</div>` : ''}
-    ${done.length ? `<div class="pick">${done.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return it ? `<div class="look ship-row done">${face(k, 32)}<span class="sr-body"><b>${esc(it.name)}</b><span>${esc(k.short)}</span></span><span class="tag-here">${esc(it.status === 'house' ? 'House' : it.status === 'out' ? 'Loaded' : shelfName(it.shelf) || 'Here')}</span></div>` : ''; }).join('')}</div>` : ''}
+  // The order number is on the line already: the match says only what else it was
+  const sub = [sh.orderNumber ? `Order ${sh.orderNumber}` : null, words, how && !(sh.orderNumber && how.includes(sh.orderNumber)) ? how : null].filter(Boolean).join(' · ');
+  openSheet(`${head(esc(sh.store), { sub: esc(sub) })}
+    ${waiting.length ? [...byKid].map(([jobId, list]) => { const k = kidById(jobId); return `<div class="pick">${many ? `<div class="look kid-row">${face(k, 32)}<b>${esc(k.short)}</b><span>${esc(k.shelf || 'Next free shelf')}</span></div>` : ''}${list.map(row).join('')}</div>`; }).join('') : ''}
+    ${done.length ? `<div class="label-above">On shelves</div><div class="pick">${done.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return it ? `<div class="look ship-row done">${face(k, 32)}<span class="sr-name">${esc(it.name)}</span><span class="sr-sub">${esc(k.short)}</span><span class="tag-here">${esc(it.status === 'house' ? 'House' : it.status === 'out' ? 'Loaded' : shelfName(it.shelf) || 'Here')}</span></div>` : ''; }).join('')}</div>` : ''}
     ${waiting.length ? `<div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="shipgo" data-focus>${goWords()}</button>
       ${sh.house ? '<button class="btn btn-text" type="button" id="shiphouse">Not coming here: it went to the house</button>' : ''}</div>` : ''}`, { keep });
+  const refresh = () => { const b = $('shipgo'); if (b) { b.textContent = goWords(); b.disabled = !ticked.size; } };
+  document.querySelectorAll('#sheet-root [data-shipitem]').forEach((c) => { c.onchange = () => { if (c.checked) ticked.add(c.dataset.shipitem); else ticked.delete(c.dataset.shipitem); refresh(); }; });
+  document.querySelectorAll('#sheet-root [data-boxes]').forEach((el) => {
+    el.querySelectorAll('[data-bstep]').forEach((b) => {
+      b.onclick = (e) => {
+        // The stepper sits inside the row's label: a tap on it changes the boxes, never the tick
+        e.preventDefault();
+        const id = el.dataset.boxes;
+        boxes.set(id, Math.min(20, Math.max(1, boxes.get(id) + Number(b.dataset.bstep))));
+        el.querySelector('output').textContent = boxes.get(id);
+        refresh();
+      };
+    });
+  });
   if ($('shiphouse')) $('shiphouse').onclick = async () => {
     for (const i of waiting.filter((x) => ticked.has(x.id))) {
       const it = itemOfId(i.id), k = kidOfItem(i.id);
@@ -1533,64 +1591,76 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
     render();
     toast('Marked as gone to the house');
   };
-  const refresh = () => { const b = $('shipgo'); if (b) { b.textContent = goWords(); b.disabled = !ticked.size; } };
-  document.querySelectorAll('#sheet-root [data-shipitem]').forEach((c) => { c.onchange = () => { if (c.checked) ticked.add(c.dataset.shipitem); else ticked.delete(c.dataset.shipitem); refresh(); }; });
-  document.querySelectorAll('#sheet-root [data-boxes]').forEach((el) => {
-    el.querySelectorAll('[data-bstep]').forEach((b) => {
-      b.onclick = () => {
-        const id = el.dataset.boxes;
-        boxes.set(id, Math.min(20, Math.max(1, boxes.get(id) + Number(b.dataset.bstep))));
-        el.querySelector('output').textContent = boxes.get(id);
-        refresh();
-      };
-    });
-  });
   if (!$('shipgo')) return;
-  $('shipgo').onclick = async () => {
+  $('shipgo').onclick = () => {
     const chosen = waiting.filter((i) => ticked.has(i.id));
     if (!chosen.length) return;
     const items = chosen.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return { tap: taps.get(i.id), jobId: k.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: Math.max(1, it.qty - (it.got || 0)), boxes: boxes.get(i.id) }; });
-    $('shipgo').disabled = true;
-    $('shipgo').innerHTML = `<span class="spin" aria-hidden="true"></span>Checking in ${plural(items.length, 'thing')}`;
-    let r;
-    try { r = await sendOrKeep('receive', { items }); } catch (err) {
-      $('shipgo').disabled = false; $('shipgo').textContent = `Try again: ${err.message}`;
-      return;
-    }
-    shipDone(sh, items, r);
+    shipDone(sh, items);
   };
 }
 
-/** After a shipment is checked in: each kid's shelf to put their things on, the labels, what didn't go */
-function shipDone(sh, items, r) {
-  for (const it of items) state.shipTaps.delete(it.itemId ? [...state.shipTaps].find(([, t]) => t === it.tap)?.[0] : null);
+/**
+ * Checking a shipment in: the done sheet rises at once (Saving, then a tick, as a single check-in does), then says
+ * where each kid's things go, by name, with the labels' state; Print again when they didn't print; Undo takes the
+ * whole shipment back
+ */
+async function shipDone(sh, items) {
+  const byKid = new Map();
+  for (const it of items) byKid.set(it.jobId, [...(byKid.get(it.jobId) || []), it]);
+  const labels = items.reduce((t, it) => t + it.boxes, 0);
+  const callouts = (shelfOf) => [...byKid].map(([jobId, list]) => { const k = kidById(jobId); return `<div class="shelf-callout static"><span class="who">${face(k, 36)}${esc(k?.short || '')}</span><b>${esc(shelfOf(jobId) || '…')}</b>
+      <span class="sc-items">${list.map((x) => `<span>${esc(x.name)}${x.boxes > 1 ? ` (${x.boxes} boxes)` : ''}</span>`).join('')}</span></div>`; }).join('');
+  openSheet(`<div class="sheet-head"><div><h3 tabindex="-1" data-focus>${esc(sh.store)}</h3><div class="sheet-sub" id="shipsaid">Checking in ${plural(items.length, 'thing')}</div></div>
+      <button class="x" type="button" data-close="1" aria-label="Close">${ICON.x}</button></div>
+    <div class="done-line" id="saved" style="--after:0ms">${ICON.wait}<span>Saving</span></div>
+    <div class="done-line sub" id="printed" hidden></div>
+    <div id="callouts">${callouts((j) => kidById(j)?.shelf)}</div>
+    <div class="after"><button class="btn btn-primary btn-big" type="button" id="next">Scan the next box</button>
+      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button><button class="btn btn-text" type="button" id="shipundo" hidden>Undo</button></div></div>`, { keep: true });
+  $('next').onclick = async () => { await close(); scan(); };
+  state.renderOnClose = true;
+  let r;
+  try { r = await sendOrKeep('receive', { items }); } catch (err) {
+    tones.warn();
+    $('saved').innerHTML = `${ICON.warn}<span>Not saved: ${esc(err.message)}</span>`;
+    $('next').textContent = 'Try again';
+    // The same ids: if the site did save some before the error, trying again can't count them twice
+    $('next').onclick = () => shipDone(sh, items);
+    return;
+  }
+  const results = new Map((r.out?.results || []).map((x) => [x.tap, x]));
+  const refused = items.filter((it) => results.get(it.tap)?.error);
+  const ok = items.filter((it) => !refused.includes(it));
+  for (const it of ok) state.shipTaps.delete([...state.shipTaps].find(([, t]) => t === it.tap)?.[0]);
   if (r.queued) {
     // Waiting on the phone: shown as here at once, so it can't be checked in a second time meanwhile
     for (const it of items) {
-      const x = itemOfId(`${it.itemId}|${it.partKey}`) || kidById(it.jobId)?.items.find((i) => i.itemId === it.itemId && i.partKey === it.partKey);
+      const x = kidById(it.jobId)?.items.find((i) => i.itemId === it.itemId && i.partKey === it.partKey);
       if (x) { x.got = (x.got || 0) + it.units; x.status = x.got >= x.qty ? 'here' : 'partly'; x.receipts = [...(x.receipts || []), { id: it.tap, kind: 'receive', units: it.units, boxes: it.boxes, shelf: null, at: new Date().toISOString(), waiting: true }]; }
     }
   }
-  const byKid = new Map();
-  const results = new Map((r.out?.results || []).map((x) => [x.tap, x]));
-  const refused = [];
-  for (const it of items) {
-    const x = results.get(it.tap);
-    if (x?.error) { refused.push(`${it.name}: ${x.error}`); continue; }
-    const k = kidById(it.jobId);
-    const e = byKid.get(it.jobId) || { k, n: 0, labels: 0, shelf: x?.shelf || k?.shelves?.[0] || null };
-    e.n++; e.labels += it.boxes;
-    byKid.set(it.jobId, e);
-  }
-  const labels = [...byKid.values()].reduce((t, e) => t + e.labels, 0);
+  if (refused.length) tones.warn(); else tones.ok();
   const p = printSaid(r.queued ? null : r.out?.print);
-  tones.wake(); if (refused.length) tones.warn(); else tones.ok();
-  openSheet(`${head(esc(sh.store), { sub: r.queued ? 'Saved on this phone. It goes to JobTread when the connection is back.' : `${plural(items.length - refused.length, 'thing')} checked in${r.out?.jt === 'written' ? ', in JobTread' : ''}` })}
-    <div class="done-line" style="--after:0ms">${p.ok ? ICON.tick : ICON.warn}<span>${esc(r.queued ? `${plural(labels, 'label')} print when it’s sent` : p.ok ? `${plural(labels, 'label')} printing` : p.text)}</span></div>
-    ${[...byKid.values()].map((e) => `<div class="shelf-callout static"><span class="who">${face(e.k, 36)}${esc(e.k?.short || '')} · ${plural(e.n, 'thing')}</span><b>${esc(e.shelf ? shelfName(e.shelf) : 'Next free')}</b></div>`).join('')}
-    ${refused.length ? `<p class="why-line">Not checked in: ${esc(refused.join('; '))}</p>` : ''}
-    <div class="after"><button class="btn btn-primary btn-big" type="button" id="next" data-focus>Scan the next box</button>
-      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button></div></div>`, { keep: true });
-  $('next').onclick = async () => { await close(); scan(); };
-  render();
+  $('shipsaid').textContent = r.queued ? 'Saved on this phone. It goes to JobTread when the connection is back.' : `${plural(ok.length, 'thing')} checked in${refused.length ? `, ${refused.length} not` : ''}`;
+  $('saved').innerHTML = `${refused.length ? ICON.warn : ICON.tick}<span>${esc(refused.length ? `Not checked in: ${refused.map((it) => `${it.name} (${results.get(it.tap).error})`).join('; ')}` : r.queued ? 'Saved on this phone' : 'Saved. JobTread in a minute.')}</span>`;
+  const pr = $('printed');
+  pr.hidden = false;
+  pr.innerHTML = `${p.ok ? ICON.tick : ICON.warn}<span>${esc(r.queued ? `${plural(labels, 'label')} print when it’s sent` : p.ok ? `${plural(labels, 'label')} printing` : p.text)}</span>${!p.ok && !r.queued && r.out?.print?.setUp ? '<button class="btn btn-text inline" type="button" id="again">Print again</button>' : ''}`;
+  const shelfOf = (jobId) => { const x = ok.find((it) => it.jobId === jobId && results.get(it.tap)?.shelf); return x ? shelfName(results.get(x.tap).shelf) : kidById(jobId)?.shelf; };
+  $('callouts').innerHTML = callouts(shelfOf);
+  if ($('again')) $('again').onclick = async () => {
+    let said = null;
+    for (const it of ok) { try { said = printSaid((await send('reprint', { tap: it.tap })).print); } catch (err) { said = { text: err.message }; } }
+    pr.querySelector('span').textContent = said?.text || '';
+  };
+  const undo = $('shipundo');
+  undo.hidden = !ok.length;
+  undo.onclick = async () => {
+    for (const it of ok) { try { await undoTap(it.tap); } catch (err) { toast(err.message); return; } }
+    tones.undo();
+    await close();
+    render();
+    toast('Taken back');
+  };
 }

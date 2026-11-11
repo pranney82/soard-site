@@ -438,3 +438,30 @@ body[data-mode="out"] .chips-bar { display: none; }
 .mini-step button { width: 36px; height: 44px; border: 0; border-radius: 10px; background: var(--chip); font-size: 18px; font-weight: 650; }
 .mini-step output { min-width: 22px; text-align: center; font-weight: 750; font-variant-numeric: tabular-nums; }
 .shelf-callout.static { cursor: default; }
+
+/* Shipments, design review: quiet cards (one yellow, the dock), the order number whole, names with room, rows a thumb tall */
+.ship-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 10px; row-gap: 1px; }
+.ship-name { font-size: 17px; font-weight: 750; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.ship-order { grid-column: 1 / -1; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ship-item .si-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ship-go { display: flex; align-items: center; justify-content: space-between; height: 44px; line-height: normal; margin: 2px -16px -14px; padding: 0 16px; border-radius: 0 0 17px 17px; border-top: 1px solid var(--line); background: transparent; color: var(--ink); font-size: 15px; font-weight: 700; text-align: left; }
+.ship-go.primary { background: transparent; color: var(--ink); }
+.fold-n { color: var(--muted); }
+.tag-here { font-family: var(--font); font-size: 13px; font-weight: 750; }
+.chip { height: 44px; }
+.printer-pill { height: 44px; min-width: 44px; }
+.sheet .body-in { animation: body-in 160ms ease-out both; }
+/* The shipment sheet: a whole row toggles its tick; name up to three lines; the boxes stepper on the second line */
+.ship-row { display: grid !important; grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: 'tick face name' 'tick face sub' 'tick face step'; align-items: center; column-gap: 12px; row-gap: 4px; min-height: 56px; cursor: pointer; }
+.ship-row.no-face { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'tick name' 'tick sub' 'tick step'; }
+.ship-row > input { grid-area: tick; width: 22px; height: 22px; margin: 0; accent-color: var(--ink); }
+.ship-row > .face { grid-area: face; width: 32px; height: 32px; align-self: start; }
+.ship-row .sr-name { grid-area: name; font-size: 15px; font-weight: 650; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ship-row .sr-sub { grid-area: sub; font-size: 13px; color: var(--muted); }
+.ship-row .mini-step { grid-area: step; justify-self: end; }
+.ship-row.done { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'face name tag' 'face sub tag'; cursor: default; }
+.ship-row.done .tag-here { grid-area: tag; }
+.mini-step button { width: 44px; height: 44px; }
+.shelf-callout.static { flex-wrap: wrap; }
+.sc-items { flex-basis: 100%; display: grid; gap: 2px; padding-left: 48px; font-size: 14px; color: var(--muted); }
+.sc-items span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
