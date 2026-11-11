@@ -9,8 +9,8 @@ import { buildSync } from 'esbuild';
 
 const load = (entry) => import(`data:text/javascript,${encodeURIComponent(buildSync({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent', packages: 'external' }).outputFiles[0].text)}`);
 const { formatWhen, relativeUntil, revealLabel } = await load('src/utils/live-when.ts');
-const { plannedText, betweenText } = await load('src/utils/live-hero-text.ts');
-const { firstView, messagesInSection, messageHtml } = await load('functions/live/[[path]].js');
+const { plannedText, betweenText, ctasThatApply, ctaPicks } = await load('src/utils/live-hero-text.ts');
+const { firstView, messagesInSection, messageHtml, pastFirst } = await load('functions/live/[[path]].js');
 
 const NOW = Date.parse('2026-11-10T15:00:00Z'); // Tuesday 10 AM Eastern
 const DYLAN = '2026-11-18T21:00:00.000Z';       // Wednesday 4 PM Eastern
@@ -71,3 +71,27 @@ test('a message is drawn as the script draws it, and never as markup', () => {
   assert.equal(messageHtml({ id: 'm1', name: 'Ana', body: 'So happy <3 & "proud"' }), '<li class="msg" data-id="m1" style="animation:none"><span class="msg__name">Ana</span><p class="msg__body">So happy &lt;3 &amp; &quot;proud&quot;</p></li>');
   assert.doesNotMatch(messageHtml({ id: 'x"><script>', name: '<b>', body: '' }), /<script>|<b>/);
 });
+
+test('the hero’s two buttons: the same rule for the server and the page', () => {
+  const base = { scheduledAt: DYLAN, remindUsable: true, pageKid: 'dylan-2026', inSchedule: true, pastOnPage: true, hasPlayer: false, now: NOW };
+  const picks = (f) => { const a = ctasThatApply(f); return ctaPicks(f.display, (k) => !!a[k]); };
+  // Before a reveal: every reveal by email, and the calendar
+  assert.deepEqual(picks({ ...base, display: 'upcoming', view: 'upcoming' }), ['cta-remind', 'cta-calendar']);
+  // Reminders off: the calendar and Share
+  assert.deepEqual(picks({ ...base, display: 'upcoming', view: 'upcoming', remindUsable: false }), ['cta-calendar', 'cta-share']);
+  // Past its time: no reminders, no calendar
+  assert.deepEqual(picks({ ...base, display: 'upcoming', view: 'upcoming', now: Date.parse(DYLAN) + 60e3 }), ['cta-share', 'cta-donate']);
+  // Max's page between reveals: email, and his own invite
+  assert.deepEqual(picks({ ...base, pageKid: 'max', display: 'idle', view: 'idle' }), ['cta-remind', 'cta-calendar']);
+  // /live/ between reveals: email, then past reveals
+  assert.deepEqual(picks({ ...base, pageKid: '', inSchedule: false, display: 'idle', view: 'idle' }), ['cta-remind', 'cta-past']);
+});
+
+test('between reveals, past reveals go before the story in the page itself, so a page that arrives in pieces is drawn in order', () => {
+  const html = '<div class="live-page"><section id="live-hero"></section><!--live-body--><section class="live-body"></section><div class="live-next"></div><!--live-past--><div class="live-past"><section id="past-reveals"></section></div><!--/live-past--></div>';
+  const out = pastFirst(html);
+  assert.ok(out.indexOf('class="live-past"') < out.indexOf('class="live-body"'));
+  assert.equal(out.match(/class="live-past"/g).length, 1);
+  assert.equal(pastFirst('<div>none</div>'), null);
+});
+

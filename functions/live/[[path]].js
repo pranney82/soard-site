@@ -42,8 +42,9 @@ import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
 import { barFor, addBar, PAGE_REUSE } from '../_apply-bar.js';
 import { upcomingReveals } from '../_kid-reveal.js';
 import { heroRowsHtml, rowsSignature, afterLine } from '../../src/utils/upcoming-rows.ts';
-import { plannedText, betweenText } from '../../src/utils/live-hero-text.ts';
+import { plannedText, betweenText, ctasThatApply, ctaPicks } from '../../src/utils/live-hero-text.ts';
 import { messagesOpen, listShown } from '../api/_live-messages.js';
+import { emailConfigured } from '../api/_broadcast-notify.js';
 
 const ACTIVE = new Set(['scheduled', 'armed', 'live', 'ending', 'replay']);
 const SITE = 'https://sunshineonaranneyday.com';
@@ -209,6 +210,17 @@ export function messagesInSection(html) {
   return rest.slice(0, at) + panel + rest.slice(at);
 }
 
+/** Past reveals moved up to where they're seen between reveals (before the story and reminders) → the page, or null */
+export function pastFirst(html) {
+  const a = html.indexOf('<!--live-past-->');
+  const b = html.indexOf('<!--/live-past-->');
+  if (a < 0 || b < a) return null;
+  const block = html.slice(a, b + '<!--/live-past-->'.length);
+  const rest = html.slice(0, a) + html.slice(b + '<!--/live-past-->'.length);
+  const at = rest.indexOf('<!--live-body-->');
+  return at < 0 ? null : rest.slice(0, at) + block + rest.slice(at);
+}
+
 /** One message as the page script draws it (live-messages.ts add, as a fresh load does: no entrance) */
 export const messageHtml = (m) => `<li class="msg" data-id="${escHtml(m.id)}" style="animation:none"><span class="msg__name">${escHtml(m.name)}</span><p class="msg__body">${escHtml(m.body)}</p></li>`;
 
@@ -217,21 +229,34 @@ export const messageHtml = (m) => `<li class="msg" data-id="${escHtml(m.id)}" st
  * written into the page, so nothing on screen changes when the script takes over.
  * first: firstView's; messages: { kidName, list } or null
  */
-export async function addFirstView(res, first, messages = null) {
+export async function addFirstView(res, first, messages = null, ctaFacts = null) {
   if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
+  // What moves within the page (the messages box, past reveals) needs its text; the rest is streamed
   let base = res;
   let moved = false;
-  if (messages) {
-    const html = await res.text();
-    const next = messagesInSection(html);
-    moved = next !== null;
-    base = new Response(next ?? html, { status: res.status, headers: res.headers });
+  let pastOnPage = true;
+  if (messages || first.view === 'idle') {
+    let html = await res.text();
+    pastOnPage = html.includes('id="past-reveals"');
+    if (messages) { const next = messagesInSection(html); moved = next !== null; html = next ?? html; }
+    if (first.view === 'idle') html = pastFirst(html) ?? html;
+    base = new Response(html, { status: res.status, headers: res.headers });
   }
   const text = (t) => ({ element(e) { e.setInnerContent(t); } });
   let rw = new HTMLRewriter()
     .on('.live-page', setAttrs({ 'data-view': first.view }))
     .on('#live-hero', setAttrs({ 'data-phase': first.view }));
   if (first.eyebrow) rw = rw.on('#live-hero [data-live="eyebrow"]', text(first.eyebrow));
+  // The hero's two buttons, by the page script's own rule (the message box's button is its own business)
+  if (ctaFacts) {
+    const applies = ctasThatApply({ ...ctaFacts, pastOnPage });
+    const picks = ctaPicks(first.view, (k) => !!applies[k]);
+    for (const key of Object.keys(applies)) {
+      const at = picks.indexOf(key);
+      rw = rw.on(`#live-hero [data-live="${key}"]`, setAttrs({ hidden: applies[key] ? null : '', 'data-capped': at < 0 ? '' : null, style: at < 0 ? null : `order:${at}` }));
+    }
+    rw = rw.on('#live-hero [data-live="cta-messages"]', setAttrs({ 'data-capped': picks.includes('cta-messages') ? null : '' }));
+  }
   if (first.status) rw = rw.on('#live-hero [data-live="status"]', text(first.status));
   if (moved) {
     const name = String(messages.kidName || '').trim();
@@ -346,7 +371,15 @@ export async function onRequest(context) {
       design = designFor(slug, data, broadcast.state);
     }
     // The messages box moves first (it needs the page's text); the rest are streamed rewrites
-    let page = first ? await addFirstView(res, first, messages) : res;
+    const reminders = broadcast?.config?.reminders || {};
+    const ctaFacts = first ? {
+      display: first.view, view: first.view, scheduledAt: broadcast.state.scheduledAt || null,
+      // As the page has it: emails, or this browser's alerts (taken as possible here; the browser knows for sure)
+      remindUsable: !!reminders.enabled && (emailConfigured(env) || (!!reminders.push && !!broadcast.config?.vapid?.publicKey)),
+      pageKid, inSchedule: !!(rows || []).some((r) => r.slug === (pageKid || (first.view !== 'idle' ? broadcast.state.kidSlug : ''))),
+      hasPlayer: false,
+    } : null;
+    let page = first ? await addFirstView(res, first, messages, ctaFacts) : res;
     page = kid || party ? rewrite(page, { kid, party, messages: broadcast.config?.messages?.enabled !== false, design }) : page;
     if (rows && isIndex) page = addHeroRows(page, { list: rows, zone: visitorZone(request), between: !!broadcast && !kid && !ACTIVE.has(broadcast.state?.phase) });
     if (line) page = addAfterLine(page, line);

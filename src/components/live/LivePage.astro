@@ -107,6 +107,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   <div class="container" data-slot="section"></div>
 </section>
 
+<!-- Between reveals past reveals come before this (.live-page order): the server moves them here in the page itself
+     (functions/live/[[path]].js), so a page arriving in pieces is drawn top to bottom as it's seen -->
+<!--live-body-->
 <section class="section section--cream live-body">
   <div class="container live-grid">
     <div class="live-main">
@@ -175,7 +178,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
 <!-- Past reveals lead the page when nothing is scheduled; what's coming up is in the hero then (see .live-page order rules) -->
 <div class="live-next"><UpcomingReveals exclude={kid?.slug} where={kid ? 'live-kid' : 'live'} /></div>
-<div class="live-past"><PastReveals limit={6} /></div>
+<!--live-past--><div class="live-past"><PastReveals limit={6} /></div><!--/live-past-->
 <LiveGive />
 <RevealInvite />
 <ShareSheet />
@@ -428,24 +431,13 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { cfRaw } from '../../utils/cf-image';
   import { readUpcoming, loadSignup, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
   import { heroRowsHtml, rowsSignature, afterLine } from '../../utils/upcoming-rows';
-  import { plannedText, betweenText } from '../../utils/live-hero-text';
+  import { plannedText, betweenText, ctasThatApply, ctaPicks } from '../../utils/live-hero-text';
 
   /** The starting-soon screen fills the frame for the last hour: it carries the room's design for people waiting (the crew may start streaming up to 30 minutes early, per the runbook) */
   const SLATE_LEAD_MS = 60 * 60 * 1000;
 
-  /**
-   * The hero offers two things at most (Peter, Nov 9 2026: five was too many). Each moment lists its buttons in order of
-   * what matters most then; the first two that apply show, in that order, and the rest wait. During the watch party the
-   * message box is already in the hero, so "Leave a message" only applies around it.
-   */
-  const HERO_CTAS: Record<string, string[]> = {
-    idle: ['cta-remind', 'cta-calendar', 'cta-past', 'cta-share', 'cta-donate'],
-    upcoming: ['cta-remind', 'cta-calendar', 'cta-share', 'cta-donate'],
-    starting: ['cta-facebook', 'cta-messages', 'cta-donate', 'cta-share'],
-    live: ['cta-facebook', 'cta-messages', 'cta-donate', 'cta-share'],
-    replay: ['cta-facebook', 'cta-share', 'cta-donate', 'cta-messages'],
-  };
-  const HERO_CTA_MAX = 2;
+  // The hero's buttons, two at most, and which apply when: src/utils/live-hero-text.ts (HERO_CTAS, ctasThatApply), shared
+  // with the server, which shows the same two from the first paint
 
   const client = getLiveClient();
 
@@ -557,9 +549,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     const ctaBox = hero.querySelector<HTMLElement>('.hero-ctas');
     function capCtas() {
       if (!ctaBox) return;
-      const order = HERO_CTAS[display] || HERO_CTAS.idle;
       const all = [...ctaBox.querySelectorAll<HTMLElement>('[data-live^="cta-"]')];
-      const picked = order.map((k) => all.find((el) => el.dataset.live === k)).filter((el): el is HTMLElement => !!el && !el.hidden).slice(0, HERO_CTA_MAX);
+      const byKey = (k: string) => all.find((el) => el.dataset.live === k);
+      const picked = ctaPicks(display, (k) => { const el = byKey(k); return !!el && !el.hidden; }).map(byKey) as HTMLElement[];
       for (const el of all) {
         const at = picked.indexOf(el);
         el.toggleAttribute('data-capped', at < 0);
@@ -736,12 +728,15 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       // What's coming up fills the frame on /live/ between reveals (as the build had it until the live list arrives)
       if (page && !pageKid) setAttr(page, 'data-next', display === 'idle' && (upcomingLoaded ? upcoming.length > 0 : page.hasAttribute('data-next')));
 
-      // CTAs: reminders stop making sense once the starting-soon screen is up
-      const startedAlready = view === 'upcoming' && !!s.scheduledAt && Date.parse(s.scheduledAt) <= Date.now();
-      setHidden(q('cta-remind'), !(display === 'upcoming' || display === 'idle') || startedAlready || !remindersUsable(meta.reminders, browserCanPush()));
+      // CTAs: which apply (the same rule the server used for the first paint)
+      const inviteFor = kidSlug ? upcoming.find((r) => r.slug === kidSlug) : undefined;
+      const applies = ctasThatApply({
+        display, view, scheduledAt: s.scheduledAt || null, remindUsable: remindersUsable(meta.reminders, browserCanPush()),
+        pageKid, inSchedule: !!inviteFor, pastOnPage: !!document.getElementById('past-reveals'), hasPlayer,
+      });
+      setHidden(q('cta-remind'), !applies['cta-remind']);
       // Calendar: this child's own invite (the live link only), whether or not the day is set yet;
       // the broadcast's own file when a scheduled reveal isn't in the list
-      const inviteFor = kidSlug ? upcoming.find((r) => r.slug === kidSlug) : undefined;
       for (const el of [q<HTMLAnchorElement>('cta-calendar'), bq<HTMLAnchorElement>('calendar-link')]) {
         if (!el) continue;
         if (inviteFor) {
@@ -752,13 +747,11 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
           el.href = '/api/reminders?ics=1';
         }
       }
-      const begun = !!s.scheduledAt && Date.parse(s.scheduledAt) <= Date.now();
-      const showCalendar = (display === 'upcoming' && !begun) || (display === 'idle' && !!pageKid && !!inviteFor);
-      setHidden(q('cta-calendar'), !showCalendar);
-      setHidden(q('cta-past'), view !== 'idle' || !document.getElementById('past-reveals'));
-      setHidden(q('cta-share'), view === 'idle');
+      setHidden(q('cta-calendar'), !applies['cta-calendar']);
+      setHidden(q('cta-past'), !applies['cta-past']);
+      setHidden(q('cta-share'), !applies['cta-share']);
       const fbCta = q<HTMLAnchorElement>('cta-facebook');
-      if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !((view === 'live' || view === 'replay') && !hasPlayer)); }
+      if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !applies['cta-facebook']); }
       capCtas();
 
       // What comes after this reveal, while it's still ahead (on /live/ between reveals the frame lists them all). The
@@ -792,6 +785,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       const pushBtn = bq<HTMLButtonElement>('push-btn');
       if (pushBtn) pushBtn.hidden = !(remindersOn && meta.reminders?.push && meta.reminders.pushKey && browserCanPush());
       const cal = bq<HTMLElement>('calendar-link');
+      const begun = !!s.scheduledAt && Date.parse(s.scheduledAt) <= Date.now();
       if (cal) cal.hidden = !((view === 'upcoming' && !begun) || (view === 'idle' && !!pageKid && !!inviteFor));
       // Reminders off: the block is just the calendar link, or nothing when there's no date to add
       setHidden(bq('remind-block'), !remindersOn && (!cal || cal.hidden));

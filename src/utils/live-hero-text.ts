@@ -36,3 +36,57 @@ export function betweenText(upcoming: UpcomingReveal[], pageKid: string, tz?: st
   const next = upcoming[0];
   return next ? `Next up: ${next.name}'s reveal, ${next.confirmed ? revealWhen(next, 'long', tz) : next.window.label}.` : '';
 }
+
+// ── The hero's buttons ──────────────────────────────────────────────
+
+/**
+ * The hero offers two things at most (Peter, Nov 9 2026: five was too many). Each moment lists its buttons in order of
+ * what matters most then; the first two that apply show, in that order, and the rest wait. During the watch party the
+ * message box is already in the hero, so "Leave a message" only applies around it.
+ */
+export const HERO_CTAS: Record<string, string[]> = {
+  idle: ['cta-remind', 'cta-calendar', 'cta-past', 'cta-share', 'cta-donate'],
+  upcoming: ['cta-remind', 'cta-calendar', 'cta-share', 'cta-donate'],
+  starting: ['cta-facebook', 'cta-messages', 'cta-donate', 'cta-share'],
+  live: ['cta-facebook', 'cta-messages', 'cta-donate', 'cta-share'],
+  replay: ['cta-facebook', 'cta-share', 'cta-donate', 'cta-messages'],
+};
+export const HERO_CTA_MAX = 2;
+
+export interface CtaFacts {
+  /** What the hero shows: idle, upcoming, starting, live, replay */
+  display: string;
+  /** The broadcast's own view of this page: idle, upcoming, live, replay */
+  view: string;
+  scheduledAt: string | null;
+  /** Reveal emails (or this browser's alerts) can be signed up for */
+  remindUsable: boolean;
+  pageKid: string;
+  /** This child's reveal is in the schedule (their own calendar invite) */
+  inSchedule: boolean;
+  /** The page has past reveals to jump to */
+  pastOnPage: boolean;
+  hasPlayer: boolean;
+  now?: number;
+}
+
+/** Which of the hero's buttons apply now (cta-messages is the message box's own; cta-donate always applies) */
+export function ctasThatApply(f: CtaFacts): Record<string, boolean> {
+  const now = f.now ?? Date.now();
+  const begun = !!f.scheduledAt && Date.parse(f.scheduledAt) <= now;
+  return {
+    // Reminders stop making sense once the reveal's time has come
+    'cta-remind': (f.display === 'upcoming' || f.display === 'idle') && !(f.view === 'upcoming' && begun) && f.remindUsable,
+    // This child's own invite, or the broadcast's file when a scheduled reveal isn't in the list
+    'cta-calendar': (f.display === 'upcoming' && !begun) || (f.display === 'idle' && !!f.pageKid && f.inSchedule),
+    'cta-past': f.view === 'idle' && f.pastOnPage,
+    'cta-share': f.view !== 'idle',
+    'cta-facebook': (f.view === 'live' || f.view === 'replay') && !f.hasPlayer,
+    'cta-donate': true,
+  };
+}
+
+/** The buttons shown, in order: the first HERO_CTA_MAX for the moment of those that apply */
+export function ctaPicks(display: string, applies: (key: string) => boolean): string[] {
+  return (HERO_CTAS[display] || HERO_CTAS.idle).filter(applies).slice(0, HERO_CTA_MAX);
+}
