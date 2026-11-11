@@ -23,7 +23,7 @@ import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
 import { checkinView, orderReads } from './_kid-checkin.js';
 import { readLabel, findBox, likelyBoxes } from './_kid-scan.js';
-import { receive, undo, moveShelf, decide, typedIn, checkOut, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
+import { receive, undo, undoMany, moveShelf, decide, typedIn, checkOut, checkOutMany, OUT_BATCH, markPrinted, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { receiptLabels, shelfLabel } from './_kid-labels.js';
 import { printLabels, printerStatus, printerSetup, PRINTER_URL, PRINTER_USER } from './_kid-print.js';
@@ -80,6 +80,21 @@ function labelsFor(view, receipt) {
   return receiptLabels({ kid: kid?.short || 'SOARD', item: receipt.name, line: receipt.line_name, boxes: receipt.boxes, shelf: receipt.shelf ? shelfName(receipt.shelf) : '', at: receipt.at, tap: receipt.id });
 }
 
+/**
+ * Check-ins' labels to the printer, each marked printed once the printer has them. It carries on if the phone hangs
+ * up first (Cloudflare stops a request's unfinished work when its caller leaves; waitUntil keeps it): a check-in saved
+ * always gets its labels, and the phone's retry prints only what never reached the printer, so nothing prints twice
+ */
+function printFor(context, receipts, view) {
+  const run = (async () => {
+    const p = await printLabels(context.env, receipts.flatMap((r) => labelsFor(view, r)));
+    if (p.setUp && !p.error && (p.printed || p.queued)) await markPrinted(context.env.DB, receipts.map((r) => r.id));
+    return p;
+  })();
+  context.waitUntil?.(run.catch(() => {}));
+  return run;
+}
+
 export async function onRequestPost(context) {
   const { env, request } = context;
   try {
@@ -116,15 +131,15 @@ export async function onRequestPost(context) {
           const r = await receive(env.DB, it, { by });
           jobs.add(r.receipt.job_id);
           results.push({ tap: it.tap, jobId: r.receipt.job_id, shelf: r.shelf, repeat: r.repeat });
-          // A retry from the phone (its first answer never came back) prints what it saved minutes ago
-          if (!r.repeat || (body.again && Date.now() - Date.parse(r.receipt.at) < 15 * 60 * 1000)) fresh.push(r.receipt);
+          // A retry from the phone (its first answer never came back) prints only what never reached the printer
+          if (!r.repeat || !r.receipt.printed_at) fresh.push(r.receipt);
         } catch (err) {
           results.push({ tap: it.tap, error: err.message, status: err.status || 500 });
         }
       }
       const view = await checkinView(env);
       out.results = results;
-      if (fresh.length) out.print = await printLabels(env, fresh.flatMap((r) => labelsFor(view, r)));
+      if (fresh.length) out.print = await printFor(context, fresh, view);
       // JobTread in the background: the done sheet doesn't wait on it, kid after kid (the heartbeat backs it up)
       const write = (async () => { for (const j of jobs) await writeKidNow(env, j); })();
       if (context.waitUntil) { context.waitUntil(write); out.jt = 'later'; } else { await write; out.jt = 'later'; }
@@ -134,22 +149,13 @@ export async function onRequestPost(context) {
       const r = q.get('other') ? await typedIn(env.DB, body, { by }) : await receive(env.DB, body, { by });
       jobId = r.receipt.job_id;
       Object.assign(out, { receipt: r.receipt.id, shelf: r.shelf, repeat: r.repeat });
-      // A retry of the same tap doesn't print twice
-      if (!r.repeat) print = r.receipt;
+      // A retry of the same tap prints only if the first one's labels never reached the printer
+      if (!r.repeat || !r.receipt.printed_at) print = r.receipt;
     } else if (q.get('out') && Array.isArray(body.items)) {
       // A whole load in one go (Confirm): each box or item on its own, so one that can't go doesn't stop the rest
-      const results = [];
-      const jobs = new Set();
-      for (const it of body.items.slice(0, 80)) {
-        try {
-          const r = await checkOut(env.DB, it, { by });
-          if (r.receipt?.job_id) jobs.add(r.receipt.job_id);
-          results.push({ tap: it.tap, repeat: r.repeat });
-        } catch (err) {
-          results.push({ tap: it.tap, error: err.message, status: err.status || 500 });
-        }
-      }
-      out.results = results;
+      const results = await checkOutMany(env.DB, body.items, { by });
+      const jobs = new Set(results.filter((x) => x.receipt && !x.repeat).map((x) => x.receipt.job_id));
+      out.results = results.map(({ tap, repeat, error, status }) => (error ? { tap, error, status } : { tap, repeat }));
       // JobTread in the background: Confirm answers at once (the heartbeat backs it up)
       const write = (async () => { for (const j of jobs) await writeKidNow(env, j); })();
       if (context.waitUntil) context.waitUntil(write); else await write;
@@ -162,6 +168,14 @@ export async function onRequestPost(context) {
       const r = await receive(env.DB, { ...body, kind: 'house' }, { by });
       jobId = r.receipt.job_id;
       out.receipt = r.receipt.id;
+    } else if (q.get('undo') && Array.isArray(body.taps)) {
+      // Take back off the truck: every box of a thing in one go; JobTread in the background
+      const results = await undoMany(env.DB, body.taps.slice(0, OUT_BATCH).map(String), { by });
+      out.results = results.map(({ tap, shelf, error, status }) => (error ? { tap, error, status } : { tap, shelf }));
+      const jobs = new Set(results.filter((x) => !x.error && !x.repeat).map((x) => x.jobId));
+      const write = (async () => { for (const j of jobs) await writeKidNow(env, j); })();
+      if (context.waitUntil) context.waitUntil(write); else await write;
+      out.jt = 'later';
     } else if (q.get('undo')) {
       jobId = (await undo(env.DB, body.tap, { by })).jobId;
     } else if (q.get('shelf')) {
@@ -189,7 +203,7 @@ export async function onRequestPost(context) {
       return Response.json({ success: false, error: 'Nothing to do' }, { status: 400, headers });
     }
     const view = await checkinView(env);
-    if (print) out.print = await printLabels(env, labelsFor(view, print));
+    if (print) out.print = await printFor(context, [print], view);
     // JobTread now, for the kid it changed: the answer says whether it's there
     if (jobId) out.jt = await writeKidNow(env, jobId);
     return Response.json({ success: true, ...out, view: { ...(out.jt === 'written' ? await checkinView(env) : view), printer: await printerStatus(env) } }, { headers });

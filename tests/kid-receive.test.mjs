@@ -456,31 +456,32 @@ test('each makeover’s Project Manager rides along, for who opens on Check out'
   assert.equal(kidOf(v, 'Ava E.').pm, null);
 });
 
-test('check-out: a label scanned after Load all counts once', async () => {
-  const { checkOut } = await import('../functions/api/_kid-record.js');
+test('check-out: a label scanned after Load all (its boxes one by one) counts once', async () => {
+  const { checkOut, checkOutMany } = await import('../functions/api/_kid-record.js');
   const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
   const a = tap();
   await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 2 });
-  await checkOut(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, units: 1, name: head.name });
-  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a })).repeat, true);
+  const all = await checkOutMany(env.DB, [{ tap: tap(), ref: a, box: 1 }, { tap: tap(), ref: a, box: 2 }]);
+  assert.deepEqual(all.map((r) => r.repeat), [false, false]);
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a, box: 2 })).repeat, true);
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a })).repeat, true, 'an older label with no box number: out already');
   const it = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
   assert.deepEqual([it.status, it.sent], ['out', 1]);
 });
 
 
 
-test('review 3, 11: a stale tick is capped at what’s still here; the same box twice at once counts once', async () => {
+test('review 3, 11: the same box twice at once counts once; a check-out that names no box is refused, never guessed', async () => {
   const { checkOut } = await import('../functions/api/_kid-record.js');
   const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
   const a = tap();
   await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 2 });
   const [x, y] = await Promise.all([checkOut(env.DB, { tap: tap(), ref: a, box: 1 }), checkOut(env.DB, { tap: tap(), ref: a, box: 1 })]);
   assert.equal([x, y].filter((r) => !r.repeat).length, 1, 'one of the two phones counts it');
-  await checkOut(env.DB, { tap: tap(), ref: a, box: 2 });
-  const late = await checkOut(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, units: 4, name: head.name });
-  assert.equal(late.repeat, true, 'everything is out already: the old tick adds nothing');
+  await assert.rejects(checkOut(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, units: 4, name: head.name }), (e) => e.status === 400 && /older copy of the page/.test(e.message));
+  await assert.rejects(checkOut(env.DB, { tap: tap(), ref: a, box: 3 }), (e) => e.status === 400 && /isn’t one of its 2 boxes/.test(e.message), 'box 3 of 2 is a misread, not the whole thing');
   const it = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
-  assert.deepEqual([it.sent, it.got], [1, 1]);
+  assert.deepEqual([it.sent, it.boxesLeft, it.status], [0, 1, 'here']);
 });
 
 test('review 4, 5: a check-in taken back takes its check-outs with it; a check-out taken back gets the shelf back', async () => {
@@ -593,15 +594,45 @@ test('scan review: the box’s own order is exact; a name only narrows; an order
   assert.deepEqual([done.done, done.items.length, done.short], [true, 0, 'Rowan S.']);
 });
 
-test('batch review: past 60 are refused, not lost; a retry prints what it saved minutes ago; JobTread said only when every kid was written', async () => {
+test('batch review: past 60 are refused, not lost; a retry prints only what never reached the printer; JobTread said only when every kid was written', async () => {
   const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  // A pretend print hub: it counts the labels it takes, and can be out of reach
+  const printed = [];
+  let reachable = true;
+  env.PRINT_HUB = { idFromName: () => 'office', get: () => ({ fetch: async (url, init) => {
+    if (!reachable) throw new Error('hub out of reach');
+    if (String(url).endsWith('/print')) { const n = JSON.parse(init.body).labels.length; printed.push(n); return Response.json({ sent: n, online: true, problems: [] }); }
+    return Response.json({ seenAt: Date.now(), online: true, problems: [] });
+  } }) };
   const items = [{ tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 2 }];
-  const post = (body) => onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin?receive=1', { method: 'POST', body: JSON.stringify(body) }), waitUntil: () => {} }).then((r) => r.json());
+  const post = (body, q = 'receive') => onRequestPost({ env, request: new Request(`https://site.example/api/kid-items-admin?${q}=1`, { method: 'POST', body: JSON.stringify(body) }), waitUntil: () => {} }).then((r) => r.json());
   const first = await post({ items });
   assert.equal(first.results[0].repeat, false);
-  const again = await post({ items, again: true });
+  assert.deepEqual(printed, [2], 'both boxes’ labels');
+  // The phone never got that answer and sends it again: saved once, and its labels aren't printed a second time
+  const again = await post({ items });
   assert.equal(again.results[0].repeat, true);
-  assert.ok(again.print, 'the retry printed (its first answer never came back)');
+  assert.equal(again.print, undefined);
+  assert.deepEqual(printed, [2]);
+  // Saved, but the printer was never reached (the request was cut off, or the hub was down): the retry prints them
+  const more = [{ tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 1 }];
+  reachable = false;
+  await post({ items: more });
+  reachable = true;
+  assert.deepEqual(printed, [2]);
+  await post({ items: more });
+  assert.deepEqual(printed, [2, 1], 'the retry printed what never reached the printer');
+  await post({ items: more });
+  assert.deepEqual(printed, [2, 1], 'and only once');
+  // One check-in at a time, the same rule
+  const one = { tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 1 };
+  reachable = false;
+  await post(one);
+  reachable = true;
+  await post(one);
+  await post(one);
+  assert.deepEqual(printed, [2, 1, 1]);
+  delete env.PRINT_HUB;
   const many = Array.from({ length: 62 }, () => ({ tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 1 }));
   const big = await post({ items: many });
   assert.equal(big.results.length, 62);
@@ -643,6 +674,140 @@ test('check-out by the box (round 2): seven towels in five boxes, a box undone a
   const it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
   assert.deepEqual([it.sent, it.got, it.status], [7, 7, 'out']);
   const { outState } = await import('../functions/api/_kid-record.js');
-  const st = outState([{ id: 'r1', units: 4, boxes: 2, at: '1' }], [{ ref: 'r1', box: 1 }, { units: 2 }]);
-  assert.deepEqual([st.sent, st.allOut, st.boxesLeft], [4, true, 0], 'one box scanned and the rest ticked: all out');
+  const st = outState([{ id: 'r1', units: 4, boxes: 2 }], [{ ref: 'r1', box: 1 }, { ref: 'r1', box: 2 }]);
+  assert.deepEqual([st.sent, st.allOut, st.boxesLeft], [4, true, 0], 'one box scanned and the other ticked: all out');
+  const half = outState([{ id: 'r1', units: 4, boxes: 2 }], [{ ref: 'r1', box: 1 }, { units: 2 }]);
+  assert.deepEqual([half.sent, half.allOut, half.boxesLeft], [2, false, 1], 'a count with no check-in counts for nothing');
+});
+
+// ─── Round 3 (Nov 11 2026): every check-out names a box of a check-in ───
+
+const outRows = async () => (await env.DB.prepare("SELECT id, ref, box, undone_at FROM kid_receipts WHERE kind = 'out'").all()).results;
+const postOut = (q, body) => onRequestPost({ env, request: new Request(`https://site.example/api/kid-items-admin?${q}=1`, { method: 'POST', body: JSON.stringify(body) }), waitUntil: () => {} }).then((r) => r.json());
+
+test('round 3, A: a thing whose check-in followed it to its real line goes out by its boxes, and the shelf frees', async () => {
+  await env.DB.prepare("INSERT INTO kid_parts (job_id, item_id, job_name, group_name, line_name, cents, hash, parts, read_by, read_at, words, words_key) VALUES ('j-rowan', 'r-furn', 'Rowan Sample (2026)', 'G', 'Furniture', 30000, 'hf', '[]', 'none:1', '2026-11-10', 'Bean Bag Chair, Big Joe', 'bean bag chair big joe')").run();
+  const bean = itemOf(await view(), 'Rowan S.', 'Bean Bag Chair');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: bean.itemId, partKey: bean.partKey, name: bean.orderedAs, line: bean.line, units: 1, boxes: 2 });
+  // The Furniture line is read: the chair and its check-in move there, under another key
+  await env.DB.prepare("UPDATE kid_parts SET parts = ?, read_by = 'ai' WHERE item_id = 'r-furn'").bind(JSON.stringify([part('Bean Bag Chair', { brand: 'Big Joe' })])).run();
+  const chair = itemOf(await view(), 'Rowan S.', 'Bean Bag Chair');
+  assert.notEqual(`${chair.itemId}|${chair.partKey}`, `${bean.itemId}|${bean.partKey}`, 'the case: the thing’s key isn’t its check-in’s');
+  // Its circle (or Load all) puts each of its boxes in the load by its check-in
+  const res = await postOut('out', { items: [1, 2].map((box) => ({ tap: tap(), ref: a, box })) });
+  assert.deepEqual(res.results.map((r) => r.repeat), [false, false]);
+  const after = itemOf(res.view, 'Rowan S.', 'Bean Bag Chair');
+  assert.deepEqual([after.status, after.sent, after.boxesLeft], ['out', 1, 0]);
+  assert.equal((await outRows()).length, 2);
+  assert.deepEqual(await shelvesOf(env.DB, 'j-rowan'), []);
+});
+
+test('round 3, B and C: taking back one check-in takes back only its own boxes; the next one in is at the Office', async () => {
+  const { checkOutMany } = await import('../functions/api/_kid-record.js');
+  const valve = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  const A = tap(), B = tap();
+  await receive(env.DB, { tap: A, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 3, boxes: 1 }, { now: '2026-11-10T11:00:00Z' });
+  await receive(env.DB, { tap: B, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 1, boxes: 1 }, { now: '2026-11-10T12:00:00Z' });
+  // Load all: both check-ins' boxes
+  await checkOutMany(env.DB, [{ tap: tap(), ref: A, box: 1 }, { tap: tap(), ref: B, box: 1 }]);
+  assert.equal(itemOf(await view(), 'Rowan S.', 'Shower Valve').status, 'out');
+  // B was a double check-in: taken back. A's three stay on the truck
+  await undo(env.DB, B);
+  let it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  assert.deepEqual([it.got, it.sent, it.boxesLeft, it.status], [3, 3, 0, 'out']);
+  assert.deepEqual(await shelvesOf(env.DB, 'j-rowan'), [], 'nothing at the Office: the shelf stays free');
+  // Two more come in: they're on the shelf, not "loaded"
+  const C = tap();
+  await receive(env.DB, { tap: C, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 2, boxes: 1 });
+  it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  assert.deepEqual([it.got, it.sent, it.boxesLeft], [5, 3, 1]);
+  assert.equal(lineValues(linesOf(await view()).find((x) => x.itemId === 'r-shower').items).shelf, 'Shelf 1');
+  assert.equal((await checkOutMany(env.DB, [{ tap: tap(), ref: C, box: 1 }]))[0].repeat, false, 'its label loads it');
+});
+
+test('round 3, E: a load longer than one request takes is answered for every box, the rest marked to send again', async () => {
+  const { OUT_BATCH } = await import('../functions/api/_kid-record.js');
+  const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  const refs = [];
+  for (let i = 0; i < 6; i++) { const t = tap(); refs.push(t); await receive(env.DB, { tap: t, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 17 }); }
+  const items = refs.flatMap((ref) => Array.from({ length: 17 }, (_, b) => ({ tap: tap(), ref, box: b + 1 })));
+  assert.equal(items.length, 102);
+  const res = await postOut('out', { items });
+  assert.equal(res.results.length, 102, 'every box gets an answer');
+  assert.deepEqual(res.results.slice(OUT_BATCH).map((r) => r.status), [413, 413]);
+  assert.equal(res.results.slice(0, OUT_BATCH).filter((r) => r.error).length, 0);
+  assert.equal((await outRows()).length, OUT_BATCH);
+});
+
+test('round 3, F: back off the truck, a box goes back on its own shelf (another kid’s by now: the kid’s own), once', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const v = await view();
+  const lamp = itemOf(v, 'Rowan S.', 'Cloud Pendant Light'), head = itemOf(v, 'Rowan S.', 'Raincan Shower Head');
+  const L = tap(), H = tap();
+  await receive(env.DB, { tap: L, jobId: 'j-rowan', itemId: lamp.itemId, partKey: lamp.partKey, name: lamp.name, units: 1, boxes: 1, shelf: '1' });
+  await receive(env.DB, { tap: H, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 1, shelf: '2' });
+  const outL = (await checkOut(env.DB, { tap: tap(), ref: L, box: 1 })).receipt;
+  await checkOut(env.DB, { tap: tap(), ref: H, box: 1 });
+  assert.deepEqual(await shelvesOf(env.DB, 'j-rowan'), []);
+  assert.equal((await undo(env.DB, outL.id)).shelf, '1');
+  assert.deepEqual(await shelvesOf(env.DB, 'j-rowan'), ['1'], 'only the lamp’s shelf: Shelf 2 is empty');
+  // The lamp out again; the old take-back replayed from a phone's queue changes nothing
+  await checkOut(env.DB, { tap: tap(), ref: L, box: 1 });
+  assert.deepEqual(await shelvesOf(env.DB, 'j-rowan'), []);
+  assert.equal((await undo(env.DB, outL.id)).repeat, true);
+  assert.deepEqual(await shelvesOf(env.DB, 'j-rowan'), []);
+  assert.equal(itemOf(await view(), 'Rowan S.', 'Cloud Pendant Light').status, 'out');
+  // Ava has Shelf 1 now; the lamp comes back off the truck: Rowan's next free shelf, and the check-in says so
+  const rug = itemOf(await view(), 'Ava E.', 'Round Rainbow Rug');
+  await receive(env.DB, { tap: tap(), jobId: 'j-ava', itemId: rug.itemId, partKey: rug.partKey, name: rug.name, units: 1, boxes: 1, shelf: '1' });
+  const outs = (await outRows()).filter((r) => r.ref === L && !r.undone_at);
+  const back = await undo(env.DB, outs[0].id);
+  assert.equal(back.shelf, '2');
+  const it = itemOf(await view(), 'Rowan S.', 'Cloud Pendant Light');
+  assert.deepEqual([it.status, it.shelf], ['here', '2']);
+});
+
+test('round 3, Take back: every box of a thing in one request, each said, JobTread after', async () => {
+  const { checkOutMany } = await import('../functions/api/_kid-record.js');
+  const valve = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  const A = tap();
+  await receive(env.DB, { tap: A, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 2, boxes: 3 });
+  const outs = [tap(), tap(), tap()];
+  await checkOutMany(env.DB, outs.map((t, i) => ({ tap: t, ref: A, box: i + 1 })));
+  let waited = 0;
+  const res = await onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin?undo=1', { method: 'POST', body: JSON.stringify({ taps: [...outs, 'tap-not-saved-0001'] }) }), waitUntil: () => { waited++; } }).then((r) => r.json());
+  assert.equal(res.success, true);
+  assert.deepEqual(res.results.map((r) => r.shelf ?? r.status), ['1', '1', '1', 404]);
+  assert.equal(waited, 1, 'JobTread in the background');
+  const it = itemOf(res.view, 'Rowan S.', 'Shower Valve');
+  assert.deepEqual([it.sent, it.boxesLeft, it.status], [0, 3, 'here']);
+});
+
+test('round 3, G: a load of 80 boxes is a few reads and one write, not hundreds', async () => {
+  const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  const refs = [];
+  for (let i = 0; i < 4; i++) { const t = tap(); refs.push(t); await receive(env.DB, { tap: t, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 6, boxes: 20 }); }
+  const { checkOutMany } = await import('../functions/api/_kid-record.js');
+  let q = 0;
+  const prepare = env.DB.prepare;
+  env.DB.prepare = (sql) => { q++; return prepare(sql); };
+  const r = await checkOutMany(env.DB, refs.flatMap((ref) => Array.from({ length: 20 }, (_, b) => ({ tap: tap(), ref, box: b + 1 }))));
+  env.DB.prepare = prepare;
+  assert.equal(r.filter((x) => !x.repeat && !x.error).length, 80);
+  assert.ok(q <= 90, `${q} statements`);
+});
+
+test('round 3, H: a thing on two shelves is where its boxes still at the Office are', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const valve = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  const A = tap(), B = tap();
+  await receive(env.DB, { tap: A, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 1, boxes: 2, shelf: '1' }, { now: '2026-11-10T11:00:00Z' });
+  await receive(env.DB, { tap: B, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 1, boxes: 1, shelf: 'Floor' }, { now: '2026-11-10T12:00:00Z' });
+  let it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  assert.deepEqual(it.shelves, ['Floor', '1'], 'newest first');
+  await checkOut(env.DB, { tap: tap(), ref: B, box: 1 });
+  it = itemOf(await view(), 'Rowan S.', 'Shower Valve');
+  assert.deepEqual([it.shelf, it.shelves, it.boxesLeft], ['1', ['1'], 2]);
+  assert.equal(lineValues(linesOf(await view()).find((x) => x.itemId === 'r-shower').items).shelf, 'Shelf 1');
 });

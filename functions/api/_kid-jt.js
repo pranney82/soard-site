@@ -101,7 +101,7 @@ export function lineStatus(items, { allowance = false } = {}) {
 export function lineValues(items, { allowance = false } = {}) {
   // Where it is: the shelves holding what's still at the Office; once all of it went out, the house
   const atOffice = items.filter((i) => i.shelf && (i.status === 'here' || i.status === 'partly') && (i.sent || 0) < i.got);
-  const shelves = [...new Set(atOffice.map((i) => i.shelf))].sort((a, b) => SHELVES.indexOf(a) - SHELVES.indexOf(b));
+  const shelves = [...new Set(atOffice.flatMap((i) => (i.shelves?.length ? i.shelves : [i.shelf])))].sort((a, b) => SHELVES.indexOf(a) - SHELVES.indexOf(b));
   const allOut = !atOffice.length && items.some((i) => i.sent);
   let details = items.map(partLine).join('\n');
   if (details.length > DETAILS_MAX) details = `${details.slice(0, DETAILS_MAX - 1)}…`;

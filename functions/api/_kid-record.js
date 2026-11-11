@@ -43,8 +43,9 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS kid_shelves (shelf TEXT PRIMARY KEY, job_id TEXT NOT NULL, at TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS kid_items_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
 ];
-// Added Nov 10 2026 with checking out: an "out" names the check-in whose label was scanned
-const RECEIPT_COLUMNS = ['ref TEXT', 'box INTEGER'];
+// Added Nov 10 2026 with checking out: an "out" names the check-in whose label was scanned. Nov 11: printed_at, when
+// the printer took a check-in's labels (a retry from the phone prints only what never reached it)
+const RECEIPT_COLUMNS = ['ref TEXT', 'box INTEGER', 'printed_at TEXT'];
 const _ready = new WeakSet();
 export async function ensureRecord(DB) {
   if (_ready.has(DB)) return;
@@ -158,37 +159,61 @@ export async function receive(DB, input, { by = null, now = new Date().toISOStri
   return { receipt, shelf: receipt?.shelf ?? shelf, repeat: false };
 }
 
-/** Undo a check-in (or a "Not coming here"): it stops counting; the row stays */
-export async function undo(DB, tap, { by = null, now = new Date().toISOString() } = {}) {
-  await ensureRecord(DB);
-  if (!tapOk(tap)) throw bad('Which check-in? Reload the page.');
-  const r = await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first();
-  if (!r) throw Object.assign(new Error('That check-in isn’t saved, so there’s nothing to undo.'), { status: 404 });
-  if (!r.undone_at) await DB.prepare('UPDATE kid_receipts SET undone_at = ?, undone_by = ? WHERE id = ?').bind(now, by, tap).run();
-  if (r.kind === 'receive') {
-    // A check-in taken back takes its boxes' check-outs with it, and no more can be out than came in
-    await DB.prepare("UPDATE kid_receipts SET undone_at = ?, undone_by = ? WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(now, by, r.id).run();
-    const sums = await DB.prepare("SELECT SUM(CASE WHEN kind = 'receive' THEN units ELSE 0 END) AS came, SUM(CASE WHEN kind = 'out' THEN units ELSE 0 END) AS went FROM kid_receipts WHERE job_id = ? AND item_id = ? AND part_key = ? AND undone_at IS NULL")
-      .bind(r.job_id, r.item_id, r.part_key).first();
-    let over = (sums?.went || 0) - (sums?.came || 0);
-    if (over > 0) {
-      const outs = (await DB.prepare("SELECT id, units FROM kid_receipts WHERE kind = 'out' AND ref IS NULL AND job_id = ? AND item_id = ? AND part_key = ? AND undone_at IS NULL ORDER BY at DESC")
-        .bind(r.job_id, r.item_id, r.part_key).all()).results || [];
-      for (const o of outs) {
-        if (over <= 0) break;
-        await DB.prepare('UPDATE kid_receipts SET undone_at = ?, undone_by = ? WHERE id = ?').bind(now, by, o.id).run();
-        over -= o.units || 0;
-      }
-    }
-    await releaseEmpty(DB, r.job_id);
-  } else if (r.kind === 'out') {
-    // Back from the truck: the kid's shelves come back (unless another kid has one by now)
-    const held = (await DB.prepare("SELECT DISTINCT shelf FROM kid_receipts WHERE job_id = ? AND kind = 'receive' AND undone_at IS NULL AND shelf IS NOT NULL").bind(r.job_id).all()).results || [];
-    for (const h of held) if (h.shelf !== FLOOR) await DB.prepare('INSERT OR IGNORE INTO kid_shelves (shelf, job_id, at) VALUES (?, ?, ?)').bind(h.shelf, r.job_id, now).run();
-  } else {
-    await releaseEmpty(DB, r.job_id);
+/** The printer has these check-ins' labels (sent, or held until it's back on) */
+export async function markPrinted(DB, ids, now = new Date().toISOString()) {
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
+    await DB.prepare(`UPDATE kid_receipts SET printed_at = ? WHERE id IN (${part.map(() => '?').join(', ')})`).bind(now, ...part).run();
   }
-  return { jobId: r.job_id, itemId: r.item_id };
+}
+
+/** Undo a check-in, a "Not coming here" or a box out: it stops counting; the row stays */
+export async function undo(DB, tap, opts = {}) {
+  const [r] = await undoMany(DB, [tap], opts);
+  if (r.error) throw Object.assign(new Error(r.error), { status: r.status });
+  return r;
+}
+
+/**
+ * Undo several at once (Take back off the truck: every box of a thing) → one result per tap, in order:
+ * { tap, jobId, itemId, shelf? } or { tap, error, status }. Undoing what's undone already changes nothing.
+ *   a check-in   its boxes' check-outs go with it; a kid with nothing left at the Office lets their shelves go
+ *   a box out    it's back at the Office, on its check-in's shelf, which the kid gets back if it's free. If another
+ *                kid has it by now, the check-in moves to this kid's shelf (or the next free one), and shelf says where
+ */
+export async function undoMany(DB, taps, { by = null, now = new Date().toISOString() } = {}) {
+  await ensureRecord(DB);
+  const results = [];
+  for (const tap of taps) {
+    if (!tapOk(tap)) { results.push({ tap, error: 'Which check-in? Reload the page.', status: 400 }); continue; }
+    const r = await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first();
+    if (!r) { results.push({ tap, error: 'That check-in isn’t saved, so there’s nothing to undo.', status: 404 }); continue; }
+    const done = { tap, jobId: r.job_id, itemId: r.item_id };
+    // A retry of an undo that landed (the phone stopped waiting): nothing more happens
+    if (r.undone_at) { results.push({ ...done, repeat: true }); continue; }
+    await DB.prepare('UPDATE kid_receipts SET undone_at = ?, undone_by = ? WHERE id = ? AND undone_at IS NULL').bind(now, by, tap).run();
+    if (r.kind === 'receive') {
+      await DB.prepare("UPDATE kid_receipts SET undone_at = ?, undone_by = ? WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(now, by, r.id).run();
+      await releaseEmpty(DB, r.job_id);
+      await freeIfAllOut(DB, r.job_id);
+    } else if (r.kind === 'out') {
+      const c = r.ref ? await DB.prepare("SELECT id, shelf FROM kid_receipts WHERE id = ? AND kind = 'receive' AND undone_at IS NULL").bind(r.ref).first() : null;
+      let shelf = c?.shelf || null;
+      if (shelf && shelf !== FLOOR) {
+        await DB.prepare('INSERT OR IGNORE INTO kid_shelves (shelf, job_id, at) VALUES (?, ?, ?)').bind(shelf, r.job_id, now).run();
+        const owner = await DB.prepare('SELECT job_id FROM kid_shelves WHERE shelf = ?').bind(shelf).first();
+        if (owner?.job_id !== r.job_id) {
+          shelf = await shelfFor(DB, r.job_id, now);
+          await DB.prepare('UPDATE kid_receipts SET shelf = ? WHERE id = ?').bind(shelf, c.id).run();
+        }
+      }
+      done.shelf = shelf;
+    } else {
+      await releaseEmpty(DB, r.job_id);
+    }
+    results.push(done);
+  }
+  return results;
 }
 
 /** Move a check-in to another shelf (or the Floor); the kid now has that shelf too */
@@ -253,88 +278,105 @@ export async function typedIn(DB, input, { by = null, now = new Date().toISOStri
 }
 
 /**
- * What's out of an item, one rule for the server, the page and JobTread (the review, Nov 11 2026: scanning only the
- * last of a sink's three boxes had marked the whole sink out). Each check-in's boxes are counted out one by one (a
- * scanned label), or all at once (an older label with no box number); its units go as its boxes do, and a check-in
- * is all out only when every one of its boxes is. A tick or Load all (no label) takes units from the check-ins not
- * all out yet, oldest first.
- * ins, outs: live receipts { id, units, boxes, at } / { ref, box, units } → { got, sent, allOut, boxesLeft, per }
+ * What's out of an item, one rule for the server, the page and JobTread. Every check-out names one box of one
+ * check-in: a scanned label, or a thing ticked on the list or Load all, which put its boxes in the load one by one.
+ * A check-in's units go as its boxes do, and it's all out only when every one of its boxes is. (Review, Nov 11 2026:
+ * a tick kept as a count of units, not boxes, landed on the wrong check-in, outlived an undo and missed a thing whose
+ * line had changed. An out with no box number, from a label printed before boxes were numbered, is all of it.)
+ * ins, outs: live receipts { id, units, boxes } / { ref, box } → { got, sent, allOut, boxesLeft, per: id → { full, boxes, total } }
  */
 export function outState(ins, outs) {
-  let ticked = outs.filter((o) => !o.ref).reduce((t, o) => t + (o.units || 0), 0);
   const per = new Map();
   let got = 0, sent = 0, boxesLeft = 0;
-  for (const r of [...ins].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
+  for (const r of ins) {
     const total = Math.max(1, r.boxes || 1);
     const units = r.units || 0;
     got += units;
     const mine = outs.filter((o) => o.ref === r.id);
-    const boxes = new Set(mine.filter((o) => o.box).map((o) => Number(o.box)));
-    let done = mine.some((o) => !o.box) ? total : Math.min(total, boxes.size);
-    let out = done >= total ? units : Math.floor((units * done) / total);
-    let full = done >= total;
-    if (!full && ticked > 0) {
-      const need = units - out;
-      if (ticked >= need) { ticked -= need; out = units; full = true; done = total; } else { out += ticked; ticked = 0; }
-    }
-    sent += out;
-    if (!full) boxesLeft += total - done;
-    per.set(r.id, { full, boxes });
+    const boxes = new Set(mine.some((o) => !o.box) ? Array.from({ length: total }, (_, n) => n + 1) : mine.map((o) => Number(o.box)).filter((b) => b >= 1 && b <= total));
+    const full = boxes.size >= total;
+    sent += full ? units : Math.floor((units * boxes.size) / total);
+    if (!full) boxesLeft += total - boxes.size;
+    per.set(r.id, { full, boxes, total });
   }
-  return { got, sent: Math.min(sent, got), allOut: got > 0 && [...per.values()].every((p) => p.full), boxesLeft, per };
+  return { got, sent, allOut: got > 0 && [...per.values()].every((p) => p.full), boxesLeft, per };
 }
 
-const itemState = async (DB, jobId, itemId, partKey) => {
-  const rows = await all(DB, 'SELECT id, kind, units, boxes, at, ref, box FROM kid_receipts WHERE job_id = ? AND item_id = ? AND part_key = ? AND undone_at IS NULL', jobId, itemId, partKey);
-  return outState(rows.filter((r) => r.kind === 'receive'), rows.filter((r) => r.kind === 'out'));
-};
+/** Rows whose id is in a list, a few reads however long the list (D1 takes 100 values a query) */
+async function inList(DB, sql, ids) {
+  const rows = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
+    rows.push(...await all(DB, `${sql} (${part.map(() => '?').join(', ')})`, ...part));
+  }
+  return rows;
+}
+
+/** The most one request saves; the phone sends a longer load in parts */
+export const OUT_BATCH = 100;
 
 /**
- * Check out (load-out to the house):
- *   { tap, ref, box }  a scanned label: that one box of that check-in (its units are worked out from its boxes)
- *   { tap, ref }       an older label with no box number: all of that check-in
- *   { tap, jobId, itemId, partKey, units, name, line }   an item ticked on the list, or Load all: no more than is here
- * → { receipt, repeat }. A box scanned twice counts once. When everything a kid has at the Office is out, their shelves come free.
+ * Check out (load-out to the house), a whole load at once: each { tap, ref, box } is one box of one check-in.
+ * → one result per item, in order: { tap, receipt, repeat } or { tap, error, status }. A box out already (scanned
+ * twice, or loaded on another phone first) is a repeat and counts once. A few reads and one write however big the load;
+ * when everything a kid has at the Office is out, their shelves come free.
  */
-export async function checkOut(DB, input, { by = null, now = new Date().toISOString() } = {}) {
+export async function checkOutMany(DB, items, { by = null, now = new Date().toISOString() } = {}) {
   await ensureRecord(DB);
-  const { tap } = input || {};
-  if (!tapOk(tap)) throw bad('That check-out has no id. Reload the page.');
-  const before = await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first();
-  if (before) return { receipt: before, repeat: true };
-  let row;
-  if (input.ref) {
-    const r = await DB.prepare("SELECT * FROM kid_receipts WHERE id = ? AND kind = 'receive'").bind(String(input.ref)).first();
-    if (!r) throw Object.assign(new Error('That label isn’t one of SOARD’s check-ins'), { status: 404 });
-    if (r.undone_at) throw Object.assign(new Error('That check-in was taken back'), { status: 409 });
-    const total = Math.max(1, r.boxes || 1);
-    const box = Number.isInteger(Number(input.box)) && Number(input.box) >= 1 && Number(input.box) <= total ? Number(input.box) : null;
-    const st = (await itemState(DB, r.job_id, r.item_id, r.part_key)).per.get(r.id);
-    if (!st || st.full || (box && st.boxes.has(box))) return { receipt: { ...r, kind: 'out' }, repeat: true };
-    row = { jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, units: 0, name: r.name, line: r.line_name, ref: r.id, box };
-  } else {
-    row = { jobId: input.jobId, itemId: input.itemId, partKey: input.partKey, units: count(input.units, MAX_UNITS), name: input.name, line: input.line, ref: null, box: null };
-    if (!row.jobId || !row.itemId || !row.partKey) throw bad('Which item is it? Pick it from the list.');
-    // A tick or Load all: no more than is still at the Office (another phone may have scanned some since)
-    const st = await itemState(DB, row.jobId, row.itemId, row.partKey);
-    const left = st.got - st.sent;
-    if (left <= 0) return { receipt: { kind: 'out', job_id: row.jobId, item_id: row.itemId, part_key: row.partKey, name: row.name }, repeat: true };
-    row.units = Math.min(row.units, left);
+  const list = Array.isArray(items) ? items : [];
+  const results = new Array(list.length);
+  const taps = [...new Set(list.map((it) => String(it?.tap || '')).filter(tapOk))];
+  const refs = [...new Set(list.map((it) => String(it?.ref || '')).filter(Boolean))];
+  const before = new Map((await inList(DB, 'SELECT * FROM kid_receipts WHERE id IN', taps)).map((r) => [r.id, r]));
+  const ins = new Map((await inList(DB, "SELECT * FROM kid_receipts WHERE kind = 'receive' AND id IN", refs)).map((r) => [r.id, r]));
+  const outs = await inList(DB, "SELECT ref, box FROM kid_receipts WHERE kind = 'out' AND undone_at IS NULL AND ref IN", refs);
+  const state = new Map([...ins.values()].map((r) => [r.id, outState([r], outs.filter((o) => o.ref === r.id)).per.get(r.id)]));
+  const puts = [];
+  list.forEach((it, n) => {
+    const tap = String(it?.tap || '');
+    const fail = (error, status) => { results[n] = { tap, error, status }; };
+    if (n >= OUT_BATCH) return fail('Too many at once. It’s sent again in a moment.', 413);
+    if (!tapOk(tap)) return fail('That check-out has no id. Reload the page.', 400);
+    if (before.has(tap)) { results[n] = { tap, receipt: before.get(tap), repeat: true }; return; }
+    if (!it.ref) return fail('This phone has an older copy of the page. Reload it.', 400);
+    const r = ins.get(String(it.ref));
+    if (!r) return fail('That label isn’t one of SOARD’s check-ins', 404);
+    if (r.undone_at) return fail('That check-in was taken back', 409);
+    const st = state.get(r.id);
+    const has = it.box !== undefined && it.box !== null && it.box !== '';
+    const box = has ? Number(it.box) : null;
+    if (has && !(Number.isInteger(box) && box >= 1 && box <= st.total)) return fail(`That box number isn’t one of its ${st.total} boxes`, 400);
+    const row = { id: tap, kind: 'out', job_id: r.job_id, item_id: r.item_id, part_key: r.part_key, name: r.name, line_name: r.line_name, units: 0, boxes: 0, shelf: null, by_email: by, at: now, ref: r.id, box };
+    if (st.full || (box && st.boxes.has(box))) { results[n] = { tap, receipt: row, repeat: true }; return; }
+    // Counted now, so the same box twice in one load is one
+    if (box) st.boxes.add(box); else for (let b = 1; b <= st.total; b++) st.boxes.add(b);
+    st.full = st.boxes.size >= st.total;
+    results[n] = { tap, receipt: row, repeat: false };
+    puts.push(n);
+  });
+  if (puts.length) {
+    const ran = await DB.batch(puts.map((n) => {
+      const x = results[n].receipt;
+      return DB.prepare(`INSERT OR IGNORE INTO kid_receipts (id, kind, job_id, item_id, part_key, name, line_name, units, boxes, shelf, by_email, at, ref, box)
+          VALUES (?, 'out', ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?, ?)`)
+        .bind(x.id, x.job_id, x.item_id, x.part_key, String(x.name || '').slice(0, 250), String(x.line_name || '').slice(0, 250), by, now, x.ref, x.box);
+    }));
+    // Another phone got that box in first: it's out, once
+    puts.forEach((n, k) => { if (!ran[k]?.meta?.changes) results[n].repeat = true; });
+    for (const jobId of new Set(puts.filter((n) => !results[n].repeat).map((n) => results[n].receipt.job_id))) await freeIfAllOut(DB, jobId);
   }
-  const put = await DB.prepare(`INSERT OR IGNORE INTO kid_receipts (id, kind, job_id, item_id, part_key, name, line_name, units, boxes, shelf, by_email, at, ref, box)
-      VALUES (?, 'out', ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?)`)
-    .bind(tap, row.jobId, row.itemId, row.partKey, String(row.name || '').slice(0, 250), String(row.line || '').slice(0, 250), row.units, by, now, row.ref, row.box).run();
-  // Another phone got that box in first
-  if (!put.meta?.changes) return { receipt: (await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first()) || { kind: 'out', job_id: row.jobId, item_id: row.itemId, part_key: row.partKey, name: row.name }, repeat: true };
-  await freeIfAllOut(DB, row.jobId);
-  return { receipt: await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first(), repeat: false };
+  return results;
+}
+
+/** One box (or an older label's whole check-in): { tap, ref, box } → { receipt, repeat } */
+export async function checkOut(DB, input, opts = {}) {
+  const [r] = await checkOutMany(DB, [input || {}], opts);
+  if (r.error) throw Object.assign(new Error(r.error), { status: r.status });
+  return r;
 }
 
 /** Everything the kid has at the Office went out (every box of every check-in): their shelves come free for the next kid */
 export async function freeIfAllOut(DB, jobId) {
-  const rows = await all(DB, "SELECT id, kind, item_id, part_key, units, boxes, at, ref, box FROM kid_receipts WHERE job_id = ? AND undone_at IS NULL AND kind IN ('receive', 'out')", jobId);
-  const items = new Map();
-  for (const r of rows) { const k = `${r.item_id}|${r.part_key}`; items.set(k, [...(items.get(k) || []), r]); }
-  const states = [...items.values()].map((list) => outState(list.filter((r) => r.kind === 'receive'), list.filter((r) => r.kind === 'out')));
-  if (states.some((st) => st.got > 0) && states.every((st) => st.got === 0 || st.allOut)) await DB.prepare('DELETE FROM kid_shelves WHERE job_id = ?').bind(jobId).run();
+  const rows = await all(DB, "SELECT id, kind, units, boxes, ref, box FROM kid_receipts WHERE job_id = ? AND undone_at IS NULL AND kind IN ('receive', 'out')", jobId);
+  if (outState(rows.filter((r) => r.kind === 'receive'), rows.filter((r) => r.kind === 'out')).allOut) await DB.prepare('DELETE FROM kid_shelves WHERE job_id = ?').bind(jobId).run();
 }

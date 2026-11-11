@@ -474,3 +474,59 @@ h1 { font-size: clamp(24px, 7.6vw, 30px); }
 /* A toast sits above the dock, and at the top while a sheet is up (never over a sheet's buttons) */
 .toast { top: auto; bottom: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px) + 12px); }
 body:has(.scrim) .toast { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+
+/* Check-out, round 3 (Nov 11 2026) */
+/* The dock's second row: Scan more, and Load the other N beside it */
+.dock-sub { display: flex; gap: 4px; }
+.dock-sub .btn { flex: 1 1 0; min-width: 0; }
+.dock-sub .btn[hidden] { display: none; }
+/* A kid: name and stage on top, then how many and where, each on a line that wraps, never cut off */
+.kid-tile { grid-template-columns: auto minmax(0, 1fr) auto; }
+.kt-body .kt-name { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; overflow: visible; white-space: normal; color: var(--ink); font-size: inherit; }
+.kt-body .kt-stage { font-size: 11px; color: var(--muted); overflow: visible; }
+.kt-body .kt-line { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
+.kt-body .kt-line em { font-style: normal; color: var(--warn-fg); font-weight: 650; }
+/* What's in this load, beside what's loaded: the bar's yellow part and a line under the count */
+.bar { position: relative; }
+.bar-load { position: absolute; top: 0; bottom: 0; background: var(--primary-press); transition: left 300ms var(--out), width 300ms var(--out); }
+.count.big .in-load { color: var(--warn-fg); font-weight: 650; }
+/* Loaded rows fade and close up (check-out rows are .lrow) */
+.lrow.fading { opacity: 0; transition: opacity 120ms linear; }
+.lrow.leaving { opacity: 0; overflow: hidden; max-height: 0 !important; min-height: 0; border-top-color: transparent; transition: max-height 280ms var(--out); }
+/* Some of a thing's boxes in this load: a half-filled circle */
+.lrow.part .tickbtn .tick { position: relative; overflow: hidden; background: transparent; box-shadow: inset 0 0 0 2px var(--ink); color: transparent; }
+.lrow.part .tickbtn .tick::before { content: ""; position: absolute; inset: 0 50% 0 0; background: var(--primary); }
+.lrow.part .tickbtn .tick path { stroke-dashoffset: 22; }
+/* The review: what stays at the Office stands out, what isn't here yet is quieter */
+.look.still { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.look.still:empty { display: none; }
+.look.still .still-muted { color: var(--muted); font-weight: 500; }
+/* The done sheet says it's saving, then how it went */
+.sheet-sub.saving { display: flex; align-items: center; gap: 8px; }
+.sheet-sub .spin { width: 16px; height: 16px; border-width: 2px; }
+/* Toasts: two lines at most */
+.toast { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* The scanner: Done where the dock's button is; a read fills the frame green with a tick; finishing a kid turns the pill green */
+.cam-done { bottom: calc(56px + env(safe-area-inset-bottom, 0px)); }
+.cam-said { bottom: calc(126px + env(safe-area-inset-bottom, 0px)); }
+.cam .frame.square.hit { background: rgba(47, 125, 79, 0.42); border-color: #2F7D4F; border-width: 5px; }
+.frame-tick { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.8); color: #FFFFFF; opacity: 0; transition: opacity 120ms ease-out, transform 160ms var(--out); }
+.frame.hit .frame-tick { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.cam-top .cam-count.done { background: var(--ok-dot); }
+.cam-count .tick { --after: 0ms; width: 22px; height: 22px; background: #FFFFFF; color: var(--ok-dot); }
+.cam-said.last { grid-template-columns: minmax(0, 1fr); padding: 10px 14px; background: rgba(0, 0, 0, 0.62); color: #FFFFFF; box-shadow: none; animation: none; }
+.cam-said.last span { grid-column: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 600; }
+/* Leaving: the frame, card and buttons go at once, only the picture fades, and nothing under it takes a tap */
+.cam.leaving { pointer-events: none; }
+.cam.leaving > :not(video) { opacity: 0 !important; transition: none !important; animation: none !important; }
+/* Large text: the title row wraps rather than pushing the printer off the screen */
+.title-row { flex-wrap: wrap; row-gap: 8px; }
+.brand { flex: 1 1 auto; }
+h1 { white-space: normal; min-width: 0; }
+.top-side { margin-left: auto; }
+.wrap, .top, .top > * { min-width: 0; }
+.load-head .card-title { flex-wrap: wrap; row-gap: 8px; }
+.load-head .who h2 { white-space: nowrap; }
+/* The done sheet: where the rest is, under the count it belongs to */
+.done-kids .sc-items { padding-left: 0; }
+.done-kids .shelf-callout + .shelf-callout { margin-top: 10px; }

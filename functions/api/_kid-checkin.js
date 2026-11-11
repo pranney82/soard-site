@@ -66,11 +66,15 @@ export async function orderReads(DB, kinds = ORDER_KINDS, strict = false) {
 function settle(it, whoOf = () => null) {
   const live = it.receipts.filter((r) => !r.undoneAt);
   // What's out, by the boxes (./_kid-record.js outState: the same rule the server frees shelves by)
-  const st = outState(live.filter((r) => r.kind === 'receive'), live.filter((r) => r.kind === 'out'));
+  const ins = live.filter((r) => r.kind === 'receive');
+  const st = outState(ins, live.filter((r) => r.kind === 'out'));
   it.got = st.got;
   it.sent = st.sent;
   it.boxesLeft = st.boxesLeft;
-  it.shelf = [...live].reverse().find((r) => r.kind === 'receive' && r.shelf)?.shelf || null;
+  // Where it is: the shelves of its check-ins with a box still at the Office, newest first (one that went out isn't
+  // where the rest is); all of it out, the last shelf it was on
+  it.shelves = [...new Set(ins.filter((r) => r.shelf && !st.per.get(r.id)?.full).reverse().map((r) => r.shelf))];
+  it.shelf = it.shelves[0] || [...ins].reverse().find((r) => r.shelf)?.shelf || null;
   if (live.some((r) => r.kind === 'house')) it.status = 'house';
   else if (st.allOut && it.got >= it.qty) it.status = 'out';
   else if (it.got >= it.qty) it.status = 'here';
@@ -268,7 +272,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   }
   const shelves = SHELVES.map((s) => {
     const kid = kidOf.get(record.shelves.get(s));
-    const here = kids.flatMap((k) => k.items.filter((i) => (i.status === 'here' || i.status === 'partly') && i.shelf === s).map(() => k.jobId));
+    const here = kids.flatMap((k) => k.items.filter((i) => (i.status === 'here' || i.status === 'partly') && (i.shelves || [i.shelf]).includes(s)).map(() => k.jobId));
     return { shelf: s, name: shelfName(s), kid: kid?.jobId || (s === FLOOR ? null : record.shelves.get(s) || null), things: here.length };
   });
   return { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, await orderReads(DB, SHIP_KINDS, strict)) };
