@@ -118,6 +118,7 @@ const tagColors: Record<string, string> = {
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: article.tag || 'Resource Guide', title: article.title, lead: article.heroLead, photo: { id: heroPhotoId, alt: 'A child in their new room built by Sunshine on a Ranney Day' } }}
   title={article.title}
   description={autoDesc}
   ogType="article"

@@ -24,6 +24,7 @@ import {
   seriesOf, seriesEvents, isOver, yearOf, fmtDay, displayName, recapLead,
   recapPhotos, recapSponsors, cleanHighlights, recapStyle,
 } from '../../../public/admin/events-shared.js';
+import { recapTitleParts } from '../../utils/event-recap';
 
 interface Props {
   ev: any;
@@ -46,11 +47,8 @@ const highlights = cleanHighlights(ev.highlights);
 const lead = recapLead(ev, { photos: photos.length, sponsors: sponsors.length });
 const credit = ev.photographer ? { name: String(ev.photographer).trim(), url: ev.photographerUrl || '' } : undefined;
 
-/* The words of the title that get the highlighter */
-const titleParts = (() => {
-  const m = name.match(/^(.*\s)(\S+)$/);
-  return m ? { lead: m[1], last: m[2] } : { lead: '', last: name };
-})();
+/* The words of the title that get the highlighter (the share card uses the same rule) */
+const titleParts = recapTitleParts(name);
 
 /* Cover: the first photo, the second overlapping it; the poster before photos */
 const cover = photos[0]?.id || ev.image || null;

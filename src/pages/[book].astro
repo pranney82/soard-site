@@ -50,6 +50,7 @@ const bookSchema = {
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: book.eyebrow, title: book.titleHtml, lead: book.description, photo: { id: cover.id, whole: true, aspect, alt: `The cover of ${book.titleText}` } }}
   title={book.titleText}
   description={book.description}
   breadcrumbs={breadcrumbs}

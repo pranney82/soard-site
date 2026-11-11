@@ -81,6 +81,7 @@ const sp = siteSettings.sectionPhotos || {};
 const missionMainId = sp.missionMain || 'kids/eli/photo-01';
 const missionAccentId = sp.missionAccent || 'kids/georgia/photo-01';
 const heroPhotoId = siteSettings.heroKidPhotoId || `kids/${heroSlug}/hero`;
+const heroAlt = `${hd?.name || 'Zyah'}'s room reveal — a life-changing moment`;
 const storyPhotoId = siteSettings.featuredStoryImage || (fd?.heroImage ? extractCfId(fd.heroImage) : `kids/${featuredSlug}/hero`);
 const roomPhotos = {
   bedroom: sp.roomBedroom || 'kids/griffin/hero',
@@ -186,9 +187,9 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: heroEyebrow, title: heroHeadline, lead: heroSub, photo: { id: heroPhotoId, alt: heroAlt } }}
   title="Home"
   description="We build free dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs in Atlanta. 501(c)(3) nonprofit. Donate or apply today."
-  ogImage="/og/home.png"
   jsonLd={jsonLd}
 >
   <!-- Preload hero LCP image — imagesrcset/imagesizes must match the <img> -->
@@ -212,7 +213,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
             src={heroImg960}
             srcset={heroSrcset}
             sizes={heroSizes}
-            alt={`${hd?.name || 'Zyah'}'s room reveal — a life-changing moment`}
+            alt={heroAlt}
             width="960" height="1200"
             loading="eager" fetchpriority="high" decoding="auto"
           />

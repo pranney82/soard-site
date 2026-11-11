@@ -17,6 +17,7 @@ const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
 
 /* Cloudflare Images — imagedelivery.net auto-negotiates AVIF/WebP via Accept header */
 import { cfRaw, cfSrcset as _cfSrcset, cfLqip } from '../utils/cf-image';
+import { heroHtml } from '../utils/hero-words';
 const cfSrc = (id: string, w: number) => cfRaw(id, `w=${w},q=85`);
 const cfSrcset = (id: string, widths: number[]) => _cfSrcset(id, widths);
 
@@ -68,15 +69,22 @@ const jsonLd = {
     url: 'https://sunshineonaranneyday.com',
   },
 };
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Brand & Media Resources",
+  title: "Brand & Media Kit",
+  lead: "Official brand assets, logos, and press-ready information for representing Sunshine on a Ranney Day.",
+};
 ---
-<BaseLayout title="Brand & Media Kit" description={media.metaDescription} breadcrumbs={breadcrumbs} jsonLd={jsonLd} noindex={true}>
+<BaseLayout title="Brand & Media Kit" description={media.metaDescription} og={{ layout: 'text', eyebrow: hero.eyebrow, title: heroHtml([hero.title]), lead: hero.lead }} breadcrumbs={breadcrumbs} jsonLd={jsonLd} noindex={true}>
 
   <!-- ═══ DARK HERO ═══ -->
   <section class="brand-hero">
     <div class="container">
-      <p class="brand-hero-label">Brand & Media Resources</p>
-      <h1>Brand & Media Kit</h1>
-      <p class="brand-hero-sub">Official brand assets, logos, and press-ready information for representing Sunshine on a Ranney Day.</p>
+      <p class="brand-hero-label">{hero.eyebrow}</p>
+      <h1>{hero.title}</h1>
+      <p class="brand-hero-sub">{hero.lead}</p>
       <div class="brand-hero-actions">
         <a href={KIT.href} download class="hero-btn hero-btn-primary" aria-label="Download full media kit ZIP">
           <Fragment set:html={dlIcon} />Download Full Media Kit

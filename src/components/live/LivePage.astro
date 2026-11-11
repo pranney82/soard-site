@@ -33,6 +33,7 @@
  */
 import { storyLead } from '../../utils/story-lead';
 import { cfRaw } from '../../utils/cf-image';
+import { LIVE_GENERIC_LEAD } from '../../utils/live-hero-text';
 import PastReveals from './PastReveals.astro';
 import LiveStage from './LiveStage.astro';
 import LiveMessages from './LiveMessages.astro';
@@ -52,7 +53,7 @@ interface KidLite {
 interface Props { kid?: KidLite | null; fallbackImage: string }
 const { kid = null, fallbackImage } = Astro.props;
 
-const GENERIC_LEAD = 'Room reveals stream live right here. Watch the moment a child sees their new room for the first time.';
+const GENERIC_LEAD = LIVE_GENERIC_LEAD;
 const photo = kid?.heroImage || fallbackImage;
 const name = kid?.name || null;
 const summary = kid?.heroSummary || kid?.shortDescription || null;

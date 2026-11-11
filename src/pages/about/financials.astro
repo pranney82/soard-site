@@ -52,6 +52,7 @@ const licenseDoc = docsOther.find(d => /contractor/i.test(d.title));
 
 // Financial snapshot — editable from admin panel
 import snapshotData from '../../content/site/financial-snapshot.json';
+import { heroHtml, BR, type HeroPart } from '../../utils/hero-words';
 const snapshot = snapshotData;
 
 const fmtShort = (n: number) =>
@@ -79,9 +80,17 @@ const jsonLd = {
     "taxID": siteSettings.ein
   }
 };
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Transparency",
+  title: ["Our books", BR, "are ", { em: "open" }, "."] as HeroPart[],
+  lead: ["990 tax returns, audited financials, and annual reports. Posted here for anyone to read, ", { strong: "all the way back to 2012" }, "."] as HeroPart[],
+};
 ---
 
 <PageLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: heroPhoto, alt: 'A child smiling in their new dream bedroom built by Sunshine on a Ranney Day' } }}
   title="Financials — 990s, Audits & Annual Reports"
   description="Full financial transparency: 990 tax returns, audited financials, and annual reports. See exactly where your donation goes."
   jsonLd={jsonLd}
@@ -98,9 +107,9 @@ const jsonLd = {
   <section class="hero">
     <div class="hero-inner">
       <div class="hero-text">
-        <div class="section-label">Transparency</div>
-        <h1>Our books<br/>are <em>open</em>.</h1>
-        <p class="hero-lead">990 tax returns, audited financials, and annual reports. Posted here for anyone to read, <strong>all the way back to 2012</strong>.</p>
+        <div class="section-label">{hero.eyebrow}</div>
+        <h1>{hero.title.map((p) => typeof p === 'string' ? p : 'em' in p ? <em>{p.em}</em> : <br/>)}</h1>
+        <p class="hero-lead">{hero.lead.map((p) => typeof p === 'string' ? p : <strong>{p.strong}</strong>)}</p>
         <div class="hero-ctas">
           {latestReport && (
             <a href={latestReport.url} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg"

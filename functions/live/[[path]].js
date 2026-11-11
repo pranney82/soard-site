@@ -42,6 +42,7 @@ import { revealOf } from '../api/reveal-design.js';
 import { cachedReveals } from '../api/_reveals.js';
 import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
 import { barFor, addBar, PAGE_REUSE } from '../_apply-bar.js';
+import { cardFor } from '../_og-cards.js';
 import { upcomingReveals } from '../_kid-reveal.js';
 import { heroRowsHtml, rowsSignature, afterLine } from '../../src/utils/upcoming-rows.ts';
 import { plannedText, betweenText, ctasThatApply, ctaPicks } from '../../src/utils/live-hero-text.ts';
@@ -128,9 +129,9 @@ function rewrite(res, { kid, party, messages, design }) {
       .on('.live-page', setAttrs({ 'data-next': null }))
       .on('#live-hero h1', { element(e) { e.setInnerContent(`${esc(kid.name)}'s <em>room reveal</em>`, { html: true }); } });
     if (kid.summary) rw = rw.on('#live-hero [data-live="lead"]', { element(e) { e.setInnerContent(kid.summary); } });
-    if (kid.published) {
-      // Share card built for every published kid at deploy time
-      const og = `${SITE}/og/kids/${kid.slug}.png`;
+    if (kid.card) {
+      // The kid's own live page's share card (built for every published kid)
+      const og = `${SITE}${kid.card}`;
       rw = rw.on('meta[property="og:image"]', content(og)).on('meta[name="twitter:image"]', content(og));
     }
     if (kid.image) {
@@ -383,6 +384,7 @@ export async function onRequest(context) {
 
   try {
     const kid = isIndex && broadcast ? await currentKid(env, broadcast.state) : null;
+    if (kid?.published) kid.card = await cardFor(context, `/live/${kid.slug}/`);
     const party = broadcast ? watchParty(broadcast.pub, { pageKid, kidPublished: pageKid ? true : !!kid?.published }) : null;
     if (party) party.generic = !broadcast.pub.kidSlug;
     let bar = null;

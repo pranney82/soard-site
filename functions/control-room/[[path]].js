@@ -9,6 +9,8 @@
  * the card says what the link is, never what's happening.
  */
 
+import { cardFor } from '../_og-cards.js';
+
 const SITE = 'https://sunshineonaranneyday.com';
 export const CONTROL_ROOM = `${SITE}/admin/#broadcast/control-room`;
 // Link-preview fetchers name themselves; iMessage's says facebookexternalhit and Twitterbot
@@ -17,7 +19,8 @@ const PREVIEWERS = /facebookexternalhit|Facebot|Twitterbot|Slackbot|WhatsApp|Tel
 const TITLE = 'SOARD reveal control room';
 const DESCRIPTION = 'Sound, picture and every destination for the live reveal. Staff sign in to open it.';
 
-export function previewPage() {
+/** The preview page; `image` is the Control Room's share card (built with the site, src/integrations/og-cards.mjs) */
+export function previewPage(image = `${SITE}/og/control-room.jpg`) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>${TITLE}</title>
 <meta name="robots" content="noindex">
@@ -27,16 +30,21 @@ export function previewPage() {
 <meta property="og:url" content="${SITE}/control-room/">
 <meta property="og:title" content="${TITLE}">
 <meta property="og:description" content="${DESCRIPTION}">
-<meta property="og:image" content="${SITE}/og/control-room.png">
+<meta property="og:image" content="${image}">
+<meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Staff only: Reveal Control Room. Sunshine on a Ranney Day">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${image}">
 </head><body><p><a href="${CONTROL_ROOM}">Open the control room</a></p></body></html>`;
 }
 
-export function onRequestGet({ request }) {
+export async function onRequestGet(context) {
+  const { request } = context;
   if (!PREVIEWERS.test(request.headers.get('User-Agent') || '')) {
     return new Response(null, { status: 302, headers: { Location: CONTROL_ROOM, 'Cache-Control': 'no-store' } });
   }
-  return new Response(previewPage(), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Robots-Tag': 'noindex' } });
+  const card = await cardFor(context, '/control-room/');
+  return new Response(previewPage(card ? `${SITE}${card}` : undefined), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Robots-Tag': 'noindex' } });
 }

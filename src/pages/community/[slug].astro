@@ -27,6 +27,7 @@ import { cfRaw, cfLqip, isCF, focusPosition } from '../../utils/cf-image';
 import { getPublishedCommunity } from '../../utils/collections';
 import { mainPhotoOf } from '../../utils/community';
 import { resolveKidVideo } from '../../utils/reveals';
+import { heroHtml } from '../../utils/hero-words';
 
 
 export async function getStaticPaths() {
@@ -92,6 +93,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: `${project.year} Community Project`, title: heroHtml([project.name]), leadParts: heroStats.filter((s: any) => s?.value).map((s: any) => `${s.value} ${s.label || ''}`.trim()), photo: heroPhoto ? { id: heroPhoto, alt: project.imageAlt || `${project.name} project by SOARD` } : null }}
   title={`${project.name} — Community Project`}
   description={project.metaDescription || project.description}
   jsonLd={jsonLd}

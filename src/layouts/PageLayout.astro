@@ -5,6 +5,7 @@
  * and optional bottom CTA. Wraps BaseLayout.
  */
 import BaseLayout from './BaseLayout.astro';
+import type { CardSpec } from '../utils/og-registry';
 
 interface Props {
   title: string;
@@ -12,7 +13,8 @@ interface Props {
   heroTitle?: string;
   heroSubtitle?: string;
   heroLabel?: string;
-  ogImage?: string;
+  /** The share card; by default this page's hero as a text card */
+  og?: CardSpec;
   ogType?: string;
   jsonLd?: object | object[];
   breadcrumbs?: { name: string; url: string }[];
@@ -21,10 +23,12 @@ interface Props {
   noindex?: boolean;
 }
 
-const { title, description, heroTitle, heroSubtitle, heroLabel, ogImage, ogType, jsonLd, breadcrumbs, datePublished, dateModified, noindex } = Astro.props;
+const { title, description, heroTitle, heroSubtitle, heroLabel, og, ogType, jsonLd, breadcrumbs, datePublished, dateModified, noindex } = Astro.props;
+// The share card is the hero: its label, headline (regular weight, its italic word marked) and italic subtitle
+const card: CardSpec | undefined = og ?? (heroTitle ? { layout: 'text', eyebrow: heroLabel, title: heroTitle, lead: heroSubtitle, leadItalic: true, titleWeight: 400 } : undefined);
 ---
 
-<BaseLayout title={title} description={description} ogImage={ogImage} ogType={ogType} jsonLd={jsonLd} breadcrumbs={breadcrumbs} datePublished={datePublished} dateModified={dateModified} noindex={noindex}>
+<BaseLayout title={title} description={description} og={card} ogType={ogType} jsonLd={jsonLd} breadcrumbs={breadcrumbs} datePublished={datePublished} dateModified={dateModified} noindex={noindex}>
   {/* A page's own <head> additions (e.g. its main photo's preload) */}
   <slot name="head" slot="head" />
   {(heroTitle || heroSubtitle) && (

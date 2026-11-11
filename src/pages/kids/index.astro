@@ -42,6 +42,7 @@ const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
 // ── CF Image helpers ──────────────────────
 import { cfUrl, cfRaw, cfSrcset as _cfSrcset, cfDensitySrcset, cfId, CF_BASE, focusOf } from '../../utils/cf-image';
 import lqipManifest from '../../data/lqip-kids.json';
+import { heroHtml, type HeroPart } from '../../utils/hero-words';
 const lqip: Record<string, string> = lqipManifest;
 /** Srcset with proportional height + face-crop at each breakpoint. */
 function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
@@ -139,9 +140,18 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
 
 // ── (hero is minimal — no featured photo needed) ──
 
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Our Kids",
+  title: ["Meet our ", { em: "Sunshine" }, " Kids"] as HeroPart[],
+  lead: siteSettings.kidsPageSummary || "Every room we build changes a child's world.",
+  photos: kids.filter((k) => k.data.heroImage).slice(0, 2).map((k) => ({ id: k.data.heroImage as string, alt: `Photo of ${k.data.name}` })),
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: hero.photos[0] || null, inset: hero.photos[1] || null }}
   title="Meet the Kids We've Helped"
   description={pageDescription}
   jsonLd={[itemListSchema, faqSchema]}
@@ -165,9 +175,9 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   <section class="kids-hero" aria-label="Meet the Kids">
     <div class="kids-hero__inner">
       <div class="kids-hero__text">
-        <span class="section-label section-label--yellow kids-hero__eyebrow">Our Kids</span>
-        <h1 class="kids-hero__headline">Meet our <em>Sunshine</em> Kids</h1>
-        <p class="kids-hero__sub">{siteSettings.kidsPageSummary || 'Every room we build changes a child\'s world.'}</p>
+        <span class="section-label section-label--yellow kids-hero__eyebrow">{hero.eyebrow}</span>
+        <h1 class="kids-hero__headline">{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="kids-hero__sub">{hero.lead}</p>
       </div>
 
       <div class="kids-hero__panel" aria-label="Impact statistics">

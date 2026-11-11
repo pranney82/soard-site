@@ -24,6 +24,7 @@ import { getPublishedCommunity } from '../../utils/collections';
 import { mainPhotoOf } from '../../utils/community';
 import { getSiteStats } from '../../utils/stats';
 import siteSettings from '../../content/site/settings.json';
+import { heroHtml, type HeroPart } from '../../utils/hero-words';
 
 /* ── Community Projects from content collection ── */
 const allProjects = await getPublishedCommunity();
@@ -77,9 +78,17 @@ const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'Community Projects', url: 'https://sunshineonaranneyday.com/community/' },
 ];
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Community Projects",
+  title: ["Thinking ", { em: "bigger" }, "."] as HeroPart[],
+  lead: "When one room isn't enough, we think bigger. We partner with schools, camps, and nonprofits to transform entire facilities: classrooms, therapy rooms, and gathering spaces that serve thousands of children every year.",
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: heroPhotoId, alt: 'Community facility renovated by SOARD for children with special needs' }, inset: { id: heroAccentPhotoId } }}
   title="Community Projects — Large-Scale Renovations"
   description="Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year."
   breadcrumbs={breadcrumbs}
@@ -91,9 +100,9 @@ const breadcrumbs = [
   <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
-        <p class="hero-eyebrow">Community Projects</p>
-        <h1>Thinking <em>bigger</em>.</h1>
-        <p class="hero-lead">When one room isn't enough, we think bigger. We partner with schools, camps, and nonprofits to transform entire facilities: classrooms, therapy rooms, and gathering spaces that serve thousands of children every year.</p>
+        <p class="hero-eyebrow">{hero.eyebrow}</p>
+        <h1>{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="hero-lead" set:html={hero.lead} />
         <div class="hero-ctas">
           <a href="#projects" class="btn btn-primary">See Our Projects <span aria-hidden="true">&darr;</span></a>
           <a href="/apply/community-project/" class="btn btn-outline-dark" data-astro-reload>Apply for Your Organization</a>

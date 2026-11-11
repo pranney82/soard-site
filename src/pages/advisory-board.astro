@@ -21,6 +21,7 @@ import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfLqip } from '../utils/cf-image';
 import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath, initials, advisoryTitle } from '../utils/team';
 import type { PersonData } from '../utils/team';
+import { heroHtml, type HeroPart } from '../utils/hero-words';
 
 const computed = await getSiteStats();
 
@@ -50,9 +51,17 @@ const breadcrumbs = [
 
 // No custom WebPage node here — BaseLayout already emits one with the same
 // @id from the title/description props; duplicating it corrupts the @graph.
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Advisory Board",
+  title: ["Lend your expertise. Build more ", { em: "dreams" }, "."] as HeroPart[],
+  lead: ["Our Advisory Board is a team of advocates, connectors, and ambassadors who work together to fund a SOARD room makeover every year. Applications are ", { strong: "always open" }, "."] as HeroPart[],
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: heroPhotoId, alt: 'Volunteers and family celebrating at a SOARD room reveal' } }}
   title="Advisory Board — Lend Your Expertise"
   description="Join the SOARD Advisory Board: advocates, connectors, and fundraisers working together to fund a room makeover every year. Applications are always open."
   breadcrumbs={breadcrumbs}
@@ -65,9 +74,9 @@ const breadcrumbs = [
   <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
-        <p class="hero-eyebrow">Advisory Board</p>
-        <h1 class="hero-headline">Lend your expertise. Build more <em>dreams</em>.</h1>
-        <p class="hero-lead">Our Advisory Board is a team of advocates, connectors, and ambassadors who work together to fund a SOARD room makeover every year. Applications are <strong>always open</strong>.</p>
+        <p class="hero-eyebrow">{hero.eyebrow}</p>
+        <h1 class="hero-headline">{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="hero-lead">{hero.lead.map((p) => typeof p === 'string' ? p : <strong>{p.strong}</strong>)}</p>
         <div class="hero-ctas">
           <a href={APPLY_URL} data-astro-reload class="btn btn-primary btn-glow btn-lg">Apply to Join →</a>
           <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview (PDF)</a>

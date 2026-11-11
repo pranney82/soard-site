@@ -16,8 +16,9 @@ import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getCollection, getEntry } from 'astro:content';
 import { BID_URL, auctionIsOpen, bidClosesLabel, AUCTION_ITEM_COUNT, AUCTION_CATEGORIES, AUCTION_HIGHLIGHTS } from '../../utils/auction';
 import EventRecap from '../../components/events/EventRecap.astro';
-import { recapMeta, galaThemeName } from '../../utils/event-recap';
+import { recapMeta, galaThemeName, eventLook } from '../../utils/event-recap';
 import { isOver, latestOf, seriesByKey } from '../../../public/admin/events-shared.js';
+import { heroHtml, type HeroPart } from '../../utils/hero-words';
 
 /* ── Event content: the newest gala, so this page automatically follows
    next year's gala once it's added in the admin (e.g. "2027-evening-of-sunshine")
@@ -150,7 +151,6 @@ const ssrHours = String(Math.floor((_diff % 86400000) / 3600000)).padStart(2, '0
 const ssrMins = String(Math.floor((_diff % 3600000) / 60000)).padStart(2, '0');
 
 /* ── OG share image: use the gala poster art at OG dimensions ── */
-const ogImage = cfRaw(heroImageId, 'w=1200,h=630,fit=cover,gravity=auto,q=82');
 
 /* ── JSON-LD ── */
 const eventJsonLd = {
@@ -184,12 +184,19 @@ const eventJsonLd = {
     "priceCurrency": "USD",
   },
 };
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Annual Fundraising Gala",
+  title: ["Evening of ", { em: "Sunshine" }] as HeroPart[],
+  lead: "An evening of Latin music, festive cocktails, and dancing, all to fund life-changing home renovations for children with special needs.",
+};
 ---
 
 <BaseLayout
   title={recap?.title ?? `Evening of Sunshine${themeName ? ` — ${themeName}` : ''} Gala`}
   description={recap?.description ?? `Join us${themeName ? ` for ${themeName}` : ''} at the Evening of Sunshine Gala: music, dancing, and a live auction benefiting children with special needs.`}
-  ogImage={recap?.ogImage ?? ogImage}
+  og={recap?.og ?? { layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: heroImageId }, look: eventLook('gala') }}
   jsonLd={recap?.jsonLd ?? eventJsonLd}
   breadcrumbs={recap?.breadcrumbs ?? [
     { name: 'Events', url: '/events/' },
@@ -232,9 +239,9 @@ const eventJsonLd = {
 
     <div class="container gv-hero__inner">
       <div class="gv-hero__content">
-        <span class="gv-hero__eyebrow" data-reveal>Annual Fundraising Gala</span>
+        <span class="gv-hero__eyebrow" data-reveal>{hero.eyebrow}</span>
         <h1 class="gv-hero__title" data-reveal transition:name="event-title">
-          Evening of <span class="gv-hero__title-accent">Sunshine</span>
+          {hero.title.map((p) => typeof p === 'string' ? p : <span class="gv-hero__title-accent">{p.em}</span>)}
         </h1>
         {themeName && (
           <p class="gv-hero__theme-line" data-reveal>
@@ -242,9 +249,7 @@ const eventJsonLd = {
             <em>{themeName}</em>
           </p>
         )}
-        <p class="gv-hero__subtitle" data-reveal>
-          An evening of Latin music, festive cocktails, and dancing, all to fund life-changing home renovations for children with special needs.
-        </p>
+        <p class="gv-hero__subtitle" data-reveal>{hero.lead}</p>
         <div class="gv-hero__meta" data-reveal>
           <div class="gv-hero__meta-item">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>

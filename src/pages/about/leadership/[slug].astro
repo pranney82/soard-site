@@ -13,9 +13,10 @@ import { getCollection } from 'astro:content';
 import { cfUrl } from '../../../utils/cf-image';
 import {
   normalizePerson, hasProfile, comparePeople, profilePath, profileWords, bioParagraphs,
-  portraitUrl, portraitSrcset, photoUrl, photoSrcset, photoLqip,
+  portraitUrl, portraitSrcset, photoUrl, photoSrcset, photoLqip, portraitTransform,
 } from '../../../utils/team';
 import type { PersonData } from '../../../utils/team';
+import { heroHtml } from '../../../utils/hero-words';
 
 export async function getStaticPaths() {
   const all = await getCollection('team');
@@ -81,7 +82,7 @@ const personLd = {
   description={description}
   breadcrumbs={breadcrumbs}
   jsonLd={personLd}
-  ogImage={`/og/people/${slug}.png`}
+  og={{ layout: 'split', eyebrow, title: heroHtml([p.name]), lead: [shownTitle, p.organization].filter(Boolean).join(' · '), photo: p.photo ? { id: p.photo, pre: portraitTransform(p, 416).split(',').filter((t) => /^(trim|segment|background)=/.test(t)).join(','), alt: p.name } : null }}
 >
 
   <!-- ══════ HERO: editorial split (no data-reveal: LCP) ══════ -->

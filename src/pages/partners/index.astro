@@ -32,6 +32,7 @@ import ProcessStrip from '../../components/ui/ProcessStrip.astro';
 
 /* ── Site settings (editable from admin) ── */
 import siteSettings from '../../content/site/settings.json';
+import { heroHtml, type HeroPart } from '../../utils/hero-words';
 
 /* ── Impact Moment (admin-editable via site settings) ── */
 const heroPhoto = siteSettings.partnerPhoto || 'kids/oakley/photo-15';
@@ -80,9 +81,17 @@ const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'Partners', url: 'https://sunshineonaranneyday.com/partners/' },
 ];
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Our Partners",
+  title: ["The people who make ", { em: "dreams" }, " possible."] as HeroPart[],
+  lead: "Every room we build is a community effort. These incredible partners donate their time, talent, materials, and funding to transform the lives of children with special needs.",
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: heroPhoto, alt: 'Partners and volunteers working together on a SOARD room build' } }}
   title="Our Partners — Who Makes It Happen"
   description={pageDesc}
   breadcrumbs={breadcrumbs}
@@ -95,9 +104,9 @@ const breadcrumbs = [
   <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
-        <p class="hero-eyebrow">Our Partners</p>
-        <h1 class="hero-headline">The people who make <em>dreams</em> possible.</h1>
-        <p class="hero-lead">Every room we build is a community effort. These incredible partners donate their time, talent, materials, and funding to transform the lives of children with special needs.</p>
+        <p class="hero-eyebrow">{hero.eyebrow}</p>
+        <h1 class="hero-headline">{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="hero-lead" set:html={hero.lead} />
         <div class="hero-ctas">
           <a href="#signature" class="btn btn-primary btn-lg">Meet Our Partners &darr;</a>
           <a href="mailto:info@soardcharity.com?subject=Partnership%20Inquiry" class="btn btn-outline-dark btn-lg">Become a Partner &rarr;</a>

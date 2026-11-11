@@ -19,6 +19,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import siteSettings from '../../content/site/settings.json';
 import { getSiteStats } from '../../utils/stats';
 import { cfRaw, cfLqip } from '../../utils/cf-image';
+import { heroHtml, type HeroPart } from '../../utils/hero-words';
 
 const computed = await getSiteStats();
 const SITE_URL = 'https://sunshineonaranneyday.com';
@@ -30,9 +31,17 @@ const breadcrumbs = [
   { name: 'Home', url: `${SITE_URL}/` },
   { name: 'Trade partners', url: `${SITE_URL}/trade-partners/` },
 ];
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Trade partners",
+  title: ["Your craft. A child’s ", { em: "room" }, "."] as HeroPart[],
+  lead: `${orgName} builds bedrooms and bathrooms for children with disabilities across greater Atlanta. Set up your account once, and we pay you by direct deposit.`,
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: heroPhotoId, alt: 'A girl trying out the handheld shower, grab bar and shower seat in her new accessible bathroom' } }}
   title="Trade Partners: Set Up Your Account"
   description="Plumbers, electricians, carpenters, suppliers and crews build SOARD’s bedrooms and bathrooms for children with disabilities. Set up your trade-partner account in about 10 minutes."
   breadcrumbs={breadcrumbs}
@@ -44,11 +53,11 @@ const breadcrumbs = [
     <div class="hero-inner">
       <div class="hero-text">
         <div class="hero-top">
-          <p class="hero-eyebrow" data-t="eyebrow">Trade partners</p>
+          <p class="hero-eyebrow" data-t="eyebrow">{hero.eyebrow}</p>
           <button type="button" class="tp-lang" data-lang-switch lang="es">Español</button>
         </div>
-        <h1 class="hero-headline" data-t="h1" data-html>Your craft. A child’s <em>room</em>.</h1>
-        <p class="hero-lead" data-t="lead">{orgName} builds bedrooms and bathrooms for children with disabilities across greater Atlanta. Set up your account once, and we pay you by direct deposit.</p>
+        <h1 class="hero-headline" data-t="h1" data-html>{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="hero-lead" data-t="lead">{hero.lead}</p>
         <div class="hero-ctas">
           <a href="#start" class="btn btn-primary btn-lg" data-t="ctaStart" data-focus="#tp-company">Get started</a>
           <a href="#sign-in" class="btn btn-outline-dark btn-lg" data-t="ctaSignIn" data-focus="#tp-email">Sign in</a>

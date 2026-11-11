@@ -21,6 +21,7 @@ import siteSettings from '../content/site/settings.json';
 import { siteForm, embedOf, dafGiftUrl, DAF_MIN_TEXT } from '../../public/admin/zeffy-links.js';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfUrl, cfSrcset, cfLqip } from '../utils/cf-image';
+import { heroHtml, type HeroPart } from '../utils/hero-words';
 
 const computed = await getSiteStats();
 
@@ -60,9 +61,17 @@ const jsonLd = {
   "inLanguage": "en-US",
   "breadcrumb": { "@id": `${SITE_URL}/ways-to-give/#breadcrumb` }
 };
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Ways to Give",
+  title: ["There are many ways to build a ", { em: "dream" }, "."] as HeroPart[],
+  lead: "Give online, by check, through stock, a donor-advised fund, your employer, or your estate. Every gift creates life-changing spaces for children with special needs.",
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: heroPhotoId, alt: 'A child smiling in their new dream room built by SOARD donors' } }}
   title="Ways to Give — Every Way to Support SOARD"
   description="Donate online, give stock, use your donor-advised fund, mail a check, set up employer matching, or include SOARD in your estate plan. Every gift builds dreams."
   jsonLd={jsonLd}
@@ -76,9 +85,9 @@ const jsonLd = {
   <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
-        <p class="hero-eyebrow">Ways to Give</p>
-        <h1 class="hero-headline">There are many ways to build a <em>dream</em>.</h1>
-        <p class="hero-lead">Give online, by check, through stock, a donor-advised fund, your employer, or your estate. Every gift creates life-changing spaces for children with special needs.</p>
+        <p class="hero-eyebrow">{hero.eyebrow}</p>
+        <h1 class="hero-headline">{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="hero-lead" set:html={hero.lead} />
         <div class="hero-ctas">
           <a href="/donate/" class="btn btn-primary btn-glow btn-lg">Donate Now →</a>
           <a href="#give-today" class="btn btn-outline-dark btn-lg">Explore Options ↓</a>

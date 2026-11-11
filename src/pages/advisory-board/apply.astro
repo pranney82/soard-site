@@ -12,6 +12,7 @@ import siteSettings from '../../content/site/settings.json';
 import { cfRaw, cfLqip } from '../../utils/cf-image';
 import { ADVISORY_STEPS, OVERVIEW_PDF } from '../../../functions/api/_advisory-form.js';
 import AdvField from '../../components/advisory/AdvField.astro';
+import { heroHtml, type HeroPart } from '../../utils/hero-words';
 
 const SITE_URL = 'https://sunshineonaranneyday.com';
 const email = siteSettings.email;
@@ -36,9 +37,17 @@ const unitsOf = (fields: any[]) => {
   return out;
 };
 const logo = 'brand-logo-light-bg-display';
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Advisory Board",
+  title: ["Apply to join the ", { em: "Advisory Board" }] as HeroPart[],
+  lead: ["Tell us who you are, what you’d bring, and why the mission speaks to you. It takes about 20 minutes, with a reference in mind. Applications are ", { strong: "always open" }, "."] as HeroPart[],
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: photoId, alt: 'Volunteers and family celebrating at a SOARD room reveal' } }}
   title="Apply to the Advisory Board"
   description="Apply to join the SOARD Advisory Board: advocates, connectors, and fundraisers who fund a room makeover every year. Applications are always open."
   breadcrumbs={breadcrumbs}
@@ -49,9 +58,9 @@ const logo = 'brand-logo-light-bg-display';
   <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
-        <p class="hero-eyebrow"><a href="/advisory-board/">Advisory Board</a></p>
-        <h1 class="hero-headline">Apply to join the <em>Advisory Board</em></h1>
-        <p class="hero-lead">Tell us who you are, what you’d bring, and why the mission speaks to you. It takes about 20 minutes, with a reference in mind. Applications are <strong>always open</strong>.</p>
+        <p class="hero-eyebrow"><a href="/advisory-board/">{hero.eyebrow}</a></p>
+        <h1 class="hero-headline">{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="hero-lead">{hero.lead.map((p) => typeof p === 'string' ? p : <strong>{p.strong}</strong>)}</p>
         <p class="adv-hero-note" data-adv-hero-note role="status" hidden></p>
         <div class="hero-ctas"><a href="#application" class="btn btn-primary btn-lg" data-adv-cta>Start the application</a></div>
         <div class="hero-trust">

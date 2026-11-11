@@ -33,6 +33,7 @@ import siteSettings from '../content/site/settings.json';
 import { upcomingAtBuild } from '../utils/reveals-copy';
 import { revealWhen } from '../utils/reveals-client';
 import { getPublishedKids } from '../utils/collections';
+import { heroHtml, type HeroPart } from '../utils/hero-words';
 
 const reveals = await getReveals();
 const live = reveals.filter((r) => r.kind === 'live');
@@ -63,23 +64,31 @@ const breadcrumbs = [
 ];
 
 const description = `Watch kids with special needs see their new dream bedrooms, accessible bathrooms, and therapy rooms for the first time. ${reveals.length} reveal videos${live.length ? ' and live replays' : ''}.`;
-const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,metadata=none');
+// The share card's photo is the one the hero shows
+const heroCardPhoto = heroMode === 'next' ? nextPhoto : heroMode === 'latest' ? latest!.image : heroMainId;
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Reveal Videos",
+  title: ["The moment they see it for the ", { em: "first time" }, "."] as HeroPart[],
+  lead: "Every room we build ends with a door opening. Watch past reveals any time, and the next one live, right here.",
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: heroCardPhoto ? { id: heroCardPhoto } : null }}
   title="Room Reveal Videos"
   description={description}
   breadcrumbs={breadcrumbs}
-  ogImage={ogImage}
 >
 
   <!-- ══════ HERO: editorial split, no data-reveal (LCP) ══════ -->
   <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
-        <p class="hero-eyebrow">Reveal Videos</p>
-        <h1>The moment they see it for the <em>first time</em>.</h1>
-        <p class="hero-lead">Every room we build ends with a door opening. Watch past reveals any time, and the next one live, right here.</p>
+        <p class="hero-eyebrow">{hero.eyebrow}</p>
+        <h1>{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="hero-lead" set:html={hero.lead} />
         <!-- The next live reveal: who and when, beside the photo rather than on it; a link to their live page -->
         <a class="rh-when" href={next?.liveUrl || '/live/'} data-rh-when hidden={!next}>
           <span class="rh-when__kicker"><span class="rh-when__dot" aria-hidden="true"></span>Next live reveal</span>

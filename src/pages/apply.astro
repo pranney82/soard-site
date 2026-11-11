@@ -25,6 +25,7 @@ import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, cfLqip, cfId } from '../utils/cf-image';
 import { getFAQSchema } from '../utils/schema';
 import siteSettings from '../content/site/settings.json';
+import { heroHtml, type HeroPart } from '../utils/hero-words';
 
 const stats = await getSiteStats();
 const allKids = await getPublishedKids();
@@ -105,9 +106,17 @@ const breadcrumbs = [
 /* ── FAQ ── */
 const faqs: { question: string; answer: string }[] = siteSettings.applyFaqs || [];
 const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "For Families",
+  title: ["Your child deserves a room built just for ", { em: "them" }, "."] as HeroPart[],
+  lead: ["Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs. Designed around who they are, built by community, and ", { strong: "always free" }, "."] as HeroPart[],
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: heroPhotoId, alt: 'A child seeing their newly transformed dream room for the first time' }, inset: { id: storyPhotoId } }}
   title="Apply for a Free Room Makeover"
   description={`Does your child have special needs? Apply for a free dream bedroom, accessible bathroom, or therapy room. ${stats.totalKids}+ kids helped since 2012.`}
   breadcrumbs={breadcrumbs}
@@ -120,9 +129,9 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
-        <p class="hero-eyebrow">For Families</p>
-        <h1>Your child deserves a room built just for <em>them</em>.</h1>
-        <p class="hero-lead">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs. Designed around who they are, built by community, and <strong>always free</strong>.</p>
+        <p class="hero-eyebrow">{hero.eyebrow}</p>
+        <h1>{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="hero-lead">{hero.lead.map((p) => typeof p === 'string' ? p : <strong>{p.strong}</strong>)}</p>
         <div class="hero-ctas">
           <a href={appFormUrl} {...appLinkAttrs} class="btn btn-primary btn-lg hero-glow" data-when-open data-app-href hidden={!isOpen}>Apply Now &rarr;</a>
           <a href="#how-it-works" class="btn btn-primary btn-lg hero-glow" data-when-closed hidden={isOpen}>See How It Works &rarr;</a>

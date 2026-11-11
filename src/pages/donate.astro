@@ -29,6 +29,7 @@ import { getDonateSchema, getFAQSchema } from '../utils/schema';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, CF_BASE, cfLqip, cfId } from '../utils/cf-image';
 import dimsManifest from '../data/dimensions-kids.json';
+import { heroHtml, BR, type HeroPart } from '../utils/hero-words';
 
 const computed = await getSiteStats();
 
@@ -79,9 +80,17 @@ const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'Donate', url: 'https://sunshineonaranneyday.com/donate/' },
 ];
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Give Today",
+  title: ["A room can change", BR, "a child's ", { em: "entire" }, " life."] as HeroPart[],
+  lead: ["Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs, at ", { strong: "no cost to families" }, "."] as HeroPart[],
+};
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: { id: donateHeroPhoto, alt: `${donateHeroKidName} smiling in their new dream bedroom` } }}
   title="Donate — Give a Child Their Dream Room"
   description="Your gift transforms a child's world. We build free dream bedrooms, accessible bathrooms, and therapy rooms for kids with special needs in Atlanta. 100% goes to the mission."
   jsonLd={donateJsonLd}
@@ -94,9 +103,9 @@ const breadcrumbs = [
   <section class="hero" data-whole>
     <div class="hero-inner">
       <div class="hero-text">
-        <div class="section-label">Give Today</div>
-        <h1>A room can change<br/>a child's <em>entire</em> life.</h1>
-        <p class="hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs, at <strong>no cost to families</strong>.</p>
+        <div class="section-label">{hero.eyebrow}</div>
+        <h1>{hero.title.map((p) => typeof p === 'string' ? p : 'em' in p ? <em>{p.em}</em> : <br/>)}</h1>
+        <p class="hero-lead">{hero.lead.map((p) => typeof p === 'string' ? p : <strong>{p.strong}</strong>)}</p>
         <div class="hero-ctas">
           <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy={ONETIME_EMBED} class="btn btn-primary btn-lg btn-hero-glow">Donate Now →</a>
           <a href="#impact" class="btn btn-outline-dark">See Your Impact</a>

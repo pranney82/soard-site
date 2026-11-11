@@ -99,6 +99,8 @@ const photos = kid.photos || [];
 import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE, cfId } from '../../utils/cf-image';
 import lqipManifest from '../../data/lqip-kids.json';
 import dimsManifest from '../../data/dimensions-kids.json';
+import { sentences } from '../../utils/sentences';
+import { heroHtml } from '../../utils/hero-words';
 const _lqipMap: Record<string, string> = lqipManifest;
 const _dimsMap: Record<string, [number, number]> = dimsManifest;
 
@@ -263,11 +265,12 @@ const _rawHook = kid.heroSummary
 const heroHook = (() => {
   if (!_rawHook) return '';
   // Try to get first two sentences for richer context
-  const sentences = _rawHook.match(/[^.!?]+[.!?]+/g) || [_rawHook];
-  const twoSentences = sentences.slice(0, 2).map((s) => s.trim()).join(' ');
+  // Whole sentences (a title like "Ms." or an initial doesn't end one)
+  const parts = sentences(_rawHook);
+  const twoSentences = parts.slice(0, 2).join(' ');
   if (twoSentences.length <= 220) return twoSentences;
   // Fall back to first sentence if two is too long
-  const firstSentence = sentences[0]?.trim() || _rawHook;
+  const firstSentence = parts[0] || _rawHook;
   if (firstSentence.length <= 180) return firstSentence;
   // Smart truncation at clause boundary
   const truncated = firstSentence.slice(0, 170);
@@ -306,6 +309,7 @@ const planOrientation = (() => {
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: [kid.roomTypes?.join(', '), kid.year].filter(Boolean).join(' · '), title: heroHtml([kid.name]), lead: heroHook, photo: kid.heroImage ? { id: kid.heroImage, alt: `Photo of ${kid.name}` } : null, inset: kid.heroImage && accentPhoto ? { id: accentPhoto } : null }}
   title={`${kid.name}'s Story${kid.roomTypes?.length ? ` — ${kid.roomTypes.join(' & ')}` : ''}`}
   description={metaDesc}
   ogType="article"

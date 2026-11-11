@@ -32,6 +32,7 @@ import {
   SERIES, seriesOf, isOver, dayIn, yearOf, eventPath, hasOwnPage, isLatest,
   recapPhotos, recapSponsors, sponsorCount, splitSponsors, cleanHighlights, displayName, fmtDay as fmtWhen,
 } from '../../../public/admin/events-shared.js';
+import type { CardSpec } from '../../utils/og-registry';
 
 /* ── Fetch & sort events ── */
 const allEvents = await getCollection('events');
@@ -189,6 +190,7 @@ const recapMainSizes = recapMainWide ? '(max-width: 767px) 340px, (max-width: 12
 /* Index of a photo inside its event's recap, for opening the tour at it */
 const photoIndex = (slug: string, id?: string) => Math.max(0, recaps[slug]?.photos.findIndex(p => p.id === id) ?? 0);
 
+
 /* Hero link target: detail page → ticket link (upcoming only) → none */
 const heroUrl = heroEvent
   ? detailPages[heroEvent.data.slug] || heroEvent.data.ticketUrl || null
@@ -326,6 +328,14 @@ const fallbackPhotoId = sp.missionMain || 'kids/eli/photo-01';
 const fallbackSrcset = cfSrcset(fallbackPhotoId, [400, 640, 800], { fit: 'cover', gravity: 'face' });
 const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px';
 
+/* The share card: the hero this page shows (the next event, the year's look back, or the page's own) */
+const escTitle = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const heroCard: CardSpec = heroEvent
+  ? { layout: 'split', eyebrow: heroEvent.data.featured ? 'Featured Event' : 'Next Up', title: escTitle(heroEvent.data.title), lead: heroEvent.data.shortDescription || heroEvent.data.description, photo: { id: heroEvent.data.image || fallbackPhotoId } }
+  : heroIsRecap
+    ? { layout: 'split', eyebrow: `Looking Back at ${recapYear}`, title: `${recapYear} ${recapIsThisYear ? 'Has Been' : 'Was'} Full of <em>Sunshine</em>`, lead: `${recapThanks} ${recapBuilt}`, photo: recapMainId ? { id: recapMainId } : { id: fallbackPhotoId }, inset: recapSmallShown ? { id: recapSmallShown.id } : null }
+    : { layout: 'split', eyebrow: 'Events & Fundraisers', title: 'Where Community Comes Together for <em>Something&nbsp;Big</em>', lead: 'Every gala, build day, and room reveal brings us one step closer to transforming the life of a child with special needs.', photo: { id: fallbackPhotoId } };
+
 /* Hero frame is a link when the hero event has somewhere to go */
 const HeroFrame = heroUrl ? 'a' : 'div';
 const heroFrameAttrs = heroUrl
@@ -338,7 +348,7 @@ const heroFrameAttrs = heroUrl
   description={heroIsRecap
     ? `Photos and highlights from ${placeList ? `our ${recapYear} events at ${placeList}` : `our ${recapYear} events`}, and how to hear about ${nextYear} first.`
     : 'Join us at upcoming fundraisers, room reveals, and volunteer build days in Atlanta. See how you can help build dream rooms for kids with special needs.'}
-  ogImage={heroIsRecap && recapMainId ? cfRaw(recapMainId, 'w=1200,h=630,fit=cover,gravity=auto,q=82') : undefined}
+  og={heroCard}
   breadcrumbs={[{ name: 'Events', url: '/events/' }]}
 >
   {/* LCP preload */}

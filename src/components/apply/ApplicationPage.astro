@@ -72,7 +72,7 @@ const breadcrumbs = [
     ? 'Schools, therapy clinics and nonprofits that serve children with special needs in the greater Atlanta area can apply for a community project. Saves as you go.'
     : 'Apply for a free dream bedroom, accessible bathroom, therapy room or ramp for a child with special needs in the greater Atlanta area. Saves as you go.'}
   breadcrumbs={breadcrumbs}
-  ogImage={org ? '/og/community-project.png' : '/og/apply.png'}
+  og={{ layout: 'split', eyebrow: w('heroEyebrow').split(' · ')[0], title: w('heroTitleHtml'), lead: w('heroLeadHtml'), photo: { id: heroPhotoId } }}
 >
   <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
 

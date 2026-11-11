@@ -9,15 +9,23 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { cfUrl } from '../utils/cf-image';
+import { heroHtml, type HeroPart } from '../utils/hero-words';
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Your SOARD profile",
+  title: ["Help us ", { em: "introduce you" }] as HeroPart[],
+  lead: "This goes on your profile on the Leadership page of our website. We\u2019ll look it over before it goes live.",
+};
 ---
 
-<BaseLayout title="Your SOARD profile" description="Send SOARD your bio for the Leadership page." noindex>
+<BaseLayout title="Your SOARD profile" description="Send SOARD your bio for the Leadership page." og={{ layout: 'text', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead) }} noindex>
   <section class="pu-hero">
     <div class="pu-hero__inner">
       <div class="pu-hero__text">
-        <p class="pu-eyebrow">Your SOARD profile</p>
-        <h1 id="pu-title">Help us <em>introduce you</em></h1>
-        <p class="pu-lead" id="pu-lead">This goes on your profile on the Leadership page of our website. We’ll look it over before it goes live.</p>
+        <p class="pu-eyebrow">{hero.eyebrow}</p>
+        <h1 id="pu-title">{hero.title.map((p) => typeof p === 'string' ? p : <em>{p.em}</em>)}</h1>
+        <p class="pu-lead" id="pu-lead">{hero.lead}</p>
       </div>
       <div class="pu-frame" aria-hidden="true">
         <div class="pu-accent"></div>

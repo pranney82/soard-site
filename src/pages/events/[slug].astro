@@ -21,6 +21,9 @@ import EventRecap from '../../components/events/EventRecap.astro';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { recapMeta } from '../../utils/event-recap';
+
+/** A plain title as card headline text */
+const escTitle = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
 import { eventPath, hasOwnPage, isOver, yearPath } from '../../../public/admin/events-shared.js';
 
 export async function getStaticPaths() {
@@ -103,7 +106,7 @@ const eventJsonLd = recap?.jsonLd ?? {
 <BaseLayout
   title={recap?.title ?? `${ev.title} — Sunshine on a Ranney Day`}
   description={recap?.description ?? ev.description}
-  ogImage={recap?.ogImage}
+  og={recap?.og ?? { layout: 'split', eyebrow: catLabel[ev.category] || 'Event', title: escTitle(ev.title), lead: ev.shortDescription || ev.description, photo: ev.image ? { id: ev.image } : null }}
   jsonLd={eventJsonLd}
   breadcrumbs={recap?.breadcrumbs ?? [
     { name: 'Events', url: '/events/' },

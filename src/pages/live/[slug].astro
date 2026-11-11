@@ -7,8 +7,10 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import LivePage from '../../components/live/LivePage.astro';
+import { LIVE_GENERIC_LEAD } from '../../utils/live-hero-text';
 import { getPublishedKids } from '../../utils/collections';
 import siteSettings from '../../content/site/settings.json';
+import { heroHtml } from '../../utils/hero-words';
 
 export async function getStaticPaths() {
   const kids = await getPublishedKids();
@@ -22,9 +24,9 @@ const description = `Watch ${kid.name}'s room reveal live from Sunshine on a Ran
 ---
 
 <BaseLayout
+  og={{ layout: 'split', eyebrow: 'Live reveal', title: heroHtml([`${kid.name}'s `, { em: 'room reveal' }]), lead: kid.heroSummary || kid.shortDescription || LIVE_GENERIC_LEAD, photo: { id: kid.heroImage || fallbackImage, alt: `Photo of ${kid.name}` } }}
   title={`${kid.name}'s Reveal, Live`}
   description={description}
-  ogImage={`/og/kids/${kid.slug}.png`}
   breadcrumbs={[{ name: 'Home', url: '/' }, { name: 'Kids', url: '/kids/' }, { name: kid.name, url: `/kids/${kid.slug}/` }, { name: 'Live reveal', url: `/live/${kid.slug}/` }]}
 >
   <LivePage kid={kid} fallbackImage={fallbackImage} />

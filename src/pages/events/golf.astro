@@ -15,8 +15,9 @@ import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getCollection, getEntry } from 'astro:content';
 import EventRecap from '../../components/events/EventRecap.astro';
-import { recapMeta } from '../../utils/event-recap';
+import { recapMeta, eventLook } from '../../utils/event-recap';
 import { isOver, latestOf, seriesByKey, fmtDay } from '../../../public/admin/events-shared.js';
+import { heroHtml, BR, type HeroPart } from '../../utils/hero-words';
 
 /* ── CMS data (admin-editable via golf.json) ── */
 const golfData = await getEntry('site', 'golf');
@@ -116,12 +117,19 @@ const eventJsonLd = {
 /* ── LCP preload — hero logo (must be byte-identical to <img>) ── */
 const heroLogoSrcset = cfSrcset('golf-logo-dark', [280, 400]);
 const heroLogoSizes = '(max-width: 767px) 200px, 320px';
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Charity Golf Tournament",
+  title: ["Sunshine on a", BR, "Ranney ", { em: "Fairway" }] as HeroPart[],
+  lead: ["Tee up for a cause. Every swing supports life-changing room makeovers for children with special needs through ", { a: "Sunshine on a Ranney Day" }, "."] as HeroPart[],
+};
 ---
 
 <BaseLayout
   title={recap?.title ?? `Sunshine on a Ranney Fairway ${year} — Charity Golf Tournament`}
   description={recap?.description ?? `Join us for Sunshine on a Ranney Fairway ${year}, a charity golf tournament where every swing supports life-changing room makeovers for children with special needs.`}
-  ogImage={recap?.ogImage ?? '/og/golf.png'}
+  og={recap?.og ?? { layout: 'split', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead), photo: ev.image ? { id: ev.image } : null, look: eventLook('golf') }}
   jsonLd={recap?.jsonLd ?? eventJsonLd}
   breadcrumbs={recap?.breadcrumbs ?? [
     { name: 'Events', url: '/events/' },
@@ -142,13 +150,11 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     </div>
     <div class="container ev-hero__inner">
       <div class="ev-hero__content">
-        <span class="ev-hero__eyebrow" data-reveal>Charity Golf Tournament</span>
+        <span class="ev-hero__eyebrow" data-reveal>{hero.eyebrow}</span>
         <h1 class="ev-hero__title" data-reveal transition:name="event-title">
-          Sunshine on a<br/>Ranney <span class="ev-hero__accent">Fairway</span>
+          {hero.title.map((p) => typeof p === 'string' ? p : 'em' in p ? <span class="ev-hero__accent">{p.em}</span> : <br/>)}
         </h1>
-        <p class="ev-hero__subtitle" data-reveal>
-          Tee up for a cause. Every swing supports life-changing room makeovers for children with special needs through <a href="https://sunshineonaranneyday.com" target="_blank" rel="noopener" class="ev-hero__link">Sunshine on a Ranney Day</a>.
-        </p>
+        <p class="ev-hero__subtitle" data-reveal>{hero.lead.map((p) => typeof p === 'string' ? p : <a href="https://sunshineonaranneyday.com" target="_blank" rel="noopener" class="ev-hero__link">{p.a}</a>)}</p>
         <div class="ev-hero__actions" data-reveal>
           <a href="#tickets" class="ev-btn ev-btn--gold ev-btn--hero">Register</a>
           <a href="#details" class="ev-hero__scroll-link">

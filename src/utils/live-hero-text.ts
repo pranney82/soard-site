@@ -13,6 +13,9 @@ import { formatWhen, relativeUntil, revealLabel } from './live-when';
 import { runningLate } from './live-banner';
 import { revealWhen, type UpcomingReveal } from './reveals-client';
 
+/** The hero's lead when no reveal is set (LivePage.astro); /live/'s share card says the same */
+export const LIVE_GENERIC_LEAD = 'Room reveals stream live right here. Watch the moment a child sees their new room for the first time.';
+
 /** A planned reveal, before its starting-soon screen → { eyebrow, status } */
 export function plannedText(scheduledAt: string | null, tz?: string, now = Date.now()) {
   const rel = relativeUntil(scheduledAt, now, tz);

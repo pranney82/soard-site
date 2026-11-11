@@ -129,8 +129,8 @@
 /*.png
   Cache-Control: public, max-age=31536000, immutable
 
-## OG images are regenerated at the SAME URL when content changes —
-## they must not inherit the year-long immutable rule above.
+## Share cards are drawn at the same path on every build (their pages link
+## them with ?v=<version>), so they must not inherit the year-long immutable rule above.
 /og/*
   ! Cache-Control
   Cache-Control: public, max-age=86400

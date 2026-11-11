@@ -9,6 +9,8 @@
  * - WebPage schema with breadcrumbs on every page
  * - Per-page JSON-LD merged into unified @graph
  * - Open Graph with og:locale, og:type override, image dimensions
+ * - Share card on every page: the page's hero as a card (og prop, see
+ *   src/utils/og-card.ts), drawn at build, its address versioned
  * - Twitter Card with image alt
  * - GeoRegion + ICBM meta for local SEO
  * - theme-color for mobile browsers
@@ -24,12 +26,14 @@ import AuctionBar from '../components/global/AuctionBar.astro';
 import ScrollReveal from '../components/ui/ScrollReveal.astro';
 import LqipReveal from '../components/ui/LqipReveal.astro';
 import { getOrgSchema, getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../utils/schema';
+import { registerCard, type CardSpec } from '../utils/og-registry';
 import '../styles/global.css';
 
 interface Props {
   title: string;
   description?: string;
-  ogImage?: string;
+  /** The page's share card: its hero's eyebrow, headline, lead and photo (src/utils/og-card.ts). Without one, a text card of the title and description */
+  og?: CardSpec;
   ogType?: string;
   jsonLd?: object | object[];
   bodyClass?: string;
@@ -42,7 +46,7 @@ interface Props {
 const {
   title,
   description = 'We build free dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs in Atlanta. 501(c)(3) nonprofit.',
-  ogImage,
+  og,
   ogType = 'website',
   jsonLd,
   bodyClass = '',
@@ -58,41 +62,11 @@ const fullTitle = title === 'Home'
   ? 'Sunshine on a Ranney Day — Dreams Built Here'
   : `${title} | Sunshine on a Ranney Day`;
 
-// ── Auto-compute OG image from page path ──────────
-function computeOgImage(pathname: string): string {
-  const clean = pathname.replace(/\/+$/, '') || '/';
-  
-  // Homepage
-  if (clean === '/') return '/og/home.png';
-  
-  // Kid profiles: /kids/amari/ → /og/kids/amari.png
-  const kidMatch = clean.match(/^\/kids\/([^/]+)$/);
-  if (kidMatch) return `/og/kids/${kidMatch[1]}.png`;
-  
-  // Articles: /resources/accessible-home-design/ → /og/resources/accessible-home-design.png
-  const artMatch = clean.match(/^\/resources\/([^/]+)$/);
-  if (artMatch) return `/og/resources/${artMatch[1]}.png`;
-
-  // Community projects: /community/murphy-harpst/ → /og/community/murphy-harpst.png
-  const communityMatch = clean.match(/^\/community\/([^/]+)$/);
-  if (communityMatch) return `/og/community/${communityMatch[1]}.png`;
-
-  // Events: /events/some-event/ → /og/events/some-event.png
-  const eventMatch = clean.match(/^\/events\/([^/]+)$/);
-  if (eventMatch) return `/og/events/${eventMatch[1]}.png`;
-
-  // Static pages: /donate/ → /og/donate.png, /about/leadership/ → /og/leadership.png
-  const segments = clean.split('/').filter(Boolean);
-  const lastSegment = segments[segments.length - 1];
-  return `/og/${lastSegment}.png`;
-}
-
-const resolvedOgImage = ogImage || computeOgImage(Astro.url.pathname);
-
-// Resolve OG image to absolute URL
-const ogImageAbsolute = resolvedOgImage.startsWith('http')
-  ? resolvedOgImage
-  : new URL(resolvedOgImage, Astro.site).toString();
+// ── The share card ──────────────────────────────
+// Admin's preview pages (behind the sign-in, never shared) have none
+const isAdmin = pathname.startsWith('/admin/');
+const card = isAdmin ? null : await registerCard(pathname, og ?? { layout: 'text', title, lead: description });
+const ogImageAbsolute = card ? new URL(card.url, Astro.site).toString() : null;
 
 // ── Build the JSON-LD @graph for this page ──────────────
 const graphSchemas: (Record<string, any> | Record<string, any>[])[] = [
@@ -162,10 +136,13 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <meta property="og:url" content={canonicalURL} />
   <meta property="og:title" content={fullTitle} />
   <meta property="og:description" content={description} />
-  <meta property="og:image" content={ogImageAbsolute} />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content={`${title} — Sunshine on a Ranney Day`} />
+  {card && <>
+    <meta property="og:image" content={ogImageAbsolute} />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={card.alt} />
+  </>}
   <meta property="og:site_name" content="Sunshine on a Ranney Day" />
   {datePublished && <meta property="article:published_time" content={datePublished} />}
   {dateModified && <meta property="article:modified_time" content={dateModified} />}
@@ -174,8 +151,10 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content={fullTitle} />
   <meta name="twitter:description" content={description} />
-  <meta name="twitter:image" content={ogImageAbsolute} />
-  <meta name="twitter:image:alt" content={`${title} — Sunshine on a Ranney Day`} />
+  {card && <>
+    <meta name="twitter:image" content={ogImageAbsolute} />
+    <meta name="twitter:image:alt" content={card.alt} />
+  </>}
 
   {/* Theme color — light/dark support for iOS Safari & Android Chrome */}
   <meta name="theme-color" content="#1E1F25" media="(prefers-color-scheme: dark)" />

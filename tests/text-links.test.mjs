@@ -13,21 +13,26 @@ import { alertText, ALERT_CONTACT_URL } from '../functions/api/_broadcast-notify
 
 const IMESSAGE = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.4 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.4 facebookexternalhit/1.1 Facebot Twitterbot/1.0';
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
-const ask = (ua) => door({ request: new Request('https://sunshineonaranneyday.com/control-room/', { headers: { 'User-Agent': ua } }) });
+// The build's list of share cards (dist/og/index.json), as the deployed site serves it
+const CARDS = { '/control-room/': '/og/control-room.jpg?v=0123456789' };
+const ASSETS = { fetch: async (req) => (new URL(req.url).pathname === '/og/index.json' ? Response.json(CARDS) : new Response('', { status: 404 })) };
+const ask = (ua) => door({ request: new Request('https://sunshineonaranneyday.com/control-room/', { headers: { 'User-Agent': ua } }), env: { ASSETS } });
 
-test('a person tapping the link goes straight to the control room', () => {
-  const r = ask(IPHONE);
+test('a person tapping the link goes straight to the control room', async () => {
+  const r = await ask(IPHONE);
   assert.equal(r.status, 302);
   assert.equal(r.headers.get('Location'), 'https://sunshineonaranneyday.com/admin/#broadcast/control-room');
 });
 
 test('a link preview gets a card, and nothing private', async () => {
   for (const ua of [IMESSAGE, 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)', 'WhatsApp/2.23']) {
-    const r = ask(ua);
+    const r = await ask(ua);
     assert.equal(r.status, 200, ua);
     const html = await r.text();
     assert.match(html, /<meta property="og:title" content="SOARD reveal control room">/);
-    assert.match(html, /<meta property="og:image" content="https:\/\/sunshineonaranneyday\.com\/og\/control-room\.png">/);
+    // Its share card, at the versioned address the build listed, the same for X
+    assert.match(html, /<meta property="og:image" content="https:\/\/sunshineonaranneyday\.com\/og\/control-room\.jpg\?v=0123456789">/);
+    assert.match(html, /<meta name="twitter:image" content="https:\/\/sunshineonaranneyday\.com\/og\/control-room\.jpg\?v=0123456789">/);
     assert.match(html, /<meta name="robots" content="noindex">/);
     assert.ok(!/<script/i.test(html), 'no script to follow');
   }

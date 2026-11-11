@@ -13,6 +13,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { CF_BASE as CF } from '../utils/cf-image';
 import { getSiteStats } from '../utils/stats';
 import siteSettings from '../content/site/settings.json';
+import { heroHtml, type HeroPart } from '../utils/hero-words';
 const s = await getSiteStats();
 
 const store = 'about/sunny-ranney-storefront';
@@ -28,9 +29,16 @@ const rooms = savedRooms.length ? savedRooms : [
 ];
 
 const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, GA. Designer furniture, décor & gifts with 100% of profits building dream rooms for children with special needs.';
+
+// The hero's words: the page shows them and its share card repeats them (BaseLayout og)
+const hero = {
+  eyebrow: "Shop for a Cause",
+  title: "Sunny & Ranney",
+  lead: ["A nonprofit home furnishings store where ", { strong: "100% of profits" }, " build dream rooms for children with special needs."] as HeroPart[],
+};
 ---
 
-<BaseLayout title="Sunny & Ranney" description={desc} breadcrumbs={[{name:'Home',url:'https://sunshineonaranneyday.com/'},{name:'Sunny & Ranney',url:'https://sunshineonaranneyday.com/sunny-and-ranney/'}]}>
+<BaseLayout title="Sunny & Ranney" description={desc} og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml([hero.title]), lead: heroHtml(hero.lead), photo: { id: store, alt: 'The Sunny & Ranney store in Roswell' } }} breadcrumbs={[{name:'Home',url:'https://sunshineonaranneyday.com/'},{name:'Sunny & Ranney',url:'https://sunshineonaranneyday.com/sunny-and-ranney/'}]}>
 
 <div class="sr">
 
@@ -38,9 +46,9 @@ const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, G
   <section class="sr-hero">
     <div class="sr-hero-inner">
       <div class="sr-hero-text">
-        <h1 class="sr-only">Sunny &amp; Ranney — Shop for a Cause</h1>
+        <h1 class="sr-only">{hero.title} — {hero.eyebrow}</h1>
         <img src={`${CF}/${logo}/w=500,q=90`} alt="" aria-hidden="true" class="sr-hero-logo" width="260" height="104" loading="eager" />
-        <p class="sr-hero-lead">A nonprofit home furnishings store where <strong>100% of profits</strong> build dream rooms for children with special needs.</p>
+        <p class="sr-hero-lead">{hero.lead.map((p) => typeof p === 'string' ? p : <strong>{p.strong}</strong>)}</p>
         <div class="sr-hero-ctas">
           <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cta sr-cta--gold">Shop Online</a>
           <a href="#visit" class="sr-cta sr-cta--glass">Visit Us</a>
@@ -55,7 +63,7 @@ const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, G
           src={`${CF}/${store}/w=800,h=1000,fit=cover,q=75`}
           srcset={`${CF}/${store}/w=500,h=625,fit=cover,q=70 500w, ${CF}/${store}/w=800,h=1000,fit=cover,q=75 800w`}
           sizes="(max-width:768px) 85vw, 440px"
-          alt="Inside the Sunny & Ranney showroom"
+          alt="The Sunny & Ranney store in Roswell"
           width="800" height="1000"
           loading="eager" fetchpriority="high" decoding="async"
           class="sr-hero-img"

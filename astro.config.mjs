@@ -1,6 +1,8 @@
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
 import devSync from './scripts/dev-sync.js';
+// Every page's share card, drawn after the pages are built (src/utils/og-card.ts)
+import ogCards from './src/integrations/og-cards.mjs';
 
 const isDev = process.argv.includes('dev');
 // Cache-busted so a config reload picks up edits: Astro re-imports this file
@@ -52,6 +54,8 @@ export default defineConfig({
       // No lastmod: stamping every URL with the build time makes the field
       // meaningless and Google ignores (or distrusts) uniform values.
     }),
+    // After sitemap: the check reads the sitemap it writes
+    ogCards(),
     // devLiveMock: fake broadcast + messages for the live pages in dev (/__live/?state=live|upcoming|starting|replay|off)
     ...(isDev ? [devSync(), devLiveMock()] : []),
     sharedScriptChunks(),

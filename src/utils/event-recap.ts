@@ -6,7 +6,9 @@
 import { cfRaw } from './cf-image';
 import {
   seriesOf, yearOf, displayName, recapPhotos, recapSponsors, sponsorCount, eventPath, yearPath, recapThemeName,
+  recapLead, RECAP_LOOKS,
 } from '../../public/admin/events-shared.js';
+import { SITE_LOOK, type CardSpec, type Look } from './og-card';
 
 const SITE = 'https://sunshineonaranneyday.com';
 
@@ -14,6 +16,24 @@ const SITE = 'https://sunshineonaranneyday.com';
 export function galaThemeName(ev: any): string {
   // One rule for the page and the recap email (public/admin/events-shared.js)
   return recapThemeName(ev);
+}
+
+/** The recap headline: the name, its last word on the marker (EventRecap.astro's hero) */
+export function recapTitleParts(name: string): { lead: string; last: string } {
+  const m = name.match(/^(.*\s)(\S+)$/);
+  return m ? { lead: m[1], last: m[2] } : { lead: '', last: name };
+}
+
+const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** A series' share-card colors: its pages' own (RECAP_LOOKS, the list the recap page and emails read), else the site's */
+export function eventLook(key?: string | null): Look {
+  const l = key ? (RECAP_LOOKS as Record<string, any>)[key] : null;
+  if (!l) return SITE_LOOK;
+  // The block behind the photo is the page's accent at the same strength (EventRecap's .rh-accent)
+  const hex = String(l.accent || '#FFDA24').replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return { paper: l.paper, ink: l.ink, muted: l.muted, eyebrow: l.eyebrow, highlight: l.highlight, accent: `rgba(${r}, ${g}, ${b}, 0.35)` };
 }
 
 export function recapMeta(ev: any, events: any[], pageDoc: any, path: string) {
@@ -31,8 +51,18 @@ export function recapMeta(ev: any, events: any[], pageDoc: any, path: string) {
     n ? `Thank you to the ${n} sponsors who made it possible.` : 'Thank you to everyone who came.',
   ].join(' ');
 
+  // The share card is the recap's hero: eyebrow, headline, lead, the cover and the second photo
   const cover = photos[0]?.id || ev.image || null;
-  const ogImage = cover ? cfRaw(cover, 'w=1200,h=630,fit=cover,gravity=face,q=82') : undefined;
+  const parts = recapTitleParts(name);
+  const og: CardSpec = {
+    layout: 'split',
+    eyebrow: `${year} · Thank you`,
+    title: `${escHtml(parts.lead)}<em>${escHtml(parts.last)}</em>`,
+    lead: recapLead(ev, { photos: photos.length, sponsors: sponsors.length }),
+    photo: cover ? { id: cover, alt: photos[0]?.alt || `${name} ${year}` } : null,
+    inset: photos[1]?.id ? { id: photos[1].id } : null,
+    look: eventLook(series?.key),
+  };
 
   const permanent = yearPath(ev, events) || eventPath(ev, events);
   const jsonLd = {
@@ -59,5 +89,5 @@ export function recapMeta(ev: any, events: any[], pageDoc: any, path: string) {
       : [{ name: 'Events', url: '/events/' }, { name, url: series.path }, { name: year, url: path }])
     : [{ name: 'Events', url: '/events/' }, { name: String(ev.title || name).trim(), url: path }];
 
-  return { title, description, ogImage, jsonLd, breadcrumbs };
+  return { title, description, og, jsonLd, breadcrumbs };
 }
