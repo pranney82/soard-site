@@ -18,6 +18,7 @@ import { EXTRACTORS, generateSha } from './_collections.js';
 import { logAudit, getEntityName } from './_audit.js';
 import { moveVersions } from './_content-history.js';
 import { moveRequests } from './_profile-requests.js';
+import { uploadImage, publicUrl } from './_cf-images.js';
 
 const RENAMABLE = { team: { dir: 'src/content/team/', imagePrefix: 'team/' } };
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -37,23 +38,20 @@ export function imageIdOf(photo) {
   return id;
 }
 
-/** Copy an image to a new ID: the original file if Cloudflare hands it over, else a full-size copy */
+/** Copy an image to a new ID: the original file if Cloudflare hands it over, else a full-size copy (either way through the shared upload) */
 async function copyImage(env, fromId, toId, fetchImpl) {
   const auth = { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` };
   let file = null;
-  try {
-    const r = await fetchImpl(`${API(env)}/${fromId}/blob`, { headers: auth });
-    if (r.ok) file = await r.blob();
-  } catch {}
-  const form = new FormData();
-  if (file && file.size) form.append('file', file, 'photo');
-  else form.append('url', `https://imagedelivery.net/${CF_HASH}/${fromId}/w=4096,fit=scale-down,q=100`);
-  form.append('id', toId);
-  const res = await fetchImpl(API(env), { method: 'POST', headers: auth, body: form });
-  const body = await res.json().catch(() => ({}));
-  if (!body?.success) throw new Error(body?.errors?.[0]?.message || `upload ${res.status}`);
-  const variants = body.result?.variants || [];
-  return variants.find((v) => v.endsWith('/public')) || `https://imagedelivery.net/${CF_HASH}/${body.result?.id || toId}/public`;
+  for (const [url, headers] of [[`${API(env)}/${fromId}/blob`, auth], [`https://imagedelivery.net/${CF_HASH}/${fromId}/w=4096,fit=scale-down,q=100`, {}]]) {
+    try {
+      const r = await fetchImpl(url, { headers });
+      if (r.ok) { const b = await r.blob(); if (b.size) { file = b; break; } }
+    } catch {}
+  }
+  if (!file) throw new Error(`couldn’t read ${fromId}`);
+  const body = await uploadImage(env, { file, filename: 'photo', id: toId }, fetchImpl);
+  if (!body?.success) throw new Error(body?.errors?.[0]?.message || 'upload failed');
+  return publicUrl({ ...body.result, id: body.result?.id || toId });
 }
 
 export async function rename(env, { collection, from, to } = {}, userEmail = 'unknown', fetchImpl = fetch) {

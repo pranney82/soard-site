@@ -17,6 +17,7 @@
  */
 
 import { checkImage } from './_image-types.js';
+import { uploadImage } from './_cf-images.js';
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 const MAX_HTML = 1_500_000;      // bytes of HTML we bother scanning
@@ -80,18 +81,6 @@ function pageTitle(html) {
   return t ? decodeEntities(t[1]).replace(/\s+/g, ' ').trim() : '';
 }
 
-async function uploadToImages(env, bytes, contentType, filename, id) {
-  const form = new FormData();
-  form.append('file', new Blob([bytes], { type: contentType }), filename);
-  if (id) form.append('id', id);
-  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` },
-    body: form,
-  });
-  return res.json();
-}
-
 export async function onRequestPost(context) {
   const { env } = context;
   if (!env.CF_ACCOUNT_ID || !env.CF_IMAGES_TOKEN) {
@@ -144,10 +133,10 @@ export async function onRequestPost(context) {
 
     // 4. Save to Cloudflare Images (retry with a suffix if the id is taken)
     const filename = `press-image.${image.kind === 'jpeg' ? 'jpg' : image.kind}`;
-    let result = await uploadToImages(env, bytes, image.type, filename, id);
+    let result = await uploadImage(env, { bytes, type: image.type, filename, id });
     if (!result.success && id && (result.errors || []).some(e => e.code === 5409 || /already exists/i.test(e.message || ''))) {
       id = `${id}-${Date.now()}`;
-      result = await uploadToImages(env, bytes, image.type, filename, id);
+      result = await uploadImage(env, { bytes, type: image.type, filename, id });
     }
     if (!result.success) {
       return json({ success: false, error: result.errors?.[0]?.message || 'Cloudflare Images upload failed', sourceImage: imageUrl }, 500);

@@ -35,6 +35,7 @@ import { readConfig } from './_broadcast.js';
 import { alertAdmins, adminCard, slackPost, SITE_ORIGIN } from './_broadcast-notify.js';
 import { recordVersion } from './_content-history.js';
 import { logAudit } from './_audit.js';
+import { uploadImage, publicUrl } from './_cf-images.js';
 import { PLAN_KINDS, planKind, suggestBefores, addressWords, addressChecked, looksLikeFileName, isRevealed, kindFromText, BEFORE_SUGGESTED } from '../../public/admin/reveal-design.js';
 import { isDocumentName, captionOf, kindFromSheet } from '../../public/admin/reveal-design-draw.js';
 
@@ -107,14 +108,9 @@ export function revealsAhead(upcoming, now = Date.now()) {
 async function uploadPicture(env, bytes, type, id, fetchImpl) {
   if (!env.CF_ACCOUNT_ID || !env.CF_IMAGES_TOKEN) throw new Error('Cloudflare Images isn’t set up (CF_ACCOUNT_ID, CF_IMAGES_TOKEN)');
   if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('over Cloudflare Images’ 10 MB');
-  const form = new FormData();
-  form.append('file', new Blob([bytes], { type }), id.split('/').pop());
-  form.append('id', id);
-  const r = await fetchImpl(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1`, { method: 'POST', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` }, body: form });
-  const j = await r.json().catch(() => ({}));
-  if (!j.success) throw new Error(j.errors?.[0]?.message || `Cloudflare Images answered ${r.status}`);
-  const variants = j.result?.variants || [];
-  return variants.find((v) => v.endsWith('/public')) || variants[0] || `https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/${j.result.id}/public`;
+  const j = await uploadImage(env, { bytes, type, filename: id.split('/').pop(), id }, fetchImpl);
+  if (!j.success) throw new Error(j.errors?.[0]?.message || 'Cloudflare Images didn’t take it');
+  return publicUrl(j.result);
 }
 
 async function fileBytes(url, fetchImpl) {

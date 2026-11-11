@@ -6,6 +6,7 @@
  */
 import { decodeEntities, plain, youTubeId, genericImage } from '../../public/admin/press-shared.js';
 import { UA } from './_press-sources.js';
+import { uploadImage } from './_cf-images.js';
 
 const MAX_HTML = 1_500_000;
 const MAX_TEXT = 8000;
@@ -208,13 +209,7 @@ export async function saveImage(env, imageUrl, id, { fetchImpl = fetch, referer 
     if (!bytes.byteLength) return { error: 'The picture was empty' };
     if (bytes.byteLength > MAX_IMAGE) return { error: 'The picture is over 10 MB' };
     if (bytes.byteLength < 6000) return { error: 'The picture is too small to use' };
-    const upload = async (withId) => {
-      const form = new FormData();
-      form.append('file', new Blob([bytes], { type: type || 'image/jpeg' }), `press.${(type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`);
-      if (withId) form.append('id', withId);
-      const r = await fetchImpl(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1`, { method: 'POST', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` }, body: form });
-      return r.json().catch(() => ({ success: false, errors: [{ message: `Cloudflare answered ${r.status}` }] }));
-    };
+    const upload = (withId) => uploadImage(env, { bytes, type: type || 'image/jpeg', filename: `press.${(type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`, id: withId }, fetchImpl);
     let j = await upload(id);
     if (!j.success && (j.errors || []).some((e) => e.code === 5409 || /exists/i.test(e.message || ''))) j = await upload(`${id}-${Date.now().toString(36)}`);
     if (!j.success) return { error: j.errors?.[0]?.message || 'Cloudflare Images didn’t take it' };

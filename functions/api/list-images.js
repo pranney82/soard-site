@@ -48,7 +48,8 @@ export async function onRequestGet(context) {
     // not photos to pick for a page: the library leaves them out
     const images = (result.result?.images || []).filter(img => !String(img.id || '').startsWith('book/')).map(img => ({
       id: img.id,
-      uploaded: img.uploaded,
+      // A picture uploaded again to take out where it was taken keeps the date it first came in
+      uploaded: img.meta?.firstUploaded || img.uploaded,
       filename: img.filename || null,
       meta: img.meta || null,
     }));

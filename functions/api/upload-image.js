@@ -9,7 +9,11 @@
  *
  * Environment variables needed:
  *   CF_ACCOUNT_ID, CF_IMAGES_TOKEN
+ *
+ * Where the photo was taken is taken out on the way (./_cf-images.js).
  */
+
+import { uploadImage, publicUrl } from './_cf-images.js';
 
 export async function onRequestPost(context) {
   try {
@@ -56,24 +60,7 @@ export async function onRequestPost(context) {
         { status: 413 }
       );
     }
-    const uploadForm = new FormData();
-    uploadForm.append('file', file);
-    if (customId) {
-      uploadForm.append('id', customId);
-    }
-
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/images/v1`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${CF_IMAGES_TOKEN}`,
-        },
-        body: uploadForm,
-      }
-    );
-
-    const result = await response.json();
+    const result = await uploadImage(context.env, { file, id: customId || '' });
 
     if (!result.success) {
       return Response.json(
@@ -85,14 +72,12 @@ export async function onRequestPost(context) {
     // Return the delivery URL — construct fallback if variants array is empty
     const imageId = result.result.id;
     const variants = result.result.variants || [];
-    const publicUrl = variants.find(v => v.endsWith('/public')) || variants[0]
-      || `https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/${imageId}/public`;
 
     return Response.json(
       {
         success: true,
         imageId,
-        imageUrl: publicUrl,
+        imageUrl: publicUrl(result.result),
         variants,
       },
       {}

@@ -15,6 +15,7 @@
 import { findRequest, saveSubmission, LIMITS, normalizeLinkedIn, cleanText } from './_profile-requests.js';
 import { personName } from './_team.js';
 import { checkImage } from './_image-types.js';
+import { uploadImage, publicUrl } from './_cf-images.js';
 
 const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 const GONE = { expired: 'This link has expired. Ask SOARD for a new one.', closed: 'This link has already been used or replaced. Ask SOARD for a new one if you need to send changes.' };
@@ -63,16 +64,9 @@ async function deletePhoto(env, photo) {
 }
 
 async function uploadPhoto(env, file, slug) {
-  const form = new FormData();
-  form.append('file', file);
-  form.append('id', `team/${slug}/submitted-${Date.now()}`);
-  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1`, {
-    method: 'POST', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` }, body: form,
-  });
-  const body = await res.json().catch(() => ({}));
+  const body = await uploadImage(env, { file, id: `team/${slug}/submitted-${Date.now()}` });
   if (!body?.success) throw new Error(body?.errors?.[0]?.message || 'upload failed');
-  const variants = body.result?.variants || [];
-  return variants.find((v) => v.endsWith('/public')) || `https://imagedelivery.net/${CF_HASH}/${body.result.id}/public`;
+  return publicUrl(body.result);
 }
 
 export async function onRequestPost(context) {
