@@ -138,7 +138,6 @@ const hero = {
     { name: 'Events', url: '/events/' },
     { name: 'Golf Tournament', url: '/events/golf/' },
   ]}
-  firstScreenEnd={over}
 >
   {/* Preload hero LCP image — imagesrcset/imagesizes must match the <img> */}
   {!over && <link slot="head" rel="preload" as="image" imagesrcset={heroLogoSrcset} imagesizes={heroLogoSizes} fetchpriority="high" />}

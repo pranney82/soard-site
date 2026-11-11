@@ -20,7 +20,7 @@ const hero = {
 ---
 
 <BaseLayout title="Your SOARD profile" description="Send SOARD your bio for the Leadership page." og={{ layout: 'text', eyebrow: hero.eyebrow, title: heroHtml(hero.title), lead: heroHtml(hero.lead) }} noindex>
-  <section class="pu-hero">
+  <section class="pu-hero" data-whole>
     <div class="pu-hero__inner">
       <div class="pu-hero__text">
         <p class="pu-eyebrow">{hero.eyebrow}</p>
@@ -35,6 +35,7 @@ const hero = {
         </div>
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <section class="pu-body">

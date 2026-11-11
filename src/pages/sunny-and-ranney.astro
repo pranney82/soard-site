@@ -10,7 +10,6 @@
  *   - Pill-style CTAs, restrained type
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
-import FirstScreenEnd from '../components/global/FirstScreenEnd.astro';
 import { CF_BASE as CF } from '../utils/cf-image';
 import { getSiteStats } from '../utils/stats';
 import siteSettings from '../content/site/settings.json';
@@ -39,12 +38,12 @@ const hero = {
 };
 ---
 
-<BaseLayout title="Sunny & Ranney" description={desc} og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml([hero.title]), lead: heroHtml(hero.lead), photo: { id: store, alt: 'The Sunny & Ranney store in Roswell' } }} breadcrumbs={[{name:'Home',url:'https://sunshineonaranneyday.com/'},{name:'Sunny & Ranney',url:'https://sunshineonaranneyday.com/sunny-and-ranney/'}]} firstScreenEnd>
+<BaseLayout title="Sunny & Ranney" description={desc} og={{ layout: 'split', eyebrow: hero.eyebrow, title: heroHtml([hero.title]), lead: heroHtml(hero.lead), photo: { id: store, alt: 'The Sunny & Ranney store in Roswell' } }} breadcrumbs={[{name:'Home',url:'https://sunshineonaranneyday.com/'},{name:'Sunny & Ranney',url:'https://sunshineonaranneyday.com/sunny-and-ranney/'}]}>
 
 <div class="sr">
 
   <!-- ═══ HERO ═══ -->
-  <section class="sr-hero">
+  <section class="sr-hero" data-whole>
     <div class="sr-hero-inner">
       <div class="sr-hero-text">
         <h1 class="sr-only">{hero.title} — {hero.eyebrow}</h1>
@@ -71,9 +70,8 @@ const hero = {
         />
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
-  {/* The hero's words sit centred beside the photo */}
-  <FirstScreenEnd />
 
   <!-- ═══ PROMISE ═══ -->
   <section class="sr-promise">

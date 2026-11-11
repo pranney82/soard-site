@@ -80,7 +80,7 @@ const hero = {
 <BaseLayout title="Brand & Media Kit" description={media.metaDescription} og={{ layout: 'text', eyebrow: hero.eyebrow, title: heroHtml([hero.title]), lead: hero.lead }} breadcrumbs={breadcrumbs} jsonLd={jsonLd} noindex={true}>
 
   <!-- ═══ DARK HERO ═══ -->
-  <section class="brand-hero">
+  <section class="brand-hero" data-whole>
     <div class="container">
       <p class="brand-hero-label">{hero.eyebrow}</p>
       <h1>{hero.title}</h1>
@@ -91,6 +91,7 @@ const hero = {
         </a>
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- Tablet + phone: sticky pill bar (shown at 1024px and below) -->

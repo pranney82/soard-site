@@ -17,7 +17,6 @@
  * changing it, run: node scripts/test-page-preview.mjs
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import FirstScreenEnd from '../../components/global/FirstScreenEnd.astro';
 import EventRecap from '../../components/events/EventRecap.astro';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
@@ -115,7 +114,6 @@ const eventJsonLd = recap?.jsonLd ?? {
     { name: 'Events', url: '/events/' },
     { name: ev.title, url: `/events/${ev.slug}/` },
   ]}
-  firstScreenEnd
 >
   {!isPast && ev.image && (
     <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
@@ -126,7 +124,7 @@ const eventJsonLd = recap?.jsonLd ?? {
   ) : (
   <Fragment>
   <!-- ═══ HERO ═══ -->
-  <section class="ev-hero">
+  <section class="ev-hero" data-whole>
     <div class="ev-hero__bg" aria-hidden="true"></div>
     <div class="container ev-hero__inner">
       <div class="ev-hero__text">
@@ -173,8 +171,8 @@ const eventJsonLd = recap?.jsonLd ?? {
         </div>
       )}
     </div>
+    <span data-whole-end hidden></span>
   </section>
-  <FirstScreenEnd />
 
   <!-- ═══ BODY ═══ -->
   {ev.body && (

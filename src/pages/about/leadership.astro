@@ -5,7 +5,6 @@
  * B&W→color photo treatment, JSON-LD structured data, and breadcrumbs.
  */
 import PageLayout from '../../layouts/PageLayout.astro';
-import FirstScreenEnd from '../../components/global/FirstScreenEnd.astro';
 import { getCollection } from 'astro:content';
 import { cfUrl } from '../../utils/cf-image';
 import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath, boardTitleLine } from '../../utils/team';
@@ -47,12 +46,11 @@ const breadcrumbs = [
   heroLabel="About"
   heroTitle={'Our <em class="highlight">Leadership</em>'}
   heroSubtitle="The people behind the mission"
-  firstScreenEnd
 >
 
   <!-- ══════ LEADERSHIP AT A GLANCE ══════ -->
   <section class="impact-ribbon" aria-label="Leadership at a glance">
-    <div class="ribbon-inner">
+    <div class="ribbon-inner" data-whole>
       <div class="ribbon-stat" data-reveal>
         <span class="ribbon-num">{activeBoard}</span>
         <span class="ribbon-label">Board Members</span>
@@ -67,6 +65,7 @@ const breadcrumbs = [
         <span class="ribbon-num">{computed.years}</span>
         <span class="ribbon-label">Years Serving Families</span>
       </div>
+      <span data-whole-end hidden></span>
     </div>
   </section>
 
@@ -82,7 +81,7 @@ const breadcrumbs = [
       </div>
 
       <!-- Founders row — wider 2-up layout -->
-      <div class="founders-row">
+      <div class="founders-row" data-whole>
         {founders.map((member, i) => (
           <div class={hasProfile(member.data) ? 'founder-card has-profile' : 'founder-card'} data-reveal data-delay={String(i)}>
             <div class="founder-photo-wrap">
@@ -111,9 +110,8 @@ const breadcrumbs = [
             {hasProfile(member.data) && <span class="card-more" aria-hidden="true">Read profile</span>}
           </div>
         ))}
+        <span data-whole-end hidden></span>
       </div>
-      {/* The founders sit side by side, centred: one painted alone moved over when the other came */}
-      <FirstScreenEnd />
 
       <!-- Staff grid -->
       <div class="team-grid">

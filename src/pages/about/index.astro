@@ -10,7 +10,6 @@
  * - Team photos from CF Images
  */
 import PageLayout from '../../layouts/PageLayout.astro';
-import FirstScreenEnd from '../../components/global/FirstScreenEnd.astro';
 import siteSettings from '../../content/site/settings.json';
 import FAQSection from '../../components/ui/FAQSection.astro';
 import { getFAQSchema } from '../../utils/schema';
@@ -89,12 +88,11 @@ const jsonLd = getFAQSchema(aboutFaqs);
   heroLabel="About"
   heroTitle={'Our <em class="highlight">Story</em>'}
   heroSubtitle="How it all started and where we're headed"
-  firstScreenEnd
 >
   <link slot="head" rel="preload" as="image" imagesrcset={founderSrcset} imagesizes={founderSizes} fetchpriority="high" />
 
   <!-- ══════ FOUNDERS — The Beginning ══════ -->
-  <section class="founders" id="our-story" aria-labelledby="founders-heading">
+  <section class="founders" id="our-story" aria-labelledby="founders-heading" data-whole>
     <div class="founders-inner">
       <div class="founders-photo">
         {/* Always 5:4, cropped around faces: its space is right before it loads, whatever photo is set */}
@@ -106,9 +104,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
         {page.founders.paragraphs.map((p: string) => <p set:html={p} />)}
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
-  {/* The founders' photo sits centred beside their story: half the story painted moved it 110px when the rest came */}
-  <FirstScreenEnd />
 
   <!-- ══════ TRIPP — The Turning Point ══════ -->
   <section class="turning-point" aria-labelledby="tripp-heading">

@@ -21,20 +21,18 @@ interface Props {
   datePublished?: string;
   dateModified?: string;
   noindex?: boolean;
-  /** The page marks where its first screen ends (<FirstScreenEnd />): the first paint waits for it (BaseLayout) */
-  firstScreenEnd?: boolean;
 }
 
-const { title, description, heroTitle, heroSubtitle, heroLabel, og, ogType, jsonLd, breadcrumbs, datePublished, dateModified, noindex, firstScreenEnd } = Astro.props;
+const { title, description, heroTitle, heroSubtitle, heroLabel, og, ogType, jsonLd, breadcrumbs, datePublished, dateModified, noindex } = Astro.props;
 // The share card is the hero: its label, headline (regular weight, its italic word marked) and italic subtitle
 const card: CardSpec | undefined = og ?? (heroTitle ? { layout: 'text', eyebrow: heroLabel, title: heroTitle, lead: heroSubtitle, leadItalic: true, titleWeight: 400 } : undefined);
 ---
 
-<BaseLayout title={title} description={description} og={card} ogType={ogType} jsonLd={jsonLd} breadcrumbs={breadcrumbs} datePublished={datePublished} dateModified={dateModified} noindex={noindex} firstScreenEnd={firstScreenEnd}>
+<BaseLayout title={title} description={description} og={card} ogType={ogType} jsonLd={jsonLd} breadcrumbs={breadcrumbs} datePublished={datePublished} dateModified={dateModified} noindex={noindex}>
   {/* A page's own <head> additions (e.g. its main photo's preload) */}
   <slot name="head" slot="head" />
   {(heroTitle || heroSubtitle) && (
-    <section class="page-hero">
+    <section class="page-hero" data-whole>
       <div class="container">
         {heroLabel && <p class="page-hero__label">{heroLabel}</p>}
         {heroTitle && <h1 class="page-hero__title" set:html={heroTitle} />}
@@ -43,6 +41,7 @@ const card: CardSpec | undefined = og ?? (heroTitle ? { layout: 'text', eyebrow:
           <span class="page-hero__rule-accent"></span>
         </div>
       </div>
+      <span data-whole-end hidden></span>
     </section>
   )}
 

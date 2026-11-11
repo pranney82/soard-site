@@ -51,6 +51,32 @@ test('the menu bar and every split hero are whole when they show', () => {
   }
 });
 
+/**
+ * Blocks on a first screen whose pieces lay each other out without the shared hero spacing: each of these moved on
+ * a slow connection (Nov 11 2026, 300 ms / 400 kbps at laptop and phone widths) while its pieces arrived
+ */
+test('the other first-screen blocks whose pieces lay each other out are whole too', () => {
+  const blocks = {
+    'src/components/global/ApplicationBar.astro': /<aside id="apply-bar"[^>]*\sdata-whole>/, // its words centred, the close button last
+    'src/layouts/PageLayout.astro': /<section class="page-hero" data-whole>/, // centred label, headline and subtitle
+    'src/components/ui/MediaLogos.astro': /<div class="ml" data-theme=\{theme\} data-whole>/, // a centred row of logos
+    'src/components/events/EventRecap.astro': /<section class="rh" aria-labelledby="rh-title" data-whole>/,
+    'src/pages/kids/[slug].astro': /<section class="hero" id="chapter-meet"[^>]*\sdata-whole>/, // words centred beside the photo
+    'src/pages/kids/index.astro': /<section class="kids-hero"[^>]*\sdata-whole>/,
+    'src/pages/about/index.astro': /<section class="founders" id="our-story"[^>]*\sdata-whole>/,
+    'src/pages/about/financials.astro': /<section class="hero" data-whole>/,
+    'src/pages/about/leadership.astro': /<div class="founders-row" data-whole>[\s\S]*<div class="ribbon-inner" data-whole>|<div class="ribbon-inner" data-whole>[\s\S]*<div class="founders-row" data-whole>/,
+    'src/pages/publicity.astro': /<div class="stats__row" data-whole>/,
+    'src/pages/sunny-and-ranney.astro': /<section class="sr-hero" data-whole>/,
+    'src/pages/events/[slug].astro': /<section class="ev-hero" data-whole>/,
+    'src/pages/community/[slug].astro': /<section class="cp-detail-hero"[^>]*\sdata-whole>/,
+    'src/pages/branding.astro': /<section class="brand-hero" data-whole>/,
+    'src/pages/profile-update.astro': /<section class="pu-hero" data-whole>/,
+    'src/pages/404.astro': /<section class="lost" data-whole>/,
+  };
+  for (const [f, re] of Object.entries(blocks)) assert.match(readFileSync(f, 'utf8'), re, `${f}: its first-screen block is data-whole`);
+});
+
 test('the rule itself: children hidden, their space kept, until the marker arrives', () => {
   const css = readFileSync('src/styles/global.css', 'utf8');
   assert.match(css, /\[data-whole\]:not\(:has\(> \[data-whole-end\]\)\) > :not\(\[data-whole-keep\]\) \{ visibility: hidden; \}/);

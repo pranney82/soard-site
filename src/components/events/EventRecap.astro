@@ -19,7 +19,6 @@
  */
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import RecapPhotos from './RecapPhotos.astro';
-import FirstScreenEnd from '../global/FirstScreenEnd.astro';
 import RecapSponsors from './RecapSponsors.astro';
 import {
   seriesOf, seriesEvents, isOver, yearOf, fmtDay, displayName, recapLead,
@@ -72,7 +71,7 @@ const ytId: string | null = !series && !streamId && ev.videoUrl ? youTubeId(ev.v
 
 <div class={`rc rc--${theme}`} style={recapStyle(theme)}>
   <!-- ═══ HERO ═══ -->
-  <section class="rh" aria-labelledby="rh-title">
+  <section class="rh" aria-labelledby="rh-title" data-whole>
     <div class="rh-inner">
       <div class="rh-text">
         <p class="rh-eyebrow">{year} · Thank you</p>
@@ -172,9 +171,8 @@ const ytId: string | null = !series && !streamId && ev.videoUrl ? youTubeId(ev.v
         <span class="rh-stat__label">photos from<br />the {when}</span>
       </a>
     )}
+    <span data-whole-end hidden></span>
   </section>
-  {/* The recap's words sit centred beside its photos (the page turns the wait on: events/[slug].astro) */}
-  <FirstScreenEnd />
 
   <!-- ═══ PHOTOS ═══ -->
   {photos.length > 0 ? (

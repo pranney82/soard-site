@@ -101,7 +101,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
 >
 
   <!-- ══════ HERO ══════ -->
-  <section class="cp-detail-hero" aria-label={project.name}>
+  <section class="cp-detail-hero" aria-label={project.name} data-whole>
     <div class="cp-detail-hero-inner">
       <a href="/community/" class="cp-detail-back" aria-label="Back to community projects">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
@@ -148,6 +148,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
         </div>
       </div>
     </div>
+    <span data-whole-end hidden></span>
   </section>
 
   <!-- ══════ STORY ══════ -->
