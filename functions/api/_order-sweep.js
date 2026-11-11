@@ -51,7 +51,8 @@ const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const AI_TIMEOUT_MS = 12 * 1000;
 const AI_CHARS = 9000;
 // Bumped when reading changes: every email read under an older version is read again once
-export const READER_V = 2;
+// 3 (Nov 11 2026): UPS numbers written in lower case beside "UPS" (The Container Store) are read; every read email is read again once
+export const READER_V = 3;
 const AT_ONCE = 6;
 const HEADERS = ['From', 'X-Original-From', 'X-Original-Sender', 'Reply-To', 'To', 'Cc', 'Delivered-To', 'Subject', 'Message-ID', 'List-Id'];
 // Order words in the subject: Gmail does the first sort, so a run lists only what could be an order email
@@ -220,7 +221,9 @@ export async function aiRead(env, { subject, from, sentAt, text }) {
 
 /** One queued email, read in full → its row settled */
 async function readOne(env, ctx, row) {
-  await env.DB.prepare("UPDATE order_mail SET state = 'working', updated_at = ? WHERE mailbox = ? AND id = ?").bind(iso(ctx.now), row.mailbox, row.id).run();
+  // Read again with better rules: it stays 'read' (its old read in use) until the new one is saved
+  const again = row.state === 'read';
+  if (!again) await env.DB.prepare("UPDATE order_mail SET state = 'working', updated_at = ? WHERE mailbox = ? AND id = ?").bind(iso(ctx.now), row.mailbox, row.id).run();
   try {
     // The same email from another inbox (an orders@ copy) already read: this one is that one
     const twin = row.msgid ? await env.DB.prepare("SELECT mailbox, id FROM order_mail WHERE msgid = ? AND state = 'read' AND NOT (mailbox = ? AND id = ?) LIMIT 1").bind(row.msgid, row.mailbox, row.id).first() : null;
@@ -250,7 +253,12 @@ async function readOne(env, ctx, row) {
   } catch (err) {
     if (aiCapped(err)) {
       ctx.capped = true;
-      await env.DB.prepare("UPDATE order_mail SET state = 'queued', updated_at = ? WHERE mailbox = ? AND id = ?").bind(iso(ctx.now), row.mailbox, row.id).run();
+      if (!again) await env.DB.prepare("UPDATE order_mail SET state = 'queued', updated_at = ? WHERE mailbox = ? AND id = ?").bind(iso(ctx.now), row.mailbox, row.id).run();
+      return null;
+    }
+    // A read again that failed keeps the old read; it's tried a few times, then left as it was
+    if (again) {
+      await env.DB.prepare("UPDATE order_mail SET tries = COALESCE(tries, 0) + 1, updated_at = ? WHERE mailbox = ? AND id = ?").bind(iso(ctx.now), row.mailbox, row.id).run();
       return null;
     }
     await env.DB.prepare("UPDATE order_mail SET state = 'failed', tries = COALESCE(tries, 0) + 1, detail = ?, updated_at = ? WHERE mailbox = ? AND id = ?")
@@ -292,9 +300,11 @@ async function sweep(env, st, { fetchImpl, now }) {
   };
   const errors = [];
   st.startedAt ||= now;
-  // Reading got better: everything read before is read again, once (the AI is asked only where the rules fall short)
+  // Reading got better: everything read before is read again, once, IN PLACE: each keeps its old read (and stays on
+  // the check-in page and in JobTread) until its new read replaces it. Taking them all off to re-queue them would
+  // have the JobTread writer mark their lines Not ordered and take their Also bought lines away in the meantime
   if ((st.readerV || 1) < READER_V) {
-    await env.DB.prepare("UPDATE order_mail SET state = 'queued', tries = 0, detail = NULL WHERE state = 'read'").run();
+    await env.DB.prepare("UPDATE order_mail SET tries = 0 WHERE state = 'read' AND COALESCE(json_extract(read, '$.v'), 1) < ?").bind(READER_V).run();
     st.readerV = READER_V;
   }
   st.boxes ||= {};
@@ -325,13 +335,16 @@ async function sweep(env, st, { fetchImpl, now }) {
   while (reads < READS_A_RUN && Date.now() - started < READ_MS && (st.aiRestUntil || 0) <= now && !ctx.capped) {
     // Oldest first, so an order's confirmation is read before its shipping and delivery
     const row = await env.DB.prepare("SELECT * FROM order_mail WHERE (state = 'queued' OR (state = 'failed' AND tries < ? AND updated_at < ?)) ORDER BY at LIMIT 1")
-      .bind(MAX_TRIES, retryBefore).first();
+      .bind(MAX_TRIES, retryBefore).first()
+      // Nothing new: one read before the rules got better, read again (it keeps its old read meanwhile)
+      || await env.DB.prepare("SELECT * FROM order_mail WHERE state = 'read' AND COALESCE(json_extract(read, '$.v'), 1) < ? AND COALESCE(tries, 0) < ? ORDER BY at LIMIT 1")
+        .bind(READER_V, MAX_TRIES).first();
     if (!row) break;
     await readOne(env, ctx, row);
     reads++;
   }
   if (ctx.capped) { st.aiRestUntil = now + AI_REST_MS; errors.push(AI_WAIT_NOTE); }
-  const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM order_mail WHERE state = 'queued'").first();
+  const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM order_mail WHERE state = 'queued' OR (state = 'read' AND COALESCE(json_extract(read, '$.v'), 1) < ? AND COALESCE(tries, 0) < ?)").bind(READER_V, MAX_TRIES).first();
   // An inbox failing time after time doesn't hold the rest at a minute's pace (its trouble shows in Automations)
   const backfilling = boxes.some((b) => !st.boxes[b]?.backfilled && !st.boxes[b]?.noMail && (st.boxes[b]?.fails || 0) < FAILS_TO_REST);
   Object.assign(st, { busy: Boolean(waiting?.n) || backfilling, backfilling, inboxes: boxes.length, lastSweptAt: now, error: errors.length ? errors.join(' · ').slice(0, 500) : null, runningUntil: 0 });

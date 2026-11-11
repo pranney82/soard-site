@@ -140,7 +140,7 @@ function toast(text) {
 }
 
 function apply(view) {
-  Object.assign(state, { kids: view.kids || [], needsLook: view.needsLook || [], shelves: view.shelves || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
+  Object.assign(state, { kids: view.kids || [], needsLook: view.needsLook || [], shelves: view.shelves || [], shipments: view.shipments || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
   $('mode').hidden = !state.practice || readQueue().length > 0;
 }
 
@@ -181,6 +181,8 @@ function render() {
     .map((n) => `<button class="chip${n === 'All' ? '' : ' has-face'}" type="button" aria-pressed="${n === state.filter}" data-chip="${esc(n)}">${n === 'All' ? '' : faceOf(n, 26)}${esc(n)}</button>`).join('');
   let html = state.needsLook.length && !state.query && state.filter === 'All'
     ? `<button class="strip" type="button" id="looks"><b>Needs a look</b><span class="count-warn">${state.needsLook.length}</span>${ICON.chev}</button>` : '';
+  // All kids: what's coming, by shipment, delivered first. One kid (or a search): their list
+  if (state.filter === 'All' && !state.query) { $('list').innerHTML = html + shipmentsHtml(); showPrinter(); return; }
   for (const kid of state.kids.filter((k) => state.filter === 'All' || k.short === state.filter)) {
     const items = kid.items.filter((it) => matches(kid, it));
     if (state.query && !items.length) continue;
@@ -779,10 +781,13 @@ async function read(image, preview) {
   }
 }
 
-function showFound({ found, label }, preview) {
+function showFound({ found, label, likely = [] }, preview) {
   const kid = found && kidById(found.kid);
   const items = kid ? found.items.map((id) => kid.items.find((i) => i.id === id)).filter((i) => i && !isHere(i)) : [];
   state.foundBoxes = Number(label?.boxTotal) || 1;
+  // The box's shipment, with what the label matched ticked
+  const sh = kid && items.length && state.shipments.find((x) => x.items.some((i) => i.id === items[0].id));
+  if (sh) { shipmentSheet(sh.key, { pick: items.map((i) => i.id), how: found.how, boxes: state.foundBoxes, keep: true }); return; }
   if (kid && items.length === 1) { itemSheet(kid, items[0], { found: found.how, keep: true, boxes: state.foundBoxes }); return; }
   if (kid && items.length) {
     openSheet(`${head(kidTitle(kid), { kid: true, sub: esc(found.how) })}
@@ -790,11 +795,18 @@ function showFound({ found, label }, preview) {
       <div class="pick">${items.map((i) => rowHtml(kid, i)).join('')}</div>`, { keep: true });
     return;
   }
-  const bits = [label?.store, label?.po ? `PO ${label.po}` : null, ...(label?.trackingNumbers || []).map((t) => `…${t.slice(-6)}`), ...(label?.orderNumbers || [])].filter(Boolean);
-  openSheet(`${head(kid ? `Everything for ${esc(kid.short)} from that order is here` : 'Couldn’t match this box', { sub: bits.map(esc).join(' · ') })}
-    <img class="photo" src="${preview}" alt="The photo of the box's label" />
-    <button class="btn btn-primary btn-big" type="button" data-close="1" data-focus>Pick from the list</button>
-    <button class="btn btn-text" type="button" data-other="1">Something else</button>`, { keep: true });
+  const bits = [label?.store, label?.po ? `PO ${label.po}` : null, ...(label?.trackingNumbers || []).map((t) => `…${t.slice(-6)}`), ...(label?.orderNumbers || []), ...(label?.references || []).map((r) => `Ref ${r}`)].filter(Boolean);
+  // Nothing on the label ties it to an order (Amazon's and Crate & Barrel's emails never carry the box's tracking
+  // number): the shipments it most likely came in (from the store the label names, delivered lately), then the rest
+  // that were delivered and wait to be checked in, for one tap; or the packing slip inside
+  const keys = [];
+  for (const x of likely) { const sh = state.shipments.find((s2) => s2.items.some((i) => i.id === x.item)); if (sh && sh.stage !== 'in' && !keys.includes(sh.key)) keys.push(sh.key); }
+  for (const sh of state.shipments) if (sh.stage === 'delivered' && !keys.includes(sh.key)) keys.push(sh.key);
+  const cards = keys.slice(0, 8).map((k) => shipCard(state.shipments.find((x) => x.key === k), { compact: true })).join('');
+  openSheet(`${head(cards ? 'Which shipment is it?' : 'Couldn’t match this box', { sub: bits.length ? `Read: ${bits.map(esc).join(' · ')}` : 'Nothing readable on the label' })}
+    ${cards ? `<div class="ship-pick">${cards}</div>` : `<img class="photo" src="${preview}" alt="The photo of the box's label" />`}
+    <button class="btn ${cards ? '' : 'btn-primary '}btn-big" type="button" data-rescan="1"${cards ? '' : ' data-focus'}>Scan the packing slip inside</button>
+    <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div>`, { keep: true });
 }
 
 // ─── Wiring ─────────────────────────────────────────────────────────
@@ -810,6 +822,8 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.chip) { state.filter = t.dataset.chip; render(); window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); return; }
   if (t.dataset.here) { state.openHere.add(t.dataset.here); render(); return; }
   if (t.dataset.allhere) { const k = kidById(t.dataset.allhere); if (k) allHereSheet(k); return; }
+  if (t.dataset.ship) { shipmentSheet(t.dataset.ship, { keep: Boolean(t.closest('.sheet')) }); return; }
+  if (t.dataset.shipsection) { (state.openShips ||= new Set()).add(t.dataset.shipsection); render(); return; }
   if (t.dataset.loadkid) { state.loadKid = t.dataset.loadkid; render(); window.scrollTo({ top: 0 }); return; }
   if (t.dataset.back) { state.loadKid = null; render(); window.scrollTo({ top: 0 }); return; }
   if (t.dataset.tick) { tick(t.dataset.kid, t.dataset.tick); return; }
@@ -1377,4 +1391,154 @@ async function scanLabels(scope) {
     add(ref, box, found);
   };
   scanning = requestAnimationFrame(frame);
+}
+
+// ─── Shipments: what's coming, by the stores' own emails ────────────
+// Peter, Nov 11 2026: "show expected shipments so clareece can print labels from expected shipments and she visually
+// sees that shipment as arrived". Delivered first (newest on top), then out for delivery, on the way (by the day it's
+// expected), ordered; older deliveries (most likely already on the shelves) and what was checked in fold away
+
+const kidOfItem = (id) => state.kids.find((k) => k.items.some((i) => i.id === id));
+const itemOfId = (id) => kidOfItem(id)?.items.find((i) => i.id === id);
+const when = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso), now = new Date();
+  const days = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / DAY);
+  if (days === 0) return `today ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  if (days === 1) return 'yesterday';
+  if (days < 7) return d.toLocaleDateString('en-US', { weekday: 'long' });
+  return dayOf(iso);
+};
+const expectedOn = (ymd) => {
+  if (!ymd) return '';
+  const d = new Date(`${ymd}T12:00:00`);
+  const days = Math.round((d - new Date(new Date().toDateString())) / DAY);
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  if (days > 1 && days < 7) return d.toLocaleDateString('en-US', { weekday: 'long' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+const shipStatus = (sh) => (sh.stage === 'delivered' ? ['delivered', `Delivered ${when(sh.deliveredAt)}`]
+  : sh.stage === 'out' ? ['out', 'Out for delivery']
+    : sh.stage === 'shipped' ? ['shipped', sh.expected ? `Arriving ${expectedOn(sh.expected)}` : 'On the way']
+      : sh.stage === 'in' ? ['in', `Checked in ${when(sh.checkedAt)}`] : ['ordered', `Ordered ${dayOf(sh.orderedAt)}`]);
+const waitingOf = (sh) => sh.items.filter((i) => { const it = itemOfId(i.id); return it && !isHere(it); });
+
+/** One shipment: the store, where it is, the kids' faces and what's in it; tapping it checks it in */
+function shipCard(sh, { compact = false } = {}) {
+  if (!sh) return '';
+  const [cls, words] = shipStatus(sh);
+  const waiting = waitingOf(sh);
+  const kidsIn = [...new Set(sh.items.map((i) => kidOfItem(i.id)?.jobId).filter(Boolean))].map(kidById);
+  const shown = sh.items.slice(0, compact ? 2 : 4);
+  return `<button class="ship card stage-${cls}" type="button" data-ship="${esc(sh.key)}" aria-label="${esc(`${sh.store}, ${words}, ${plural(sh.items.length, 'item')}`)}">
+    <span class="ship-head"><span class="ship-store"><b>${esc(sh.store)}</b>${sh.orderNumber ? `<span>Order ${esc(sh.orderNumber)}</span>` : ''}</span><span class="ship-chip ${cls}">${esc(words)}</span></span>
+    <span class="ship-items">${shown.map((i) => { const it = itemOfId(i.id); const k = kidOfItem(i.id); return it ? `<span class="ship-item${isHere(it) ? ' here' : ''}">${face(k, 24)}<span class="si-name">${esc(it.name)}</span>${isHere(it) ? `<span class="tag-here">${esc(shelfName(it.shelf) || 'Here')}</span>` : ''}</span>` : ''; }).join('')}
+      ${sh.items.length > shown.length ? `<span class="ship-more">and ${plural(sh.items.length - shown.length, 'more thing')}</span>` : ''}</span>
+    ${!compact && waiting.length ? `<span class="ship-go${cls === 'delivered' ? ' primary' : ''}">${waiting.length === sh.items.length ? (waiting.length === 1 ? 'Check it in' : `Check in all ${waiting.length}`) : `Check in the ${waiting.length} left`}${kidsIn.length > 1 ? ` · ${kidsIn.length} kids` : ''}</span>` : ''}
+  </button>`;
+}
+
+function shipmentsHtml() {
+  const weekAgo = Date.now() - 7 * DAY;
+  const groups = {
+    delivered: state.shipments.filter((x) => x.stage === 'delivered' && Date.parse(x.deliveredAt || 0) >= weekAgo),
+    out: state.shipments.filter((x) => x.stage === 'out'),
+    shipped: state.shipments.filter((x) => x.stage === 'shipped'),
+    earlier: state.shipments.filter((x) => x.stage === 'delivered' && Date.parse(x.deliveredAt || 0) < weekAgo),
+    ordered: state.shipments.filter((x) => x.stage === 'ordered'),
+    in: state.shipments.filter((x) => x.stage === 'in' && Date.parse(x.checkedAt || 0) >= Date.now() - 3 * DAY),
+  };
+  const open = (k) => state.openShips?.has(k);
+  const section = (k, title, list, folded = false) => {
+    if (!list.length) return '';
+    if (folded && !open(k)) return `<button class="more fold" type="button" data-shipsection="${k}"><span>${esc(title)}</span><span class="fold-n">${list.length}</span>${ICON.chev}</button>`;
+    return `<div class="ship-h"><span>${esc(title)}</span><span>${list.length}</span></div>${list.map((x) => shipCard(x)).join('')}`;
+  };
+  const html = section('delivered', 'Delivered', groups.delivered)
+    + section('out', 'Out for delivery', groups.out)
+    + section('shipped', 'On the way', groups.shipped)
+    + section('earlier', 'Delivered more than a week ago', groups.earlier, true)
+    + section('ordered', 'Ordered, not shipped yet', groups.ordered, true)
+    + section('in', 'Checked in lately', groups.in, true);
+  return html || '<div class="empty">Nothing on the way. Scan a box, or pick a kid above.</div>';
+}
+
+/**
+ * A shipment: each thing in it with its kid, ticked to check in, and how many boxes it came in; one tap checks them
+ * all in and prints every label. What's here already shows where it is
+ */
+function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = false } = {}) {
+  const sh = state.shipments.find((x) => x.key === key);
+  if (!sh) return;
+  const [, words] = shipStatus(sh);
+  const waiting = waitingOf(sh);
+  const done = sh.items.filter((i) => !waiting.includes(i));
+  const boxes = new Map(waiting.map((i) => [i.id, pick?.includes(i.id) ? Math.max(1, preset) : 1]));
+  const ticked = new Set(waiting.map((i) => i.id).filter((id) => !pick || pick.includes(id)));
+  const taps = new Map(waiting.map((i) => [i.id, newTap()]));
+  const row = (i) => {
+    const it = itemOfId(i.id), k = kidOfItem(i.id);
+    return `<div class="look ship-row"><label class="sr-check"><input type="checkbox" data-shipitem="${esc(i.id)}"${ticked.has(i.id) ? ' checked' : ''} aria-label="Check in ${esc(it.name)}" /></label>
+      ${face(k, 32)}<span class="sr-body"><b>${esc(it.name)}</b><span>${esc([k.short, it.line, it.qty - (it.got || 0) > 1 ? `${it.qty - (it.got || 0)} of them` : null].filter(Boolean).join(' · '))}</span></span>
+      <span class="mini-step" data-boxes="${esc(i.id)}"><button type="button" data-bstep="-1" aria-label="One box fewer">−</button><output>${boxes.get(i.id)}</output><button type="button" data-bstep="1" aria-label="One box more">+</button></span></div>`;
+  };
+  const labelCount = () => [...ticked].reduce((t, id) => t + boxes.get(id), 0);
+  const goWords = () => (ticked.size ? `Check in and print ${plural(labelCount(), 'label')}` : 'Tick what came');
+  openSheet(`${head(esc(sh.store), { sub: esc([sh.orderNumber ? `Order ${sh.orderNumber}` : null, words, how].filter(Boolean).join(' · ')) })}
+    ${waiting.length ? `<div class="label-above ship-boxes-h"><span>What came</span><span>Boxes</span></div><div class="pick">${waiting.map(row).join('')}</div>` : ''}
+    ${done.length ? `<div class="pick">${done.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return it ? `<div class="look ship-row done">${face(k, 32)}<span class="sr-body"><b>${esc(it.name)}</b><span>${esc(k.short)}</span></span><span class="tag-here">${esc(it.status === 'house' ? 'House' : it.status === 'out' ? 'Loaded' : shelfName(it.shelf) || 'Here')}</span></div>` : ''; }).join('')}</div>` : ''}
+    ${waiting.length ? `<div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="shipgo" data-focus>${goWords()}</button></div>` : ''}`, { keep });
+  const refresh = () => { const b = $('shipgo'); if (b) { b.textContent = goWords(); b.disabled = !ticked.size; } };
+  document.querySelectorAll('#sheet-root [data-shipitem]').forEach((c) => { c.onchange = () => { if (c.checked) ticked.add(c.dataset.shipitem); else ticked.delete(c.dataset.shipitem); refresh(); }; });
+  document.querySelectorAll('#sheet-root [data-boxes]').forEach((el) => {
+    el.querySelectorAll('[data-bstep]').forEach((b) => {
+      b.onclick = () => {
+        const id = el.dataset.boxes;
+        boxes.set(id, Math.min(20, Math.max(1, boxes.get(id) + Number(b.dataset.bstep))));
+        el.querySelector('output').textContent = boxes.get(id);
+        refresh();
+      };
+    });
+  });
+  if (!$('shipgo')) return;
+  $('shipgo').onclick = async () => {
+    const chosen = waiting.filter((i) => ticked.has(i.id));
+    if (!chosen.length) return;
+    const items = chosen.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return { tap: taps.get(i.id), jobId: k.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: Math.max(1, it.qty - (it.got || 0)), boxes: boxes.get(i.id) }; });
+    $('shipgo').disabled = true;
+    $('shipgo').innerHTML = `<span class="spin" aria-hidden="true"></span>Checking in ${plural(items.length, 'thing')}`;
+    let r;
+    try { r = await sendOrKeep('receive', { items }); } catch (err) {
+      $('shipgo').disabled = false; $('shipgo').textContent = `Try again: ${err.message}`;
+      return;
+    }
+    shipDone(sh, items, r);
+  };
+}
+
+/** After a shipment is checked in: each kid's shelf to put their things on, the labels, what didn't go */
+function shipDone(sh, items, r) {
+  const byKid = new Map();
+  const results = new Map((r.out?.results || []).map((x) => [x.tap, x]));
+  const refused = [];
+  for (const it of items) {
+    const x = results.get(it.tap);
+    if (x?.error) { refused.push(`${it.name}: ${x.error}`); continue; }
+    const k = kidById(it.jobId);
+    const e = byKid.get(it.jobId) || { k, n: 0, labels: 0, shelf: x?.shelf || k?.shelves?.[0] || null };
+    e.n++; e.labels += it.boxes;
+    byKid.set(it.jobId, e);
+  }
+  const labels = [...byKid.values()].reduce((t, e) => t + e.labels, 0);
+  const p = printSaid(r.queued ? null : r.out?.print);
+  tones.wake(); if (refused.length) tones.warn(); else tones.ok();
+  openSheet(`${head(esc(sh.store), { sub: r.queued ? 'Saved on this phone. It goes to JobTread when the connection is back.' : `${plural(items.length - refused.length, 'thing')} checked in${r.out?.jt === 'written' ? ', in JobTread' : ''}` })}
+    <div class="done-line" style="--after:0ms">${p.ok ? ICON.tick : ICON.warn}<span>${esc(r.queued ? `${plural(labels, 'label')} print when it’s sent` : p.ok ? `${plural(labels, 'label')} printing` : p.text)}</span></div>
+    ${[...byKid.values()].map((e) => `<div class="shelf-callout static"><span class="who">${face(e.k, 36)}${esc(e.k?.short || '')} · ${plural(e.n, 'thing')}</span><b>${esc(e.shelf ? shelfName(e.shelf) : 'Next free')}</b></div>`).join('')}
+    ${refused.length ? `<p class="why-line">Not checked in: ${esc(refused.join('; '))}</p>` : ''}
+    <div class="after"><button class="btn btn-primary btn-big" type="button" id="next" data-focus>Scan the next box</button>
+      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button></div></div>`, { keep: true });
+  $('next').onclick = async () => { await close(); scan(); };
+  render();
 }

@@ -11,7 +11,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { maybeSweepOrders, orderSweepStatus, orderTriage, bodiesOf, notStoreMail, BACKFILL_DAYS } from '../functions/api/_order-sweep.js';
+import { maybeSweepOrders, orderSweepStatus, orderTriage, bodiesOf, notStoreMail, BACKFILL_DAYS, READER_V } from '../functions/api/_order-sweep.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 
 const { privateKey: SA_PEM } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
@@ -268,7 +268,7 @@ test('gate 1: a store that names its items only on the pictures (Wayfair, Best B
   assert.doesNotMatch(ai.input, /\bWayfair\n/, 'a one-word logo alt adds nothing');
   const read = JSON.parse((await rows()).find((x) => x.state === 'read').read);
   assert.equal(read.items[0].name, 'Ebern Designs 36 in. Wall Mounted Vanity');
-  assert.equal(read.v, 2);
+  assert.equal(read.v, READER_V);
 });
 
 test('gate 1: emails read before reading got better are read again, once', async () => {
@@ -278,10 +278,12 @@ test('gate 1: emails read before reading got better are read again, once', async
   const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
   await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st, readerV: 1 })).run();
   await env.DB.prepare("UPDATE order_mail SET read = '{\"kind\":\"shipped\",\"items\":[]}' WHERE state = 'read'").run();
+  // Waiting to be read again, it stays read (on the check-in page and in JobTread) with its old read
+  assert.deepEqual((await rows()).map((x) => x.state), ['read']);
   await run(T0 + 4 * MIN);
   const r = (await rows()).find((x) => x.state === 'read');
-  assert.equal(JSON.parse(r.read).v, 2);
+  assert.equal(JSON.parse(r.read).v, READER_V);
   assert.equal(JSON.parse(r.read).items.length, 1, 'read again with today’s reader');
   const after = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
-  assert.equal(after.readerV, 2);
+  assert.equal(after.readerV, READER_V);
 });

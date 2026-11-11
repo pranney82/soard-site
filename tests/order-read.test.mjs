@@ -241,3 +241,9 @@ test('second review: out for delivery stays out; labels above their numbers; cap
   assert.deepEqual(trackingIn('TRACKING NUMBER: 1Z9620450392148623'), [{ carrier: 'UPS', number: '1Z9620450392148623' }]);
   assert.deepEqual(trackingIn('Tracking number: 1z9620450392148623x'), [], 'not as printed');
 });
+
+test('Nov 11: a UPS number written in lower case beside "UPS" (The Container Store) is read; a lower-case code elsewhere isn’t', async () => {
+  const { trackingIn } = await import('../functions/api/_order-read.js');
+  assert.deepEqual(trackingIn('Track This Package Arriving Thursday, November 5 UPS # 1z12d1r20300649284 2\' Elfa Closet Rod'), [{ carrier: 'UPS', number: '1Z12D1R20300649284' }]);
+  assert.deepEqual(trackingIn('coupon code 1z12d1r20300649284 for 10% off'), [], 'no carrier named: not a tracking number');
+});

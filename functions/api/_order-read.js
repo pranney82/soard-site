@@ -148,6 +148,9 @@ export function trackingIn(text, links = []) {
     const carrier = /usps/i.test(m[2]) ? 'USPS' : 'FedEx';
     if (carrierOfNumber(m[1]) === carrier) add(m[1], carrier);
   }
+  // A UPS number in either case where the words name UPS beside it: The Container Store writes "UPS # 1z12d1r2…"
+  // (seen Nov 11 2026; every one of its emails was missed while only upper case counted)
+  for (const m of t.matchAll(/\bUPS\b[^\n]{0,30}?(?<![A-Za-z0-9])(1Z[0-9A-Z]{16})(?![A-Za-z0-9])/gi)) add(m[1], 'UPS');
   // Any case for the label, but the number as printed: upper case and digits
   for (const m of t.matchAll(/\btracking (?:number|#|no\.?)[ \t]*:?[ \t]*([A-Za-z0-9]{10,34})\b/gi)) if (m[1] === m[1].toUpperCase()) add(m[1]);
   return [...found.values()];

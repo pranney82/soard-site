@@ -570,3 +570,24 @@ test('labels as Zebra prints them (checked on Labelary’s render, Nov 10 2026):
   const qr = /\^FO(\d+),(\d+)\^BQN,2,(\d+)/.exec(z);
   assert.ok(Number(qr[1]) + 45 * Number(qr[3]) <= 812 && Number(qr[2]) + 45 * Number(qr[3]) <= 1218, 'the QR, even a large one, stays on the label');
 });
+
+test('shipments: by the store’s emails, an order is ordered, on the way (with its day), out, delivered (the items its email names), then checked in', async () => {
+  const { shipmentsOf } = await import('../functions/api/_kid-checkin.js');
+  await order('s1', 'Shop', '2026-11-01T16:00:00Z', { kind: 'shipped', orderNumber: 'A1', expected: '2026-11-04', items: [{ name: 'Raincan Shower Head 52214-CZ' }] });
+  let v = await view();
+  let sh = v.shipments.find((x) => x.orderNumber === 'A1');
+  assert.deepEqual([sh.stage, sh.expected, sh.items.length], ['shipped', '2026-11-04', 2], 'the head and the bean bag chair, two kids’ lines, one order');
+  await order('s2', 'Shop', '2026-11-04T18:00:00Z', { kind: 'delivered', orderNumber: 'A1', items: [{ name: 'Raincan Shower Head 52214-CZ' }] });
+  v = await view();
+  sh = v.shipments.find((x) => x.orderNumber === 'A1');
+  assert.equal(sh.stage, 'delivered');
+  assert.deepEqual(sh.items.map((i) => i.delivered), [true, false], 'its email named the head only');
+  assert.equal(v.shipments[0].orderNumber, 'A1', 'delivered first');
+  // The whole shipment checked in at once
+  const items = sh.items.map((i) => itemOf(v, 'Rowan S.', kidOf(v, 'Rowan S.').items.find((x) => x.id === i.id).name)).map((it) => ({ tap: tap(), jobId: 'j-rowan', itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: it.qty, boxes: 1 }));
+  const res = await onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin?receive=1', { method: 'POST', body: JSON.stringify({ items }) }), waitUntil: () => {} });
+  const body = await res.json();
+  assert.deepEqual(body.results.map((r) => [r.shelf, r.repeat]), [['1', false], ['1', false]]);
+  assert.equal(body.view.shipments.find((x) => x.orderNumber === 'A1').stage, 'in');
+  assert.equal(shipmentsOf([], []).length, 0);
+});

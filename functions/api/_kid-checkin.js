@@ -11,7 +11,7 @@
  * JobTread always say the same thing.
  */
 
-import { matchOrder, orderGroups, templateLines, namesOf, fit } from './_kid-match.js';
+import { matchOrder, orderGroups, templateLines, namesOf, fit, tokensOf, groupKey } from './_kid-match.js';
 import { loadCostRecords } from './_makeover-costs.js';
 import { matchProject } from './_reveals.js';
 import { readRecord, readState, decisionKey, alsoKey, shelfName, SHELVES, FLOOR } from './_kid-record.js';
@@ -266,7 +266,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     const here = kids.flatMap((k) => k.items.filter((i) => (i.status === 'here' || i.status === 'partly') && i.shelf === s).map(() => k.jobId));
     return { shelf: s, name: shelfName(s), kid: kid?.jobId || (s === FLOOR ? null : record.shelves.get(s) || null), things: here.length };
   });
-  return { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), open: jobs.map((j) => j.id), unread, needsLook, orders, shelves };
+  return { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, reads) };
 }
 
 /** For an item a person places: each kid's likeliest open part ({ [jobId]: item id }), by the designer's words */
@@ -288,3 +288,59 @@ function guessesFor(name, kids, lineOf) {
 }
 
 export { OPEN };
+
+/** Does an item named in a delivered email look like this one? (Amazon's "Delivered: 2 'Countertop Support Bracket…'") */
+const sameThing = (a, b) => {
+  const x = tokensOf(a), y = new Set(tokensOf(b));
+  if (!x.length || !y.size) return false;
+  const shared = x.filter((w) => y.has(w)).length;
+  return shared / Math.min(x.length, y.size) >= 0.6;
+};
+
+/**
+ * Each order placed on a kid, as a shipment, with where it is by the store's own emails (Peter, Nov 11 2026: "show
+ * expected shipments so clareece can print labels from expected shipments and she visually sees that shipment as
+ * arrived"): ordered → shipped (the day it's expected) → out for delivery → delivered → checked in. A delivered email
+ * that names its items marks those items delivered; one that names none marks the whole order.
+ * → [{ key, store, orderNumber, orderedAt, stage, shippedAt, outAt, deliveredAt, expected, checkedAt, items: [{ kid, id, delivered }] }]
+ */
+export function shipmentsOf(kids, reads) {
+  const mail = new Map();
+  for (const r of reads) {
+    const k = groupKey(r);
+    const t = mail.get(k) || { shippedAt: null, outAt: null, deliveredAt: null, expected: null, deliveredNames: [], deliveredAll: false };
+    const later = (a, b) => (!a || b > a ? b : a);
+    if (r.read.kind === 'shipped' || r.read.kind === 'delayed') { t.shippedAt = later(t.shippedAt, r.at); if (r.read.expected) t.expected = r.read.expected; }
+    if (r.read.kind === 'out') t.outAt = later(t.outAt, r.at);
+    if (r.read.kind === 'delivered' || r.read.kind === 'pickup') {
+      t.deliveredAt = later(t.deliveredAt, r.at);
+      const names = (r.read.items || []).map((i) => i.name).filter(Boolean);
+      if (names.length) t.deliveredNames.push(...names); else t.deliveredAll = true;
+    }
+    mail.set(k, t);
+  }
+  const byKey = new Map();
+  for (const k of kids) {
+    for (const it of k.items) {
+      if (!it.order?.key) continue;
+      const sh = byKey.get(it.order.key) || { key: it.order.key, store: it.order.store, orderNumber: it.order.orderNumber || null, orderedAt: it.order.at, items: [] };
+      const t = mail.get(it.order.key);
+      const delivered = Boolean(t && (t.deliveredAll || t.deliveredNames.some((n) => sameThing(n, it.orderedAs || it.name))));
+      sh.items.push({ kid: k.jobId, id: it.id, delivered, here: ['here', 'out', 'house'].includes(it.status) });
+      byKey.set(it.order.key, sh);
+    }
+  }
+  const out = [];
+  for (const sh of byKey.values()) {
+    const t = mail.get(sh.key) || {};
+    const waiting = sh.items.filter((i) => !i.here);
+    // A delivered email that named only some items: the order is delivered as far as those go
+    const stage = !waiting.length ? 'in' : waiting.some((i) => i.delivered) ? 'delivered' : t.outAt ? 'out' : t.shippedAt ? 'shipped' : 'ordered';
+    const lastIn = kids.flatMap((k) => k.items.filter((i) => i.order?.key === sh.key)).flatMap((i) => i.receipts || []).filter((r) => r.kind === 'receive' && !r.undone).map((r) => r.at).sort().pop() || null;
+    out.push({ ...sh, stage, shippedAt: t.shippedAt || null, outAt: t.outAt || null, deliveredAt: t.deliveredAt || null, expected: t.expected || null, checkedAt: stage === 'in' ? lastIn : null, items: sh.items.map(({ here, ...i }) => i) });
+  }
+  const rank = { delivered: 0, out: 1, shipped: 2, ordered: 3, in: 4 };
+  const when = (x) => x.stage === 'delivered' ? x.deliveredAt : x.stage === 'out' ? x.outAt : x.stage === 'in' ? x.checkedAt : x.orderedAt;
+  return out.sort((a, b) => rank[a.stage] - rank[b.stage]
+    || (a.stage === 'shipped' ? String(a.expected || '9').localeCompare(String(b.expected || '9')) : String(when(b) || '').localeCompare(String(when(a) || ''))));
+}

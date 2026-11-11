@@ -79,3 +79,33 @@ test('POST: nothing found is an answer, not an error; a bad photo and an unreada
   assert.match((await none.json()).error, /couldn’t be read/);
   await assert.rejects(readLabel({}, Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, ...new Array(20).fill(0)])), /can’t read photos/);
 });
+
+test('Nov 11: a shipper’s reference is often the store’s order number; a label that matches nothing lists the boxes likely in hand', async () => {
+  const { likelyBoxes } = await import('../functions/api/_kid-scan.js');
+  const { checkinView, orderReads } = await import('../functions/api/_kid-checkin.js');
+  await order('m3', 'Amazon', { kind: 'delivered', orderNumber: '111-1234567-7654321', items: [{ name: 'Cloud Pendant Light, Warm White' }], tracking: [] });
+  await env.DB.prepare("UPDATE order_mail SET at = ? WHERE id = 'm3'").bind(new Date().toISOString()).run();
+  const view = await checkinView(env);
+  const reads = await orderReads(env.DB);
+  const by = (label) => findBox(view, reads, { trackingNumbers: [], orderNumbers: [], po: '', store: '', items: [], references: [], ...label });
+  assert.equal(by({ references: ['A1'] }), null, 'too short to be anyone’s order number');
+  await order('m4', 'Shop', { kind: 'shipped', orderNumber: '359672268', jobPo: 'ROWAN', items: [{ name: 'Raincan Shower Head 52214-CZ' }], tracking: [] });
+  const view2 = await checkinView(env);
+  const reads2 = await orderReads(env.DB);
+  assert.equal(findBox(view2, reads2, { trackingNumbers: [], orderNumbers: [], po: '', store: '', items: [], references: ['SO-359672268-01'] })?.short, 'Rowan S.', 'the order number inside the label’s reference');
+  // An Amazon box: its label has only Amazon's own tracking number. Delivered lately comes first
+  const likely = likelyBoxes(view, reads, { store: 'Amazon', trackingNumbers: ['TBA123456789000'] });
+  assert.deepEqual(likely.map((x) => [x.short, x.why]), [['Ava E.', 'Delivered lately']]);
+  assert.deepEqual(likelyBoxes(view, reads, { store: 'Shop' }).map((x) => x.short), ['Rowan S.', 'Ava E.'], 'the store the label names first, then other deliveries');
+});
+
+test('Nov 11: the POST answers with the likely boxes and keeps a record of the scan (never the photo)', async () => {
+  aiAnswer = { trackingNumbers: ['TBA123456789000'], orderNumbers: [], po: '', store: 'Shop', items: [], boxTotal: 0, references: [] };
+  const body = await (await post({ image: JPEG })).json();
+  assert.equal(body.found, null);
+  assert.deepEqual(body.likely.map((x) => x.short), ['Rowan S.']);
+  const scans = (await env.DB.prepare('SELECT label, found, likely FROM kid_scans').all()).results;
+  assert.equal(scans.length, 1);
+  assert.equal(JSON.parse(scans[0].label).trackingNumbers[0], 'TBA123456789000');
+  assert.equal(scans[0].likely, 1);
+});

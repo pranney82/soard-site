@@ -33,8 +33,9 @@ export const LABEL_SCHEMA = {
     store: { type: 'string' },
     items: { type: 'array', items: { type: 'string' } },
     boxTotal: { type: 'number' },
+    references: { type: 'array', items: { type: 'string' } },
   },
-  required: ['trackingNumbers', 'orderNumbers', 'po', 'store', 'items', 'boxTotal'],
+  required: ['trackingNumbers', 'orderNumbers', 'po', 'store', 'items', 'boxTotal', 'references'],
 };
 const LABEL_PROMPT = [
   'You read the photo of a shipping label or packing slip on a box delivered to an office. Answer in JSON only.',
@@ -44,6 +45,7 @@ const LABEL_PROMPT = [
   'store: the store or sender, else "".',
   'items: the products a packing slip lists, as written, else an empty list.',
   'boxTotal: when the label says which box of how many ("1 of 3", "PKG 2/3", "Box 1 of 2"), the how many (3); else 0.',
+  'references: every other number printed as Ref, Reference, Ref 1, Ref 2, Invoice, Customer, Dept, Shipment or PO, as printed (stores often put their order number there), else an empty list.',
   'Never guess: leave a field empty when it isn\'t printed.',
 ].join('\n');
 
@@ -81,6 +83,7 @@ export async function readLabel(env, bytes) {
           store: String(a.store || '').trim().slice(0, 60),
           items: (a.items || []).map((n) => String(n).trim()).filter(Boolean).slice(0, 20),
           boxTotal: Number.isInteger(Number(a.boxTotal)) && Number(a.boxTotal) > 1 && Number(a.boxTotal) <= 20 ? Number(a.boxTotal) : 0,
+          references: (a.references || []).map((n) => String(n).trim()).filter((n) => n.length >= 4).slice(0, 8),
         };
       }
     } catch (err) {
@@ -104,6 +107,8 @@ export function sameTracking(a, b) {
 // An order number as printed ("Order # 111-1234567-1234567", "ORDER NO. W123456789") against the one from the email
 const orderDigits = (s) => clean(String(s || '').replace(/\b(order|ord|no|number|num|confirmation)\b\.?/gi, ' '));
 const sameOrder = (a, b) => { const x = orderDigits(a), y = orderDigits(b); return x.length >= 5 && x === y; };
+// A label's reference with the order number inside it ("SO-359672268-01"), long enough not to be chance
+const inOrder = (order, ref) => { const x = orderDigits(order), y = orderDigits(ref); return x.length >= 7 && y.length > x.length && y.includes(x); };
 
 /**
  * Which kid and items a read label is → { kid, short, items: [item ids], how } | null
@@ -123,10 +128,15 @@ export function findBox(view, reads, label) {
     const found = r && fromOrder(groupKey(r), `Tracking …${t.slice(-6)}`);
     if (found) return found;
   }
-  for (const o of label.orderNumbers || []) {
-    const r = reads.find((x) => sameOrder(x.read.orderNumber, o));
-    const found = r && fromOrder(groupKey(r), `Order ${o}`);
+  for (const o of [...(label.orderNumbers || []), ...(label.references || [])]) {
+    const r = reads.find((x) => sameOrder(x.read.orderNumber, o) || inOrder(x.read.orderNumber, o));
+    const found = r && fromOrder(groupKey(r), `Order ${orderDigits(o) || o}`);
     if (found) return found;
+  }
+  for (const ref of label.references || []) {
+    const po = kidFromPo(ref, view.kids.map((k) => ({ id: k.jobId, name: k.name })));
+    const kid = po?.kid && view.kids.find((k) => k.jobId === po.kid);
+    if (kid) return { kid: kid.jobId, short: kid.short, items: kid.items.filter((i) => i.status === 'ordered' || i.status === 'partly').map((i) => i.id), how: `Reference “${ref}”` };
   }
   if (label.po) {
     const jobs = view.kids.map((k) => ({ id: k.jobId, name: k.name }));
@@ -149,4 +159,35 @@ export function findBox(view, reads, label) {
     }
   }
   return null;
+}
+
+/**
+ * When a label can't be matched (Amazon's and Crate & Barrel's emails never carry the box's tracking number): the boxes
+ * most likely in hand, for one tap: what's coming from the store the label names (delivered lately first), then what
+ * other stores said was delivered in the last few days and isn't checked in → [{ kid, item, why }]
+ */
+export function likelyBoxes(view, reads, label, { now = Date.now(), max = 8 } = {}) {
+  const coming = (i) => i.status === 'ordered' || i.status === 'partly';
+  const delivered = new Map();
+  for (const r of reads) {
+    if (r.read.kind !== 'delivered' && r.read.kind !== 'out') continue;
+    const at = Date.parse(r.at);
+    if (now - at > 5 * 86400e3) continue;
+    const k = groupKey(r);
+    if (!delivered.has(k) || delivered.get(k) < at) delivered.set(k, at);
+  }
+  const words = (s) => new Set(String(s || '').toLowerCase().replace(/&/g, ' and ').split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !['the', 'and', 'inc', 'llc', 'com', 'store'].includes(w)));
+  const from = words(`${label.store || ''}`);
+  const sameStore = (store) => { const w = words(store); return [...w].some((x) => from.has(x)); };
+  const out = [];
+  for (const kid of view.kids) {
+    for (const it of kid.items.filter(coming)) {
+      const d = it.order && delivered.get(it.order.key);
+      const store = it.order && from.size && sameStore(it.order.store);
+      if (!d && !store) continue;
+      // The store the label names first (delivered lately above the rest of its orders), then other stores' deliveries
+      out.push({ kid: kid.jobId, short: kid.short, item: it.id, rank: (store ? 2 : 0) + (d ? 1 : 0), at: d || Date.parse(it.order?.at || 0), why: d ? 'Delivered lately' : `From ${it.order.store}` });
+    }
+  }
+  return out.sort((a, b) => b.rank - a.rank || b.at - a.at).slice(0, max).map(({ rank, at, ...x }) => x);
 }

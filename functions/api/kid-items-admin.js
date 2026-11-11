@@ -6,7 +6,8 @@
  * GET ?printer-setup=1 → the file to send to the label printer once (Zebra Printer Setup Utility → Files)
  * POST, each answering with the page's fresh view ({ success, view, … }):
  *   ?scan=1    { image: 'data:image/jpeg;base64,…' } → { label, found }   a box's label photo → its kid and items
- *   ?receive=1 { tap, jobId, itemId, partKey, name, line, units, boxes, shelf? } → { receipt, shelf, jt, print }
+ *   ?receive=1 { tap, jobId, itemId, partKey, name, line, units, boxes, shelf? } → { receipt, shelf, jt, print };
+ *              { items: [those] } a whole shipment at once → { results: [{ tap, jobId, shelf, repeat } | { tap, error, status }], print, jt }
  *   ?house=1   { tap, jobId, itemId, partKey, name, line }        "Not coming here" (it went to the house)
  *   ?undo=1    { tap }                                             a check-in taken back
  *   ?shelf=1   { tap, shelf }                                      a check-in moved to another shelf (or the Floor)
@@ -21,7 +22,7 @@
 import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
 import { checkinView, orderReads } from './_kid-checkin.js';
-import { readLabel, findBox } from './_kid-scan.js';
+import { readLabel, findBox, likelyBoxes } from './_kid-scan.js';
 import { receive, undo, moveShelf, decide, typedIn, checkOut, shelfName, SHELVES, ensureRecord } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { receiptLabels, shelfLabel } from './_kid-labels.js';
@@ -89,14 +90,42 @@ export async function onRequestPost(context) {
       if (!m) return Response.json({ success: false, error: 'That isn’t a photo the site can read. Take it again.' }, { status: 400, headers });
       const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
       const label = await readLabel(env, bytes);
-      const found = findBox(await checkinView(env, { photos: false }), await orderReads(env.DB), label);
-      return Response.json({ success: true, label, found }, { headers });
+      const [view, reads] = [await checkinView(env, { photos: false }), await orderReads(env.DB)];
+      const found = findBox(view, reads, label);
+      const likely = found ? [] : likelyBoxes(view, reads, label);
+      // Every scan kept (what was read, what it found; never the photo), so a miss can be looked into
+      await env.DB.prepare('CREATE TABLE IF NOT EXISTS kid_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, by_email TEXT, label TEXT, found TEXT, likely INTEGER)').run().catch(() => {});
+      await env.DB.prepare('INSERT INTO kid_scans (at, by_email, label, found, likely) VALUES (?, ?, ?, ?, ?)')
+        .bind(new Date().toISOString(), await who(request, env), JSON.stringify(label), found ? JSON.stringify(found) : null, likely.length).run().catch(() => {});
+      return Response.json({ success: true, label, found, likely }, { headers });
     }
     await ensureRecord(env.DB);
     const by = await who(request, env);
     const out = {};
     let jobId = null;
     let print = null;
+    if (q.get('receive') && Array.isArray(body.items)) {
+      // A whole shipment checked in at once: each item on its own (one that can't go doesn't stop the rest), all their
+      // labels printed together, each kid's JobTread lines written once
+      const results = [];
+      const fresh = [];
+      const jobs = new Set();
+      for (const it of body.items.slice(0, 60)) {
+        try {
+          const r = await receive(env.DB, it, { by });
+          jobs.add(r.receipt.job_id);
+          results.push({ tap: it.tap, jobId: r.receipt.job_id, shelf: r.shelf, repeat: r.repeat });
+          if (!r.repeat) fresh.push(r.receipt);
+        } catch (err) {
+          results.push({ tap: it.tap, error: err.message, status: err.status || 500 });
+        }
+      }
+      const view = await checkinView(env);
+      out.results = results;
+      if (fresh.length) out.print = await printLabels(env, fresh.flatMap((r) => labelsFor(view, r)));
+      for (const j of jobs) out.jt = await writeKidNow(env, j);
+      return Response.json({ success: true, ...out, view: { ...(await checkinView(env)), printer: await printerStatus(env) } }, { headers });
+    }
     if (q.get('receive') || q.get('other')) {
       const r = q.get('other') ? await typedIn(env.DB, body, { by }) : await receive(env.DB, body, { by });
       jobId = r.receipt.job_id;
