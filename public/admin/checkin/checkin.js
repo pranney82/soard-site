@@ -374,11 +374,16 @@ const byWho = (r) => (r?.who ? ` (${r.who})` : '');
 function rowHtml(kid, it) {
   const sub = [it.order?.store, it.line, it.qty > 1 && it.status !== 'partly' ? `${it.qty} of them` : null, it.order?.elsewhere && !isHere(it) ? 'Ships elsewhere' : null].filter(Boolean).join(' · ');
   let side = '';
+  // Where its order is by the store's emails (delivered, arriving, out for delivery), else how long since it was ordered
+  const sh = it.status === 'ordered' ? state.shipments.find((x) => x.items.some((y) => y.id === it.id)) : null;
+  const shipped = sh && ['delivered', 'pickup', 'out', 'shipped'].includes(sh.stage) ? shipStatus(sh) : null;
   if (it.status === 'partly') side = `<span class="tag-part">${it.got} of ${it.qty}</span>`;
+  else if (shipped) side = `<span class="when ${esc(shipped[0])}">${esc(sh.stage === 'delivered' ? 'Delivered' : sh.stage === 'shipped' && sh.expected ? `Due ${expectedOn(sh.expected)}` : shipped[1])}</span>`;
   else if (it.status === 'ordered' && it.order?.at) side = `<span class="when${daysAgo(it.order.at) > 14 ? ' late' : ''}" title="Ordered ${esc(ago(it.order.at))}">${shortAgo(it.order.at)}</span>`;
   else if (it.status === 'not' && it.source === 'donated') side = '<span class="when">Donated</span>';
   else if (it.status === 'here') side = `<span class="tag-here">${esc(shelfName(it.shelf) || 'Here')}</span>`;
   else if (it.status === 'house') side = '<span class="tag-house">House</span>';
+  else if (it.status === 'out') side = '<span class="tag-house">Loaded</span>';
   return `<button class="row${it.status === 'not' ? ' muted' : ''}" data-kid="${esc(kid.jobId)}" data-id="${esc(it.id)}" type="button">
     <span class="row-name">${esc(it.name)}</span><span class="row-side">${side}</span>
     <span class="row-sub">${esc(sub)}</span></button>`;
@@ -409,23 +414,28 @@ function render() {
     const coming = items.filter((i) => i.status === 'partly' || (i.status === 'ordered' && !i.before));
     const before = items.filter((i) => i.status === 'ordered' && i.before);
     const notOrdered = items.filter((i) => i.status === 'not');
-    const hereItems = items.filter(isHere);
+    const hereItems = items.filter((i) => i.status === 'here');
+    const houseItems = items.filter((i) => i.status === 'out' || i.status === 'house');
+    // Where everything of theirs is, as JobTread says it: what's still to order first for whoever orders
+    const counts = [[notOrdered.length, 'not ordered'], [coming.length + before.length, 'ordered'], [hereItems.length, 'at the Office'], [houseItems.length, 'at the house']].filter(([n]) => n);
     html += `<section class="card" aria-label="${esc(kid.short)}">
       <div class="card-head">
         <div class="card-title"><div class="who">${face(kid, 44)}<h2>${esc(kid.short)}</h2>${kid.shelf ? `<span class="tag-here">${esc(kid.shelves.map(shelfName).join(' · '))}</span>` : ''}</div><span class="count"><b>${here}</b> of ${total} here</span></div>
         <div class="bar" aria-hidden="true"><i data-bar="${esc(kid.jobId)}" style="transform:scaleX(${total ? here / total : 0})"></i></div>
+        ${state.filter !== 'All' && counts.length > 1 ? `<div class="card-counts">${counts.map(([n, w]) => `<span><b>${n}</b> ${esc(w)}</span>`).join('')}</div>` : ''}
       </div>`;
-    if (coming.length) html += `<div class="group-h"><span>Hasn’t come yet</span><span>${coming.length}</span></div>${coming.map((i) => rowHtml(kid, i)).join('')}`;
+    if (coming.length) html += `<div class="group-h"><span>Ordered, not here yet</span><span>${coming.length}</span></div>${coming.map((i) => rowHtml(kid, i)).join('')}`;
     if (before.length) {
       html += `<div class="group-h"><span>Ordered before this started</span><span>${before.length}</span></div>${before.map((i) => rowHtml(kid, i)).join('')}
         <button class="more strong" type="button" data-allhere="${esc(kid.jobId)}"><span>These are here</span>${ICON.chev}</button>`;
     }
-    if (notOrdered.length) html += `<div class="group-h"><span>Not ordered yet</span><span>${notOrdered.length}</span></div>${notOrdered.map((i) => rowHtml(kid, i)).join('')}`;
-    if (hereItems.length) {
-      html += state.openHere.has(kid.jobId) || state.query
-        ? `<div class="group-h"><span>Here</span><span>${hereItems.length}</span></div>${hereItems.map((i) => rowHtml(kid, i)).join('')}`
-        : `<button class="more" type="button" data-here="${esc(kid.jobId)}"><span>${plural(hereItems.length, 'thing')} here</span>${ICON.chev}</button>`;
-    }
+    if (notOrdered.length) html += `<div class="group-h"><span>Not ordered</span><span>${notOrdered.length}</span></div>${notOrdered.map((i) => rowHtml(kid, i)).join('')}`;
+    // What's at the Office and what's at the house, folded: one tap each
+    const fold = (key, list, title, open) => (!list.length ? '' : open || state.query
+      ? `<div class="group-h"><span>${esc(title)}</span><span>${list.length}</span></div>${list.map((i) => rowHtml(kid, i)).join('')}`
+      : `<button class="more" type="button" data-here="${esc(key)}"><span>${esc(title)}</span><span class="fold-n">${list.length}</span>${ICON.chev}</button>`);
+    html += fold(kid.jobId, hereItems, 'At the Office', state.openHere.has(kid.jobId));
+    html += fold(`${kid.jobId}|house`, houseItems, 'At the house', state.openHere.has(`${kid.jobId}|house`));
     html += '</section>';
   }
   $('list').innerHTML = html || `<div class="empty">${state.query ? 'Nothing matches that.' : 'Nothing waiting to be checked in.'}</div>`;
