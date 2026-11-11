@@ -31,7 +31,7 @@ import { normEmail } from './_board-roles.js';
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
 import { mailboxes, orgDomains, gmail, header, partsOf, bytesOf, htmlText } from './_mailbox.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
-import { readOrderEmail, withAi, withAltText, ORDER_SCHEMA, ORDER_PROMPT, storeOf } from './_order-read.js';
+import { readOrderEmail, orderKind, withAi, withAltText, ORDER_SCHEMA, ORDER_PROMPT, storeOf } from './_order-read.js';
 
 const STAFF_DOMAIN = 'soardcharity.com';
 const EVERY_MS = 3 * 60 * 1000;
@@ -53,6 +53,10 @@ const AI_CHARS = 9000;
 // Bumped when reading changes: every email read under an older version is read again once
 // 3 (Nov 11 2026): UPS numbers written in lower case beside "UPS" (The Container Store) are read; every read email is read again once
 export const READER_V = 3;
+// The rules for which emails are a store's order mail at all (orderTriage): when they get better, what they let go by
+// before is looked at again. 2: "Arrived: Your …" is a delivery (Walmart's; Linzi's storage cart, Nov 10 2026)
+export const TRIAGE_V = 2;
+const RETRIAGE_A_RUN = 40;
 const AT_ONCE = 6;
 const HEADERS = ['From', 'X-Original-From', 'X-Original-Sender', 'Reply-To', 'To', 'Cc', 'Delivered-To', 'Subject', 'Message-ID', 'List-Id'];
 // Order words in the subject: Gmail does the first sort, so a run lists only what could be an order email
@@ -136,6 +140,38 @@ async function queue(DB, mailbox, msg, t, source, now) {
   await DB.prepare(`INSERT OR IGNORE INTO order_mail (mailbox, id, at, msgid, store, kind, subject, state, source, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)`)
     .bind(mailbox, msg.id, iso(Number(msg.internalDate) || now), header(h, 'Message-ID') || null, t.store, t.kind, header(h, 'Subject').slice(0, 200), source, iso(now)).run();
+}
+
+/**
+ * The emails the first look let go by (state skipped, no reason kept) whose subject the rules now call order mail:
+ * looked at again (their headers), and queued when they are. Done in turns; once none are left, st.triageV is current
+ */
+export async function retriage(env, ctx, st, budget) {
+  const [at0, id0] = st.retriageAfter || ['', ''];
+  const rows = (await env.DB.prepare("SELECT mailbox, id, at, subject FROM order_mail WHERE state = 'skipped' AND detail IS NULL AND (at > ? OR (at = ? AND id > ?)) ORDER BY at, id LIMIT 400")
+    .bind(at0, at0, id0).all()).results || [];
+  const cands = rows.filter((r) => orderKind(r.subject || ''));
+  const take = cands.slice(0, Math.min(RETRIAGE_A_RUN, Math.max(0, budget.meta)));
+  // No header budget left this run: the same ones next run
+  if (cands.length && !take.length) return;
+  const byBox = new Map();
+  for (const r of take) byBox.set(r.mailbox, [...(byBox.get(r.mailbox) || []), r]);
+  for (const [mailbox, list] of byBox) {
+    const token = await ctx.open(mailbox);
+    budget.meta -= list.length;
+    for (const msg of await metadata(token, list.map((r) => r.id), ctx.fetchImpl)) {
+      const t = orderTriage(msg, ctx);
+      if (!t) continue;
+      const h = msg.payload?.headers;
+      await env.DB.prepare("UPDATE order_mail SET state = 'queued', kind = ?, store = ?, msgid = ?, source = 'again', updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'")
+        .bind(t.kind, t.store, header(h, 'Message-ID') || null, iso(ctx.now), mailbox, msg.id).run();
+    }
+  }
+  // Where the next run starts: after the last one looked at, or (none of these left) after this page; none at all: done
+  const lastOf = (r) => [r.at, r.id];
+  if (take.length < cands.length) st.retriageAfter = lastOf(take[take.length - 1]);
+  else if (rows.length === 400) st.retriageAfter = lastOf(rows[rows.length - 1]);
+  else Object.assign(st, { triageV: TRIAGE_V, retriageAfter: null });
 }
 
 /** One inbox: its new order mail since the last look, or the next page of its 60 days → emails queued */
@@ -343,6 +379,9 @@ async function sweep(env, st, { fetchImpl, now }) {
   // A run cut off halfway leaves a row 'working': tried again like a failure
   const retryBefore = iso(now - RETRY_MS);
   await env.DB.prepare("UPDATE order_mail SET state = 'failed', tries = COALESCE(tries, 0) + 1 WHERE state = 'working' AND updated_at < ?").bind(retryBefore).run();
+  // Better rules for what's an order email: those let go by before (skipped at the first look, with no reason kept),
+  // whose subject the rules now take, are looked at again, a few a run, and queued if they are a store's order mail
+  if ((st.triageV || 1) < TRIAGE_V) await retriage(env, ctx, st, budget).catch((err) => errors.push(`looking again: ${err.message}`));
   let reads = 0;
   while (reads < READS_A_RUN && Date.now() - started < READ_MS && (st.aiRestUntil || 0) <= now && !ctx.capped) {
     // Oldest first, so an order's confirmation is read before its shipping and delivery

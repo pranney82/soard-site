@@ -63,7 +63,8 @@ const KINDS = [
   ['out', /\bout for delivery\b|\barriving today\b|\bdelivery today\b|\bwill be delivered today\b/i],
   // "Your order will be delivered tomorrow" is still on its way
   ['shipped', /\b(will|to|scheduled to|set to|expected to) be delivered\b|\bscheduled for delivery\b/i],
-  ['delivered', /\bdelivered\b|\b(has|have) arrived\b|\border has arrived\b|\bwas left at\b/i],
+  // "Arrived: Your Bathroom Storage Cart..." (Walmart's), "Your package arrived"
+  ['delivered', /\bdelivered\b|\b(has|have) arrived\b|\border has arrived\b|\bwas left at\b|^\s*arrived\b|\b(package|order|delivery|items?|box) arrived\b/i],
   ['shipped', /\bshipped\b|\bon (its|the|their) way\b|\b(is|are|has) shipping\b|\btrack (your )?(package|order|shipment)\b|\barriving (soon|tomorrow|on|(mon|tues|wednes|thurs|fri|satur|sun)day)\b|\bshipment\b|\bin transit\b/i],
   ['order', /\border (confirmation|confirmed|received|placed|#|no\.?|number|summary|details)\b|\bthanks? (you )?for (your |shopping)?(order|purchase)\b|\b(we('ve| have)|has been) received your order\b|\byour (\w+ )?order (is confirmed|has been (placed|received|confirmed))\b|\border is confirmed\b|\byour order confirmation\b|\bwe got your order\b|\bprocessing your order\b|\byour (\w+ )?purchase from\b|^ordered:|\bwe (have |'ve |’ve )?received your order\b/i],
 ];

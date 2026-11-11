@@ -306,3 +306,25 @@ test('Nov 11: read again and the AI doesn’t answer: the old read stands (its i
   r = JSON.parse(row.read);
   assert.deepEqual([r.orderNumber, r.items.length, r.v, r.tracking.map((t) => t.number)], ['W555', 1, READER_V, ['1Z12D1R20300649284']]);
 });
+
+test('Nov 11: Walmart’s “Arrived: Your …” is a delivery, and one let go by before (an older rule) is looked at again and read', async () => {
+  const { orderKind } = await import('../functions/api/_order-read.js');
+  assert.equal(orderKind('Arrived: Your Bathroom Storage Cart...'), 'delivered');
+  assert.equal(orderKind('Your package arrived'), 'delivered');
+  assert.equal(orderKind('New arrivals just for you'), null, 'an ad');
+  const cart = mail({ box: PAT, at: T0 - DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Bathroom Storage Cart...', text: 'Your package arrived. Order# 2000155-53264812 Bathroom Storage Cart with 4 Wheels' });
+  const ad = mail({ box: PAT, at: T0 - DAY + MIN, from: 'Walmart <help@walmart.com>', subject: 'Last Chance: Up to 55% OFF', text: 'Deals' });
+  await run(T0);
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  // As the first look left it before this rule: let go by, with no reason kept; these rules not run yet
+  await env.DB.prepare("UPDATE order_mail SET state = 'skipped', kind = NULL, store = NULL, read = NULL, detail = NULL WHERE id = ?").bind(cart.id).run();
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st, triageV: 1 })).run();
+  aiAnswers['Arrived: Your Bathroom Storage Cart...'] = { kind: 'delivered', orderNumber: '2000155-53264812', items: [{ name: 'Bathroom Storage Cart with 4 Wheels', quantity: 1, price: '' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
+  await run(T0 + 4 * MIN);
+  await run(T0 + 8 * MIN);
+  const r = (await rows()).find((x) => x.id === cart.id);
+  assert.deepEqual([r.state, r.kind, JSON.parse(r.read || '{}').kind], ['read', 'delivered', 'delivered']);
+  assert.equal((await rows()).find((x) => x.id === ad.id).state, 'skipped', 'the ad stays let go');
+  const after = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  assert.equal(after.triageV, 2);
+});
