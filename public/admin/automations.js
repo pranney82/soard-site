@@ -1297,7 +1297,7 @@ const MAP = { t: 'SOARD', children: [
           touches: ['Kit'], where: 'functions/api/newsletter.js · _kit.js', live: needsKey('kit', 'KIT_API_KEY is missing, so signups fail.') },
         { t: 'Who an email written in Kit goes to', s: 'live', k: 'schedule',
           when: 'Every 4 minutes, for each email waiting in Kit (a draft, or scheduled) that staff wrote in Kit.',
-          does: 'If it’s set to go to all subscribers and would reach people who asked for reveal emails only or for the applications opening only, Linzi and Peter get one email saying who, with the fix: pick the “Everyone on the newsletter” segment, or leave it if it’s about a reveal or applications. It only reads; it never changes an email in Kit.',
+          does: 'If any are set to go to all subscribers and would reach people who asked for reveal emails only or for the applications opening only, Linzi and Peter get one email listing them all, saying who, with the fix: pick the “Everyone on the newsletter” segment, or leave it if it’s about a reveal or applications. It only reads; it never changes an email in Kit.',
           touches: ['Kit', 'Resend', 'D1'], where: 'functions/api/_kit-audience-guard.js (the heartbeat)',
           live: needsKey('kit', 'KIT_API_KEY is missing, so Kit can’t be read.') },
         { t: 'Quiet subscribers check-in', s: 'off', k: 'schedule',

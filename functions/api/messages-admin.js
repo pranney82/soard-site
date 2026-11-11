@@ -713,8 +713,9 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       };
     }
     case 'staff-kit-audience': {
-      const m = audienceNote({ subject: 'November newsletter', id: '0', groups: [{ id: 1, name: REVEAL_ONLY_TAG, count: 12 }, { id: 2, name: WAITLIST_ONLY_TAG, count: 40 }], segment: { id: 0, name: NEWSLETTER_SEGMENT } });
-      return email(m, { to: `${KIT_INVITE_DEFAULTS.reviewer} (the reviewers in Reveals → Invites)`, note: 'A sample: an email written in Kit, set to go to all subscribers.' });
+      const groups = [{ id: 1, name: REVEAL_ONLY_TAG, count: 12 }, { id: 2, name: WAITLIST_ONLY_TAG, count: 40 }];
+      const m = audienceNote({ emails: [{ subject: 'November newsletter', id: '0', groups }, { subject: 'Giving Tuesday', id: '0', groups: groups.slice(1) }], segment: { id: 0, name: NEWSLETTER_SEGMENT } });
+      return email(m, { to: `${KIT_INVITE_DEFAULTS.reviewer} (the reviewers in Reveals → Invites)`, note: 'A sample: two emails written in Kit, set to go to all subscribers, found in one look.' });
     }
     case 'kit-invite':
     case 'kit-watch-invite':

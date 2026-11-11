@@ -65,7 +65,7 @@ test('an email written in Kit to all subscribers: the reviewers hear once, what 
   const notes = () => mail.length / 2;
   assert.equal(mail[0].subject, 'Check who “November newsletter” goes to');
   assert.match(mail[0].html, /12 people who signed up on the website for reveal emails only and 40 families waiting only for applications to open/);
-  assert.match(mail[0].html, new RegExp(`change Recipients to “${NEWSLETTER_SEGMENT}”`));
+  assert.match(mail[0].html, new RegExp(`change its Recipients to “${NEWSLETTER_SEGMENT}”`));
   assert.match(mail[0].html, /app\.kit\.com\/campaigns\/11/);
   assert.ok(!/—/.test(mail[0].html + mail[0].text), 'no em dashes');
   // Once: the next look says nothing more
@@ -80,7 +80,7 @@ test('an email written in Kit to all subscribers: the reviewers hear once, what 
 });
 
 test('without the newsletter segment in Kit, it says which tags to leave out', () => {
-  const n = audienceNote({ subject: 'X', id: 1, groups: [{ id: 501, name: ONLY.name, count: 1 }], segment: null });
+  const n = audienceNote({ emails: [{ subject: 'X', id: 1, groups: [{ id: 501, name: ONLY.name, count: 1 }] }], segment: null });
   assert.match(n.text, /add “Reveal sign-ups only \(no newsletter\)” and “Application Waitlist only \(no newsletter\)” to its Recipients as tags it matches none of/);
   assert.match(n.text, /1 person who signed up/);
 });
@@ -100,4 +100,38 @@ test('every few minutes at most, and quiet when Kit is down or nobody asked for 
   kit.broadcasts = [{ id: 22, status: 'draft', subject: 'B', subscriber_filter: [] }];
   assert.deepEqual(await look(), [], 'nobody to protect');
   assert.equal(mail.length, 0);
+});
+
+test('several emails found in one look: one email listing them all, each once', async () => {
+  kit.broadcasts = [
+    { id: 31, status: 'draft', subject: 'Old draft one', subscriber_filter: [] },
+    { id: 32, status: 'draft', subject: 'Old draft two', subscriber_filter: [{ all: null, any: null, none: [{ type: 'tag', ids: [501] }] }] },
+    { id: 33, status: 'scheduled', subject: 'Holiday note', subscriber_filter: [] },
+  ];
+  const out = await look();
+  assert.deepEqual(out.map((x) => x.id).sort(), [31, 32, 33]);
+  assert.equal(mail.length, 2, 'one email to each reviewer, not one for each draft');
+  assert.equal(mail[0].subject, 'Check who 3 emails in Kit go to');
+  for (const [id, name] of [[31, 'Old draft one'], [32, 'Old draft two'], [33, 'Holiday note']]) {
+    assert.match(mail[0].html, new RegExp(`“${name}”`));
+    assert.match(mail[0].html, new RegExp(`app\\.kit\\.com/campaigns/${id}`));
+  }
+  assert.match(mail[0].html, /“Old draft two”<\/p>\s*<p[^>]*>Reaches 40 families waiting only for applications to open\./, 'each says who it reaches');
+  assert.match(mail[0].text, /If one is a newsletter, change its Recipients to “Everyone on the newsletter”/);
+  // Nothing new: nothing said. A new draft: one email about it alone
+  await look();
+  assert.equal(mail.length, 2);
+  kit.broadcasts.push({ id: 34, status: 'draft', subject: 'Brand new', subscriber_filter: [] });
+  await look();
+  assert.equal(mail.length, 4);
+  assert.equal(mail.at(-1).subject, 'Check who “Brand new” goes to');
+});
+
+test('a note that couldn\'t be sent is tried again on the next look, with everything still waiting', async () => {
+  kit.broadcasts = [{ id: 41, status: 'draft', subject: 'Try again', subscriber_filter: [] }];
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => (String(input).startsWith('https://api.resend.com/') ? new Response('down', { status: 500 }) : inner(input, init));
+  try { assert.deepEqual(await look(), []); } finally { globalThis.fetch = inner; }
+  await look();
+  assert.equal(mail.at(-1).subject, 'Check who “Try again” goes to');
 });

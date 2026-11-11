@@ -60,22 +60,41 @@ export function reaches(b, guarded) {
   return guarded.filter((t) => !none.has(Number(t.id)) && (t.count ?? 1) > 0);
 }
 
-/** The reviewers' note about one email */
-export function audienceNote({ subject, id, groups, segment }) {
+/** "12 people who signed up on the website for reveal emails only and 40 families waiting only for applications to open" */
+function whoItReaches(groups) {
   const who = groups.map((t) => `${(t.count ?? 0).toLocaleString('en-US')} ${t.name === REVEAL_ONLY_TAG ? `${t.count === 1 ? 'person' : 'people'} who signed up on the website for reveal emails only` : `${t.count === 1 ? 'family' : 'families'} waiting only for applications to open`}`);
-  const said = who.length > 1 ? `${who.slice(0, -1).join(', ')} and ${who.at(-1)}` : who[0];
+  return who.length > 1 ? `${who.slice(0, -1).join(', ')} and ${who.at(-1)}` : who[0];
+}
+
+const titled = (b) => `“${b.subject || 'An email with no subject yet'}”`;
+
+/**
+ * The reviewers' note: one email for each look, listing every email in Kit
+ * that needs a look this time (Peter, Nov 10 2026: one combined email, not one each).
+ * emails: [{ subject, id, groups }]
+ */
+export function audienceNote({ emails, segment }) {
+  const one = emails.length === 1;
   const fix = segment
-    ? `If it’s a newsletter, change Recipients to “${NEWSLETTER_SEGMENT}”. If it’s about a reveal or applications, it’s right as it is.`
-    : `If it’s a newsletter, add “${REVEAL_ONLY_TAG}” and “${WAITLIST_ONLY_TAG}” to its Recipients as tags it matches none of. If it’s about a reveal or applications, it’s right as it is.`;
-  const heading = `Check who “${subject || 'an email in Kit'}” goes to`;
-  const intro = `It’s set to go to all subscribers in Kit, and that includes ${said}. They asked us not to send them the newsletter.`;
-  const url = kitDraftUrl(id);
+    ? `If ${one ? 'it’s' : 'one is'} a newsletter, change its Recipients to “${NEWSLETTER_SEGMENT}”. If ${one ? 'it’s' : 'one is'} about a reveal or applications, it’s right as it is.`
+    : `If ${one ? 'it’s' : 'one is'} a newsletter, add “${REVEAL_ONLY_TAG}” and “${WAITLIST_ONLY_TAG}” to its Recipients as tags it matches none of. If ${one ? 'it’s' : 'one is'} about a reveal or applications, it’s right as it is.`;
+  const subject = one ? `Check who ${titled(emails[0])} goes to` : `Check who ${emails.length} emails in Kit go to`;
+  const intro = one
+    ? `It’s set to go to all subscribers in Kit, and that includes ${whoItReaches(emails[0].groups)}. They asked us not to send them the newsletter.`
+    : `These are set to go to all subscribers in Kit, and that includes people who asked us not to send them the newsletter.`;
+  const rows = emails.map((b) => `<tr><td style="padding:14px 0;border-top:1px solid #E5E4E0;">
+      <p style="margin:0 0 4px;font-weight:700;">${esc(titled(b))}</p>
+      <p style="margin:0 0 10px;font-size:14px;line-height:1.5;">Reaches ${esc(whoItReaches(b.groups))}.</p>
+      ${button('Open it in Kit', kitDraftUrl(b.id))}
+    </td></tr>`).join('');
   const html = emailShell({
-    preheader: intro, eyebrow: 'Kit', heading, intro: esc(intro),
-    bodyHtml: factRows([['What to do', esc(fix)]]) + `<div style="margin:18px 0 6px;">${button('Open it in Kit', url)}</div>`,
-    footerHtml: 'Sent once for each email by the website, which looks at the emails waiting in Kit every few minutes.',
+    // The last two words of the heading stay together, so a phone never leaves "to" on a line alone
+    preheader: intro, eyebrow: 'Kit', heading: subject.replace(/ (\S+)$/, '\u00A0$1'), intro: esc(intro),
+    bodyHtml: factRows([['What to do', esc(fix)]]) + `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:14px;">${rows}</table>`,
+    footerHtml: 'Sent by the website, which looks at the emails waiting in Kit every few minutes. Each email is listed once (again only if who it reaches changes).',
   });
-  return { subject: `Check who “${subject || 'an email in Kit'}” goes to`, html, text: `${heading}\n\n${intro}\n\n${fix}\n\nKit: ${url}` };
+  const text = [subject, '', intro, '', fix, '', ...emails.map((b) => `${titled(b)}: reaches ${whoItReaches(b.groups)}. ${kitDraftUrl(b.id)}`)].join('\n');
+  return { subject, html, text };
 }
 
 export async function maybeGuardAudiences(env, { now = Date.now(), config = {} } = {}) {
@@ -97,7 +116,8 @@ export async function maybeGuardAudiences(env, { now = Date.now(), config = {} }
     if (!list) return null;
     // The site's own drafts are aimed by the site (their descriptions start "[auto]")
     const theirs = list.filter((b) => !/^\[auto\]/.test(String(b.description || ''))).slice(0, MAX_LOOKS);
-    const out = [];
+    // Everything that needs a look this time, then one email about all of it
+    const found = [];
     for (const brief of theirs) {
       const got = await kitReadBroadcast(env, brief.id);
       if (!got.ok) continue;
@@ -106,16 +126,16 @@ export async function maybeGuardAudiences(env, { now = Date.now(), config = {} }
       if (!hit.length) continue;
       const sig = hit.map((t) => t.id).sort().join(',');
       const was = await DB.prepare('SELECT sig FROM kit_audience_alerts WHERE broadcast_id = ?').bind(String(b.id)).first();
-      if (was?.sig === sig) continue;
-      const to = reviewersOf(kitInviteSettings(config));
-      if (!to.length) continue;
-      const note = audienceNote({ subject: b.subject, id: b.id, groups: hit, segment });
-      const sent = await sendEmails(env, { to, subject: note.subject, html: note.html, text: note.text, tags: [{ name: 'category', value: 'kit-audience-check' }] }).catch(() => null);
-      if ((sent?.sent || 0) > 0) {
-        await DB.prepare('INSERT OR REPLACE INTO kit_audience_alerts (broadcast_id, sig, at) VALUES (?, ?, ?)').bind(String(b.id), sig, new Date(now).toISOString()).run();
-        out.push({ id: b.id, reaches: hit.map((t) => t.name) });
-      }
+      if (was?.sig !== sig) found.push({ id: b.id, subject: b.subject, groups: hit, sig });
     }
+    const to = reviewersOf(kitInviteSettings(config));
+    if (!found.length || !to.length) return [];
+    const note = audienceNote({ emails: found, segment });
+    const sent = await sendEmails(env, { to, subject: note.subject, html: note.html, text: note.text, tags: [{ name: 'category', value: 'kit-audience-check' }] }).catch(() => null);
+    // Not told: the next look tries again with whatever is still waiting
+    if (!((sent?.sent || 0) > 0)) return [];
+    for (const f of found) await DB.prepare('INSERT OR REPLACE INTO kit_audience_alerts (broadcast_id, sig, at) VALUES (?, ?, ?)').bind(String(f.id), f.sig, new Date(now).toISOString()).run();
+    const out = found.map((f) => ({ id: f.id, reaches: f.groups.map((t) => t.name) }));
     return out;
   } catch {
     return null;
