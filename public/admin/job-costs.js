@@ -132,6 +132,26 @@ const CSS = `
 .ck-need > *, .ck-entry > *, .ck-cands li > span, .ck .jc-charge__what { min-width: 0; }
 .ck-need strong, .ck-need__why, .ck .jc-charge__meta > span, .ck-cands li > span { overflow-wrap: anywhere; }
 .ck .jc-charge__what strong { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.ck-approve { gap: .85rem; }
+.ck-approve__head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: .4rem .75rem; }
+.ck-approve .jc-grid2 { align-items: start; }
+.ck-approve .jc-field { align-content: start; }
+.ck-approve__head > div { min-width: 0; display: grid; gap: .25rem; }
+.ck-approve__amt { font-size: var(--fs-lg, 1.125rem); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ck-approve__from { font-weight: 600; }
+.ck-notes { display: grid; gap: .35rem; margin: 0; padding: .6rem .8rem .6rem 1.6rem; border-radius: 8px; background: var(--tone-warn-surface); color: var(--color-text); }
+.ck-notes li { overflow-wrap: anywhere; }
+.ck-missing { margin: .25rem 0 0; }
+.ck-since { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+.ck-missing:empty { margin: 0; }
+/* Send stays reachable while it's off, so a keyboard or screen reader user hears why (the reason beside it) */
+.ck-approve .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.ck-hint, .jc-field > .ck-hint { font-size: var(--fs-xs); font-weight: 400; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.ck-typed { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: .6rem 1rem; margin: 0; padding: .75rem; border: 1px solid var(--color-border); border-radius: 8px; min-width: 0; }
+.ck-typed legend { padding: 0 .3rem; font-size: var(--fs-xs); font-weight: 600; }
+.ck-typed__street { grid-column: 1 / -1; }
+.ck-dont { align-items: flex-end; }
+.ck-dont .jc-field { flex: 1 1 18rem; }
 @media (max-width: 640px) {
   .jc-charge { grid-template-columns: minmax(0, 1fr) auto; padding: .75rem .85rem; }
   .jc-charge__date { grid-column: 1 / -1; }
@@ -140,7 +160,9 @@ const CSS = `
   .jc-body { padding: .85rem; }
   .ck-need { padding: .85rem; }
   .ck-entry { grid-column: 1 / -1; }
-  .ck-actions .btn, .ck-cands .btn { flex: 1 1 100%; min-height: 44px; }
+  .ck-actions .btn, .ck-cands .btn, .ck-dont .btn { flex: 1 1 100%; min-height: 44px; }
+  .ck-since .btn { min-height: 44px; min-width: 64px; }
+  .ck-approve .form-input, .ck-approve .form-select { min-height: 44px; }
   .jc-table .jc-hide-sm { display: none; }
 }
 `;

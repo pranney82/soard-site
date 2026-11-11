@@ -1,5 +1,7 @@
 /**
  * A check deposited in Mercury becomes its Zeffy record (functions/api/_check-gifts.js)
+ * Since Nov 10 2026 the site fills in a card for each check and a person sends it (Peter: "admin wants to approve all
+ * entries into zeffy"): nothing reaches Zeffy without a person's press.
  * Names and amounts are made up; the patterns are the real ones: a monthly giver, several checks of the
  * same amount, a foundation "c/o" someone, a donor's pay-by-check promise.
  * Run: node --test tests/check-gifts.test.mjs
@@ -10,9 +12,10 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { mirrorTransaction } from '../functions/api/_mercury-txns.js';
 import { readZeffyConfig } from '../functions/api/_zeffy.js';
 import {
-  hasAccountDigits, safeText, safeMemo, payerKey, sameGiver, proveRead, matchZeffy, judge, pickForm, nameParts, recordDay, recordFor, mercuryPayer,
-  runChecks, maybeRunChecks, testWrite, checksView, checksFacts, setMode, personCreate, personLink, personUnlink, personNotGift, personIsGift, ensureChecks, WRITE_TEST,
+  hasAccountDigits, safeText, safeMemo, payerKey, sameGiver, proveRead, matchZeffy, notesFor, pickForm, nameParts, recordDay, recordFor, mercuryPayer,
+  runChecks, maybeRunChecks, testWrite, checksView, checksFacts, personSend, personLink, personUnlink, personDontSend, personReopen, ensureChecks, WRITE_TEST,
 } from '../functions/api/_check-gifts.js';
+import { approveWith, dontSendWith, cardOf } from './lib/check-gifts-approve.mjs';
 import { readState, writeState } from '../functions/api/_mercury.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
 
@@ -31,6 +34,16 @@ const hand = (o = {}) => ({
 const FORMS = [{ id: 'form_home', title: 'Help Build a Brighter Home' }, { id: 'form_grant', title: 'Grant Funding 2026' }, { id: 'form_jack', title: 'Help Build Sam\'s Bedroom Therapy Room!' }];
 const row = (o = {}) => ({ id: 'tx1', cents: 1000000, payer: 'Pine Foundation', memo: '', check_date: '2026-11-03', deposited_at: '2026-11-05T15:00:00Z', ...o });
 const read = (o = {}) => ({ payer: 'Pine Foundation', remitter: '', cashiersCheck: false, payee: 'Sunshine On A Ranney Day', date: '2026-11-03', amount: 10000, checkNumber: '1042', memo: '', ...o });
+/** What a check's card says, with nothing read or written (the forms above unless said) */
+const cardFor = (r, o = {}) => notesFor(r, { forms: FORMS, ...o });
+const notes = (r, o = {}) => cardFor(r, o).notes;
+/** Ready as it's filled in: no entry to match, nothing to look at, and Send suggested */
+const ready = (c, formId = 'form_home') => {
+  assert.equal(c.link, null);
+  assert.deepEqual(c.notes, []);
+  assert.equal(c.suggest, 'send');
+  assert.equal(c.form?.id, formId);
+};
 
 // ── The bank number never gets through ───────────────────────────────────
 
@@ -42,8 +55,8 @@ test('a routing or account number never survives, however it is spaced', () => {
 test('a memo keeps its words when its numbers go, so a refund or an event is still seen', () => {
   assert.equal(safeMemo('Refund claim 20261104'), 'Refund claim');
   assert.equal(safeMemo('Gala table 11-14-2026'), 'Gala table');
-  assert.equal(judge(row({ memo: safeMemo('Refund claim 20261104') }), { forms: FORMS }).reason, 'refund');
-  assert.equal(judge(row({ memo: safeMemo('Gala table 11-14-2026') }), { forms: FORMS }).reason, 'event');
+  assert.ok(notes(row({ memo: safeMemo('Refund claim 20261104') })).includes('refund'));
+  assert.ok(notes(row({ memo: safeMemo('Gala table 11-14-2026') })).includes('event'));
   assert.equal(safeMemo(ACCOUNT), '');
 });
 test('ordinary words and short numbers pass, and so does this check\'s own number', () => {
@@ -141,13 +154,13 @@ test('five $10,000 checks: amount alone never matches', () => {
 test('the same amount under another name, dated with the check, is asked about', () => {
   const m = matchZeffy(row(), [hand({ buyer: { first_name: 'Oak', last_name: 'Trust' } })]);
   assert.equal(m.maybe.length, 1);
-  assert.equal(judge(row(), { payments: [hand({ buyer: { first_name: 'Oak', last_name: 'Trust' } })], forms: FORMS }).reason, 'maybe-double');
+  assert.ok(notes(row(), { payments: [hand({ buyer: { first_name: 'Oak', last_name: 'Trust' } })] }).includes('maybe-double'));
 });
 test('a monthly giver\'s last check is not this one', () => {
   const r = row({ cents: 50000, payer: 'Dana Lee', check_date: '2026-11-01' });
   const last = hand({ amount: 50000, created: dayS('2026-10-01'), buyer: { first_name: 'Dana', last_name: 'Lee' } });
   assert.equal(matchZeffy(r, [last]).same.length, 0);
-  assert.equal(judge(r, { payments: [last], forms: FORMS }).do, 'create');
+  ready(cardFor(r, { payments: [last] }));
 });
 test('a record another check claimed is out, so one entry can never stand for two checks', () => {
   assert.equal(matchZeffy(row(), [hand()], new Set(['zp_hand'])).same.length, 0);
@@ -162,7 +175,7 @@ test('a donor\'s pay-by-check from long before is asked about: it may be this ch
   const m = matchZeffy(row(), [promise]);
   assert.equal(m.same.length, 0);
   assert.equal(m.maybe.length, 1);
-  assert.equal(judge(row(), { payments: [promise], forms: FORMS }).reason, 'maybe-double');
+  assert.ok(notes(row(), { payments: [promise] }).includes('maybe-double'));
 });
 test('a recent pay-by-check from the same giver links by itself', () => {
   assert.equal(matchZeffy(row(), [hand({ type: 'online', created: dayS('2026-10-28') })]).same.length, 1);
@@ -177,19 +190,22 @@ test('no date read: the giver\'s older entry is asked about, not missed', () => 
 });
 test('a promise under another name is asked about at any age Zeffy is read', () => {
   const promise = hand({ type: 'online', status: 'pending', created: dayS('2026-10-14'), buyer: { first_name: 'Dana', last_name: 'Whitlock' } });
-  assert.equal(judge(row(), { payments: [promise], forms: FORMS }).reason, 'maybe-double');
+  assert.ok(notes(row(), { payments: [promise] }).includes('maybe-double'));
 });
 test('an online card gift of the same amount from the same giver is another gift', () => {
   const card = hand({ type: 'online', payment_method: { type: 'card', brand: 'visa', last4: '4242' } });
   assert.equal(matchZeffy(row(), [card]).same.length, 0);
-  assert.equal(judge(row(), { payments: [card], forms: FORMS }).do, 'create');
+  ready(cardFor(row(), { payments: [card] }), 'form_grant');
 });
-test('an unpaid pledge from this giver waits for a person', () => {
+test('an unpaid pledge from this giver is put to the person on the card', () => {
   const pledge = hand({ status: 'pending', type: 'manual', created: dayS('2026-08-01') });
-  assert.equal(judge(row(), { payments: [pledge], forms: FORMS }).reason, 'pledge');
+  const c = cardFor(row(), { payments: [pledge] });
+  assert.equal(c.notes[0], 'pledge');
+  assert.equal(c.link, null);
+  assert.deepEqual(c.entries.map((p) => p.id), ['zp_hand'], 'offered for "This is the check"');
 });
-test('this giver for another amount around this date waits for a person', () => {
-  assert.equal(judge(row(), { payments: [hand({ amount: 400000 })], forms: FORMS }).reason, 'amount-differs');
+test('this giver for another amount around this date is put to the person on the card', () => {
+  assert.ok(notes(row(), { payments: [hand({ amount: 400000 })] }).includes('amount-differs'));
 });
 test('a refunded entry is not this check', () => {
   assert.equal(matchZeffy(row(), [hand({ refund_status: 'full' })]).same.length, 0);
@@ -200,38 +216,44 @@ test('a check whose payer nobody could read can only be a maybe', () => {
 
 // ── What this check is ───────────────────────────────────────────────────
 
-test('a first-time giver goes straight in, with no click', () => {
-  const v = judge(row({ payer: 'Dana Lee' }), { forms: FORMS });
-  assert.equal(v.do, 'create');
-  assert.equal(v.form.id, 'form_home');
+test('a first-time giver\'s card is ready as it\'s filled in, with nothing to look at', () => {
+  ready(cardFor(row({ payer: 'Dana Lee' })), 'form_home');
 });
-test('not gifts are left out without asking anyone', () => {
-  assert.deepEqual(judge(row({ payer: 'Sunshine On A Ranney Day Inc' }), { forms: FORMS }), { do: 'left-out', reason: 'own' });
-  assert.equal(judge(row({ memo: 'Refund for invoice 88' }), { forms: FORMS }).reason, 'refund');
-  assert.equal(judge(row({ memo: 'Reimbursement' }), { forms: FORMS }).reason, 'refund');
-  assert.equal(judge(row({ payer: 'State Farm Insurance' }), { forms: FORMS }).reason, 'not-a-giver');
-  assert.equal(judge(row({ payer: 'Internal Revenue Service' }), { forms: FORMS }).reason, 'not-a-giver');
-  assert.equal(judge(row({ payer: 'Georgia Department of Revenue' }), { forms: FORMS }).reason, 'not-a-giver');
+test('what isn\'t a gift comes with "Don\'t send" suggested, and a person decides', () => {
+  const own = cardFor(row({ payer: 'Sunshine On A Ranney Day Inc' }));
+  assert.deepEqual({ link: own.link, notes: own.notes, suggest: own.suggest, dontReason: own.dontReason }, { link: null, notes: ['own'], suggest: 'dont', dontReason: 'own' });
+  for (const [o, note, why] of [
+    [{ memo: 'Refund for invoice 88' }, 'refund', 'refund'], [{ memo: 'Reimbursement' }, 'refund', 'refund'],
+    [{ payer: 'State Farm Insurance' }, 'not-a-giver', 'insurance'], [{ payer: 'Internal Revenue Service' }, 'not-a-giver', 'insurance'], [{ payer: 'Georgia Department of Revenue' }, 'not-a-giver', 'insurance'],
+  ]) {
+    const c = cardFor(row(o));
+    assert.ok(c.notes.includes(note), JSON.stringify(o));
+    assert.equal(c.link, null, 'a card, never left out by itself');
+    assert.equal(c.suggest, 'dont', JSON.stringify(o));
+    assert.equal(c.dontReason, why, JSON.stringify(o));
+  }
 });
 test('an insurance company\'s foundation is a giver', () => {
-  assert.equal(judge(row({ payer: 'State Farm Foundation' }), { forms: FORMS }).do, 'create');
+  ready(cardFor(row({ payer: 'State Farm Foundation' })), 'form_grant');
 });
-test('event money goes to a person: Zeffy takes tickets and auctions only by hand', () => {
-  for (const memo of ['Golf sponsor', 'Gala table', 'Auction item', 'Foursome', 'Advisory board']) assert.equal(judge(row({ memo }), { forms: FORMS }).reason, 'event', memo);
+test('event money is put to a person: Zeffy takes tickets and auctions only by hand', () => {
+  for (const memo of ['Golf sponsor', 'Gala table', 'Auction item', 'Foursome', 'Advisory board']) assert.ok(notes(row({ memo })).includes('event'), memo);
 });
 test('a company SOARD pays: a blank check is a person, a donation says so', () => {
-  assert.equal(judge(row({ payer: 'Brightwell' }), { forms: FORMS, isVendor: true }).reason, 'vendor');
-  assert.equal(judge(row({ payer: 'Brightwell', memo: 'Match Gift' }), { forms: FORMS, isVendor: true }).do, 'create');
+  assert.ok(notes(row({ payer: 'Brightwell' }), { isVendor: true }).includes('vendor'));
+  ready(cardFor(row({ payer: 'Brightwell', memo: 'Match Gift' }), { isVendor: true }), 'form_home');
 });
 test('a hand entry settles it, whatever the memo says', () => {
-  assert.equal(judge(row({ memo: 'Golf sponsor' }), { payments: [hand()], forms: FORMS }).do, 'link');
+  assert.equal(cardFor(row({ memo: 'Golf sponsor' }), { payments: [hand()] }).link?.id, 'zp_hand');
 });
-test('a person saying it is a gift is past the memo and the payer, not past a double', () => {
-  assert.equal(judge(row({ memo: 'Golf sponsor' }), { forms: FORMS, gift: true }).do, 'create');
-  assert.equal(judge(row({ memo: 'refund' }), { payments: [hand({ buyer: { first_name: 'Oak', last_name: 'Trust' } })], forms: FORMS, gift: true }).reason, 'maybe-double');
+test('what the memo and the payer say never hides a double from the person', () => {
+  const c = cardFor(row({ memo: 'refund' }), { payments: [hand({ buyer: { first_name: 'Oak', last_name: 'Trust' } })] });
+  assert.ok(c.notes.includes('maybe-double'));
+  assert.ok(c.notes.includes('refund'));
+  assert.deepEqual(c.entries.map((p) => p.id), ['zp_hand']);
 });
-test('no form that fits waits for a person', () => {
-  assert.equal(judge(row(), { forms: [] }).reason, 'no-form');
+test('no form that fits is put to a person', () => {
+  assert.ok(notes(row(), { forms: [] }).includes('no-form'));
 });
 
 test('the form comes from what the site knows, with no question', () => {
@@ -306,7 +328,12 @@ const fakeFetch = async (input, init = {}) => {
   if (url.hostname === 'api.zeffy.com') {
     const path = url.pathname.replace('/api/v1', '');
     if (path === '/campaigns') return json({ data: world.forms, has_more: false });
-    if (path === '/payments' && method === 'GET') return json({ data: world.payments.filter((p) => p.created >= Number(url.searchParams.get('created[gte]') || 0)), has_more: false });
+    if (path === '/payments' && method === 'GET') {
+      const from = Number(url.searchParams.get('created[gte]') || 0);
+      const to = Number(url.searchParams.get('created[lte]') || Infinity);
+      const campaign = url.searchParams.get('campaign');
+      return json({ data: world.payments.filter((p) => p.created >= from && p.created <= to && (!campaign || String(p.campaign_id) === campaign)), has_more: false });
+    }
     if (path === '/payments' && method === 'POST') {
       const body = JSON.parse(init.body);
       world.posts.push(body);
@@ -362,9 +389,17 @@ const run = (now = NOW, o = {}) => runChecks(env, { now, fetchImpl: fakeFetch, .
 const theRow = () => env.DB.prepare('SELECT * FROM check_gifts WHERE id = ?').bind(TX).first();
 const post = () => { world.txns[TX] = { ...world.txns[TX], status: 'sent', postedAt: '2026-11-07T15:00:00Z' }; };
 const passedTest = () => writeState(env.DB, 'check-gifts', { writeTest: { id: WRITE_TEST, ok: true } });
-/** Read, then decide, the way two heartbeats would */
+/** Read, then its card made, the way two heartbeats would */
 async function throughRead(now = NOW) { await run(now); return theRow(); }
 async function posted(now = NOW) { await throughRead(now); post(); return run(now + 10 * MIN); }
+/**
+ * A person presses Send to Zeffy on the check's card, with what the site filled in (./lib/check-gifts-approve.mjs), a few
+ * minutes after posted()'s runs. It throws as the page's call would fail
+ */
+const approve = (o = {}) => approveWith(env, fakeFetch, TX, { now: NOW + 15 * MIN, ...o });
+const dontSend = (reason = 'refund', o = {}) => dontSendWith(env, TX, reason, { now: NOW + 15 * MIN, ...o });
+/** Send from a check a person was handed with nothing filled in (withPerson): what they type */
+const send = (o = {}) => personSend(env, TX, { name: 'Pine Foundation', donor: 'new', formId: 'form_home', now: NOW, fetchImpl: fakeFetch, ...o });
 
 beforeEach(async () => {
   world = freshWorld();
@@ -380,22 +415,26 @@ beforeEach(async () => {
   await deposit();
 });
 
-test('a deposit gets a row and is read while Mercury still holds it, and nothing happens until it posts', async () => {
+test('a deposit gets a row and is read while Mercury still holds it, and nothing reaches Zeffy by itself', async () => {
   const r = await throughRead();
   assert.equal(r.state, 'read');
   assert.equal(r.payer, 'Pine Foundation');
   assert.equal(r.check_date, '2026-11-03');
   assert.equal(world.aiCalls, 2, 'two readers');
   await run(NOW + 10 * MIN);
+  assert.equal((await theRow()).state, 'person', 'its card waits for a person');
   assert.equal(world.posts.length, 0);
 });
-test('Watch never writes to Zeffy: it says what it would do', async () => {
+test('a read check becomes a card with the form filled in, and nothing is written to Zeffy', async () => {
   await posted();
-  assert.equal((await theRow()).state, 'would');
-  assert.equal((await theRow()).form_title, 'Grant Funding 2026');
+  const r = await theRow();
+  assert.equal(r.state, 'person');
+  assert.equal(r.reason, 'ready');
+  assert.equal(r.form_title, 'Grant Funding 2026');
+  assert.equal((await cardOf(env, TX)).card.formId, 'form_grant');
   assert.equal(world.posts.length, 0);
 });
-test('a hand entry links itself in Watch, is scored, and teaches who that payer is', async () => {
+test('a hand entry matches its card by itself, and teaches who that payer is', async () => {
   // Zeffy's contact for the entry carries the payer's own name, so it's theirs to learn
   world.contacts.contact_1 = { id: 'contact_1', email: null, first_name: 'Pine', last_name: 'Foundation' };
   await posted();
@@ -404,55 +443,52 @@ test('a hand entry links itself in Watch, is scored, and teaches who that payer 
   const r = await theRow();
   assert.equal(r.state, 'linked');
   assert.equal(r.zeffy_id, 'zp_hand');
-  assert.deepEqual(JSON.parse(r.score), { payer: true, form: true, gift: true });
-  const v = await checksView(env);
-  assert.deepEqual(v.scored, { total: 1, right: 1 });
+  assert.equal(world.posts.length, 0);
   const p = await env.DB.prepare('SELECT * FROM check_payers').first();
   assert.equal(p.contact_id, 'contact_1');
   assert.equal(p.campaign_id, 'form_grant');
 });
-test('a score counts a wrong form as wrong', async () => {
+test('Send: the record is made once, on the right form, with nothing sent to the donor, and Slack hears it', async () => {
   await posted();
-  world.payments.push(hand({ campaign_id: 'form_home' }));
-  await run(NOW + 90 * MIN);
-  assert.deepEqual((await checksView(env)).scored, { total: 1, right: 0 });
-});
-test('On: the record is made once, on the right form, with nothing sent to the donor, and Slack hears it', async () => {
-  await setMode(env, 'on', { by: 'peter@soardcharity.com' });
-  await posted();
+  world.slack = [];
+  const sent = await approve({ by: 'peter@soardcharity.com' });
+  assert.equal(sent.result, 'created');
   const r = await theRow();
   assert.equal(r.state, 'created');
+  assert.equal(r.via, 'person');
+  assert.equal(r.by, 'peter@soardcharity.com');
   assert.equal(world.posts.length, 1);
   assert.equal(world.posts[0].generate_tax_receipt, false);
   assert.equal(world.posts[0].send_confirmation_email, false);
   assert.equal(world.posts[0].campaign_id, 'form_grant');
   assert.equal(r.zeffy_id, 'zeffy_pay_1');
-  assert.equal(world.slack.length, 1, 'the gift alert');
+  assert.equal(world.slack.filter((b) => /gift: \$10,000\.00 from Pine Foundation/.test(b)).length, 1, 'the gift alert');
+  assert.equal(world.slack.filter((b) => !/Saved in Zeffy|gift: \$10,000/.test(b)).length, 0, 'and the card\'s alert closed, nothing else');
   await run(NOW + 20 * MIN);
   await run(NOW + 30 * MIN);
   await run(NOW + 90 * MIN);
   assert.equal(world.posts.length, 1, 'never again');
 });
-test('On: a giver learned earlier lands on their own donor record, still with nothing sent', async () => {
+test('Send: a giver learned earlier lands on their own donor record, still with nothing sent', async () => {
   await env.DB.prepare('INSERT INTO check_payers (key, name, contact_id, campaign_id, updated_at) VALUES (?, ?, ?, ?, ?)').bind('pine foundation', 'Pine Foundation', 'c_pine', 'form_home', 'x').run();
   world.contacts.c_pine = { id: 'c_pine', email: 'pine@example.com' };
-  await setMode(env, 'on');
   await posted();
+  assert.equal((await cardOf(env, TX)).card.donor, 'c_pine', 'the card starts on them');
+  await approve();
   assert.equal(world.posts[0].email, 'pine@example.com');
   assert.equal(world.posts[0].campaign_id, 'form_home');
   assert.equal(world.posts[0].generate_tax_receipt, false);
 });
-test('On: an entry already in Zeffy is linked and nothing is made', async () => {
-  await setMode(env, 'on');
+test('an entry already in Zeffy is matched and nothing is made', async () => {
   world.payments.push(hand());
   await posted();
   assert.equal((await theRow()).state, 'linked');
   assert.equal(world.posts.length, 0);
 });
-test('On: a POST with no answer is looked for, found, and never sent twice', async () => {
-  await setMode(env, 'on');
+test('Send: a POST with no answer is looked for, found, and never sent twice', async () => {
   world.postFails = 'saved-then-lost';
   await posted();
+  await assert.rejects(approve(), (e) => e.status === 503 && /don’t send this one again/.test(e.message));
   assert.equal((await theRow()).state, 'unsure');
   world.postFails = null;
   await run(NOW + 20 * MIN);
@@ -462,10 +498,10 @@ test('On: a POST with no answer is looked for, found, and never sent twice', asy
   assert.equal(world.posts.length, 1);
   assert.equal(world.payments.length, 1);
 });
-test('On: a POST that never saved goes to a person, and is not sent again', async () => {
-  await setMode(env, 'on');
+test('Send: a POST that never saved goes back to the person, and is not sent again', async () => {
   world.postFails = 'timeout';
   await posted();
+  await assert.rejects(approve(), /didn’t answer/);
   world.postFails = null;
   await run(NOW + 20 * MIN);
   assert.equal((await theRow()).state, 'unsure', 'Zeffy gets time to show it');
@@ -475,8 +511,7 @@ test('On: a POST that never saved goes to a person, and is not sent again', asyn
   assert.equal(r.reason, 'unsure');
   assert.equal(world.posts.length, 1);
 });
-test('On: a run cut off mid-POST is treated the same as no answer', async () => {
-  await setMode(env, 'on');
+test('a run cut off mid-POST is treated the same as no answer', async () => {
   await throughRead();
   post();
   await run(NOW + MIN); // now Mercury says sent
@@ -489,31 +524,31 @@ test('On: a run cut off mid-POST is treated the same as no answer', async () => 
   assert.equal((await theRow()).state, 'person');
   assert.equal(world.posts.length, 0);
 });
-test('On: Zeffy refusing is a person, told why in plain words', async () => {
-  await setMode(env, 'on');
+test('Send: Zeffy refusing goes back on the card, told why in plain words', async () => {
   world.postFails = 422;
   await posted();
+  await assert.rejects(approve(), (e) => e.status === 422 && /this amount/.test(e.message));
   const r = await theRow();
   assert.equal(r.state, 'person');
   assert.equal(r.reason, 'zeffy-refused');
   assert.equal(r.note, 'Zeffy wouldn’t take this amount.');
   assert.equal(r.payload, null);
+  assert.equal((await cardOf(env, TX)).why, 'Zeffy wouldn’t take this amount.');
 });
-test('On: Zeffy saying "slow down" waits a quarter hour at the back of the line', async () => {
-  await setMode(env, 'on');
+test('Send: Zeffy saying "slow down" leaves the card as it was, and the next press saves it once', async () => {
   world.postFails = 429;
   await posted();
-  assert.equal((await theRow()).state, 'read');
+  await assert.rejects(approve(), (e) => e.status === 503 && /busy, so nothing was sent/.test(e.message));
+  assert.equal((await theRow()).state, 'person');
+  assert.equal(world.payments.length, 0);
   world.postFails = null;
-  await run(NOW + 20 * MIN);
-  assert.equal((await theRow()).state, 'read', 'not yet: other checks go first');
-  await run(NOW + 30 * MIN);
+  await approve({ now: NOW + 20 * MIN });
   assert.equal((await theRow()).state, 'created');
   assert.equal(world.payments.length, 1);
 });
 test('a check that came back after a record is said out loud, and the site deletes nothing', async () => {
-  await setMode(env, 'on');
   await posted();
+  await approve();
   world.txns[TX] = { ...world.txns[TX], status: 'failed' };
   world.slack = [];
   await env.DB.prepare('UPDATE check_gifts SET looked_at = NULL WHERE id = ?').bind(TX).run();
@@ -525,8 +560,8 @@ test('a check that came back after a record is said out loud, and the site delet
   assert.equal(world.slack.length, 1);
 });
 test('a return Mercury ties to the deposit counts; a fee tied to it does not', async () => {
-  await setMode(env, 'on');
   await posted();
+  await approve();
   world.txns[TX] = { ...world.txns[TX], relatedTransactions: [{ id: 'f', relationKind: 'FeePaymentToOriginalTransaction' }] };
   await env.DB.prepare('UPDATE check_gifts SET looked_at = NULL WHERE id = ?').bind(TX).run();
   await run(NOW + 2 * DAY);
@@ -549,9 +584,10 @@ test('a blocked check is told, makes no record, and goes on if Mercury releases 
   assert.doesNotMatch(world.slack[0], /cancel/i);
   assert.equal(world.posts.length, 0);
   post();
-  await setMode(env, 'on');
   await run(NOW + 20 * MIN);
   await run(NOW + 30 * MIN);
+  assert.equal((await theRow()).state, 'person', 'released: its card is made');
+  await approve({ now: NOW + 35 * MIN });
   assert.equal((await theRow()).state, 'created');
 });
 test('a check that fails with no linked record is still told: someone may have entered it', async () => {
@@ -563,10 +599,10 @@ test('a check that fails with no linked record is still told: someone may have e
   assert.equal(world.slack.length, 1);
 });
 test('a POST with no answer never claims last month\'s gift from the same giver', async () => {
-  await setMode(env, 'on');
   world.payments.push(hand({ id: 'zeffy_october', campaign_id: 'form_grant', created: dayS('2026-10-01') }));
   world.postFails = 'timeout';
   await posted();
+  await assert.rejects(approve(), /didn’t answer/);
   world.postFails = null;
   await run(NOW + 20 * MIN);
   await run(NOW + 60 * MIN);
@@ -590,21 +626,22 @@ test('next month\'s entry from a monthly giver is not this month\'s check', () =
 });
 test('a donor\'s pay-by-check under another name is asked about, not doubled', () => {
   const promise = hand({ type: 'online', created: dayS('2026-10-25'), buyer: { first_name: 'Dana', last_name: 'Whitlock' } });
-  assert.equal(judge(row(), { payments: [promise], forms: FORMS }).reason, 'maybe-double');
+  assert.ok(notes(row(), { payments: [promise] }).includes('maybe-double'));
 });
 test('a failed card try is not a pledge', () => {
   const failed = hand({ type: 'online', status: 'failed', payment_method: { type: 'card' } });
-  assert.equal(judge(row(), { payments: [failed], forms: FORMS }).do, 'create');
+  ready(cardFor(row(), { payments: [failed] }), 'form_grant');
 });
-test('an entry under another name reaches a person, and no false "isn\'t in Zeffy" goes out', async () => {
+test('an entry under another name reaches the person on the card, and no false "isn\'t in Zeffy" goes out', async () => {
   await posted();
   world.slack = [];
   world.payments.push(hand({ id: 'zeffy_other', created: dayS('2026-11-04'), buyer: { first_name: 'Oak', last_name: 'Trust' } }));
   await run(NOW + 12 * DAY);
   const c = (await checksView(env)).list[0];
   assert.equal(c.state, 'person');
+  assert.equal(c.reason, 'maybe-double');
   assert.equal(c.candidates[0].id, 'zeffy_other');
-  assert.equal(world.slack.length, 0);
+  assert.equal(world.slack.filter((b) => /isn.t in Zeffy|not in Zeffy/i.test(b)).length, 0);
   assert.equal((await checksFacts(env.DB)).waiting, 1);
 });
 test('one check that can\'t be read never holds up the next', async () => {
@@ -621,13 +658,14 @@ test('one check that can\'t be read never holds up the next', async () => {
 test('three thrown tries sends a check to a person instead of trying forever', async () => {
   await run();
   await env.DB.prepare(`UPDATE check_gifts SET state = 'new', tries = 2, try_at = NULL, status = 'sent' WHERE id = ?`).bind(TX).run();
-  await setMode(env, 'on');
   await run(NOW + 10 * MIN, { fetchImpl: async (u, i) => { if (String(u).includes('mercury-relay')) throw Object.assign(new Error('gone'), { status: 404 }); return fakeFetch(u, i); } });
+  assert.equal((await theRow()).state, 'read', 'given up on: its card is made next');
+  await run(NOW + 20 * MIN);
   assert.equal((await theRow()).state, 'person');
 });
-test('a person\'s "not a gift" stays, even with a matching entry', async () => {
+test('a person\'s "Don\'t send" stays, even with a matching entry', async () => {
   await posted();
-  await personNotGift(env, TX, { by: 'h', now: NOW });
+  await dontSend('refund', { by: 'h' });
   world.payments.push(hand());
   await run(NOW + 2 * 60 * MIN);
   assert.equal((await theRow()).state, 'left-out');
@@ -666,17 +704,20 @@ test('Mercury naming SOARD itself as the payer is no payer', () => {
   assert.equal(mercuryPayer({ counterpartyName: 'Sunshine On A Ranney Day' }), '');
 });
 test('a failed Slack post is tried again at the next look', async () => {
-  await setMode(env, 'on');
+  world.reading = read({ memo: 'Golf sponsor' });
   await run();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'event', status = 'sent' WHERE id = ?`).bind(TX).run();
+  post();
+  // The card is made with Slack down: "A check is ready to send" doesn't reach anyone
   const real = globalThis.fetch;
   globalThis.fetch = async (u, i) => (String(u).includes('slack.com') ? new Response('{"ok":false,"error":"down"}', { status: 200 }) : real(u, i));
-  await run(NOW + 2 * 60 * MIN);
+  await run(NOW + 10 * MIN);
   globalThis.fetch = real;
+  assert.equal((await theRow()).state, 'person');
   assert.equal((await theRow()).alerted, null);
   world.slack = [];
-  await run(NOW + 4 * 60 * MIN);
+  await run(NOW + 2 * 60 * MIN);
   assert.equal(world.slack.length, 1);
+  assert.match(world.slack[0], /ready to send to Zeffy/);
 });
 test('a status nobody planned for is told, not ignored', async () => {
   await throughRead();
@@ -688,10 +729,12 @@ test('a status nobody planned for is told, not ignored', async () => {
 });
 test('a check that stays pending for two weeks is told once', async () => {
   await throughRead();
+  await run(NOW + 10 * MIN); // its card
   world.slack = [];
   await run(NOW + 12 * DAY);
   await run(NOW + 13 * DAY);
   assert.equal(world.slack.length, 1);
+  assert.match(world.slack[0], /hasn’t posted/);
 });
 test('a check that posts is kept an eye on for 60 days, then it is final', async () => {
   await posted();
@@ -699,9 +742,9 @@ test('a check that posts is kept an eye on for 60 days, then it is final', async
   await run(NOW + 61 * DAY);
   assert.equal((await theRow()).final, 1);
 });
-test('a hand entry made after the site\'s record is flagged as a double, once, and neither is touched', async () => {
-  await setMode(env, 'on');
+test('a hand entry made after the record a person sent is flagged as a double, once, and neither is touched', async () => {
   await posted();
+  await approve();
   world.slack = [];
   world.payments.push(hand({ id: 'zeffy_late', created: dayS('2026-11-09') }));
   await run(NOW + 2 * 60 * MIN);
@@ -710,13 +753,14 @@ test('a hand entry made after the site\'s record is flagged as a double, once, a
   assert.equal(world.deletes.length, 0);
   assert.equal(world.payments.length, 2);
 });
-test('nobody entered a cleared check in Watch: it is said after 10 days', async () => {
+test('nobody sent a cleared check\'s card: it is said after 10 days', async () => {
   await posted();
   world.slack = [];
   await run(NOW + 2 * DAY);
   assert.equal(world.slack.length, 0);
   await run(NOW + 12 * DAY);
   assert.equal(world.slack.length, 1);
+  assert.match(world.slack[0], /still waiting to be sent/);
 });
 test('a check deposited to the store account is listed and left alone', async () => {
   await env.DB.prepare('DELETE FROM check_gifts').run();
@@ -785,6 +829,8 @@ test('a run that dies mid-read still counted its try', async () => {
   await env.DB.prepare(`UPDATE check_gifts SET tries = 2, try_at = NULL, state = 'new' WHERE id = ?`).bind(TX).run();
   env.AI.run = async () => ({ response: read({ payer: 'x', amount: 1 }) });
   await run(NOW + 10 * MIN);
+  assert.equal((await theRow()).state, 'read', 'given up on: its card is made next');
+  await run(NOW + 20 * MIN);
   assert.equal((await theRow()).state, 'person');
 });
 test('a second run while one is reading leaves the check alone', async () => {
@@ -826,7 +872,7 @@ test('a run that fails says so, and the next good one clears it', async () => {
 
 // ── The one-time write test ──────────────────────────────────────────────
 
-test('the write test makes $1 records, removes them and leaves the switch able to turn on', async () => {
+test('the write test makes $1 records, removes them and lets sending start', async () => {
   await writeState(env.DB, 'check-gifts', { writeTest: null });
   const r = await run();
   assert.equal(r.writeTest.ok, true);
@@ -842,8 +888,9 @@ test('the write test makes $1 records, removes them and leaves the switch able t
   assert.equal(r.writeTest.email.saved, true);
   assert.deepEqual(world.contacts, {}, 'the test contact is gone too');
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM check_tags').first()).n, 0);
-  await setMode(env, 'on');
-  assert.equal((await checksView(env)).mode, 'on');
+  const v = await checksView(env);
+  assert.equal(v.sending, true);
+  assert.equal(v.joinOk, true);
   await run(NOW + 10 * MIN);
   assert.equal(world.posts.length, 5, 'once');
 });
@@ -866,18 +913,28 @@ test('if Zeffy won\'t take the no-mail address, the test still passes and gifts 
   await env.DB.prepare('INSERT INTO check_payers (key, name, contact_id, campaign_id, updated_at) VALUES (?, ?, ?, ?, ?)').bind('pine foundation', 'Pine Foundation', 'c_pine', 'form_home', 'x').run();
   world.contacts.c_pine = { id: 'c_pine', email: null, first_name: 'Pine', last_name: 'Foundation' };
   world.posts = []; world.patches = [];
-  await setMode(env, 'on');
   await posted(NOW + 10 * MIN);
+  assert.equal((await checksView(env)).joinOk, false);
+  // Their contact can't take the gift: Send says so, and New donor goes in plainly
+  await assert.rejects(approve({ now: NOW + 25 * MIN }), (e) => e.status === 409 && /no email/.test(e.message));
+  assert.equal(world.posts.length, 0);
+  await approve({ donor: 'new', now: NOW + 26 * MIN });
   assert.equal(world.posts.length, 1);
   assert.equal('email' in world.posts[0], false);
   assert.equal(world.patches.length, 0, 'never touches a donor contact unless the test proved it');
 });
-test('a write test that fails keeps the switch off and says why', async () => {
+test('a write test that fails keeps sending off and says why', async () => {
   await writeState(env.DB, 'check-gifts', { writeTest: null });
   world.postFails = 422;
   const r = await run();
   assert.equal(r.writeTest.ok, false);
-  await assert.rejects(setMode(env, 'on'), /proven/);
+  assert.equal((await checksView(env)).sending, false);
+  // Cards are still made, and Send is refused before anything reaches Zeffy
+  await posted(NOW + 10 * MIN);
+  assert.equal((await theRow()).state, 'person');
+  const posts = world.posts.length;
+  await assert.rejects(approve({ now: NOW + 25 * MIN }), (e) => e.status === 409 && /Sending is off/.test(e.message));
+  assert.equal(world.posts.length, posts);
 });
 test('a test record Zeffy won\'t remove asks a person, and stops asking once it\'s gone: the site never needs to delete', async () => {
   await writeState(env.DB, 'check-gifts', { writeTest: null });
@@ -886,7 +943,6 @@ test('a test record Zeffy won\'t remove asks a person, and stops asking once it\
   assert.equal(r.writeTest.ok, true);
   assert.equal(r.writeTest.removed, false);
   assert.equal(r.writeTest.leftBehind.length, 5);
-  await setMode(env, 'on');
   world.payments = [];
   await run(NOW + 2 * 60 * MIN);
   assert.deepEqual((await readState(env.DB, 'check-gifts')).writeTest.leftBehind, []);
@@ -910,13 +966,18 @@ async function noEmailGiver() {
   await env.DB.prepare('INSERT INTO check_payers (key, name, contact_id, campaign_id, updated_at) VALUES (?, ?, ?, ?, ?)').bind('pine foundation', 'Pine Foundation', 'c_pine', 'form_home', 'x').run();
   world.contacts.c_pine = { id: 'c_pine', email: null, first_name: 'Pine', last_name: 'Foundation', donation_count: 3 };
   await joinProven();
-  await setMode(env, 'on');
 }
 const tags = async () => (await env.DB.prepare('SELECT * FROM check_tags').all()).results;
+/** The giver's check read and its card made (on their contact), then a person presses Send */
+async function sentOnTheirContact(o = {}) {
+  await posted();
+  assert.equal((await cardOf(env, TX)).card.donor, 'c_pine', 'the card starts on their contact');
+  return approve(o);
+}
 
 test('a repeat giver with no email: the gift lands on their contact, and the contact is left with no email again', async () => {
   await noEmailGiver();
-  await posted();
+  await sentOnTheirContact();
   const r = await theRow();
   assert.equal(r.state, 'created');
   assert.equal(world.posts.length, 1);
@@ -932,14 +993,14 @@ test('a repeat giver with no email: the gift lands on their contact, and the con
 test('filed under a contact, the record carries the names staff gave it, not how the check was read', async () => {
   await noEmailGiver();
   world.contacts.c_pine = { ...world.contacts.c_pine, first_name: 'Pine Family', last_name: 'Foundation Inc' };
-  await posted();
+  await sentOnTheirContact();
   assert.equal(world.posts[0].first_name, 'Pine Family');
   assert.equal(world.posts[0].last_name, 'Foundation Inc');
 });
 test('a giver with an email is filed by it, and their contact is never touched', async () => {
   await noEmailGiver();
   world.contacts.c_pine.email = 'pine@example.com';
-  await posted();
+  await sentOnTheirContact();
   assert.equal(world.posts[0].email, 'pine@example.com');
   assert.equal(world.patches.length, 0);
 });
@@ -947,6 +1008,8 @@ test('a contact deleted in Zeffy since gets nothing done to it: the gift makes a
   await noEmailGiver();
   delete world.contacts.c_pine;
   await posted();
+  assert.equal((await cardOf(env, TX)).card.donor, 'new');
+  await approve();
   assert.equal(world.posts.length, 1);
   assert.equal('email' in world.posts[0], false);
   assert.equal(world.patches.length, 0);
@@ -954,7 +1017,7 @@ test('a contact deleted in Zeffy since gets nothing done to it: the gift makes a
 test('an address the site couldn\'t take off comes off on a later run, and a day stuck tells a person once', async () => {
   await noEmailGiver();
   world.patchFails = 'clear';
-  await posted();
+  await sentOnTheirContact();
   assert.equal(world.payments.at(-1).contact, 'c_pine', 'the gift itself is right');
   assert.match(world.contacts.c_pine.email, /@nomail\./);
   assert.equal((await tags()).length, 1, 'kept to take off');
@@ -974,7 +1037,7 @@ test('an address the site couldn\'t take off comes off on a later run, and a day
 test('an email someone typed on the contact meanwhile stays: only the site\'s own address is ever taken off', async () => {
   await noEmailGiver();
   world.patchFails = 'clear';
-  await posted();
+  await sentOnTheirContact();
   world.contacts.c_pine.email = 'pine@example.com';
   world.patchFails = null;
   const before = world.patches.length;
@@ -986,7 +1049,7 @@ test('an email someone typed on the contact meanwhile stays: only the site\'s ow
 test('a record that times out after the address went on: the address stays until it\'s settled, it\'s never sent again, and the record is found by its contact', async () => {
   await noEmailGiver();
   world.postFails = 'saved-then-lost';
-  await posted();
+  await assert.rejects(sentOnTheirContact(), (e) => e.status === 503);
   assert.equal((await theRow()).state, 'unsure');
   // Zeffy may still be saving it by that address: taking it off now would file the record on a new contact
   assert.match(world.contacts.c_pine.email, /nomail/);
@@ -1013,11 +1076,11 @@ test('a run cut off with the address on: the next run takes it off', async () =>
   assert.equal(world.contacts.c_pine.email, null);
   assert.deepEqual(await tags(), []);
 });
-test('Watch never touches a donor contact', async () => {
+test('nothing touches a donor contact until a person sends', async () => {
   await noEmailGiver();
-  await setMode(env, 'watch');
   await posted();
-  assert.equal((await theRow()).state, 'would');
+  await run(NOW + 2 * 60 * MIN);
+  assert.equal((await theRow()).state, 'person');
   assert.equal(world.patches.length, 0);
   assert.equal(world.posts.length, 0);
 });
@@ -1030,21 +1093,41 @@ test('a person entering a no-email giver\'s check files it under their contact t
   await run(NOW + 40 * MIN);
   const r0 = await theRow();
   assert.equal(r0.state, 'person');
-  await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', by: 'holly@soardcharity.com', now: NOW + 50 * MIN, fetchImpl: fakeFetch });
+  // The person types who it's from and sends with the card's Zeffy donor (New, as the card never looked the name up):
+  // Zeffy's donor by that name is shown first, and nothing is sent
+  await assert.rejects(approve({ name: 'Pine Foundation', formId: 'form_home', by: 'holly@soardcharity.com', now: NOW + 50 * MIN }), /already has a donor named Pine Foundation/);
+  assert.equal(world.posts.length, 0);
+  const k = JSON.parse((await theRow()).card);
+  assert.ok(k.donors.some((d) => d.id === 'c_pine'));
+  // They pick that donor, and the gift is filed under their contact
+  await approve({ name: 'Pine Foundation', donor: 'c_pine', formId: 'form_home', by: 'holly@soardcharity.com', now: NOW + 51 * MIN });
   assert.equal(world.payments.at(-1).contact, 'c_pine');
   assert.equal(world.contacts.c_pine.email, null);
+});
+test('a person who has seen Zeffy\'s donor under a typed name can still make a new donor', async () => {
+  await noEmailGiver();
+  world.reading = read({ payer: '', remitter: '' });
+  await posted();
+  await run(NOW + 20 * MIN);
+  await run(NOW + 30 * MIN);
+  await run(NOW + 40 * MIN);
+  await assert.rejects(approve({ name: 'Pine Foundation', formId: 'form_home', now: NOW + 50 * MIN }), /already has a donor/);
+  // Send again with New: the donor was on the card the page showed, so it's the person's answer
+  await approve({ name: 'Pine Foundation', donor: 'new', formId: 'form_home', now: NOW + 51 * MIN });
+  assert.equal(world.posts.length, 1);
+  assert.notEqual(world.payments.at(-1).contact, 'c_pine');
 });
 
 // ── A person ─────────────────────────────────────────────────────────────
 
+/** A check waiting on a person, with nobody known to have written it (as one that couldn't be read) */
 async function withPerson(reason = 'unreadable') {
-  await setMode(env, 'on');
   await run();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = ?, status = 'sent', payer = NULL WHERE id = ?`).bind(reason, TX).run();
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = ?, status = 'sent', payer = NULL, drawer = NULL WHERE id = ?`).bind(reason, TX).run();
 }
-test('a person\'s entry makes the record, still with nothing sent, and teaches the payer', async () => {
+test('a person\'s Send makes the record, still with nothing sent, and teaches the payer', async () => {
   await withPerson();
-  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_grant', by: 'holly@soardcharity.com', now: NOW, fetchImpl: fakeFetch });
+  const r = await send({ formId: 'form_grant', by: 'holly@soardcharity.com' });
   assert.equal(r.result, 'created');
   assert.equal(world.posts[0].generate_tax_receipt, false);
   const row = await theRow();
@@ -1052,40 +1135,51 @@ test('a person\'s entry makes the record, still with nothing sent, and teaches t
   assert.equal(row.by, 'holly@soardcharity.com');
   assert.equal((await env.DB.prepare('SELECT campaign_id FROM check_payers').first()).campaign_id, 'form_grant');
 });
-test('a person\'s entry reads Zeffy again first: an entry made since is linked, not doubled', async () => {
+test('a person\'s Send reads Zeffy again first: an entry made since is linked, not doubled', async () => {
   await withPerson();
   world.payments.push(hand());
-  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch });
+  const r = await send();
   assert.equal(r.result, 'linked');
   assert.equal(world.posts.length, 0);
 });
 test('a possible double stops a person too, until they look at it and say it is another gift', async () => {
   await withPerson();
   world.payments.push(hand({ id: 'zp_oak', buyer: { first_name: 'Oak', last_name: 'Trust' } }));
-  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /may be this check/);
+  await assert.rejects(send(), /may be this check/);
   assert.equal(world.posts.length, 0);
   const view = (await checksView(env)).list[0];
   assert.equal(view.candidates[0].id, 'zp_oak');
-  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_oak'], now: NOW, fetchImpl: fakeFetch });
+  const r = await send({ notThose: true, shown: ['zp_oak'] });
   assert.equal(r.result, 'created');
 });
-test('a person can\'t create while the site is watching: staff are entering by hand', async () => {
+test('a person\'s Send needs a name, an open form and a real date', async () => {
   await withPerson();
-  await setMode(env, 'watch');
-  await assert.rejects(personCreate(env, TX, { name: 'x y', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /watching/);
-});
-test('a person\'s entry needs a name, an open form and a real date', async () => {
-  await withPerson();
-  const go = (o) => personCreate(env, TX, { name: 'Pine', formId: 'form_home', now: NOW, fetchImpl: fakeFetch, ...o });
-  await assert.rejects(go({ name: '' }), /Who wrote/);
+  const go = (o) => send({ name: 'Pine', ...o });
+  await assert.rejects(go({ name: '' }), /Who is this gift from/);
   await assert.rejects(go({ name: ACCOUNT }), /long number/);
   await assert.rejects(go({ formId: 'form_golf' }), /open donation form/);
   await assert.rejects(go({ day: 'tomorrow' }), /date/);
 });
-test('two presses of Create make one record', async () => {
+test('a person saying it is a gift is past the memo and the payer, not past a double', async () => {
+  world.reading = read({ memo: 'refund' });
+  world.payments.push(hand({ id: 'zp_oak', buyer: { first_name: 'Oak', last_name: 'Trust' } }));
+  await posted();
+  const k = (await cardOf(env, TX)).card;
+  assert.ok(k.notes.some((n) => n.kind === 'refund'));
+  assert.equal(k.suggest, 'dont');
+  // Send anyway: the double still stops it, until the person looks at that entry and says it is another gift
+  const e = await approve().catch((x) => x);
+  assert.equal(e.status, 409);
+  assert.deepEqual(e.entries.map((x) => x.id), ['zp_oak']);
+  assert.equal(world.posts.length, 0);
+  const r = await approve({ notThose: true, shown: ['zp_oak'], now: NOW + 16 * MIN });
+  assert.equal(r.result, 'created');
+  assert.equal(world.posts.length, 1);
+});
+test('two presses of Send make one record', async () => {
   await withPerson();
-  await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch });
-  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /moved on/);
+  await send();
+  await assert.rejects(send(), /moved on/);
   assert.equal(world.posts.length, 1);
 });
 test('a person links a check to an entry; the same entry can\'t take a second check', async () => {
@@ -1096,16 +1190,18 @@ test('a person links a check to an entry; the same entry can\'t take a second ch
   await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, deposited_at) VALUES ('tx_2', 1000000, 'person', '2026-11-06T00:00:00Z')`).run();
   await assert.rejects(personLink(env, 'tx_2', 'zp_x', { now: NOW, fetchImpl: fakeFetch }), /Another check/);
 });
-test('not a gift: left out by a person, and a check with a record can\'t be', async () => {
+test('Don\'t send: left out by a person, with why, and a check with a record can\'t be', async () => {
   await withPerson();
-  await personNotGift(env, TX, { by: 'h', now: NOW });
+  await personDontSend(env, TX, { reason: 'refund', by: 'h', now: NOW });
   assert.equal((await theRow()).state, 'left-out');
   assert.equal((await theRow()).reason, 'person');
+  assert.equal((await theRow()).note, 'refund');
+  assert.match((await checksView(env)).list[0].why, /A refund or reimbursement/);
+  await assert.rejects(personDontSend(env, TX, { reason: 'not-a-reason', now: NOW }), /Say why/);
   await env.DB.prepare(`UPDATE check_gifts SET zeffy_id = 'zp' WHERE id = ?`).bind(TX).run();
-  await assert.rejects(personNotGift(env, TX, { now: NOW }), /Zeffy record/);
+  await assert.rejects(personDontSend(env, TX, { reason: 'refund', now: NOW }), /Zeffy record/);
 });
 test('entering by hand: the check waits, and the entry links itself', async () => {
-  await setMode(env, 'on');
   await posted();
   await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'event', zeffy_id = NULL, memo = 'Golf' WHERE id = ?`).bind(TX).run();
   world.payments = [];
@@ -1115,7 +1211,6 @@ test('entering by hand: the check waits, and the entry links itself', async () =
   assert.equal((await theRow()).zeffy_id, 'zp_golf');
 });
 test('a hand entry under another name on a check with a person is put in front of them', async () => {
-  await setMode(env, 'on');
   await posted();
   await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'event', zeffy_id = NULL, memo = 'Golf' WHERE id = ?`).bind(TX).run();
   world.payments = [hand({ id: 'zeffy_other', created: dayS('2026-11-09'), buyer: { first_name: 'Pine Ridge', last_name: 'Golf Team' } })];
@@ -1129,43 +1224,42 @@ test('Mercury not answering at all is said, not swallowed', async () => {
   await maybeRunChecks(env, { now: NOW + 10 * MIN, fetchImpl: async (u, i) => { if (String(u).includes('mercury-relay')) throw new Error('relay down'); return fakeFetch(u, i); } });
   assert.equal((await checksView(env)).lastError?.error, 'Mercury didn’t answer');
 });
-test('turned on, what it was watching goes on too, one a run, each read against Zeffy again', async () => {
-  await posted();
-  assert.equal((await theRow()).state, 'would');
-  await setMode(env, 'on');
-  await run(NOW + 20 * MIN);
-  assert.equal((await theRow()).state, 'created');
-  assert.equal(world.posts.length, 1);
-});
-test('turned on, a check entered by hand since is linked, not doubled', async () => {
+test('Send on a card, after the check was entered by hand since, links it, not doubled', async () => {
   await posted();
   world.payments.push(hand());
-  await setMode(env, 'on');
-  await run(NOW + 20 * MIN);
+  const r = await approve();
+  assert.equal(r.result, 'linked');
   assert.equal((await theRow()).state, 'linked');
   assert.equal(world.posts.length, 0);
 });
-test('Zeffy being busy on a person\'s save says nothing was saved', async () => {
+test('Zeffy being busy on a person\'s Send says nothing was sent', async () => {
   await withPerson();
   world.postFails = 429;
-  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /nothing was saved/);
+  await assert.rejects(send(), /nothing was sent/);
   assert.equal((await theRow()).state, 'person');
 });
-test('Zeffy not answering the reads before a person\'s save says nothing was saved', async () => {
+test('Zeffy not answering the reads before a person\'s Send says nothing was sent', async () => {
   await withPerson();
   const down = async (u, i) => { if (String(u).includes('api.zeffy.com')) throw new DOMException('timed out', 'TimeoutError'); return fakeFetch(u, i); };
-  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: down }), /nothing was saved/);
+  await assert.rejects(send({ fetchImpl: down }), /nothing was sent/);
+  assert.equal(world.posts.length, 0);
 });
-test('a left-out check a person calls a gift, with an entry that may be it, comes to Needs you with that entry', async () => {
-  await setMode(env, 'on');
+test('a check a person said not to send, then sent after all, with an entry that may be it, comes to Needs you with that entry', async () => {
+  world.reading = read({ payer: 'Ace Supply', memo: 'refund' });
   await run();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'left-out', reason = 'refund', status = 'sent', memo = 'refund' WHERE id = ?`).bind(TX).run();
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'left-out', reason = 'person', note = 'refund', status = 'sent' WHERE id = ?`).bind(TX).run();
   world.payments.push(hand({ id: 'zeffy_ruth', buyer: { first_name: 'Ruth', last_name: 'Ace' } }));
-  await assert.rejects(personCreate(env, TX, { name: 'Ace Supply', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /may be this check/);
+  await personReopen(env, TX, { by: 'h', now: NOW });
+  assert.equal((await theRow()).state, 'read', 'its card is made again');
+  await run(NOW + 10 * MIN);
   const c = (await checksView(env)).list[0];
   assert.equal(c.state, 'person');
+  assert.equal(c.needsYou, true);
   assert.equal(c.candidates[0].id, 'zeffy_ruth');
-  assert.equal(c.formId, 'form_home');
+  assert.equal(c.card.formId, 'form_home');
+  // Send stops on that entry until the person says it's another gift
+  await assert.rejects(approve(), (e) => e.status === 409 && e.entries?.[0]?.id === 'zeffy_ruth');
+  assert.equal(world.posts.length, 0);
 });
 test('matching an unread check to an entry fills its name in; differing amounts stay visible', async () => {
   await withPerson();
@@ -1176,20 +1270,28 @@ test('matching an unread check to an entry fills its name in; differing amounts 
   assert.equal(c.reason, 'amount-off');
   assert.match(c.why, /different amounts/);
 });
-test('an entry another check took drops off the page at once, and the check is decided again', async () => {
-  await setMode(env, 'on');
-  await run();
+test('an entry another check took drops off the page at once, and the card is made again', async () => {
+  world.payments.push(hand({ id: 'zeffy_taken', created: dayS('2026-11-04'), buyer: { first_name: 'Oak', last_name: 'Trust' } }));
+  await posted();
+  assert.equal((await theRow()).reason, 'maybe-double');
+  assert.equal((await checksView(env)).list.find((c) => c.id === TX).candidates[0].id, 'zeffy_taken');
   world.txns.tx_other = txn({ id: 'tx_other', status: 'sent', postedAt: '2026-11-05T00:00:00Z' });
   await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, status, deposited_at, payer, zeffy_id) VALUES ('tx_other', 1000000, 'linked', 'sent', '2026-11-04T00:00:00Z', 'Oak', 'zeffy_taken')`).run();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'maybe-double', status = 'sent', payer = 'Pine Foundation', note = ? WHERE id = ?`).bind(JSON.stringify([{ id: 'zeffy_taken', name: 'Oak', cents: 1000000, at: 1, form: 'x' }]), TX).run();
   assert.equal((await checksView(env)).list.find((c) => c.id === TX).candidates, null);
   await run(NOW + 2 * 60 * MIN);
-  assert.equal((await theRow()).state, 'created', 'nothing stood in its way any more');
+  const r = await theRow();
+  assert.equal(r.state, 'person');
+  assert.equal(r.reason, 'ready', 'nothing stands in its way any more');
+  assert.equal(world.posts.length, 0, 'still a person sends it');
+  await approve({ now: NOW + 2 * 60 * MIN + 5 * MIN });
+  assert.equal((await theRow()).state, 'created');
   assert.equal(world.posts.length, 1);
 });
-test('with nobody known to have written it, a check is never made', async () => {
-  assert.equal(judge(row({ payer: '' }), { forms: FORMS }).reason, 'unreadable');
-  assert.equal(judge(row({ payer: '' }), { forms: FORMS, gift: true }).reason, 'unreadable');
+test('with nobody known to have written it, the card says so and Send needs a name', async () => {
+  assert.ok(notes(row({ payer: '' })).includes('unreadable'));
+  await withPerson();
+  await assert.rejects(send({ name: '' }), /Who is this gift from/);
+  assert.equal(world.posts.length, 0);
 });
 test('a failed write test tries again a day later, unless it left a record behind', async () => {
   await writeState(env.DB, 'check-gifts', { writeTest: null });
@@ -1207,32 +1309,34 @@ test('a failed write test tries again a day later, unless it left a record behin
 });
 test('a person\'s date can\'t be after the deposit, or years off', async () => {
   await withPerson();
-  const go = (day) => personCreate(env, TX, { name: 'Pine', formId: 'form_home', day, now: NOW, fetchImpl: fakeFetch });
+  const go = (day) => send({ name: 'Pine', day });
   await assert.rejects(go('2062-11-05'), /date/);
   await assert.rejects(go('2020-01-01'), /date/);
 });
 test('a late deposit keeps its Eastern day', () => {
   assert.equal(recordDay({ check_date: null, deposited_at: '2027-01-01T02:30:00Z' }), '2026-12-31');
 });
-test('while watching, a person can take back "not a gift"', async () => {
+test('a person can take back "Don\'t send", and the check gets its card again', async () => {
   await run();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'left-out', reason = 'person' WHERE id = ?`).bind(TX).run();
-  await personIsGift(env, TX, { by: 'h', now: NOW });
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'left-out', reason = 'person', note = 'refund' WHERE id = ?`).bind(TX).run();
+  await personReopen(env, TX, { by: 'h', now: NOW });
+  assert.equal((await theRow()).state, 'read');
+  await run(NOW + 10 * MIN);
   assert.equal((await theRow()).state, 'person');
-  assert.match((await checksView(env)).list[0].why, /said this is a gift/);
+  const c = (await checksView(env)).list[0];
+  assert.equal(c.needsYou, true);
+  assert.ok(c.card);
+  await assert.rejects(personReopen(env, TX, { now: NOW + 11 * MIN }), /moved on/);
 });
 test('a check that came back with a record says what to do', async () => {
   await run();
   await env.DB.prepare(`UPDATE check_gifts SET state = 'came-back', reason = 'back', zeffy_id = 'zeffy_z' WHERE id = ?`).bind(TX).run();
   assert.match((await checksView(env)).list[0].why, /Cancel the record in Zeffy/);
 });
-test('the tab count shows a real question while watching, and everything once on', async () => {
+test('the tab count counts every card waiting on a person, and none Mercury turned down', async () => {
   await run();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'event' WHERE id = ?`).bind(TX).run();
-  assert.equal((await checksFacts(env.DB)).waiting, 0);
-  await env.DB.prepare(`UPDATE check_gifts SET reason = 'maybe-double', note = '[{"id":"z"}]' WHERE id = ?`).bind(TX).run();
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'maybe-double', note = '[{"id":"z"}]' WHERE id = ?`).bind(TX).run();
   assert.equal((await checksFacts(env.DB)).waiting, 1);
-  await setMode(env, 'on');
   await env.DB.prepare(`UPDATE check_gifts SET reason = 'event', note = NULL WHERE id = ?`).bind(TX).run();
   assert.equal((await checksFacts(env.DB)).waiting, 1, 'still in Mercury’s review, it can be answered now');
   await env.DB.prepare(`UPDATE check_gifts SET status = 'failed' WHERE id = ?`).bind(TX).run();
@@ -1243,12 +1347,14 @@ test('runs cut short still send a check to a person', async () => {
   await env.DB.prepare(`UPDATE check_gifts SET state = 'new', tries = 3, try_at = NULL, status = 'sent' WHERE id = ?`).bind(TX).run();
   const calls = world.aiCalls;
   await run(NOW + 10 * MIN);
+  assert.equal((await theRow()).state, 'read', 'given up on: its card is made next');
+  await run(NOW + 20 * MIN);
   assert.equal((await theRow()).state, 'person');
   assert.equal(world.aiCalls, calls, 'no read is started');
 });
 test('a record deleted in Zeffy stops saying In Zeffy, and the site never makes it again by itself', async () => {
-  await setMode(env, 'on');
   await posted();
+  await approve();
   world.payments = [];
   world.posts = [];
   await run(NOW + 2 * 60 * MIN);
@@ -1269,8 +1375,8 @@ test('fixing the amount or marking a pledge paid in Zeffy clears what the page a
   assert.equal((await theRow()).reason, null);
 });
 test('a check that came back and was cancelled in Zeffy stops asking', async () => {
-  await setMode(env, 'on');
   await posted();
+  await approve();
   world.txns[TX] = { ...world.txns[TX], status: 'failed' };
   await env.DB.prepare('UPDATE check_gifts SET looked_at = NULL WHERE id = ?').bind(TX).run();
   await run(NOW + 2 * 60 * MIN);
@@ -1285,25 +1391,22 @@ test('Not this entry: the entry comes off, what it taught goes, and it is never 
   world.payments.push(hand({ id: 'zeffy_wrong' }));
   await run(NOW + 2 * 60 * MIN);
   assert.equal((await theRow()).state, 'linked');
-  await personUnlink(env, TX, { by: 'h', now: NOW });
+  await personUnlink(env, TX, { by: 'h', now: NOW + 2 * 60 * MIN + 5 * MIN });
   const r = await theRow();
   assert.equal(r.zeffy_id, null);
-  assert.equal(r.payer, 'Pine Foundation');
+  assert.equal(r.state, 'read', 'its card is made again');
+  assert.equal(r.payer, null, 'the name is worked out again from the check');
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM check_payers').first()).n, 0);
   await run(NOW + 3 * 60 * MIN);
-  assert.notEqual((await theRow()).zeffy_id, 'zeffy_wrong');
+  const again = await theRow();
+  assert.notEqual(again.zeffy_id, 'zeffy_wrong');
+  assert.equal(again.state, 'person');
+  assert.equal(again.payer, 'Pine Foundation');
+  assert.equal(again.reason, 'unlinked');
+  assert.equal((await checksView(env)).list[0].candidates, null, 'the wrong entry isn\'t offered');
   await run(NOW + 4 * 60 * MIN);
   assert.notEqual((await theRow()).zeffy_id, 'zeffy_wrong');
   await assert.rejects(personUnlink(env, TX, { now: NOW }), /Only a matched entry/);
-});
-test('at the flip, a check posted long ago goes to a person, not straight in', async () => {
-  await posted();
-  await setMode(env, 'on');
-  await run(NOW + 40 * DAY);
-  const r = await theRow();
-  assert.equal(r.state, 'person');
-  assert.equal(r.reason, 'old-check');
-  assert.equal(world.posts.length, 0);
 });
 test('a check waiting on its entry links however old it gets', async () => {
   await posted();
@@ -1312,10 +1415,9 @@ test('a check waiting on its entry links however old it gets', async () => {
   await run(NOW + 90 * DAY);
   assert.equal((await theRow()).state, 'linked');
 });
-test('a block lifted later doesn\'t turn "not a gift" or the store\'s money into a gift', async () => {
-  await setMode(env, 'on');
+test('a block lifted later doesn\'t turn "Don\'t send" or the store\'s money into a gift', async () => {
   await posted();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'left-out', reason = 'person', zeffy_id = NULL WHERE id = ?`).bind(TX).run();
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'left-out', reason = 'person', note = 'refund', zeffy_id = NULL WHERE id = ?`).bind(TX).run();
   world.payments = [];
   world.posts = [];
   world.txns[TX] = { ...world.txns[TX], status: 'blocked' };
@@ -1333,7 +1435,6 @@ test('a company paid only through Mercury or on W-9s & insurance counts as one S
   const { nameKeyOf } = await import('../functions/api/_vendor-files.js');
   await env.DB.prepare(`INSERT INTO vendor_papers (id, vkey) VALUES ('v', ?)`).bind(nameKeyOf('Ace Roofing LLC')).run();
   world.reading = read({ payer: 'Ace Roofing LLC' });
-  await setMode(env, 'on');
   await posted();
   assert.equal((await theRow()).reason, 'vendor');
   assert.equal(world.posts.length, 0);
@@ -1341,7 +1442,6 @@ test('a company paid only through Mercury or on W-9s & insurance counts as one S
 test('a company paid out of Mercury counts too', async () => {
   await mirrorTransaction(env.DB, txn({ id: 'tx_paid', kind: 'outgoingPayment', amount: -4000, status: 'sent', counterpartyName: 'Birch Roofing LLC', attachments: [] }), { now: NOW });
   world.reading = read({ payer: 'Birch Roofing LLC' });
-  await setMode(env, 'on');
   await posted();
   assert.equal((await theRow()).reason, 'vendor');
 });
@@ -1349,31 +1449,33 @@ test('a date that isn\'t a day is no date', () => {
   assert.equal(proof(read({ date: '2026-09-31' }), read({ date: '2026-09-31' })).date, '');
 });
 test('a check that goes in after a person was told closes the alert', async () => {
-  await setMode(env, 'on');
   await run();
   await env.DB.prepare(`UPDATE check_gifts SET state = 'read', status = 'sent', alerted = 'maybe-double' WHERE id = ?`).bind(TX).run();
   const { slackIssue } = await import('../functions/api/_broadcast-notify.js');
   const { slackCard } = await import('../functions/api/_slack-cards.js');
   await slackIssue(env, `check:${TX}`, slackCard({ title: 't', lead: 'l' }), { title: 't', kind: 'attention' });
-  world.slack = [];
   await run(NOW + 10 * MIN);
+  world.slack = [];
+  await approve();
   assert.equal((await theRow()).state, 'created');
   assert.ok(world.slack.some((b) => b.includes('Saved in Zeffy')), 'the alert is closed');
 });
 test('an unknown check is a clear no', async () => {
-  await assert.rejects(personNotGift(env, 'nope', { now: NOW }), /isn.t on the list/);
+  await assert.rejects(personDontSend(env, 'nope', { reason: 'refund', now: NOW }), /isn.t on the list/);
+  await assert.rejects(personSend(env, 'nope', { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /isn.t on the list/);
 });
 
-test('On needs the write test; Watch is the default', async () => {
-  await writeState(env.DB, 'check-gifts', { writeTest: null, mode: null });
-  assert.equal((await checksView(env)).mode, 'watch');
-  await assert.rejects(setMode(env, 'on'), /proven/);
+test('Sending needs the write test', async () => {
+  await writeState(env.DB, 'check-gifts', { writeTest: null });
+  const v = await checksView(env);
+  assert.equal(v.sending, false);
+  assert.equal(v.joinOk, false);
+  assert.equal('mode' in v, false);
 });
 test('the Automations map gets counts and times only', async () => {
   await run();
   const f = await checksFacts(env.DB);
   assert.equal(f.total, 1);
-  assert.equal(f.mode, 'watch');
   assert.equal(f.writeOk, true);
   assert.equal(JSON.stringify(f).includes('Pine'), false);
 });
@@ -1395,58 +1497,61 @@ test('a name typed in both boxes reads once in Slack and on the board', async ()
 
 // ── What the page sends and shows (Nov 7 break-it round) ─────────────────────
 
-test('an answer from an older screen never overrules a newer one: a colleague\'s "not a gift" stands', async () => {
+test('an answer from an older screen never overrules a newer one: a colleague\'s "Don\'t send" stands', async () => {
   await withPerson();
-  await personNotGift(env, TX, { saw: 'person', by: 'b@example.com', now: NOW });
-  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', saw: 'person', now: NOW, fetchImpl: fakeFetch }), /just changed/);
+  const saw = (await checksView(env)).list[0].ver;
+  await personDontSend(env, TX, { reason: 'event', saw, by: 'b@example.com', now: NOW });
+  await assert.rejects(send({ saw: 'person' }), /just changed/);
+  await assert.rejects(send({ saw }), /just changed/);
   assert.equal(world.posts.length, 0);
   assert.equal((await theRow()).state, 'left-out');
 });
 test('"Not this entry" hands the check to the person, and the site never makes its own record after it', async () => {
   // A hand entry got there first, and the site matched it
   world.payments.push(hand({ campaign_id: 'form_grant', description: 'Grant Funding 2026' }));
-  await setMode(env, 'on');
   await posted();
   assert.equal((await theRow()).state, 'linked');
   assert.equal(world.posts.length, 0);
   await personUnlink(env, TX, { saw: 'linked', now: NOW + 25 * MIN });
   const r = await theRow();
-  assert.equal(r.state, 'person');
+  assert.equal(r.state, 'read', 'its card is made again');
   assert.equal(r.reason, 'unlinked');
   for (let i = 1; i <= 4; i++) await run(NOW + 25 * MIN + i * 61 * MIN);
   assert.equal(world.posts.length, 0, 'no record made by itself');
   assert.equal((await theRow()).state, 'person');
+  assert.equal((await theRow()).reason, 'unlinked');
   const v = (await checksView(env)).list.find((c) => c.id === TX);
   assert.equal(v.needsYou, true);
+  assert.ok(v.card.notes.some((n) => n.kind === 'unlinked'), 'the card says why');
 });
 test('Save names the entry it found, and "a different gift" covers exactly the entries shown', async () => {
   await withPerson();
   world.payments.push(hand({ id: 'zp_rp', buyer: { first_name: 'Rosalind', last_name: 'Park' }, created: dayS('2026-11-04') }));
-  const e = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', saw: 'person', now: NOW, fetchImpl: fakeFetch }).catch((x) => x);
+  const e = await send({ saw: 'person' }).catch((x) => x);
   assert.equal(e.status, 409);
   assert.deepEqual(e.entries.map((x) => [x.id, x.name]), [['zp_rp', 'Rosalind Park']]);
   // Another entry turns up before the person answers: it's shown first, not saved past
   world.payments.push(hand({ id: 'zp_new', type: 'online', status: 'pending', created: dayS('2026-11-06'), buyer: { first_name: 'Ruth', last_name: 'Ace' } }));
-  const again = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_rp'], saw: 'person', now: NOW, fetchImpl: fakeFetch }).catch((x) => x);
+  const again = await send({ notThose: true, shown: ['zp_rp'], saw: 'person' }).catch((x) => x);
   assert.equal(again.status, 409);
   assert.equal(world.posts.length, 0);
-  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_rp', 'zp_new'], saw: 'person', now: NOW, fetchImpl: fakeFetch });
+  const r = await send({ notThose: true, shown: ['zp_rp', 'zp_new'], saw: 'person' });
   assert.equal(r.result, 'created');
 });
-// Since Nov 9 a check is saved as soon as it's read, while Mercury reviews it; one Mercury didn't take can't be
-test('a check still in Mercury\'s review can be saved; one Mercury turned down can\'t', async () => {
+// Since Nov 9 a check can be sent as soon as it's read, while Mercury reviews it; one Mercury didn't take can't be
+test('a check still in Mercury\'s review can be sent; one Mercury turned down can\'t', async () => {
   await withPerson();
   await env.DB.prepare(`UPDATE check_gifts SET status = 'pending' WHERE id = ?`).bind(TX).run();
-  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch });
+  const r = await send();
   assert.equal(r.result, 'created');
   await withPerson();
   await env.DB.prepare(`UPDATE check_gifts SET status = 'failed', zeffy_id = NULL WHERE id = ?`).bind(TX).run();
-  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /didn’t take this check/);
+  await assert.rejects(send(), /didn’t take this check/);
 });
 test('nothing can be answered while Zeffy hasn\'t answered the site\'s save', async () => {
   await withPerson();
   await env.DB.prepare(`UPDATE check_gifts SET state = 'unsure' WHERE id = ?`).bind(TX).run();
-  for (const go of [() => personNotGift(env, TX, { now: NOW }), () => personLink(env, TX, 'zp_hand', { now: NOW, fetchImpl: fakeFetch }), () => personCreate(env, TX, { name: 'Pine', formId: 'form_home', now: NOW, fetchImpl: fakeFetch })]) {
+  for (const go of [() => personDontSend(env, TX, { reason: 'refund', now: NOW }), () => personLink(env, TX, 'zp_hand', { now: NOW, fetchImpl: fakeFetch }), () => send({ name: 'Pine' })]) {
     await assert.rejects(go(), /hasn’t answered/);
   }
 });
@@ -1457,33 +1562,17 @@ test('an entry deleted in Zeffy since is said plainly and no longer offered', as
   assert.deepEqual(JSON.parse((await theRow()).note).map((x) => x.id), ['zp_hand']);
 });
 test('to-dos in Zeffy wait on a person and are counted; the tab\'s count is always the list\'s', async () => {
-  await setMode(env, 'on');
   await posted();
   await env.DB.prepare(`UPDATE check_gifts SET state = 'linked', zeffy_id = 'zp_x', reason = 'amount-off' WHERE id = ?`).bind(TX).run();
-  for (const mode of ['on', 'watch']) {
-    await setMode(env, mode);
-    const v = await checksView(env);
-    assert.equal(v.list[0].needsYou, true, mode);
-    assert.equal(v.waiting, 1);
-    assert.equal((await checksFacts(env.DB)).waiting, v.waiting, mode);
-  }
-});
-test('while watching, a question whose entry went to another check waits for the hand entry and isn\'t counted', async () => {
-  await posted();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'maybe-double', note = ? WHERE id = ?`).bind(JSON.stringify([{ id: 'zp_taken', name: 'Oak Trust', cents: 1000000, at: dayS('2026-11-04') }]), TX).run();
-  await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, zeffy_id, deposited_at) VALUES ('other', 1000000, 'linked', 'zp_taken', '2026-11-04T15:00:00Z')`).run();
   const v = await checksView(env);
-  const c = v.list.find((x) => x.id === TX);
-  assert.equal(c.needsYou, false);
-  assert.match(c.why, /now another check’s/);
-  assert.equal(v.waiting, 0);
-  assert.equal((await checksFacts(env.DB)).waiting, 0);
+  assert.equal(v.list[0].needsYou, true);
+  assert.equal(v.waiting, 1);
+  assert.equal((await checksFacts(env.DB)).waiting, v.waiting);
 });
-test('while on, "It isn\'t a gift" works on a check the site was about to enter', async () => {
-  await setMode(env, 'on');
+test('"Don\'t send" works on a check whose card is still being made', async () => {
   await throughRead();
   post();
-  await personNotGift(env, TX, { saw: 'read', now: NOW });
+  await personDontSend(env, TX, { reason: 'store', saw: 'read', now: NOW });
   await run(NOW + 10 * MIN);
   assert.equal((await theRow()).state, 'left-out');
   assert.equal(world.posts.length, 0);
@@ -1494,7 +1583,7 @@ test('the admin route never shows a database\'s own message', async () => {
   const g = await (await onRequestGet({ env: broken, request: new Request('https://x.test/api/checks-admin') })).json();
   assert.doesNotMatch(g.error, /D1_ERROR/);
   assert.match(g.error, /Try again in a minute/);
-  const p = await (await onRequestPost({ env: broken, request: new Request('https://x.test/api/checks-admin', { method: 'POST', body: JSON.stringify({ action: 'not-gift', id: 'x' }) }), data: {} })).json();
+  const p = await (await onRequestPost({ env: broken, request: new Request('https://x.test/api/checks-admin', { method: 'POST', body: JSON.stringify({ action: 'dont-send', id: 'x', reason: 'refund' }) }), data: {} })).json();
   assert.doesNotMatch(p.error, /D1_ERROR/);
 });
 
@@ -1503,29 +1592,27 @@ test('a refusal is said in plain words, never Zeffy\'s field names', async () =>
   assert.equal(refusalWords({ code: 'invalid_request', message: 'campaign_id must be an active campaign' }), 'The Zeffy form isn’t open any more. Pick another form.');
   assert.equal(refusalWords({ message: 'Zeffy answered 422' }), 'Zeffy wouldn’t take this record.');
 });
-test('a check that goes to a person keeps the form the site would have used', async () => {
+test('a card with something to look at still has the form the site would use filled in', async () => {
   world.reading = read({ payer: 'Elm Street Fund', memo: 'golf' });
-  await setMode(env, 'on');
   await posted();
   const r = await theRow();
   assert.equal(r.reason, 'event');
   assert.equal(r.form_id, 'form_grant');
+  assert.equal((await cardOf(env, TX)).card.formId, 'form_grant');
 });
 test('Save after a deleted entry, with nothing left to ask about, decides the check again', async () => {
   await withPerson('maybe-double');
   await env.DB.prepare(`UPDATE check_gifts SET payer = 'Pine Foundation', note = ? WHERE id = ?`).bind(JSON.stringify([{ id: 'zp_gone', name: 'Oak Trust', cents: 1000000, at: dayS('2026-11-04') }]), TX).run();
-  await assert.rejects(personLink(env, TX, 'zp_gone', { now: NOW, fetchImpl: fakeFetch }), /nothing to match. The site decides this check again/);
+  await assert.rejects(personLink(env, TX, 'zp_gone', { now: NOW, fetchImpl: fakeFetch }), /nothing to match. Its card is made again/);
   assert.equal((await theRow()).state, 'read');
 });
-test('On, stopped by a new write test that failed: the page says so and Slack hears it once', async () => {
-  await setMode(env, 'on');
+test('sending, stopped by a new write test that failed: the page says so and Slack hears it once', async () => {
   await writeState(env.DB, 'check-gifts', { writeTest: { id: 'older', ok: true } });
   world.postFails = 422;
   await run();
   const v = await checksView(env);
-  assert.equal(v.mode, 'watch');
-  assert.equal(v.paused, true);
-  assert.equal(world.slack.filter((b) => /stopped entering checks/.test(b)).length, 1);
+  assert.equal(v.sending, false);
+  assert.equal(world.slack.filter((b) => /can’t be sent to Zeffy/.test(b)).length, 1);
 });
 
 // ── Round four on the page's side ────────────────────────────────────────
@@ -1538,6 +1625,8 @@ test('an older screen is refused even when the check came back round to the same
   await personLink(env, TX, 'zp_hand', { saw: before, now: NOW, fetchImpl: fakeFetch });
   const linked = (await checksView(env)).list[0].ver;
   await personUnlink(env, TX, { saw: linked, now: NOW });
+  await run(NOW + 10 * MIN);
+  assert.equal((await theRow()).state, 'person');
   // Back to "person", but not the check the old screen showed: that entry was ruled out since
   await assert.rejects(personLink(env, TX, 'zp_hand', { saw: before, now: NOW, fetchImpl: fakeFetch }), /just changed/);
   const now = (await checksView(env)).list[0].ver;
@@ -1553,33 +1642,45 @@ test('an amounts-differ to-do names the entry and both amounts', async () => {
   assert.match(c.why, /Pine Foundation, \$9,000\.00/);
   assert.match(c.why, /\$10,000\.00/);
 });
-test('the switch counts every check it was watching, not only the ones listed', async () => {
-  for (let i = 0; i < 4; i++) await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, status, deposited_at, posted_at) VALUES (?, 100, 'would', 'sent', '2026-08-01T15:00:00Z', '2026-08-03T15:00:00Z')`).bind(`old${i}`).run();
-  await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, status, deposited_at, posted_at) VALUES ('fresh', 100, 'would', 'sent', ?, ?)`).bind(new Date().toISOString(), new Date().toISOString()).run();
-  const v = await checksView(env);
-  assert.deepEqual(v.watching, { fresh: 1, old: 4 });
-});
 // ── Round six ────────────────────────────────────────────────────────────
 
-test('a switch pressed on an older screen never undoes a colleague\'s switch', async () => {
-  await setMode(env, 'on', { by: 'a@example.com' });
-  await setMode(env, 'watch', { by: 'a@example.com', saw: 'on' });
-  await assert.rejects(setMode(env, 'on', { by: 'b@example.com', saw: 'on' }), /Someone just turned it back to watching/);
-  assert.equal((await checksView(env)).mode, 'watch');
-  await setMode(env, 'on', { by: 'b@example.com', saw: 'watch' });
-  assert.equal((await checksView(env)).mode, 'on');
-});
-test('a save Zeffy says to wait on leaves the check\'s name and form as they were', async () => {
-  await withPerson();
-  await env.DB.prepare(`UPDATE check_gifts SET state = 'left-out', reason = 'refund', payer = 'Ace Supply' WHERE id = ?`).bind(TX).run();
+test('a Send Zeffy says to wait on leaves the check\'s name and form as they were', async () => {
+  world.reading = read({ payer: 'Ace Supply' });
+  await posted();
+  const was = await theRow();
+  assert.equal(was.payer, 'Ace Supply');
   world.postFails = 429;
-  await assert.rejects(personCreate(env, TX, { name: 'Rosa Whitfield', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /busy/);
-  assert.equal((await theRow()).payer, 'Ace Supply');
-  assert.equal((await theRow()).state, 'left-out');
+  await assert.rejects(approve({ name: 'Rosa Whitfield', formId: 'form_grant' }), /busy/);
+  const r = await theRow();
+  assert.equal(r.payer, 'Ace Supply');
+  assert.equal(r.form_id, was.form_id);
+  assert.equal(r.state, 'person');
+  assert.equal(r.send, null);
+  assert.equal(r.rejected, was.rejected);
 });
-test('the Watch score counts every scored check, not only the ones listed', async () => {
-  for (let i = 0; i < 305; i++) await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, deposited_at, score) VALUES (?, 100, 'linked', ?, ?)`).bind(`s${i}`, new Date(Date.parse('2026-01-01T15:00:00Z') + i * 3600e3).toISOString(), JSON.stringify({ payer: i >= 5, gift: true, form: true })).run();
-  assert.deepEqual((await checksView(env)).scored, { total: 305, right: 300 });
+test('a Send Zeffy refuses leaves the card as it was, with Zeffy\'s reason on it', async () => {
+  world.reading = read({ payer: 'Ace Supply' });
+  await posted();
+  const was = await theRow();
+  world.postFails = 422;
+  await assert.rejects(approve({ name: 'Rosa Whitfield', formId: 'form_grant', address: { line1: '12 Elm St', city: 'Decatur', state: 'GA', postal_code: '30030' } }), /wouldn’t take this amount/);
+  const r = await theRow();
+  assert.deepEqual({ payer: r.payer, form: r.form_id, send: r.send, state: r.state, reason: r.reason }, { payer: 'Ace Supply', form: was.form_id, send: null, state: 'person', reason: 'zeffy-refused' });
+  // Nothing the person picked is left for the address step to use
+  world.postFails = null;
+  for (let i = 1; i <= 3; i++) await run(NOW + i * 61 * MIN);
+  assert.equal(world.patches.length, 0);
+});
+test('a check already told about in Slack isn\'t told again when its card is made', async () => {
+  world.reading = read({ payer: 'Ace Supply' });
+  await posted();
+  // Back on a person for another reason, already said in Slack (a record gone in Zeffy), with no card yet
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'record-gone', card = NULL, alerted = 'record-gone' WHERE id = ?`).bind(TX).run();
+  world.slack = [];
+  for (let i = 1; i <= 3; i++) await run(NOW + i * 61 * MIN);
+  const r = await theRow();
+  assert.ok(r.card, 'its card is made');
+  assert.equal(world.slack.filter((x) => /ready to send to Zeffy/.test(x)).length, 0);
 });
 // ── The wide look before any record is made ──────────────────────────────
 
@@ -1596,8 +1697,7 @@ test('the wide look: anything since the check was written, any name; the giver\'
   assert.deepEqual(ids({ turnedPaid: new Set(['zp_paid']) }), ['zp_other', 'zp_paid', 'zp_pledge'], 'a pledge marked paid since the check was written');
   assert.deepEqual(netOf(r, [other], new Set(['zp_other'])), [], 'claimed by another check');
 });
-test('On never makes a record past an entry under another name the windows miss: a person looks', async () => {
-  await setMode(env, 'on');
+test('Send never makes a record past an entry under another name the windows miss: a person looks first', async () => {
   await throughRead();
   // Typed late, not backdated, under a fund advisor's name
   world.payments.push(hand({ id: 'zp_late', created: dayS('2026-11-09'), buyer: { first_name: 'Dana', last_name: 'Whitfield' } }));
@@ -1605,7 +1705,11 @@ test('On never makes a record past an entry under another name the windows miss:
   await run(NOW + 10 * MIN);
   const r = await theRow();
   assert.equal(r.state, 'person');
+  assert.equal(r.reason, 'maybe-double');
   assert.match(r.note, /zp_late/);
+  const e = await approve().catch((x) => x);
+  assert.equal(e.status, 409);
+  assert.deepEqual(e.entries.map((x) => x.id), ['zp_late']);
   assert.equal(world.posts.length, 0);
 });
 
@@ -1613,8 +1717,8 @@ test('On never makes a record past an entry under another name the windows miss:
 
 test('the money check names a check gift in Zeffy with no check in Mercury, and leaves out what it should', async () => {
   const { moneyCheck } = await import('../functions/api/_check-gifts.js');
-  await setMode(env, 'on');
   await posted();
+  await approve();
   const r = await theRow();
   assert.equal(r.state, 'created');
   const at = dayS('2026-11-07'); // after checks went through Mercury (Nov 6)
@@ -1642,15 +1746,16 @@ test('the money check runs Monday morning, once', async () => {
   assert.equal((await readState(env.DB, 'check-gifts')).money.at, first, 'once that day');
 });
 
-// ── Saved at deposit (Nov 9): a record goes in once the check is read, while Mercury still reviews it ─────
+// ── Sent at deposit (Nov 9): a card is ready once the check is read, while Mercury still reviews it ─────
 
-test('On: a check is saved while Mercury reviews it, and one Mercury then turns down is flagged to cancel', async () => {
-  await setMode(env, 'on');
+test('a check can be sent while Mercury reviews it, and one Mercury then turns down is flagged to cancel', async () => {
   await throughRead();
   await run(NOW + 10 * MIN);
+  assert.equal((await theRow()).state, 'person', 'its card, without waiting for posting');
+  await approve();
   const r = await theRow();
   assert.equal(r.status, 'pending');
-  assert.equal(r.state, 'created', 'saved without waiting for posting');
+  assert.equal(r.state, 'created', 'sent without waiting for posting');
   assert.equal(world.posts.length, 1);
   world.slack = [];
   world.txns[TX] = { ...world.txns[TX], status: 'failed' };
@@ -1662,10 +1767,10 @@ test('On: a check is saved while Mercury reviews it, and one Mercury then turns 
   const v = (await checksView(env)).list.find((c) => c.id === TX);
   assert.equal(v.needsYou, true, 'a to-do on Checks until it’s cancelled');
 });
-test('On: Mercury correcting the amount of a check already saved flags the record to fix', async () => {
-  await setMode(env, 'on');
+test('Mercury correcting the amount of a check already sent flags the record to fix', async () => {
   await throughRead();
   await run(NOW + 10 * MIN);
+  await approve();
   assert.equal((await theRow()).state, 'created');
   world.slack = [];
   world.txns[TX] = { ...world.txns[TX], amount: 9500, status: 'sent', postedAt: '2026-11-07T15:00:00Z' };

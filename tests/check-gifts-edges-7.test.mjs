@@ -7,7 +7,7 @@
  */
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-const { W, CG, setup, run, rowOf, post, posted, fakeFetch, hand, read, txn, mirrorTransaction, readState, writeState, slackSaid, NOW, MIN, DAY, dayS, TX } = await import('./lib/check-gifts-harness-2.mjs');
+const { W, CG, setup, run, rowOf, post, posted, fakeFetch, hand, read, txn, mirrorTransaction, readState, writeState, slackSaid, approve, card, NOW, MIN, DAY, dayS, TX } = await import('./lib/check-gifts-harness-2.mjs');
 const { handlePayment } = await import('../functions/api/_zeffy.js');
 
 const realFetch = globalThis.fetch;
@@ -30,6 +30,18 @@ const addCheck = async (id, o = {}) => {
   world().txns[id] = txn({ id, ...o });
   await mirrorTransaction(env().DB, world().txns[id], { now: NOW });
 };
+/** What a check's card asks about (Nov 10: every check waits on a card for a person to send): its notes and listed entries */
+async function asked(id = TX) {
+  const r = await rowOf(id);
+  const c = await card(id);
+  return { state: r.state, reason: r.reason, notes: (c?.card?.notes || []).map((n) => n.kind), entries: r.note?.startsWith('[') ? JSON.parse(r.note).map((x) => x.id) : [] };
+}
+/** The card has nothing to look at first (reason 'ready'), and a person sending it as it is filled in makes its one record */
+async function sendsClean(now, id = TX) {
+  const q = await asked(id);
+  assert.deepEqual({ state: q.state, reason: q.reason, entries: q.entries }, { state: 'person', reason: 'ready', entries: [] }, `the card asks about ${JSON.stringify(q)}`);
+  return approve(id, { now });
+}
 /** Runs every 5 minutes from `from` to `to` (ISO) */
 async function runEvery(fromIso, toIso, stepMin = 5) {
   for (let t = Date.parse(fromIso); t <= Date.parse(toIso); t += stepMin * MIN) await run(t);
@@ -66,7 +78,6 @@ test('M2 a check typed by hand Friday whose Mercury deposit is still pending Mon
 //        a person matches it to one entry (all the page allows), and the others are named every Monday for 45 days as
 //        check gifts with no check in Mercury, with "delete the extra one" as the fix ──────────────────────────────────────
 test('M3 a United Way check matched to one of its three designations is not named by the money check each Monday', async () => {
-  await CG.setMode(env(), 'on');
   await depositIs({ amount: 1250, createdAt: '2026-11-10T15:00:00Z', status: 'pending' }, { payer: 'United Way of Lakeview', memo: 'Designations Q3', date: '2026-11-08' });
   for (const [id, cents, first, last] of [['zp_uw1', 50000, 'Lee', 'Park'], ['zp_uw2', 50000, 'Ana', 'Ruiz'], ['zp_uw3', 25000, 'Sam', 'Ortiz']]) {
     world().payments.push(hand({ id, amount: cents, created: dayS('2026-11-10'), buyer: person(first, last) }));
@@ -74,8 +85,8 @@ test('M3 a United Way check matched to one of its three designations is not name
   await runEvery('2026-11-10T15:30:00Z', '2026-11-10T16:00:00Z');
   world().txns[TX] = { ...world().txns[TX], status: 'sent', postedAt: '2026-11-11T15:00:00Z' };
   await runEvery('2026-11-11T16:00:00Z', '2026-11-11T16:30:00Z');
-  const asked = await rowOf();
-  assert.equal(asked.state, 'person', 'the site asks first (H4)');
+  const q = await asked();
+  assert.ok(q.state === 'person' && q.notes.includes('maybe-double') && q.entries.includes('zp_uw1'), `the site asks first (H4): ${JSON.stringify(q)}`);
   await CG.personLink(env(), TX, 'zp_uw1', { saw: 'person', by: 'staff@soard.test', now: Date.parse('2026-11-12T15:00:00Z'), fetchImpl: fakeFetch });
   await run(Date.parse('2026-11-16T14:30:00Z'));
   await run(Date.parse('2026-11-23T14:30:00Z'));
@@ -87,15 +98,15 @@ test('M3 a United Way check matched to one of its three designations is not name
 //        table and a sponsorship (Zeffy takes events only by hand, REASONS.event), is never linked to its check, so from the
 //        moment it's typed every check written before it and decided after goes to a person, Slack and all, with the
 //        sponsor's entries (another name, another amount) as the "maybe double" ───────────────────────────────────────────
-test('N1 a sponsor\'s split golf entries typed after On never send an unrelated $10,000 foundation check to a person', async () => {
-  await CG.setMode(env(), 'on', { now: Date.parse('2026-11-01T12:00:00Z') });
+test('N1 a sponsor\'s split golf entries typed after the site\'s first look never put a question on an unrelated $10,000 foundation check', async () => {
   await run(Date.parse('2026-11-02T12:00:00Z'));    // the first fill, before the golf entries exist
   world().payments.push(
     hand({ id: 'zp_golf_table', amount: 200000, created: dayS('2026-11-06'), description: 'Golf Classic 2026', campaign_id: 'golf', buyer: person('Acme', 'Builders') }),
     hand({ id: 'zp_golf_spons', amount: 100000, created: dayS('2026-11-06'), description: 'Golf Classic 2026', campaign_id: 'golf', buyer: person('Acme', 'Builders') }),
   );
   await run(Date.parse('2026-11-06T18:00:00Z'));    // the hourly look sees them
-  await posted();                                    // Pine Foundation $10,000, dated Nov 3, posted Nov 7, decided Nov 10
+  await posted();                                    // Pine Foundation $10,000, dated Nov 3, posted Nov 7, its card made Nov 10
+  await sendsClean(NOW + 15 * MIN);
   const r = await rowOf();
   assert.deepEqual({ state: r.state, posts: sitePosts().length }, { state: 'created', posts: 1 },
     `Pine's $10,000 check is "${r.state}" (${r.reason}) asking about ${r.note}; Slack: ${/needs a look/.test(slackSaid()) ? 'told' : 'quiet'}`);
@@ -105,10 +116,9 @@ test('N1 a sponsor\'s split golf entries typed after On never send an unrelated 
 //        the site delete them (anticipated: "asks a person to take the $1 records out by hand"), they're hand-typed check
 //        entries first seen since On, and every check in flight goes to a person over a "$1 SOARD WebsiteTest" entry.
 //        netOf doesn't leave out test records (moneyCheck does) ──────────────────────────────────────────────────────────
-test('N2 the write test\'s $1 records left in Zeffy never send a real check to a person', async () => {
-  await CG.setMode(env(), 'on', { now: Date.parse('2026-11-01T12:00:00Z') });
+test('N2 the write test\'s $1 records left in Zeffy never put a question on a real check', async () => {
   await run(Date.parse('2026-11-02T12:00:00Z'));
-  // A later deploy changes WRITE_TEST: the test runs again while On, and Zeffy refuses the DELETEs
+  // A later deploy changes WRITE_TEST: the test runs again, and Zeffy refuses the DELETEs
   const st = await readState(env().DB, 'check-gifts');
   await writeState(env().DB, 'check-gifts', { writeTest: { ...st.writeTest, id: '2026-11-01' } });
   world().fail = ({ method, path }) => (method === 'DELETE' && path.startsWith('/payments/') ? 403 : null);
@@ -117,6 +127,7 @@ test('N2 the write test\'s $1 records left in Zeffy never send a real check to a
   assert.ok(report.writeTest?.ok && report.writeTest.leftBehind.length, 'the test passed and left its $1 records');
   await run(NOW - 55 * MIN);                         // the hourly look sees them
   await posted();
+  await sendsClean(NOW + 15 * MIN);
   const r = await rowOf();
   assert.deepEqual({ state: r.state, posts: sitePosts().length }, { state: 'created', posts: 1 },
     `Pine's $10,000 check is "${r.state}" (${r.reason}), asked about ${r.note}`);
@@ -125,12 +136,11 @@ test('N2 the write test\'s $1 records left in Zeffy never send a real check to a
 //        so the entry it asked about isn't "standing", and the check is sent back to "read" every hour. With an older
 //        check ahead in line it sits out of Needs you, and Save refuses it (H7's symptom, for H8's case) ─────────────────
 test('P2 minor: a check asked about a 14-month-old open pledge stays with the person through the hourly look', async () => {
-  await CG.setMode(env(), 'on');
   world().payments.push(hand({ id: 'zp_old_promise', type: 'online', status: 'pending', created: dayS('2025-09-15'), contact: 'c_pine',
     buyer: { first_name: 'Pine', last_name: 'Foundation', email: 'grants@pine.example.org', is_corporate: false, company_name: null } }));
   await posted();
-  const asked = await rowOf();
-  assert.equal(asked.state, 'person');
+  const first = await asked();
+  assert.ok(first.state === 'person' && first.notes.includes('pledge') && first.entries.includes('zp_old_promise'), `the card asks ${JSON.stringify(first)}`);
   // Another check, deposited the day before, posts as the hourly look runs: it takes that run's one decision
   await env().DB.prepare(`INSERT INTO check_gifts (id, account_id, status, cents, deposited_at, posted_at, check_number, state, payer, check_date, created_at, updated_at)
     VALUES ('tx_b', 'acct_check', 'sent', 250000, '2026-11-04T15:00:00Z', '2026-11-10T16:30:00Z', '77', 'read', 'Oak Hollow Garden Club', '2026-11-02', 'x', 'x')`).run();
@@ -139,8 +149,9 @@ test('P2 minor: a check asked about a 14-month-old open pledge stays with the pe
   await run(t);
   const r = await rowOf();
   let save = 'saved';
-  try { await CG.personCreate(env(), TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_old_promise'], saw: 'person', by: 'staff@soard.test', now: t + MIN, fetchImpl: fakeFetch }); } catch (e) { save = `${e.status}: ${e.message}`; }
-  assert.deepEqual({ state: r.state }, { state: 'person' }, `right after the hourly look the check is "${r.state}"; the person's Save: ${save}`);
+  const later = await asked();
+  try { await approve(TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_old_promise'], by: 'staff@soard.test', now: t + MIN }); } catch (e) { save = `${e.status}: ${e.message}`; }
+  assert.deepEqual({ state: r.state, pledge: later.entries.includes('zp_old_promise') }, { state: 'person', pledge: true }, `right after the hourly look the check is "${r.state}" asking ${JSON.stringify(later)}; the person's Send: ${save}`);
 });
 
 // ── G1. Suspected (needs an import to happen): payments Zeffy imports in bulk (type "imported", which madeByHand counts,
@@ -149,7 +160,6 @@ test('P2 minor: a check asked about a 14-month-old open pledge stays with the pe
 //        imported Nov 9. The site's saved checks of the last weeks get "may be in Zeffy twice" in Slack, and the next
 //        check goes to a person over strangers' 2025 gifts ─────────────────────────────────────────────────────────────────
 test('G1 suspected: importing last year\'s offline check gifts never makes the site\'s saved checks look doubled', async () => {
-  await CG.setMode(env(), 'on', { now: Date.parse('2026-10-01T12:00:00Z') });
   // Three checks the site saved in October (rows with their records), and the first fill
   const saved = [['tx_a', 50000, 'Lee Park', '2026-10-12'], ['tx_b', 100000, 'Ana Ruiz', '2026-10-20'], ['tx_c', 25000, 'Sam Ortiz', '2026-10-27']];
   for (const [id, cents, name, day] of saved) {
@@ -169,6 +179,7 @@ test('G1 suspected: importing last year\'s offline check gifts never makes the s
   await run(Date.parse('2026-11-09T17:05:00Z'));
   const doubles = world().slack.filter((b) => /twice/.test(b)).length;
   await posted();
+  await sendsClean(NOW + 15 * MIN);
   const r = await rowOf();
   assert.deepEqual({ doubles, state: r.state }, { doubles: 0, state: 'created' },
     `${doubles} "may be in Zeffy twice" cards for the site's October checks; Pine's new check is "${r.state}" (${r.reason}) over ${(JSON.parse(r.note || '[]') || []).length} entries`);
@@ -179,40 +190,41 @@ test('G1 suspected: importing last year\'s offline check gifts never makes the s
 //        no Mercury check will ever claim them). Two strangers' $500 checks from late October make a foundation's $1,000
 //        check "maybe a double" ──────────────────────────────────────────────────────────────────────────────────────────
 test('J1 two strangers\' $500 checks typed before Nov 6 never make a $1,000 foundation check look like their sum', async () => {
-  await CG.setMode(env(), 'on');
   await depositIs({ amount: 1000, createdAt: '2026-11-05T15:00:00Z', status: 'pending' }, { payer: 'Pine Foundation', date: '2026-11-03' });
   world().payments.push(
     hand({ id: 'zp_smith', amount: 50000, created: dayS('2026-10-21'), buyer: person('Ruth', 'Smith') }),
     hand({ id: 'zp_jones', amount: 50000, created: dayS('2026-10-29'), buyer: person('Carl', 'Jones') }),
   );
   await posted();
+  await sendsClean(NOW + 15 * MIN);
   const r = await rowOf();
   assert.deepEqual({ state: r.state, posts: sitePosts().length }, { state: 'created', posts: 1 }, `Pine's $1,000 check is "${r.state}" (${r.reason}) asking about ${r.note}`);
 });
 
-// ── W1. In Watch the only signal for a cleared check nobody entered is Slack's "A check isn't in Zeffy" at 10 days. Before
+// ── W1. (Nov 10: Watch is gone; every check waits on a card, and the 10-day Slack says it's still waiting to be sent.)
+//        In Watch the only signal for a cleared check nobody entered is Slack's "A check isn't in Zeffy" at 10 days. Before
 //        saying it, matchOpen runs the wide look, and anything it finds (here: two strangers' pre-Nov-6 checks that add up
 //        to it) turns the check into a page question with no Slack, for good: the next hours see the question "standing" ──
-test('W1 in Watch, a $1,000 check nobody entered still gets "isn\'t in Zeffy" in Slack after 10 days', async () => {
+test('W1 a $1,000 check nobody sent still gets "still waiting to be sent to Zeffy" in Slack after 10 days', async () => {
   await depositIs({ amount: 1000, createdAt: '2026-11-05T15:00:00Z', status: 'pending' }, { payer: 'Pine Foundation', date: '2026-11-03' });
   world().payments.push(
     hand({ id: 'zp_smith', amount: 50000, created: dayS('2026-10-21'), buyer: person('Ruth', 'Smith') }),
     hand({ id: 'zp_jones', amount: 50000, created: dayS('2026-10-29'), buyer: person('Carl', 'Jones') }),
   );
   await posted();
-  assert.equal((await rowOf()).state, 'would');
+  assert.equal((await rowOf()).state, 'person');
   for (let d = 1; d <= 12; d++) await run(NOW + d * DAY);
   const r = await rowOf();
-  assert.ok(/isn’t in Zeffy/.test(slackSaid()), `12 days after it posted, nobody typed Pine's $1,000 check and Slack never said so; the row is "${r.state}" (${r.reason}) asking about ${r.note}`);
+  assert.ok(/still waiting to be sent to Zeffy/.test(slackSaid()), `12 days after it posted, nobody sent Pine's $1,000 check and Slack never said so; the row is "${r.state}" (${r.reason}) asking about ${r.note}`);
 });
 
 // ── R1. The same paper check deposited twice (H5b): the second goes to a person as "redeposit", listing the first one's
 //        record. That record is claimed by the first deposit, so the page filters it out and, with nothing left, says "The
 //        Zeffy entry that might have been this check is now another check's. Save this one in Zeffy." with Save beside it.
-//        personCreate has no redeposit check and the wide look skips claimed records: Save makes the second record ───────
-test('R1 the page never tells a person to save a duplicate deposit, and Save doesn\'t make a second record for it', async () => {
-  await CG.setMode(env(), 'on');
+//        personCreate (now personSend) had no redeposit check and the wide look skips claimed records: Save made the second record
+test('R1 the page never tells a person to save a duplicate deposit, and Send doesn\'t make a second record for it', async () => {
   await posted();
+  await approve(TX, { now: NOW + 15 * MIN });
   assert.equal((await rowOf()).state, 'created');
   await addCheck('tx_dup', { createdAt: '2026-11-06T15:00:00Z', status: 'sent', postedAt: '2026-11-08T15:00:00Z' });
   let t = NOW + 30 * MIN;
@@ -221,9 +233,9 @@ test('R1 the page never tells a person to save a duplicate deposit, and Save doe
   assert.equal(dup.reason, 'redeposit');
   const v = (await CG.checksView(env())).list.find((c) => c.id === 'tx_dup');
   let save = 'refused';
-  try { save = (await CG.personCreate(env(), 'tx_dup', { name: 'Pine Foundation', formId: 'form_home', day: '2026-11-03', saw: v.ver, by: 'staff@soard.test', now: t + MIN, fetchImpl: fakeFetch })).result; } catch (e) { save = `${e.status}: ${e.message}`; }
-  assert.deepEqual({ says: /Save this one/.test(v.why || ''), records: sitePosts().length }, { says: false, records: 1 },
-    `the page said "${v.why}"; pressing Save: ${save}; Zeffy has ${sitePosts().length} records for one paper check`);
+  try { save = (await approve('tx_dup', { name: 'Pine Foundation', formId: 'form_home', day: '2026-11-03', by: 'staff@soard.test', now: t + MIN })).result; } catch (e) { save = `${e.status}: ${e.message}`; }
+  assert.deepEqual({ says: /Save this one|Send this one/.test(v.why || ''), records: sitePosts().length }, { says: false, records: 1 },
+    `the page said "${v.why}"; pressing Send: ${save}; Zeffy has ${sitePosts().length} records for one paper check`);
 });
 
 // ── K1. The money check is the backstop for doubles the hourly look can't see. The hourly look on a saved check takes
@@ -231,8 +243,8 @@ test('R1 the page never tells a person to save a duplicate deposit, and Save doe
 //        left out. The money check would name it, but it only reads entries dated since Nov 6, by the date typed in: a check
 //        written before then (most of November's) slips past both ─────────────────────────────────────────────────────
 test('K1 a check the site saved, typed again by hand with a mistyped amount and the check\'s own date (Nov 3), is named somewhere', async () => {
-  await CG.setMode(env(), 'on');
-  await posted();                                   // Pine Foundation, $10,000, dated Nov 3, saved by the site
+  await posted();                                   // Pine Foundation, $10,000, dated Nov 3
+  await approve(TX, { now: NOW + 15 * MIN });       // sent from its card
   assert.equal((await rowOf()).state, 'created');
   world().payments.push(hand({ id: 'zp_typo', amount: 100000, created: dayS('2026-11-03') }));   // typed Nov 12 as $1,000, dated Nov 3
   for (let h = 0; h < 4; h++) await run(Date.parse('2026-11-12T16:00:00Z') + h * 61 * MIN);
@@ -246,8 +258,8 @@ test('K1 a check the site saved, typed again by hand with a mistyped amount and 
 //        fed by zeffy_seen), so a stranger's new online promise to pay $10,000 by check, unpaid, made a week after the site
 //        saved Pine's check, is posted to Slack as "Zeffy has a hand entry for the same amount ... It may be the same check" ─
 test('G2 a stranger\'s new, unpaid pay-by-check promise made after the site saved a check is not called a double of it', async () => {
-  await CG.setMode(env(), 'on');
   await posted();
+  await approve(TX, { now: NOW + 15 * MIN });
   assert.equal((await rowOf()).state, 'created');
   world().payments.push(hand({ id: 'zp_promise', type: 'online', status: 'pending', created: dayS('2026-11-17'), contact: 'c_lee', buyer: person('Lee', 'Park', { email: 'lee@example.com' }) }));
   for (let h = 0; h < 3; h++) await run(Date.parse('2026-11-17T18:00:00Z') + h * 61 * MIN);
@@ -258,8 +270,7 @@ test('G2 a stranger\'s new, unpaid pay-by-check promise made after the site save
 //        that staff haven't typed after 10 days is put through the wide look; another sponsor's golf entry (typed since On,
 //        under its team captain's name, another amount) turns it into "maybe-double", and the page now offers "Save in
 //        Zeffy" on a donation form for a golf check, with no Slack about it ────────────────────────────────────────────────
-test('N3 an event check stays an event check (no Save button) when another sponsor\'s golf entry is typed', async () => {
-  await CG.setMode(env(), 'on', { now: Date.parse('2026-11-01T12:00:00Z') });
+test('N3 an event check stays an event check (its card says event first) when another sponsor\'s golf entry is typed', async () => {
   world().reading = read({ payer: 'Acme Builders', memo: 'Golf Classic sponsor' });
   await posted();
   assert.equal((await rowOf()).reason, 'event');
@@ -267,7 +278,9 @@ test('N3 an event check stays an event check (no Save button) when another spons
   for (let d = 1; d <= 9; d++) await run(NOW + d * DAY);
   const r = await rowOf();
   const v = (await CG.checksView(env())).list.find((c) => c.id === TX);
-  assert.deepEqual({ reason: r.reason }, { reason: 'event' }, `the golf check is now "${r.reason}" asking about ${r.note}; the page says "${v.why}" and shows Save (reason no longer event)`);
+  const kinds = (v.card?.notes || []).map((n) => n.kind);
+  assert.deepEqual({ reason: r.reason, first: kinds[0], double: kinds.includes('maybe-double') }, { reason: 'event', first: 'event', double: false },
+    `the golf check is now "${r.reason}" asking about ${r.note}; the page says "${v.why}" with notes ${JSON.stringify(kinds)}`);
 });
 
 // ── R2. A bounced check's Slack card says "If it's in Zeffy, cancel it there. Zeffy tells the donor when you do." When the
@@ -275,8 +288,8 @@ test('N3 an event check stays an event check (no Save button) when another spons
 //        resolved: staff who held off while it went through again (H5's premise) and then act on the card cancel the good
 //        record, and Zeffy tells the donor ─────────────────────────────────────────────────────────────────────────────────
 test('R2 once a redeposit takes over the bounced check\'s record, the "cancel it in Zeffy" card is resolved', async () => {
-  await CG.setMode(env(), 'on');
   await posted();
+  await approve(TX, { now: NOW + 15 * MIN });
   world().txns[TX] = { ...world().txns[TX], status: 'reversed' };
   await run(Date.parse('2026-11-12T16:00:00Z'));
   assert.equal((await rowOf()).state, 'came-back');
@@ -286,6 +299,11 @@ test('R2 once a redeposit takes over the bounced check\'s record, the "cancel it
   for (let i = 0; i < 3; i++, t += 6 * MIN) await run(t);
   world().txns.tx_2 = { ...world().txns.tx_2, status: 'sent', postedAt: '2026-11-22T15:00:00Z' };
   for (let i = 0; i < 4; i++) await run(Date.parse('2026-11-22T16:00:00Z') + i * 6 * MIN);
+  // The redeposit's card lists the bounced deposit's record; a person matches it ("This is the check")
+  const bouncedRecord = (await rowOf()).zeffy_id;
+  const q = await asked('tx_2');
+  assert.ok(q.state === 'linked' || (q.notes.includes('redeposit') && q.entries.includes(bouncedRecord)), `the redeposit's card asks ${JSON.stringify(q)}`);
+  if (q.state !== 'linked') await CG.personLink(env(), 'tx_2', bouncedRecord, { saw: (await card('tx_2')).ver, by: 'staff@soard.test', now: Date.parse('2026-11-22T17:00:00Z'), fetchImpl: fakeFetch });
   const again = await rowOf('tx_2');
   const first = await rowOf();
   assert.equal(again.zeffy_id, first.zeffy_id === null ? again.zeffy_id : 'held by the bounced row', 'the redeposit took the record over');

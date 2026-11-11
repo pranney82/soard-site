@@ -2,24 +2,24 @@
  * A gift from a donor-advised fund, given on a Zeffy form (Peter, Nov 10 2026: the site points DAF donors at Zeffy's
  * "Donor-advised fund" checkout). Zeffy records it at once, Due until someone marks it paid; the money comes days or
  * weeks later as a check from the fund, under the fund's name. That check must never become a second Zeffy record:
- * matchZeffy and netOf (the wide look) read a DAF gift under any name, and a person decides. A paid DAF gift holds a
- * check only in the DAF_DAYS (90) before it, so one old gift doesn't hold every check of its amount.
+ * matchZeffy and netOf (the wide look) read a DAF gift under any name, the check's card shows it ("This is the check"),
+ * and Send refuses until the person says it's a different gift. A paid DAF gift holds a check only in the DAF_DAYS (90)
+ * before it, so one old gift doesn't hold every check of its amount.
  *
  * Real shape (SOARD's Zeffy, Oct 15 2026): "Donation SK3IIOCK via Other", method DAF, Succeeded. The API's word for the
- * method isn't documented, hence the spellings. Each end-to-end case has its control: the same check, saved, without it.
+ * method isn't documented, hence the spellings. Each end-to-end case has its control: the same check, sent, without it.
  * Against the spec-faithful fakes in tests/lib/check-gifts-harness-2.mjs. Names are made up.
  * Run: node --test tests/check-gifts-daf.test.mjs
  */
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-const { W, CG, setup, rowOf, posted, fakeFetch, hand, dayS } = await import('./lib/check-gifts-harness-2.mjs');
-const { byDaf, matchZeffy, matchBoth, netOf, judge } = CG;
+const { W, CG, setup, rowOf, posted, fakeFetch, hand, dayS, approve, card, NOW, MIN } = await import('./lib/check-gifts-harness-2.mjs');
+const { byDaf, matchZeffy, matchBoth, netOf, notesFor } = CG;
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = fakeFetch;
 after(() => { globalThis.fetch = realFetch; });
 beforeEach(() => setup());
-const env = () => W.env;
 const world = () => W.world;
 const sitePosts = () => world().posts.filter((b) => b.amount > 100);
 
@@ -87,7 +87,7 @@ test('under both of a check\'s names (the letter\'s giver and the fund on the ch
   assert.deepEqual(ids(m.promised), ['zp_daf'], 'the letter names the donor: her own gift, still Due');
 });
 
-// ── netOf, the wide look before the site makes a record ─────────────────────────────────────────────────────────────────
+// ── netOf, the wide look before a check is sent ─────────────────────────────────────────────────────────────────
 
 test('the wide look sees a Due DAF gift under any name and age, and a paid one from the 90 days before the check', () => {
   assert.deepEqual(ids(netOf(row(), [daf({ created: dayS('2025-12-01') })])), ['zp_daf']);
@@ -99,42 +99,56 @@ test('the wide look sees a Due DAF gift under any name and age, and a paid one f
   assert.deepEqual(ids(netOf(row({ cents: 750000 }), [daf()])), []);
 });
 
-// ── judge ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── notesFor, what the card says ────────────────────────────────────────────────────────────────────────────────────────
 
-test('judge: a fund\'s check with a DAF gift waiting goes to a person, never into Zeffy as a new record', () => {
-  assert.deepEqual((({ do: d, reason }) => ({ d, reason }))(judge(row(), { payments: [daf()], forms: FORMS })), { d: 'person', reason: 'maybe-double' });
-  assert.deepEqual((({ do: d, reason }) => ({ d, reason }))(judge(row(), { payments: [daf({ buyer: person('Pine', 'Foundation') })], forms: FORMS })), { d: 'person', reason: 'pledge' });
-  // Control: without it, or with only last spring's paid one, the check is a new gift
-  assert.equal(judge(row(), { payments: [], forms: FORMS }).do, 'create');
-  assert.equal(judge(row(), { payments: [daf({ status: 'succeeded', created: dayS('2026-07-01') })], forms: FORMS }).do, 'create');
+test('notesFor: a fund\'s check with a DAF gift waiting puts it on the card, never sent as a new record without a look', () => {
+  const card = (payments) => (({ link, notes, entries }) => ({ link, notes, entries: ids(entries) }))(notesFor(row(), { payments, forms: FORMS }));
+  assert.deepEqual(card([daf()]), { link: null, notes: ['maybe-double'], entries: ['zp_daf'] });
+  assert.deepEqual(card([daf({ buyer: person('Pine', 'Foundation') })]), { link: null, notes: ['pledge'], entries: ['zp_daf'] });
+  // Control: without it, or with only last spring's paid one, the card is a new gift, ready as it's filled in
+  assert.deepEqual(card([]), { link: null, notes: [], entries: [] });
+  assert.deepEqual(card([daf({ status: 'succeeded', created: dayS('2026-07-01') })]), { link: null, notes: [], entries: [] });
+  assert.equal(notesFor(row(), { payments: [], forms: FORMS }).form?.id, 'form_home');
 });
 
-// ── The whole run, with check-to-Zeffy on ───────────────────────────────────────────────────────────────────────────────
+// ── The whole run: the card, and a person pressing Send ─────────────────────────────────────────────────────────────────
 
-test('on: the fund\'s check finds the donor\'s Due DAF gift and waits for a person; Zeffy gets no second record', async () => {
-  await CG.setMode(env(), 'on');
+const SEND = NOW + 15 * MIN;
+
+test('the fund\'s check finds the donor\'s Due DAF gift: its card shows it, and Send gives Zeffy no second record', async () => {
   world().payments.push(daf());
   await posted();
   const r = await rowOf();
   assert.deepEqual({ state: r.state, reason: r.reason, posts: sitePosts().length }, { state: 'person', reason: 'maybe-double', posts: 0 }, `the check is "${r.state}" (${r.reason})`);
   assert.ok(JSON.parse(r.note).some((e) => e.id === 'zp_daf'), 'the DAF gift is the entry the person is shown');
+  assert.ok(JSON.parse(r.card).entries.some((e) => e.id === 'zp_daf'));
+  assert.ok((await card()).candidates.some((e) => e.id === 'zp_daf'), 'beside "This is the check"');
+  // Send as the card is: refused, with the entry to look at
+  await assert.rejects(approve(undefined, { now: SEND }), (e) => e.status === 409 && e.entries?.some((x) => x.id === 'zp_daf'));
+  assert.equal(sitePosts().length, 0);
+  // Only a person looking right at it and saying it's another gift sends a new record
+  await approve(undefined, { now: SEND + MIN, notThose: true, shown: ['zp_daf'] });
+  assert.equal(sitePosts().length, 1);
 });
 
-test('on: a DAF gift already marked paid last month holds the check the same way', async () => {
-  await CG.setMode(env(), 'on');
+test('a DAF gift already marked paid last month holds the check the same way', async () => {
   world().payments.push(daf({ status: 'succeeded', created: dayS('2026-10-20') }));
   await posted();
   const r = await rowOf();
-  assert.deepEqual({ state: r.state, posts: sitePosts().length }, { state: 'person', posts: 0 });
+  assert.deepEqual({ state: r.state, reason: r.reason, posts: sitePosts().length }, { state: 'person', reason: 'maybe-double', posts: 0 });
+  await assert.rejects(approve(undefined, { now: SEND }), (e) => e.status === 409 && e.entries?.some((x) => x.id === 'zp_daf'));
+  assert.equal(sitePosts().length, 0);
 });
 
-test('control, on: with no DAF gift, or only a paid one from last spring, the same check goes into Zeffy', async () => {
-  await CG.setMode(env(), 'on');
+test('control: with no DAF gift, or only a paid one from last spring, the same check\'s card is ready and Send puts it in Zeffy', async () => {
   await posted();
+  assert.deepEqual({ state: (await rowOf()).state, reason: (await rowOf()).reason }, { state: 'person', reason: 'ready' });
+  await approve(undefined, { now: SEND });
   assert.deepEqual({ state: (await rowOf()).state, posts: sitePosts().length }, { state: 'created', posts: 1 });
   await setup();
-  await CG.setMode(env(), 'on');
   world().payments.push(daf({ status: 'succeeded', created: dayS('2026-07-01') }));
   await posted();
+  assert.equal((await rowOf()).reason, 'ready');
+  await approve(undefined, { now: SEND });
   assert.deepEqual({ state: (await rowOf()).state, posts: sitePosts().length }, { state: 'created', posts: 1 });
 });

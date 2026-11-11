@@ -55,8 +55,11 @@ export const fakeFetch = async (input, init = {}) => {
     if (path === '/campaigns') return json({ data: world.forms, has_more: false });
     if (path === '/payments' && method === 'GET') {
       const from = Number(url.searchParams.get('created[gte]') || 0);
-      world.lastFrom = from;
-      const all = world.payments.filter((p) => p.created >= from);
+      const to = Number(url.searchParams.get('created[lte]') || Infinity);
+      const campaign = url.searchParams.get('campaign');
+      // The widest read's start (a window read for one sent record says nothing about how far back the looks reach)
+      if (to === Infinity) world.lastFrom = from;
+      const all = world.payments.filter((p) => p.created >= from && p.created <= to && (!campaign || String(p.campaign_id) === campaign));
       const after = url.searchParams.get('starting_after');
       const start = after ? Number(after) : 0;
       const page = all.slice(start, start + 100);
@@ -110,3 +113,9 @@ export const rowOf = (id = TX) => W.env.DB.prepare('SELECT * FROM check_gifts WH
 export const post = (id = TX, postedAt = '2026-11-07T15:00:00Z') => { W.world.txns[id] = { ...W.world.txns[id], status: 'sent', postedAt }; };
 /** Read while pending, then posted and decided: two heartbeats */
 export async function posted(now = NOW) { await run(now); post(); return run(now + 10 * MIN); }
+
+// A person pressing Send to Zeffy (or Don't send) on a check's card: see ./check-gifts-approve.mjs
+import { approveWith, dontSendWith, cardOf } from './check-gifts-approve.mjs';
+export const approve = (id = TX, over = {}) => approveWith(W.env, fakeFetch, id, { now: NOW, ...over });
+export const dontSend = (id = TX, reason = 'refund', over = {}) => dontSendWith(W.env, id, reason, { now: NOW, ...over });
+export const card = (id = TX) => cardOf(W.env, id);

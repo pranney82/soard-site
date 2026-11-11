@@ -48,8 +48,10 @@ async function zeffy(url, method, body, world) {
     if (path === '/campaigns') return json({ data: world.forms, has_more: false });
     if (path === '/payments' && method === 'GET') {
       const from = Number(url.searchParams.get('created[gte]') || 0);
+      const to = Number(url.searchParams.get('created[lte]') || Infinity);
+      const campaign = url.searchParams.get('campaign');
       const status = url.searchParams.get('status');
-      const all = world.payments.filter((p) => p.created >= from && (!status || String(p.status) === status));
+      const all = world.payments.filter((p) => p.created >= from && p.created <= to && (!campaign || String(p.campaign_id) === campaign) && (!status || String(p.status) === status));
       const start = Number(url.searchParams.get('starting_after') || 0);
       const page = all.slice(start, start + 100);
       return json({ object: 'list', data: page, has_more: start + 100 < all.length, next_cursor: start + 100 < all.length ? String(start + 100) : null });
@@ -158,3 +160,9 @@ export async function noEmailGiver(contact = {}) {
 /** Zeffy contacts left holding the site's no-mail address */
 export const tagged = () => Object.values(W.world.contacts).filter((c) => /@nomail\.soardcharity\.com$/i.test(c.email || ''));
 export const slackSaid = () => W.world.slack.map((b) => { try { return JSON.stringify(JSON.parse(b)); } catch { return b; } }).join('\n');
+
+// A person pressing Send to Zeffy (or Don't send) on a check's card: see ./check-gifts-approve.mjs
+import { approveWith, dontSendWith, cardOf } from './check-gifts-approve.mjs';
+export const approve = (id = TX, over = {}) => approveWith(W.env, fakeFetch, id, { now: NOW, ...over });
+export const dontSend = (id = TX, reason = 'refund', over = {}) => dontSendWith(W.env, id, reason, { now: NOW, ...over });
+export const card = (id = TX) => cardOf(W.env, id);

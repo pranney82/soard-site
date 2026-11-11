@@ -7,58 +7,39 @@
  * Nothing here keeps a second copy of either: a row says what happened to one
  * check, and which Zeffy record it became.
  *
- * What makes it safe without a person: nothing leaves SOARD. Every record is
- * made with its tax receipt and confirmation email off, the way staff enter
- * checks by hand today (18 of the 21 checks from Aug 22 to Nov 4 2026 had no
- * tax receipt). So a wrong guess is a line in Zeffy that a person can move or
- * remove, never a paper in a donor's hands. Slack's gift alert shows each one
- * to the team as it does a hand entry.
+ * Peter, Nov 10 2026: "admin wants to approve all entries into zeffy", with
+ * everything filled in, a choice wherever two answers exist, an optional
+ * email, and "dont send to zeffy" for what isn't Zeffy's. So the site prepares
+ * each check and a person sends it: nothing reaches Zeffy without a person's
+ * press. Every record is made with its tax receipt and confirmation email off,
+ * the way staff enter checks by hand, so nothing reaches a donor either.
  *
- * The steps, one check a run (Cloudflare gives this work about 30 seconds, and
- * a vision model can take 20 of them):
+ * The steps, one big job a run (Cloudflare gives this work about 30 seconds,
+ * and a vision model can take 20 of them):
  *   1. Every checkDeposit Mercury sends (the webhook mirrors it into
  *      mercury_txns, ./_mercury-txns.js) gets a row. Each one not final is read
- *      again by id, because the catch-up only reads transactions by the day
- *      they were created: a check that later posts or comes back shows up here.
+ *      again by id: a check that later posts, comes back, or gets a file
+ *      attached shows up here.
  *   2. The picture is read by two models from different makers (READERS). They
- *      must agree who wrote it, and what's read must equal Mercury's amount and
- *      check number. The picture stays in memory, the models' answers are thrown
- *      away once used, and a number that could be a bank account never passes
- *      safeText, so no account or routing number is kept or shown anywhere.
- *   3. When Mercury says it posted, Zeffy is read first (matchZeffy). A hand
- *      entry or a donor's pay-by-check for this gift is linked, and nothing is
- *      made. Otherwise judge() says what it is, and the record is made once.
- *      Zeffy has no way to refuse a repeat, so a POST whose answer never came
- *      is looked for, never sent again.
- *
- * A person is asked only when the site can't act: it can't read who wrote the
- * check, Zeffy may already have it under another name, the check is for an event
- * (Zeffy takes tickets and auctions only by hand), SOARD pays that company and
- * nothing says refund or gift, or Zeffy didn't answer. See REASONS.
- *
- * Peter, Nov 10 2026: "we need to capture their address that is on the
- * check", and a letter the team attaches in Mercury after the deposit "is the
- * source of truth" for who the gift is recorded as and where its receipt goes.
- * So a check waits until 7 PM Eastern on the day it's deposited (saveAt), the
- * letter is read the way the check is (two readers that must agree), and the
- * gift goes in under the letter's name. The address (the letter's, else the
- * one printed on the check) goes on the donor's Zeffy contact once the record
- * is there, and only on a contact that is surely the giver's (writeAddresses).
- * Letters steer only checks the site is still deciding: a file added after
- * the record is in Zeffy changes nothing by itself and is a person's to look
- * at, because Zeffy can't move a payment and the site never deletes one.
- *
- * Peter, Nov 10 2026 (later): only a check marked as a contribution in
- * Mercury's Category ("Individual Contribution", "Contribution") goes into
- * Zeffy. One with no category waits for it; any other category is left out.
- * A gift through a giving platform or donor-advised fund goes under the donor
- * its sheet names ("they should go under donor name").
- *
- * It ships in Watch: everything but writing to Zeffy. Staff keep entering
- * checks; each hand entry is linked and scored against what the site would have
- * done, and each one teaches who that payer is (check_payers), so a later
- * check from them lands on the same donor. Job Costs → Checks turns it On, after
- * the one-time test of writing to Zeffy (testWrite) has passed.
+ *      must agree who wrote it and where they live, and what's read must equal
+ *      Mercury's amount and check number. The picture stays in memory, and a
+ *      number that could be a bank account never passes safeText.
+ *   3. Files the team attaches to the deposit in Mercury ("letters": a cover
+ *      letter, a grant sheet) are read the same way. A letter is the source of
+ *      truth for whose gift it is and where its receipt goes; a gift through a
+ *      giving platform or donor-advised fund is its donor's.
+ *   4. prepareCard reads Zeffy (400 days, any name) and fills in the card: who
+ *      it's from (a choice when the check and the letter differ), which Zeffy
+ *      donor (a choice when Zeffy has more than one who could be them), form,
+ *      date, email, mailing address, and what to look at first (an entry Zeffy
+ *      may already have, a pledge, an event memo). A hand entry that surely is
+ *      this check is matched by itself: it's in Zeffy already.
+ *   5. A person sends it (personSend), or says it isn't Zeffy's (personDontSend),
+ *      or matches it to an entry (personLink). Zeffy is read again first, and a
+ *      POST whose answer never came is looked for, never sent again.
+ *   6. After: the address and email go on the donor (writeAddresses), and the
+ *      record is watched for a check Mercury turns down or corrects, a record
+ *      deleted in Zeffy, a file added in Mercury, and a second entry typed.
  *
  * Env: MERCURY_API_TOKEN + MERCURY_RELAY_KEY, ZEFFY_API_KEY, the AI binding.
  */
@@ -76,6 +57,10 @@ import { vendorKey } from './_spend-match.js';
 import { nameKeyOf, realDate as isDay } from './_vendor-files.js';
 import { pageText, scannedPages } from './_vendor-read.js';
 import { TZ } from './_reveals.js';
+// Decided the same way on the Checks page: one copy of what's one giver, one address, a whole address, a bank-like number
+import { hasAccountDigits, payerKey, surelySameGiver, sameGiver, sameName, addressProblem, addressKey, addressLine, nameProblem, emailProblem, emailOf, TAG_DOMAIN, isTag } from '../../public/admin/checks-shared.js';
+
+export { hasAccountDigits, payerKey, surelySameGiver, sameGiver, addressKey, TAG_DOMAIN };
 
 const KEY = 'check-gifts';
 const MIN = 60 * 1000;
@@ -87,25 +72,23 @@ const CLAIM_MS = 2 * MIN;          // a try still running, or one Cloudflare cut
 const READ_TIMEOUT_MS = 24000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const REREAD_EVERY_MS = DAY;       // a check that has posted
+const WAITING_REREAD_MS = 20 * MIN; // a check whose card waits on a person: a letter attached to it is read within the hour
 const FINAL_AFTER_MS = 60 * DAY;   // a check that posted this long ago has stayed
 const PENDING_ALARM_MS = 14 * DAY; // Mercury says up to 5 business days
 const NO_RECORD_ALARM_MS = 10 * DAY;
 const UNSURE_AFTER_MS = 30 * MIN;  // how long Zeffy gets to show a POST it never answered
+const SENT_LOOK_MS = 7 * DAY;      // how long a send whose answer was unclear is looked for, whatever the check became since
 const LOOK_BACK_S = 120 * 86400;   // how far back Zeffy is read for one check
 const DATED_BACK_MS = 60 * DAY;    // a check older than this is dated the day it was deposited
 const SAME_GIVER_DAYS = 14;        // a hand entry this long before the check's date can be it
 const OTHER_NAME_DAYS = 3;         // under another name, only one dated about when the check was
 const AFTER_DAYS = 21;             // a hand entry this long after the check's date or deposit can be it
 const NO_DATE_DAYS = 45;           // with no date read, how far back the giver's entry is asked about
-const OLD_CHECK_MS = 30 * DAY;     // at the flip to On, a check this long posted goes to a person, not straight in
 const LATE_DAYS = 120;             // a hand entry this long after the deposit is put to a person, not linked
 const MATCH_MAX_AGE_MS = 150 * DAY; // the hourly look stops at checks deposited this long ago, so its read of Zeffy stays whole
 const WRITE_TRIES = 3;             // a write test that keeps failing stops trying after this many days
 const ZEFFY_PAGES = 30;
 const LIST_LIMIT = 300;
-/** Each day's checks go into Zeffy at 7 PM Eastern, so a letter attached in Mercury that day is read with its check (Peter, Nov 10) */
-const SAVE_HOUR = 19;
-const SAVE_GAP_MS = 60 * MIN;      // a check deposited in the hour before 7 PM waits for the next evening, so its letter has time
 const LETTER_TRIES = 3;            // a letter file that can't be fetched or read this many times goes to a person
 const MAX_LETTER_FILES = 4;        // more files than this beside one check: a person looks
 const ADDRESS_RETRY_MS = 15 * MIN; // Zeffy not answering about an address: tried again after this
@@ -115,8 +98,6 @@ const ADDRESS_GIVE_UP_MS = DAY;    // and after this long of it, a person adds i
 export const WRITE_TEST = '2026-11-10';
 
 /** A mail domain with no mail server: an address here reaches no one, so it can sit on a donor's contact for the seconds a record takes */
-export const TAG_DOMAIN = 'nomail.soardcharity.com';
-const isTag = (email) => clean(email).toLowerCase().endsWith(`@${TAG_DOMAIN}`);
 export const tagFor = (id, now) => `check-${String(id).replace(/[^a-z0-9]/gi, '').slice(0, 12).toLowerCase()}-${Number(now).toString(36)}@${TAG_DOMAIN}`;
 const TAG_ALARM_MS = DAY;          // an address the site couldn't take off a donor's contact for this long goes to a person
 /** The write test's one record with an email: a SOARD inbox, so anyone can see that Zeffy sent nothing with receipts and emails off */
@@ -128,34 +109,58 @@ const CARDS_URL = `${SITE_ORIGIN}/admin/#job-costs/checks`;
 const ZEFFY_PAYMENTS = 'https://www.zeffy.com/en-US/o/all-payments';
 const ZEFFY_CONTACTS = 'https://www.zeffy.com/en-US/o/crm/contacts';
 
-/** Why a check is with a person, in the words the page and Slack use. Nothing else stops a check */
+/**
+ * What a card asks the person to look at before sending, in the words the page and Slack use. A card with none of these is
+ * ready as it's filled in. Kept on the row as `reason` (the first that applies); the card lists them all
+ */
 export const REASONS = {
-  'no-picture': 'Mercury has no picture of this check, so the site can’t tell who wrote it.',
-  unreadable: 'The site couldn’t read who wrote this check.',
-  'maybe-double': 'Zeffy already has an entry for this amount under another name. It may be this check.',
-  'amount-differs': 'Zeffy has an entry from this giver around this date for a different amount.',
-  pledge: 'This giver has an unpaid pledge or check promise in Zeffy. It may be what this check pays.',
-  event: 'The memo points to an event or a group’s campaign. Zeffy takes those only by hand.',
-  vendor: 'SOARD pays this company, and nothing says if this is a refund or a gift.',
-  'no-form': 'No open Zeffy donation form fitted this check when the site looked. Pick one.',
-  'zeffy-refused': 'Zeffy didn’t take this record when it was saved.',
-  unsure: 'Zeffy didn’t answer when the site saved this, and the record hasn’t shown up. If it isn’t in Zeffy, save it again.',
+  'no-picture': 'Mercury has no picture of this check, so the site couldn’t read who wrote it. Look at it in Mercury.',
+  unreadable: 'The site couldn’t read who wrote this check. Look at it in Mercury and type the name.',
+  'maybe-double': 'Zeffy may already have this check, under this name or another. If one of these is it, press “This is the check” instead of sending.',
+  'amount-differs': 'Zeffy has an entry from this giver around this date for a different amount. If it’s this check, match it and fix the amount in Zeffy.',
+  pledge: 'This giver has an unpaid pledge or check promise in Zeffy. If this check pays it, press “This is the check” and mark it paid in Zeffy.',
+  event: 'The memo points to an event or a group’s campaign. Zeffy takes tickets and sponsorships only by hand: if that’s what this is, enter it there and choose “Don’t send to Zeffy”.',
+  vendor: 'SOARD pays this company. Make sure it’s a gift, not a refund.',
+  'no-form': 'No open Zeffy donation form fitted this check. Pick one.',
+  'zeffy-refused': 'Zeffy didn’t take this record when it was sent.',
+  unsure: 'Zeffy didn’t answer when this was sent, and the record hasn’t shown up. If it isn’t in Zeffy, send it again.',
   'zeffy-busy': 'Zeffy kept saying to wait on this giver for a day.',
-  redeposit: 'Another deposit has the same check number and amount. If it’s the same check deposited again, it isn’t a new gift: say so here. If the first deposit came back, match this one to its Zeffy record.',
-  'look-by-hand': 'Zeffy has more payments than the site can look through at once, so it can’t be sure this check isn’t there already. Look in Zeffy, then save it or match it here.',
-  'told-gift': 'A person said this is a gift.',
-  'record-gone': 'This check’s Zeffy record is gone. Save it again if it should be there, or say it isn’t a gift.',
-  'old-check': 'This check posted a while ago and Zeffy has no record of it. Save it, or say it isn’t a gift.',
-  bank: 'This check shows a bank’s name, not who paid. It’s likely a cashier’s check, so look at it in Mercury for who sent it.',
+  redeposit: 'Another deposit has the same check number and amount. If it’s the same check deposited again, it isn’t a new gift: choose “Don’t send”. If the first deposit came back, match this one to its Zeffy record.',
+  'redeposit-back': 'This check was deposited before, and that deposit came back. This one is the money: send it, or choose “This is the check” beside the first deposit’s Zeffy record if it’s still there.',
+  'look-by-hand': 'Zeffy has more payments than the site can look through at once, so it can’t be sure this check isn’t there already. Look in Zeffy before sending.',
+  'record-gone': 'This check’s Zeffy record is gone. Send it again if it should be there.',
+  bank: 'This check shows a bank’s name, not who paid: likely a cashier’s check. Look at it in Mercury for who sent it.',
   unlinked: 'A person said the matched Zeffy entry isn’t this check.',
+  'store-account': 'This check went into the store’s account in Mercury. Send it to Zeffy only if it’s a gift.',
+  own: 'This looks like SOARD’s own money.',
+  refund: 'The memo says this is a refund or reimbursement.',
+  'not-a-giver': 'This looks like insurance or a tax payment, not a gift.',
+  category: 'Its Category in Mercury isn’t a gift.',
   'amount-off': 'Zeffy’s entry and the check are for different amounts. Fix the amount in Zeffy.',
   'still-unpaid': 'Zeffy still shows this entry as unpaid. Mark it paid in Zeffy.',
   letter: 'A letter came with this check in Mercury, and the site couldn’t read whose gift it says it is. Look at it in Mercury.',
   'letter-amount': 'The letter that came with this check is for a different amount. Look at it in Mercury.',
   'letter-many': 'More files came with this check in Mercury than the site reads. Look at them in Mercury.',
-  'letter-name': 'A letter added in Mercury after this check was saved says the gift is from someone else.',
 };
-const ASKS_ABOUT_ENTRIES = ['maybe-double', 'amount-differs', 'pledge'];
+/** What happened on a send that the card keeps saying until it's sent again or matched: never dropped by a refresh */
+const STICKY = ['unsure', 'zeffy-refused', 'record-gone', 'unlinked', 'zeffy-busy'];
+/** The card's notes that say it may not be Zeffy's at all: it comes with "Don't send" suggested */
+const SUGGEST_DONT = { own: 'own', refund: 'refund', 'not-a-giver': 'insurance', event: 'event' };
+
+/**
+ * Why a person said "Don't send to Zeffy": the real reasons a check deposited to SOARD isn't a Zeffy gift. Each is said on the
+ * row after, and "Send to Zeffy after all" undoes it
+ */
+export const DONT_REASONS = {
+  already: 'Already in Zeffy another way (entered by hand, or given online)',
+  event: 'Event tickets or a sponsorship, entered in Zeffy by hand',
+  refund: 'A refund or reimbursement',
+  store: 'A store sale',
+  own: 'SOARD’s own money moving between accounts',
+  insurance: 'An insurance or tax payment',
+  repeat: 'The same check deposited again',
+};
+
 
 /**
  * Mercury's Category that says a deposit is a gift (Peter, Nov 10): Individual Contribution, Corporate Contribution, Grant.
@@ -165,7 +170,6 @@ const GIFT_CATEGORY = /\b(contributions?|grants?)\b/i;
 export const isContribution = (category) => GIFT_CATEGORY.test(clean(category));
 /** A check marked Grant in Mercury goes on the newest Grant Funding form */
 const GRANT_CATEGORY = /\bgrants?\b/i;
-const GIFT_WORDS = 'Individual Contribution, Corporate Contribution or Grant';
 /** A check's Category in Mercury: from the transaction when the site has it in hand, else as last mirrored */
 async function categoryOf(env, row, txn = null) {
   if (txn && 'categoryData' in txn) return clean(txn.categoryData?.name);
@@ -173,13 +177,9 @@ async function categoryOf(env, row, txn = null) {
   return clean(t?.category_name);
 }
 
-/** Left out on purpose, without a person: not gifts. Each still says so on the page */
+/** Not sent to Zeffy: a person's word, or a check that came back */
 export const LEFT_OUT = {
-  own: 'This looks like SOARD’s own money.',
-  refund: 'The memo says this is a refund or reimbursement.',
-  'not-a-giver': 'This looks like insurance or a tax payment, not a gift.',
-  person: 'A person said this isn’t a gift.',
-  category: 'Its Category in Mercury isn’t a gift (Individual Contribution, Corporate Contribution or Grant), so it stays out of Zeffy. Change it in Mercury if it’s a gift.',
+  person: 'A person said not to send it to Zeffy.',
   back: 'The check came back.',
 };
 
@@ -257,7 +257,8 @@ const SCHEMA = [
 // Added Nov 10 2026, for the address and the letter. letter: what the files beside the check said (JSON, see readLetter).
 // address: the address printed on the check (JSON, `for` = who wrote it). drawer: who wrote the check (payer is who the gift
 // is from). address_done: what became of the address in Zeffy; address_at: its last try; address_tried: what it tried to put on whom
-const ADDED = ['letter TEXT', 'address TEXT', 'drawer TEXT', 'address_done TEXT', 'address_at TEXT', 'address_tried TEXT'];
+// card: what the person approving sees, filled in (prepareCard). send: what they sent with it (the donor, address and email)
+const ADDED = ['letter TEXT', 'address TEXT', 'drawer TEXT', 'address_done TEXT', 'address_at TEXT', 'address_tried TEXT', 'card TEXT', 'send TEXT', 'taught TEXT', 'name_by TEXT', 'extra TEXT', 'earlier TEXT'];
 
 const _ready = new WeakSet();
 export async function ensureChecks(DB) {
@@ -268,6 +269,16 @@ export async function ensureChecks(DB) {
     if (have.has(col.split(' ')[0])) continue;
     // Two runs adding it at once: the second one's "duplicate column" is the column being there
     try { await DB.prepare(`ALTER TABLE check_gifts ADD COLUMN ${col}`).run(); } catch (e) { if (!/duplicate column/i.test(String(e?.message))) throw e; }
+  }
+  // Every check is approved by a person from Nov 10: one the site was only watching, or one already waiting on a person, gets
+  // its card made, keeping what was said on a send that didn't finish (STICKY)
+  if (!have.has('card')) await DB.prepare("UPDATE check_gifts SET state = 'read', try_at = NULL WHERE state IN ('would', 'person')").run();
+  if (!have.has('name_by')) {
+    // Who wrote the check is only ever what was read off it: a check read before drawer was kept (Nov 10) has it as payer,
+    // unless a person gave that name (by) or a letter did (a letter note that names someone). The empty note every check
+    // gets on its first look names nobody. (Before Nov 10 a person's name only ever went on a record at once, never on a
+    // check left waiting, so no waiting check's name is a person's: name_by starts empty)
+    await DB.prepare("UPDATE check_gifts SET drawer = payer WHERE drawer IS NULL AND payer IS NOT NULL AND by IS NULL AND (letter IS NULL OR COALESCE(json_extract(letter, '$.name'), '') = '') AND state NOT IN ('new', 'store')").run();
   }
   await ensureTxnSchema(DB);
   _ready.add(DB);
@@ -283,18 +294,6 @@ const dayOf = (iso) => { const t = Date.parse(iso || ''); return Number.isNaN(t)
 const secondsOf = (day) => Math.floor(Date.parse(`${day}T12:00:00Z`) / 1000);
 
 // ─── A number that could be a bank account never gets through ───────
-
-/**
- * True when text holds 6 digits or more in a row, other than the check's own number. Anything between digits that
- * isn't a letter doesn't break a run (spaces, dashes, commas, slashes, the check font's symbols, full-width digits),
- * so neither a routing number nor an account number survives, however a model writes it. A date doesn't count.
- */
-export function hasAccountDigits(text, checkNumber = '') {
-  const plain = String(text ?? '').normalize('NFKC').replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, ' ');
-  const bare = plain.replace(/[^\p{L}\d]+/gu, '');
-  const own = noZeros(checkNumber);
-  return (bare.match(/\d{6,}/g) || []).some((run) => !own || run.replace(/^0+/, '') !== own);
-}
 
 /** What a model said, safe to keep or show: cleaned, cut, and empty when it holds a possible account number */
 export function safeText(text, max = 120, checkNumber = '') {
@@ -321,52 +320,6 @@ export function tidyName(name) {
     .replace(/^\p{Ll}/u, (c) => c.toUpperCase());
 }
 const KEEP_CAPS = /^(llc|llp|lp|pc|pllc|pa|cpa|dds|md|dba|usa|ymca|ywca|ups|ncf|ibm|ii|iii|iv)$/;
-
-/** A giver's name to compare: "c/o" and what follows, The, LLC and punctuation gone, a name typed twice once */
-export function payerKey(name) {
-  // José on the check and Jose typed in Zeffy are one name
-  const words = clean(name).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/\bc\s*\/\s*o\b.*$|\bc o\b.*$/, ' ')
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9 ]+/g, ' ')
-    .replace(/\b(the|and|inc|incorporated|llc|ltd|lp|llp|corp|corporation|company)\b/g, ' ')
-    .replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
-  const half = words.length / 2;
-  if (words.length > 1 && Number.isInteger(half) && words.slice(0, half).join(' ') === words.slice(half).join(' ')) return words.slice(0, half).join(' ');
-  return words.join(' ');
-}
-
-// Words a giver's name gains or loses without being someone else: Pine Foundation is Pine Family Foundation, Oakline is Oakline Design Build
-const NAME_FILLER = new Set(['family', 'foundation', 'fund', 'trust', 'charitable', 'giving', 'group', 'co', 'design', 'build', 'builders', 'building', 'construction', 'services', 'enterprises', 'holdings', 'of', 'for', 'mr', 'mrs', 'ms', 'dr']);
-
-/**
- * The same giver for sure: the same name, J. Smith and John Smith, or one name holding the other with only filler words
- * added. Atlanta Rotary Club and North Atlanta Rotary Club are not: that's sameGiver, which only ever puts it to a person
- */
-export function surelySameGiver(a, b) {
-  const ka = payerKey(a);
-  const kb = payerKey(b);
-  if (!ka || !kb) return false;
-  if (ka === kb) return true;
-  const wa = ka.split(' ');
-  const wb = kb.split(' ');
-  const [few, many] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
-  if (few.length >= 2 && few.at(-1) === many.at(-1) && few[0][0] === many[0][0] && (few[0].length === 1 || many[0].length === 1) && few.length === many.length) return true;
-  return few.join('').length >= 4 && few.every((w) => many.includes(w)) && many.filter((w) => !few.includes(w)).every((w) => NAME_FILLER.has(w));
-}
-
-/** The same giver, as far as two names can say: the same words, all of one in the other, or J. Smith and John Smith */
-export function sameGiver(a, b) {
-  const ka = payerKey(a);
-  const kb = payerKey(b);
-  if (!ka || !kb) return false;
-  if (ka === kb) return true;
-  const wa = ka.split(' ');
-  const wb = kb.split(' ');
-  const [few, many] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
-  if (few.join('').length >= 4 && few.every((w) => many.includes(w))) return true;
-  return few.length >= 2 && few.at(-1) === many.at(-1) && few[0][0] === many[0][0] && (few[0].length === 1 || many[0].length === 1);
-}
 
 const OWN = /\bsunshine on a ranney\b|\bsoard\b/i;
 const FOUNDATION = /\b(foundation|trust|fund|grant|charitable|endowment)\b/i;
@@ -458,7 +411,8 @@ export function proveRead(reads, { cents, checkNumber = '', hint = '' }) {
   // Two readers usually differ by a word: the longer holds both. Two different readings are both kept, for the memo checks and a person
   const memos = [...new Set(good.map((r) => r.memo).filter(Boolean))];
   const fuller = memos.length === 2 && (memos[0].toLowerCase().includes(memos[1].toLowerCase()) || memos[1].toLowerCase().includes(memos[0].toLowerCase()));
-  const memo = (fuller ? [memos.sort((x, y) => y.length - x.length)[0]] : memos).join(' / ').slice(0, 200);
+  // (joined, two short numbers can meet as a long one: the joined memo is made safe as a whole)
+  const memo = safeMemo((fuller ? [memos.sort((x, y) => y.length - x.length)[0]] : memos).join(' / '), 200, checkNumber);
   const date = a && b && a.date && a.date === b.date ? a.date : '';
   // The address both readers saw under the same name, and the name it's under is the giver's
   const both = a && b && a.payer && b.payer && sameGiver(a.payer, b.payer) ? agreeAddress(a.address, b.address) : null;
@@ -471,8 +425,6 @@ export function proveRead(reads, { cents, checkNumber = '', hint = '' }) {
 }
 
 // ─── Where the donor's mail goes ────────────────────────────────────
-
-const US_STATES = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY PR VI GU AS MP AA AE AP'.split(' '));
 
 /** A street line written in capitals, in ordinary case: 12 NE PEACHTREE ST APT 4 reads 12 NE Peachtree St Apt 4 */
 function tidyStreet(t) {
@@ -489,27 +441,11 @@ export function addressOf(r, checkNumber = '') {
   const city = clean(String(r?.city ?? '').normalize('NFKC')).replace(/[,;.]+$/, '');
   const state = clean(r?.state).toUpperCase().replace(/[^A-Z]/g, '');
   const zip = clean(r?.zip).replace(/\s+/g, '');
-  if (!line1 || !city || !state || !zip || line1.length > 100) return null;
-  // A street has a number and a word: "123 Main St", "PO Box 9"
-  if (!/\p{L}/u.test(line1) || !/\d/.test(line1) || hasAccountDigits(line1, checkNumber)) return null;
-  if (!/^[\p{L} .'’-]{2,50}$/u.test(city) || !US_STATES.has(state)) return null;
+  // Whole by the one rule the page checks too (addressProblem): a street with a number and a word, a city, a state, a ZIP
+  if (addressProblem({ line1, city, state, postal_code: zip }, checkNumber)) return null;
   const z = zip.match(/^(\d{5})(?:-?(\d{4}))?$/);
-  if (!z) return null;
   // The first five only: a ZIP+4 is nine digits in a row, which is what a bank number looks like, and nothing keeps one
   return { line1: tidyStreet(line1), city: tidyName(city), state, postal_code: z[1], country: 'US' };
-}
-
-// Ways one street is written: 12 Oak Street #4 and 12 Oak St Apt 4 are one address
-const STREET_WORDS = {
-  street: 'st', avenue: 'ave', av: 'ave', road: 'rd', drive: 'dr', lane: 'ln', court: 'ct', boulevard: 'blvd', place: 'pl', parkway: 'pkwy',
-  circle: 'cir', highway: 'hwy', terrace: 'ter', trail: 'trl', square: 'sq', north: 'n', south: 's', east: 'e', west: 'w',
-  northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', apartment: '', apt: '', suite: '', ste: '', unit: '', number: '', no: '', post: 'po', office: '',
-};
-/** One address as a comparable key, the ZIP's first five digits only: "" for none */
-export function addressKey(a) {
-  if (!a?.line1) return '';
-  return [a.line1, a.city, a.state, String(a.postal_code || '').slice(0, 5)].map((s) => clean(s).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/[^a-z0-9 ]+/g, ' ').replace(/\bp o\b/g, 'po').split(' ').filter(Boolean).map((w) => STREET_WORDS[w] ?? w).filter(Boolean).join(' ')).join('|');
 }
 
 /** What two readers both saw, or null */
@@ -517,7 +453,6 @@ export function agreeAddress(a, b) {
   if (!a || !b || addressKey(a) !== addressKey(b) || a.postal_code !== b.postal_code) return null;
   return { ...a };
 }
-const addressLine = (a) => (a?.line1 ? `${a.line1}, ${a.city}, ${a.state} ${a.postal_code}` : '');
 
 const jsonOf = (s, d = null) => { try { return s ? JSON.parse(s) ?? d : d; } catch { return d; } };
 
@@ -558,8 +493,8 @@ export function letterFiles(txn) {
   });
 }
 
-/** Who wrote the check, as read off it (row.drawer; a row read before Nov 10 has only payer) */
-const checkName = (row) => row?.drawer || row?.payer || '';
+/** Who wrote the check, as read off it, and nothing else: a name a person typed or a letter gave is who the gift is from */
+const checkName = (row) => row?.drawer || '';
 
 /** What the letter with a check says, as read before the site decided it: { why } when it can't be used */
 export const letterSays = (row) => {
@@ -567,45 +502,19 @@ export const letterSays = (row) => {
   return l.why ? { why: l.why } : { name: l.name || '', email: l.email || '', address: l.address || null };
 };
 
-/** The letter's email, for a gift going in under `name`: it's the letter's giver's (the check writer's when it names nobody) */
-const letterEmail = (row, name) => {
-  const l = letterSays(row);
-  return l.email && surelySameGiver(l.name || checkName(row), name) ? l.email : '';
-};
 
-/**
- * The letter's email, to file the record by, only when Zeffy already has a donor under the giver's name holding it: the gift
- * then joins their history. Any other way (nobody has it, or someone else does) the record goes in by name, and the email is
- * added to the giver's donor after, only into a blank (writeAddresses). Zeffy files a record under whoever has an email, and
- * a fund's letter can give its accountant's. Zeffy not answering throws, so the save waits
- */
-async function letterMail(env, row, name, fetchImpl) {
-  const email = letterEmail(row, name);
-  if (!email) return '';
-  let r;
-  try {
-    r = await zeffyGet(env, '/contacts', { email, limit: 10 }, fetchImpl);
-  } catch (e) {
-    // Zeffy turning the question down (not just not answering): the record goes in by name, and the email is added after
-    if (e.status && e.status < 500 && e.status !== 429) return '';
-    throw e;
-  }
-  const holders = (r?.data || []).filter((c) => clean(c.email).toLowerCase() === email);
-  return holders.length && holders.every((c) => surelySameGiver(name, givenName({ first_name: c.first_name, last_name: c.last_name }))) ? email : '';
-}
 
 /** A letter file still to be read: its check waits for it */
 export const lettersWaiting = (row) => (jsonOf(row?.letter, {}).pending || []).length > 0;
 
-const EMAIL = /^[^\s@,;<>()]+@[^\s@,;<>()]+\.[a-z]{2,}$/i;
 /** One reader's answer about a letter, made safe: never SOARD as the giver, never an address or email of SOARD's own */
 function cleanLetter(r) {
   const name = safeText(notName(r?.recordAs), 120);
-  const email = clean(r?.email).toLowerCase().replace(/^mailto:/, '');
+  const email = emailOf(clean(r?.email).replace(/^mailto:/i, ''));
   return {
     about: r?.aboutGift === true || /^(true|yes)$/i.test(String(r?.aboutGift ?? '')),
     name: name && !OWN.test(name) && !isBank(name) ? name : '',
-    email: email.length <= 120 && EMAIL.test(email) && !/@(soardcharity\.com|sunshineonaranneyday\.com)$/.test(email) && !isTag(email) ? email : '',
+    email,
     address: addressOf(r),
     cents: Number.isFinite(Number(r?.amount)) ? toCents(r.amount) : 0,
   };
@@ -692,8 +601,8 @@ async function hashOf(bytes) {
   return [...d.slice(0, 12)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// The checks the site is still deciding by itself: only for these are letter files read
-const DECIDING = ['new', 'read', 'would'];
+// The checks not sent yet: their letter files are read, and the card shows what they say
+const DECIDING = ['new', 'read', 'person'];
 /** The letter reader's version: a reading by an older one is read again while its check is still being decided */
 const LETTER_READER = 2;
 const sameSet = (a, b) => a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
@@ -715,9 +624,9 @@ async function noteLetters(env, row, txn, now) {
   // While deciding, every file there with no reading is read first: one added while a person had the check too
   const pending = deciding && present.length <= MAX_LETTER_FILES ? present.filter((k) => !reads[k] || (reads[k].v !== LETTER_READER && !reads[k].why)) : [];
   const fresh = present.filter((k) => !known.includes(k));
-  // A file added after the record is in: a person's to look at, while the site enters checks (watching, staff enter their own)
-  const candidates = was && ['created', 'linked', 'creating', 'unsure'].includes(row.state) ? fresh : [];
-  const lateNow = candidates.length && (await readState(env.DB, KEY)).mode === 'on' ? candidates : [];
+  // A file added after the record is in Zeffy, or one that was still unread when it went in: a person's to look at
+  const saved = ['created', 'linked'].includes(row.state);
+  const lateNow = was && saved ? [...new Set([...fresh, ...(was.pending || []).filter((k) => present.includes(k))])] : [];
   const late = [...new Set([...(was?.late || []), ...lateNow])].filter((k) => present.includes(k));
   // The day a letter gets to be read starts once its check can be read, and again whenever it comes back to be decided
   const since = row.state === 'new' || !pending.length ? null : was?.since && (was.pending || []).length ? was.since : new Date(now).toISOString();
@@ -725,6 +634,8 @@ async function noteLetters(env, row, txn, now) {
   // What the files say is worked out again from the ones there now, whatever the check's state: one taken off stops counting
   const next = { ...(was || {}), files: present, reads, pending, since, late, ...summary({ files: present, reads }) };
   if (!(await swapLetter(env.DB, row.id, row.letter, next, now))) return false;
+  // A waiting card whose files changed with nothing left to read (one taken off, too many) is made again now
+  if (row.state === 'person' && !pending.length) await setRow(env.DB, row.id, { state: 'read', try_at: null }, now, 'person');
   if (lateNow.length) {
     await tell(env, row, 'letter-late', { title: `A letter was added to a check already in Zeffy: ${money(row.cents)}`, lead: 'A file was added in Mercury after this check went into Zeffy. The site doesn’t change a saved record by itself.', fix: 'Look at it in Mercury, and fix the record in Zeffy if it says something else. Then press “Looked at it” on Checks.' });
   }
@@ -784,7 +695,7 @@ function effectiveLetter(l, keys = l?.files || []) {
  * tried again, three times; readers or Mercury not answering is an outage, which never spends a try. A day of no reading
  * goes to a person
  */
-export async function readLetter(env, row, { mode, now, fetchImpl }) {
+export async function readLetter(env, row, { now, fetchImpl }) {
   const iso = new Date(now).toISOString();
   const was = jsonOf(row.letter, {});
   const key = (was.pending || [])[0];
@@ -849,6 +760,8 @@ export async function readLetter(env, row, { mode, now, fetchImpl }) {
   const pending = (cur.pending || []).filter((k) => k !== key);
   const reads = { ...(cur.reads || {}), [key]: { ...found, ...(hash ? { hash } : {}), v: LETTER_READER } };
   if (!(await save({ reads, pending, tryAt: null, at: iso, ...summary({ ...cur, reads }) }))) return { result: 'busy' };
+  // A card already waiting is made again with what the letter says
+  if (!pending.length && row.state === 'person') await setRow(env.DB, row.id, { state: 'read', try_at: null }, now, 'person');
   return { result: 'letter' };
 }
 
@@ -860,12 +773,14 @@ const madeByHand = (p) => p?.type === 'manual' || p?.type === 'imported';
 /**
  * A gift given on a Zeffy form with "Donor-advised fund": Zeffy records it at once (Due until someone marks it paid) and
  * the money comes days or weeks later from the fund, usually as a check under the fund's name (Fidelity Charitable, the
- * family fund), not the donor's. Zeffy's word for the method is "daf" (read in SOARD's Zeffy, Nov 10 2026: a real DAF gift
- * says paymentMethod "daf" where a check says "cheque", the API's word); other spellings of it count too
+ * family fund), not the donor's. Zeffy's word for the method is "daf" (read in SOARD's Zeffy, Nov 10 2026, beside "cheque"
+ * for checks); "Due" is status pending. Other spellings count too, in case Zeffy writes it out
  */
 export const byDaf = (p) => /(^|[^a-z])daf|donor.?advised/i.test(String(p?.payment_method?.type || ''));
 /** How long before a check's date a DAF gift already marked paid can still be the gift that check pays */
 const DAF_DAYS = 90;
+/** How long a DAF gift still Due can be the gift a check pays: one left Due longer was abandoned, not a check on its way */
+const DAF_DUE_DAYS = 365;
 
 /**
  * What Zeffy has that could be this check, measured from the day it would go on (recordDay, so a misread date or a
@@ -913,11 +828,12 @@ export function matchZeffy(row, payments, claimed = new Set(), learned = null) {
     const promise = byCheck && !byHand;
     if (daf) {
       // A DAF gift: the fund's check names the fund, so any name; it never links by itself, as the gift is marked paid in
-      // Zeffy, by a person. Still Due: any age, the money hasn't come. Paid: one given in the DAF_DAYS before the check
-      if (Number(p.amount) === Number(row.cents)) {
-        if (unpaid) (giver ? out.promised : out.maybe).push(p);
-        else if (at >= Math.min(anchor, early) - DAF_DAYS * 86400) out.maybe.push(p);
-      } else if (giver && unpaid) out.promised.push(p);
+      // Zeffy, by a person. Still Due: within DAF_DUE_DAYS (an older one was abandoned). Paid: one given in the DAF_DAYS before
+      const since = Math.min(anchor, early);
+      const live = unpaid ? at >= since - DAF_DUE_DAYS * 86400 : at >= since - DAF_DAYS * 86400;
+      if (!live) continue;
+      if (Number(p.amount) === Number(row.cents)) (giver && unpaid ? out.promised : out.maybe).push(p);
+      else if (giver && unpaid) out.promised.push(p);
       continue;
     }
     if (Number(p.amount) === Number(row.cents)) {
@@ -976,7 +892,7 @@ export function netBoth(row, payments, claimed = new Set(), o = {}) {
   return [...new Map([...net, ...more].map((p) => [String(p.id), p])).values()];
 }
 
-export function netOf(row, payments, claimed = new Set(), { learned = null, turnedPaid = new Set(), typedSinceOn = new Set() } = {}) {
+export function netOf(row, payments, claimed = new Set(), { learned = null, turnedPaid = new Set() } = {}) {
   const written = writtenS(row);
   const out = [];
   const parts = [];
@@ -994,10 +910,15 @@ export function netOf(row, payments, claimed = new Set(), { learned = null, turn
     const at = Number(p.created) || 0;
     const giver = !!row.payer && (namesOn(p).some((n) => sameGiver(row.payer, n)) || (learned?.contact_id && String(p.contact) === String(learned.contact_id)));
     const fresh = turnedPaid.has(id);
+    // A DAF gift a fund's check may be paying, under any name: still Due (within DAF_DUE_DAYS), or given in the DAF_DAYS before
+    const dafLive = daf && (unpaid ? at >= written - DAF_DUE_DAYS * 86400 : at >= written - DAF_DAYS * 86400);
     if (Number(p.amount) === Number(row.cents)) {
       // Made since the check was written; typed in or marked paid since then, however it's dated, under any name; the
-      // giver's own pledge still open; or a DAF gift under any name (byDaf): still Due, or given in the DAF_DAYS before
-      if (at >= written || fresh || (giver && unpaid) || (daf && (unpaid || at >= written - DAF_DAYS * 86400))) out.push(p);
+      // giver's own pledge still open; or a live DAF gift
+      if (at >= written || fresh || (giver && unpaid) || dafLive) out.push(p);
+    } else if (dafLive && Number(p.amount) < Number(row.cents)) {
+      // A fund's one check often pays several of its donors' grants: DAF gifts that add up to it count together
+      parts.push(p);
     } else if (!unpaid && Number(p.amount) < Number(row.cents) && ((at >= written && at >= secondsOf(MERCURY_FROM)) || fresh)) {
       // (an entry dated before checks went through Mercury counts only if it was typed since: older ones are other banks' checks)
       parts.push(p);
@@ -1047,12 +968,9 @@ async function openPledges(env, fetchImpl) {
 }
 
 /** What the wide look needs to know about time: payments typed or turned paid since the check was written, and since On */
-async function freshFor(env, row, cfg) {
-  const written = writtenS(row);
-  const onS = cfg?.onAt ? Math.floor(Date.parse(cfg.onAt) / 1000) : Infinity;
-  const turnedPaid = await freshSince(env.DB, written);
-  const typedSinceOn = Number.isFinite(onS) ? await freshSince(env.DB, Math.max(written, onS)) : new Set();
-  return { turnedPaid, typedSinceOn };
+/** Entries Zeffy turned paid (or that showed up) since the check was written, under any name: the wide look counts them */
+async function freshFor(env, row) {
+  return { turnedPaid: await freshSince(env.DB, writtenS(row)) };
 }
 
 /**
@@ -1092,7 +1010,7 @@ async function freshSince(DB, fromS) {
 
 /** Amounts of checks still on their way to a record (read, waiting on Mercury or a person): an entry for one of these is that check's */
 async function openAmounts(DB, notId, now) {
-  const r = await DB.prepare(`SELECT cents FROM check_gifts WHERE id != ? AND zeffy_id IS NULL AND state IN ('new', 'read', 'would', 'person', 'creating', 'unsure') AND deposited_at >= ?`)
+  const r = await DB.prepare(`SELECT cents FROM check_gifts WHERE id != ? AND zeffy_id IS NULL AND state IN ('new', 'read', 'person', 'creating', 'unsure') AND deposited_at >= ?`)
     .bind(notId || '', new Date(now - 45 * DAY).toISOString()).all().catch(() => ({ results: [] }));
   return new Set((r.results || []).map((x) => Number(x.cents)));
 }
@@ -1206,32 +1124,52 @@ export function pickForm(row, forms, learned = null) {
 
 // ─── What this check is ─────────────────────────────────────────────
 
+/** Category words that say a check isn't a Zeffy gift, and the "Don't send" reason each suggests */
+const CATEGORY_DONT = [[/\b(event|sponsor\w*|ticket\w*)\b/i, 'event'], [/\b(refund\w*|reimburs\w*)\b/i, 'refund'], [/\btransfer\w*\b/i, 'own'], [/\b(sales?|store|merch\w*)\b/i, 'store'], [/\b(insurance|tax\w*)\b/i, 'insurance']];
+
 /**
- * The decision, with nothing read or written → { do: 'link', payment } | { do: 'create', form }
- * | { do: 'person', reason, candidates } | { do: 'left-out', reason }. What Zeffy holds comes first: a hand entry
- * means a person already called it a gift. `gift`: a person said it is one, so the memo and payer are past asking.
+ * What a card says about a check, with nothing read or written → { link, notes, entries, form, suggest, dontReason }.
+ * link: a hand entry that surely is this check (it's in Zeffy already, so it's matched, not sent). notes: what to look at
+ * before sending, most important first (REASONS). entries: Zeffy's entries that may be this check, for "This is the check".
+ * contested: entries more than one waiting check fits, which never match by themselves. twin: another deposit of the
+ * same check number and amount, with its Zeffy record when it has one
  */
-export function judge(row, { payments = [], claimed = new Set(), forms = [], learned = null, drawerLearned = null, isVendor = false, gift = false } = {}) {
+export function notesFor(row, { payments = [], claimed = new Set(), forms = [], learned = null, drawerLearned = null, isVendor = false, whole = true, contested = new Set(), twin = null, net = [], category = '' } = {}) {
   const m = matchBoth(row, payments, claimedFor(row, claimed), learned, drawerLearned);
-  const show = entriesToShow;
-  if (m.same.length) return { do: 'link', payment: m.same[0] };
-  if (m.promised.length) return { do: 'person', reason: 'pledge', candidates: show(m.promised) };
-  if (m.maybe.length) return { do: 'person', reason: 'maybe-double', candidates: show(m.maybe) };
-  if (m.other.length) return { do: 'person', reason: 'amount-differs', candidates: show(m.other) };
-  if (!row.payer) return { do: 'person', reason: 'unreadable' };
-  if (isBank(row.payer)) return { do: 'person', reason: 'bank' };
+  const sure = m.same.filter((p) => !contested.has(String(p.id)));
+  // (a deposit that came back gives its record to the same check deposited again: linkTo takes it over)
+  if (sure.length && (!twin || twin.state === 'came-back')) return { link: sure[0], notes: [], entries: [], form: null, suggest: 'send', dontReason: null };
+  const notes = [];
+  const add = (n) => { if (n && !notes.includes(n)) notes.push(n); };
+  const unclaimed = (list) => list.filter((p) => !claimedFor(row, claimed).has(String(p.id)));
+  const twinEntries = twin?.zeffy_id ? payments.filter((p) => String(p.id) === String(twin.zeffy_id)) : [];
+  // The first deposit came back: this one is the money (sent, or matched to the first's record if it's still in Zeffy)
+  const backBefore = twin?.state === 'came-back';
+  if (twin) add(backBefore ? 'redeposit-back' : 'redeposit');
+  if (m.promised.length) add('pledge');
+  if (m.same.length || m.maybe.length || unclaimed(net).length) add('maybe-double');
+  if (m.other.length) add('amount-differs');
+  if (!whole) add('look-by-hand');
   const memo = row.memo || '';
-  if (!gift) {
-    // A letter's name never makes SOARD's own money, or an insurer's or the tax office's check, a gift: the check's name counts too
-    const drawer = row.drawer || '';
-    if (OWN.test(row.payer || '') || OWN.test(drawer)) return { do: 'left-out', reason: 'own' };
-    if (REFUND_MEMO.test(memo)) return { do: 'left-out', reason: 'refund' };
-    if ([row.payer || '', drawer].some((n) => NOT_A_GIVER.test(n) && !FOUNDATION.test(n)) && !GIFT_MEMO.test(memo)) return { do: 'left-out', reason: 'not-a-giver' };
-    if (EVENT_MEMO.test(memo)) return { do: 'person', reason: 'event' };
-    if (isVendor && !GIFT_MEMO.test(memo)) return { do: 'person', reason: 'vendor' };
-  }
+  const drawer = row.drawer || '';
+  // Nothing read off the check at all (a name left for a person because a letter's pages disagree is the letter's note)
+  if (!row.payer && !row.drawer) add('unreadable');
+  else if (isBank(row.payer)) add('bank');
+  if (OWN.test(row.payer || '') || OWN.test(drawer)) add('own');
+  if (REFUND_MEMO.test(memo)) add('refund');
+  if ([row.payer || '', drawer].some((n) => n && NOT_A_GIVER.test(n) && !FOUNDATION.test(n)) && !GIFT_MEMO.test(memo)) add('not-a-giver');
+  if (EVENT_MEMO.test(memo)) add('event');
+  if (isVendor && !GIFT_MEMO.test(memo)) add('vendor');
+  const nonGift = category && !isContribution(category);
+  if (nonGift) add('category');
   const form = pickForm(row, forms, learned);
-  return form ? { do: 'create', form } : { do: 'person', reason: 'no-form' };
+  if (!form) add('no-form');
+  const entries = [...new Map([...twinEntries, ...m.promised, ...m.same, ...m.maybe, ...m.other, ...unclaimed(net)].map((p) => [String(p.id), p])).values()];
+  // Not a Zeffy gift by the look of it: it comes with "Don't send" suggested, and the person still decides
+  const repeat = twin && !backBefore;
+  const dontReason = repeat ? 'repeat' : notes.map((n) => SUGGEST_DONT[n]).find(Boolean) || (nonGift ? CATEGORY_DONT.find(([re]) => re.test(category))?.[1] || null : null);
+  const suggest = repeat || notes.some((n) => SUGGEST_DONT[n]) || nonGift ? 'dont' : 'send';
+  return { link: null, notes, entries, form, suggest, dontReason };
 }
 
 /** A company SOARD pays, wherever the site knows them from: JobTread, W-9s & insurance, or money sent out of Mercury */
@@ -1301,9 +1239,10 @@ async function allClear(env, row, words) {
   await slackResolved(env, `check:${row.id}`, slackCard({ icon: '✅', title: `Check for ${money(row.cents)}`, lead: words }), { summary: words }).catch(() => null);
 }
 
-async function toPerson(env, row, reason, { note = null, candidates = null, mode, now }) {
-  if (!(await setRow(env.DB, row.id, { state: 'person', reason, note: candidates ? JSON.stringify(candidates) : note }, now, row.state))) return false;
-  if (mode === 'on') await tell(env, row, reason, { title: `A check needs a look: ${money(row.cents)}`, lead: note || REASONS[reason], fix: 'Open Checks in Job Costs.' });
+/** Back on its card for a person, with what happened (a send Zeffy didn't answer or refused, a record gone): said in Slack once */
+async function toPerson(env, row, reason, { note = undefined, now }) {
+  if (!(await setRow(env.DB, row.id, { state: 'person', reason, ...(note !== undefined ? { note } : {}) }, now, row.state))) return false;
+  await tell(env, row, reason, { title: `A check needs a look: ${money(row.cents)}`, lead: (typeof note === 'string' && !note.startsWith('[') && note) || REASONS[reason], fix: 'Open Checks in Job Costs.' });
   return true;
 }
 
@@ -1346,34 +1285,6 @@ export function recordFor(row, { name, form, email = null, day = null, now = Dat
   };
 }
 
-/**
- * Who Zeffy holds for this giver: their email, so the gift lands on their record; or, when their contact has no email,
- * that contact, to file the gift under it (postJoined). A contact that's gone gives nothing, and Zeffy makes a new one
- */
-async function learnedContact(env, learned, fetchImpl) {
-  if (!learned?.contact_id) return {};
-  let c;
-  try {
-    c = await zeffyGet(env, `/contacts/${encodeURIComponent(learned.contact_id)}`, {}, fetchImpl);
-  } catch (e) {
-    // Deleted in Zeffy: the gift makes a new contact. Not answering is waited out, so the giver's own contact is never lost
-    if (e.status === 404) return {};
-    throw Object.assign(new Error('Zeffy didn’t answer about this giver'), { later: true });
-  }
-  // The names staff gave the contact go on the record, so filing under it never renames it to how the check was read
-  const first = clean(c?.first_name);
-  const last = clean(c?.last_name);
-  const names = first || last ? { first_name: first || last, last_name: last || first } : null;
-  const email = clean(c?.email);
-  if (email && !isTag(email)) return { email, names };
-  return { join: String(c?.id || learned.contact_id), names };
-}
-
-/** Filing under a contact is used once the write test proved Zeffy keeps the record on it */
-async function joinable(env, who) {
-  if (!who.join) return null;
-  return (await readState(env.DB, KEY)).writeTest?.join?.ok ? who.join : null;
-}
 
 /**
  * Zeffy files a new record under a contact only by email, and this giver's contact has none. So for the seconds the record
@@ -1391,16 +1302,37 @@ async function postJoined(env, contact, record, { tag, now, fetchImpl, checkId =
   }
   const mine = await env.DB.prepare('INSERT OR IGNORE INTO check_tags (contact, email, check_id, at) VALUES (?, ?, ?, ?)').bind(contact, tag, checkId, new Date(now).toISOString()).run();
   if (!mine.meta?.changes) throw later();
+  const letGo = () => env.DB.prepare('DELETE FROM check_tags WHERE contact = ? AND email = ?').bind(contact, tag).run();
+  // Read again now that it's the site's: an email put on them since (the address step, a person in Zeffy) is how Zeffy files
+  // the record under them, and the no-mail address never goes on over it
+  let fresh;
+  try {
+    fresh = await zeffyGet(env, `/contacts/${encodeURIComponent(contact)}`, {}, fetchImpl);
+  } catch (e) {
+    await letGo();
+    if (e.status === 404) throw Object.assign(new Error('That donor isn’t in Zeffy any more'), { status: 404 });
+    throw Object.assign(new Error('Zeffy didn’t answer about this giver'), { later: true, status: 429 });
+  }
+  const theirs = clean(fresh?.email);
+  if (theirs && !isTag(theirs)) {
+    await letGo();
+    const p = await zeffySend(env, 'POST', '/payments', { ...record, email: theirs.toLowerCase() }, fetchImpl);
+    if (p && String(p.contact) !== String(contact)) p.newContact = true;
+    return p;
+  }
   let joined = false;
   try {
     await zeffySend(env, 'PATCH', `/contacts/${encodeURIComponent(contact)}`, { email: tag }, fetchImpl);
     joined = true;
   } catch (e) {
-    // Zeffy not answering, or answering "later": nothing is saved, and the check is tried again on a later run
-    if (!e.status || e.status >= 500 || e.status === 429) {
+    // Zeffy answering "later": the address never went on, and the check is tried again on a later run
+    if (e.status === 429) {
       await clearTag(env, { email: tag, contact }, fetchImpl).catch(() => null);
       throw Object.assign(new Error('Zeffy didn’t answer about this giver'), { later: true, status: 429 });
     }
+    // Zeffy not answering: the address may still go on after this. The note stays, so a later run takes it off once it's
+    // there (clearTags), and the check is tried again on a later run. Nothing is saved
+    if (!e.status || e.status >= 500) throw Object.assign(new Error('Zeffy didn’t answer about this giver'), { later: true, status: 429 });
     /* refused outright: the record goes in under its own contact, as it would without this */
   }
   let unanswered = false;
@@ -1409,7 +1341,11 @@ async function postJoined(env, contact, record, { tag, now, fetchImpl, checkId =
     // Filed under a new contact after all: the giver's own contact is still the one to remember, and the address comes off that one too
     if (p && (!joined || String(p.contact) !== String(contact))) {
       p.newContact = true;
-      if (joined && p.contact) await clearTag(env, { email: tag, contact: String(p.contact) }, fetchImpl, { keepRow: true }).catch(() => null);
+      // Zeffy made a new contact with the no-mail address on it: noted first, so a run takes it off if this can't
+      if (joined && p.contact) {
+        await env.DB.prepare('INSERT OR IGNORE INTO check_tags (contact, email, check_id, at) VALUES (?, ?, ?, ?)').bind(String(p.contact), tag, checkId, new Date(now).toISOString()).run();
+        await clearTag(env, { email: tag, contact: String(p.contact) }, fetchImpl).catch(() => null);
+      }
     }
     return p;
   } catch (e) {
@@ -1421,8 +1357,8 @@ async function postJoined(env, contact, record, { tag, now, fetchImpl, checkId =
   }
 }
 
-/** Takes the address off, only while it's still the one the site put on: an email someone typed since stays */
-async function clearTag(env, tag, fetchImpl, { keepRow = false } = {}) {
+/** Takes the address off, only while it's still the one the site put on: an email someone typed since stays. Its note goes (that contact's only) */
+async function clearTag(env, tag, fetchImpl) {
   let c = null;
   try {
     c = await zeffyGet(env, `/contacts/${encodeURIComponent(tag.contact)}`, {}, fetchImpl);
@@ -1432,13 +1368,24 @@ async function clearTag(env, tag, fetchImpl, { keepRow = false } = {}) {
   if (c && clean(c.email).toLowerCase() === tag.email.toLowerCase()) {
     try { await zeffySend(env, 'PATCH', `/contacts/${encodeURIComponent(tag.contact)}`, { email: null }, fetchImpl); } catch { return false; }
   }
-  if (keepRow) return true;
-  await env.DB.prepare('DELETE FROM check_tags WHERE email = ?').bind(tag.email).run();
+  await env.DB.prepare('DELETE FROM check_tags WHERE contact = ? AND email = ?').bind(String(tag.contact), tag.email).run();
   if (tag.alerted && env.SLACK_BOT_TOKEN) {
     const words = 'The no-mail address is off the donor’s contact.';
     await slackResolved(env, `check-tag:${tag.email}`, slackCard({ icon: '✅', title: 'A donor’s contact in Zeffy', lead: words }), { summary: words }).catch(() => null);
   }
   return true;
+}
+
+/**
+ * The site's no-mail address found on a contact with no note of it: one Zeffy put on after the site stopped waiting for it.
+ * No save is using it (every save notes its address before it goes on), so it comes off now. Says whether the contact is clear
+ */
+async function strayTagOff(env, contact, email, fetchImpl, now = Date.now()) {
+  if (!isTag(email)) return true;
+  if (await env.DB.prepare('SELECT 1 AS y FROM check_tags WHERE contact = ?').bind(String(contact)).first()) return false;
+  if (await clearTag(env, { contact: String(contact), email: clean(email) }, fetchImpl)) return true;
+  await env.DB.prepare('INSERT OR IGNORE INTO check_tags (contact, email, check_id, at) VALUES (?, ?, NULL, ?)').bind(String(contact), clean(email), new Date(now).toISOString()).run();
+  return false;
 }
 
 /** Every run: an address still on a contact comes off, and one stuck there a day goes to a person, once */
@@ -1457,31 +1404,43 @@ async function clearTags(env, { now, fetchImpl }) {
       buttons: [{ label: 'Open Zeffy', url: ZEFFY_CONTACTS }],
     });
     const r = await slackIssue(env, `check-tag:${tag.email}`, card, { title: 'A donor’s contact in Zeffy', kind: 'attention' }).catch(() => null);
-    if (r?.ok) await env.DB.prepare('UPDATE check_tags SET alerted = 1 WHERE email = ?').bind(tag.email).run();
+    if (r?.ok) await env.DB.prepare('UPDATE check_tags SET alerted = 1 WHERE contact = ? AND email = ?').bind(String(tag.contact), tag.email).run();
   }
 }
 
 /**
  * One POST for one check. The row is claimed first and the exact record kept on it, so a run cut off here is found by
  * settleUnsure. Zeffy has no way to refuse a repeat: when it may have acted, this never sends it again.
+ * keep: what the person chose (the name, the form, the address and email to add), written with the claim, as the record
+ * may be made from here on. undo: what the row had, put back with the claim's end when Zeffy saved nothing, so the card
+ * is as it was
  */
-async function createRecord(env, row, record, { from, mode, now, fetchImpl, by = null, learnWith = null, join = null }) {
+async function createRecord(env, row, record, { from, now, fetchImpl, by = null, learnWith = null, join = null, keep = {}, undo = {} }) {
   const iso = new Date(now).toISOString();
-  const claim = await env.DB.prepare(`UPDATE check_gifts SET state = 'creating', payload = ?, try_at = ?, updated_at = ? WHERE id = ? AND state = ?`)
-    .bind(JSON.stringify({ ...record, ...(join ? { join } : {}), ...(by ? { by } : {}) }), iso, iso, row.id, from).run();
+  // Earlier sends of this check with no clear answer are still looked for, whatever this one does (`earlier`): put back as
+  // they were if this one saves nothing; kept if it saves or goes unanswered too (anything found for them then is named)
+  const prior = jsonOf(row.payload);
+  const earlierWas = row.earlier ?? null;
+  const earlierNow = prior ? JSON.stringify([...jsonOf(row.earlier, []), prior]) : earlierWas;
+  undo = { ...undo, payload: row.payload ?? null, earlier: earlierWas };
+  keep = { ...keep, earlier: earlierNow };
+  const kept = Object.keys(keep);
+  const claim = await env.DB.prepare(`UPDATE check_gifts SET state = 'creating', payload = ?, try_at = ?, ${kept.map((k) => `${k} = ?, `).join('')}updated_at = ? WHERE id = ? AND state = ?`)
+    .bind(JSON.stringify({ ...record, ...(join ? { join } : {}), ...(by ? { by } : {}), at: iso, files: jsonOf(row.letter, {}).files || [], name: learnWith?.name || row.payer || '' }), iso, ...kept.map((k) => keep[k]), iso, row.id, from).run();
   if (!claim.meta?.changes) return { result: 'busy' };
   let p;
   try {
     p = join ? await postJoined(env, join, record, { tag: tagFor(row.id, now), now, fetchImpl, checkId: row.id }) : await zeffySend(env, 'POST', '/payments', record, fetchImpl);
   } catch (e) {
     // Not saved: a later run tries again, and this check waits at the back of the line, so one giver never holds up the rest
-    if (e.status === 429 || e.later || (e.status === 500 && e.code)) { await setRow(env.DB, row.id, { state: from, payload: null, try_at: iso }, now, 'creating'); return { result: 'later' }; }
+    if (e.status === 429 || e.later) { await setRow(env.DB, row.id, { ...undo, state: from, try_at: iso }, now, 'creating'); return { result: 'later' }; }
     if (e.status && e.status < 500) {
-      await toPerson(env, { ...row, state: 'creating' }, 'zeffy-refused', { note: refusalWords(e), mode, now });
-      await setRow(env.DB, row.id, { payload: null }, now);
+      await setRow(env.DB, row.id, { ...undo }, now, 'creating');
+      await toPerson(env, { ...row, state: 'creating' }, 'zeffy-refused', { note: refusalWords(e), now });
       return { result: 'refused', error: refusalWords(e) };
     }
-    // A timeout or a gateway's 5xx: it may have saved. settleUnsure looks for it
+    // A timeout or a 5xx (even one with Zeffy's own error code, which has been seen with the record saved): it may have
+    // saved. settleUnsure looks for it, and nothing is sent again until it's found or given up on
     await setRow(env.DB, row.id, { state: 'unsure', try_at: iso }, now, 'creating');
     return { result: 'unsure' };
   }
@@ -1491,45 +1450,202 @@ async function createRecord(env, row, record, { from, mode, now, fetchImpl, by =
   }
   // Filed somewhere other than the giver's own contact: that contact is still the one to remember
   if (join && String(p.contact) !== String(join)) p.newContact = true;
+  const lateFiles = filesSince(await getRow(env.DB, row.id), { files: jsonOf(row.letter, {}).files || [] });
   // A check Mercury sent back while this was saving keeps "came back", and now has its record to cancel
-  await env.DB.prepare(`UPDATE check_gifts SET state = CASE WHEN state = 'creating' THEN 'created' ELSE state END, via = ?, zeffy_id = ?, reason = CASE WHEN state = 'creating' THEN NULL ELSE reason END, by = ?, form_id = ?, payload = NULL, address_done = NULL, address_at = NULL, updated_at = ? WHERE id = ?`)
+  // (a run that took the claim for one left behind may have called it unsure meanwhile: Zeffy's answer settles it)
+  await env.DB.prepare(`UPDATE check_gifts SET state = CASE WHEN state IN ('creating', 'unsure') THEN 'created' ELSE state END, via = ?, zeffy_id = ?, reason = CASE WHEN state IN ('creating', 'unsure') THEN NULL ELSE reason END, by = ?, form_id = ?, payload = NULL, address_done = NULL, address_at = NULL, updated_at = ? WHERE id = ?`)
     .bind(by ? 'person' : 'site', String(p.id), by, record.campaign_id, iso, row.id).run();
   await teach(env.DB, learnWith?.name || row.payer, { contactId: p.newContact ? null : p.contact || null, campaignId: record.campaign_id, by: by || 'site' }, now);
   await handlePayment(env, p, { via: 'check', now }).catch(() => null);
   await allClear(env, row, 'Saved in Zeffy.');
+  await markLate(env, { ...row, state: 'created' }, lateFiles, now);
   return { result: 'created', id: String(p.id) };
 }
 
-/** A POST with no answer, or a run cut off mid-POST: if it's in Zeffy it's claimed, and if it never shows, a person looks. Never sent again */
-async function settleUnsure(env, { mode, now, fetchImpl }) {
+/** Zeffy's payments on one form made in a window: where one record the site sent would be, however long ago it's dated */
+async function paymentsBetween(env, fromS, toS, campaign, fetchImpl) {
+  const out = [];
+  let after = null;
+  for (let page = 0; page < ZEFFY_PAGES; page++) {
+    const r = await zeffyGet(env, '/payments', { 'created[gte]': Math.floor(fromS), 'created[lte]': Math.ceil(toS), ...(campaign ? { campaign: String(campaign) } : {}), limit: 100, starting_after: after }, fetchImpl);
+    out.push(...(r?.data || []));
+    if (!r?.has_more || !r.next_cursor) return out;
+    after = r.next_cursor;
+  }
+  throw new Error('Zeffy has more payments than the site reads at once');
+}
+
+/**
+ * The record a send Zeffy never answered may have saved, looked for where it would be: on its form, for its amount, under
+ * its giver (or the contact it was filed under), dated within two days of the date it was sent with. Exactly there, so a
+ * record dated a year back is found as surely as one dated today. Throws when Zeffy doesn't answer
+ */
+async function findSent(env, row, sent, fetchImpl) {
+  const sentAt = Date.parse(sent?.payment_date || '') / 1000;
+  if (!Number.isFinite(sentAt)) return null;
+  const payments = await paymentsBetween(env, sentAt - 2 * 86400, sentAt + 2 * 86400, sent.campaign_id, fetchImpl);
+  const claimed = await claimedIds(env.DB);
+  // Never one Zeffy already had before the send (the site's own note of when it first saw each payment: 0 is from before
+  // it watched), nor one a person said is another gift: a hand entry of someone else's gift that day isn't what was sent
+  const pressed = Date.parse(sent.at || row.try_at || '') / 1000;
+  const before = new Set(Number.isFinite(pressed) ? ((await env.DB.prepare('SELECT payment_id FROM zeffy_seen WHERE first_seen < ?').bind(Math.floor(pressed) - 60).all()).results || []).map((r) => String(r.payment_id)) : []);
+  // (and never one already named on this check as another send's record: two sends of one check look alike)
+  const ruled = new Set([...rejectedBy(row).map(String), ...extrasOf(row)]);
+  const name = clean(`${sent.first_name || ''} ${sent.last_name || ''}`);
+  return payments.find((p) => !claimed.has(String(p.id)) && !before.has(String(p.id)) && !ruled.has(String(p.id)) && Number(p.amount) === Number(sent.amount ?? row.cents)
+    && String(p.campaign_id) === String(sent.campaign_id) && paidByCheck(p)
+    // Filed under the giver's contact, it may carry the names Zeffy already had for them
+    && (namesOn(p).some((n) => sameGiver(name, n) || sameGiver(row.payer, n)) || (sent.join && String(p.contact) === String(sent.join)))
+    // Last month's gift from the same giver is another gift: only a record dated as this one was sent can be it
+    && Math.abs(Number(p.created) - sentAt) <= 2 * 86400) || null;
+}
+
+/** Sent to be filed under the giver's contact and found under a new one: that one may have kept the no-mail address */
+async function newContactTagOff(env, sent, hit, now, fetchImpl) {
+  if (!sent?.join || !hit.contact || String(hit.contact) === String(sent.join)) return;
+  const c = await zeffyGet(env, `/contacts/${encodeURIComponent(hit.contact)}`, {}, fetchImpl).catch(() => null);
+  if (isTag(c?.email)) await strayTagOff(env, hit.contact, c.email, fetchImpl, now).catch(() => false);
+}
+
+/** Records Zeffy has for a check beyond its own, to delete there (from sends with no clear answer) */
+const extrasOf = (row) => String(row?.extra || '').split(',').filter(Boolean);
+/** Every send of a check still out with no clear answer: the latest (payload) and any before it (earlier) */
+const outstanding = (row) => [jsonOf(row?.payload), ...jsonOf(row?.earlier, [])].filter(Boolean);
+
+/**
+ * The sends before the latest, each looked for where it would be: found while the check waits with no record, it's the
+ * check's record; found otherwise, it's a record to delete, named on the check. Each is looked for a week
+ */
+async function lookForEarlier(env, row, { now, fetchImpl }) {
+  const olds = jsonOf(row.earlier, []);
+  if (!olds.length) return;
+  const done = new Set();
+  for (const old of olds) {
+    if (now - Date.parse(old.at || 0) > SENT_LOOK_MS) { done.add(old.at); continue; }
+    let hit;
+    try { hit = await findSent(env, row, old, fetchImpl); } catch { continue; }
+    if (!hit) continue;
+    const cur = await getRow(env.DB, row.id);
+    if (!cur) return;
+    if (cur.state === 'person' && !cur.zeffy_id) { await settleFound(env, cur, old, hit, now, fetchImpl); return; }
+    if (String(hit.id) !== String(cur.zeffy_id)) await extraFound(env, cur, old, hit, now, fetchImpl, { clear: {} });
+    done.add(old.at);
+  }
+  if (!done.size) return;
+  // Against the list as it is now: a send a person's Send moved here meanwhile stays
+  const cur = await getRow(env.DB, row.id);
+  if (!cur) return;
+  const left = jsonOf(cur.earlier, []).filter((x) => !done.has(x.at));
+  await env.DB.prepare('UPDATE check_gifts SET earlier = ? WHERE id = ? AND earlier IS ?').bind(left.length ? JSON.stringify(left) : null, row.id, cur.earlier ?? null).run();
+}
+
+/** Files attached in Mercury since a send went out (its payload says which were there), read since or not */
+function filesSince(row, sent) {
+  const l = jsonOf(row?.letter);
+  const had = Array.isArray(sent?.files) ? new Set(sent.files) : null;
+  return (l?.files || []).filter((f) => (had ? !had.has(f) : (l.pending || []).includes(f)));
+}
+
+/** Those files weren't in the record: a check in Zeffy with files added after shows the to-do, and Slack hears once */
+async function markLate(env, row, files, now) {
+  if (!files.length) return;
+  const fresh = await getRow(env.DB, row.id);
+  const l = jsonOf(fresh?.letter, {});
+  await setRow(env.DB, row.id, { letter: JSON.stringify({ ...l, late: [...new Set([...(l.late || []), ...files])] }) }, now, 'created');
+  await tell(env, fresh || row, 'letter-late', { title: `A letter was added to a check already in Zeffy: ${money(row.cents)}`, lead: 'A file was added in Mercury after this check went into Zeffy. The site doesn’t change a saved record by itself.', fix: 'Look at it in Mercury, and fix the record in Zeffy if it says something else. Then press “Looked at it” on Checks.' });
+}
+
+/**
+ * The record a send with no clear answer saved, turning up after the check was decided another way (left out, matched to
+ * another entry, sent again): it's a second record for the check. Named on the check as a to-do, and in Slack, until it's
+ * deleted in Zeffy (the hourly look clears it then)
+ */
+async function extraFound(env, row, sent, hit, now, fetchImpl, { clear = { payload: null } } = {}) {
+  const extras = [...new Set([...extrasOf(row), String(hit.id)])];
+  if (!(await setRow(env.DB, row.id, { extra: extras.join(','), ...clear }, now, row.state))) return false;
+  await newContactTagOff(env, sent, hit, now, fetchImpl);
+  const out = row.state === 'left-out';
+  await tell(env, { ...row, alerted: (row.alerted || '').split(',').filter((k) => k !== 'extra').join(',') }, 'extra', {
+    title: out ? `A check marked not for Zeffy has a record in Zeffy: ${money(row.cents)}` : `A check has a second record in Zeffy: ${money(row.cents)}`,
+    lead: `Zeffy saved a send of this check that it hadn’t answered, after the check was ${out ? 'marked not for Zeffy' : 'matched to another record'}.`,
+    fix: 'Delete that record in Zeffy (Checks names it). The site sees it’s gone within the hour.',
+  });
+  return true;
+}
+
+/** The record an unanswered send saved, found: it's this check's, and a person's send is still theirs */
+async function settleFound(env, row, sent, hit, now, fetchImpl, { send = undefined } = {}) {
+  // Mercury may have corrected the check's amount while the send waited: the record then says what Zeffy has, to fix
+  const off = Number(hit.amount) !== Number(row.cents) ? 'amount-off' : null;
+  // (the name it went in as, not the card's since: a letter read while it waited may have named someone else)
+  const as = clean(sent?.name) || jsonOf(row.send)?.for || row.payer;
+  const others = outstanding(row).filter((x) => x.at !== sent?.at);
+  if (!(await setRow(env.DB, row.id, { state: 'created', via: sent?.by ? 'person' : 'site', ...(sent?.by ? { by: sent.by } : {}), zeffy_id: String(hit.id), reason: off, payload: null, earlier: others.length ? JSON.stringify(others) : null, address_done: null, address_at: null, form_id: String(hit.campaign_id || sent?.campaign_id || row.form_id || ''), payer: as || null, ...(send ? { send: JSON.stringify(send) } : {}) }, now, row.state))) return false;
+  await newContactTagOff(env, sent, hit, now, fetchImpl);
+  await markLate(env, row, filesSince(row, sent), now);
+  // The contact it's on is theirs only by Zeffy's own name for it (a hand entry typed with an advisor's email sits on hers)
+  let contactId = sent?.join || null;
+  if (!contactId && hit.contact && namesOn(hit).some((n) => sameGiver(as, n))) {
+    const c = await zeffyGet(env, `/contacts/${encodeURIComponent(hit.contact)}`, {}, fetchImpl).catch(() => null);
+    if (c && sameGiver(as, givenName({ first_name: c.first_name, last_name: c.last_name }))) contactId = String(hit.contact);
+  }
+  await teach(env.DB, as, { contactId, campaignId: hit.campaign_id || null, by: 'site' }, now);
+  await handlePayment(env, hit, { via: 'check', now }).catch(() => null);
+  await allClear(env, row, 'Saved in Zeffy.');
+  return true;
+}
+
+/**
+ * A POST with no answer, or a run cut off mid-POST: if it's in Zeffy it's claimed, and if it never shows, a person looks.
+ * Never sent again. A check that came back while its send was unanswered is looked for too: its record, if Zeffy saved one,
+ * is money that never came, and the page says to cancel it
+ */
+async function settleUnsure(env, { now, fetchImpl }) {
   const stale = new Date(now - CLAIM_MS).toISOString();
-  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE state = 'unsure' OR (state = 'creating' AND updated_at < ?) ORDER BY updated_at LIMIT 3`).bind(stale).all()).results || [];
-  for (const row of rows) {
-    const sent = (() => { try { return JSON.parse(row.payload || 'null'); } catch { return null; } })();
-    const claimed = await claimedIds(env.DB);
-    const sentDay = String(sent?.payment_date || '').slice(0, 10);
-    let payments;
+  // (by when it was sent: a pending check is looked at in Mercury every run, which keeps its updated_at fresh)
+  // A check waiting on Zeffy's answer first; the rest (decided, a send still looked for) take turns: each is put at the
+  // back of the line once looked at, so a week of them never holds a new one up
+  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE state = 'unsure' OR (state = 'creating' AND COALESCE(try_at, updated_at) < ?)
+    OR ((payload IS NOT NULL OR earlier IS NOT NULL) AND state IN ('person', 'came-back', 'left-out', 'linked', 'created'))
+    ORDER BY CASE WHEN state IN ('unsure', 'creating') THEN 0 ELSE 1 END, COALESCE(try_at, updated_at) LIMIT 4`).bind(stale).all()).results || [];
+  for (const first of rows) {
+    if (!['unsure', 'creating'].includes(first.state)) await env.DB.prepare('UPDATE check_gifts SET try_at = ? WHERE id = ? AND state = ?').bind(new Date(now).toISOString(), first.id, first.state).run();
+    await lookForEarlier(env, first, { now, fetchImpl });
+    const row = await getRow(env.DB, first.id);
+    if (!row || !row.payload) continue;
+    // A Send a person pressed since this run read the row is still out: it settles itself (createRecord), and only a claim
+    // older than a try can be is this run's to look for
+    if (row.state === 'creating' && Date.parse(row.try_at || row.updated_at) > Date.parse(stale)) continue;
+    // A week of looking, after which a send Zeffy never showed is given up on (the weekly money check still names any
+    // record no check in Mercury has)
+    const sentAt = Date.parse(jsonOf(row.payload)?.at || row.try_at || '');
+    if (!['unsure', 'creating'].includes(row.state) && Number.isFinite(sentAt) && now - sentAt > SENT_LOOK_MS) {
+      await setRow(env.DB, row.id, { payload: null }, now, row.state);
+      continue;
+    }
+    const sent = jsonOf(row.payload);
+    let hit;
     try {
-      payments = await paymentsSince(env, Math.max(secondsOf(isDay(sentDay) && sentDay < dayOf(row.deposited_at) ? sentDay : dayOf(row.deposited_at)) - LOOK_BACK_S, Math.floor(now / 1000) - NET_S), fetchImpl);
+      hit = sent ? await findSent(env, row, sent, fetchImpl) : null;
     } catch {
       continue; // Zeffy didn't answer: the next run looks again, and the rest of this run goes on
     }
-    const name = sent ? clean(`${sent.first_name} ${sent.last_name}`) : row.payer;
-    const sentAt = Date.parse(sent?.payment_date || '') / 1000;
-    const hit = payments.find((p) => !claimed.has(String(p.id)) && Number(p.amount) === Number(row.cents)
-      && String(p.campaign_id) === String(sent?.campaign_id) && paidByCheck(p)
-      // Filed under the giver's contact, it may carry the names Zeffy already had for them
-      && (namesOn(p).some((n) => sameGiver(name, n) || sameGiver(row.payer, n)) || (sent?.join && String(p.contact) === String(sent.join)))
-      // Last month's gift from the same giver is another gift: only a record dated as this one was sent can be it
-      && Math.abs(Number(p.created) - sentAt) <= 2 * 86400);
-    if (hit) {
-      // A person's save that Zeffy answered late is still theirs
-      if (await setRow(env.DB, row.id, { state: 'created', via: sent?.by ? 'person' : 'site', ...(sent?.by ? { by: sent.by } : {}), zeffy_id: String(hit.id), reason: null, payload: null, address_done: null, address_at: null }, now, row.state)) {
-        await teach(env.DB, row.payer, { contactId: sent?.join || (namesOn(hit).some((n) => sameGiver(row.payer, n)) ? hit.contact : null) || null, campaignId: hit.campaign_id || null, by: 'site' }, now);
-        await handlePayment(env, hit, { via: 'check', now }).catch(() => null);
-      }
-    } else if (now - Date.parse(row.try_at || row.updated_at) > UNSURE_AFTER_MS) {
-      await toPerson(env, row, 'unsure', { mode: 'on', now });
+    const waited = now - Date.parse(row.try_at || row.updated_at) > UNSURE_AFTER_MS;
+    if (row.state === 'came-back') {
+      if (hit && !row.zeffy_id && await setRow(env.DB, row.id, { zeffy_id: String(hit.id), via: sent?.by ? 'person' : 'site', ...(sent?.by ? { by: sent.by } : {}), payload: null }, now, 'came-back')) {
+        await newContactTagOff(env, sent, hit, now, fetchImpl);
+        await tell(env, row, 'back-saved', { title: `A check that came back is in Zeffy: ${money(row.cents)}`, lead: 'Zeffy saved the record the site sent for it, after the check came back.', fix: 'Cancel the record in Zeffy: no money came in for it.' });
+      } else if (hit && String(hit.id) !== String(row.zeffy_id)) await extraFound(env, row, sent, hit, now, fetchImpl);
+    } else if (['left-out', 'linked', 'created'].includes(row.state)) {
+      // Decided another way meanwhile: what turns up is a second record
+      if (hit && String(hit.id) !== String(row.zeffy_id)) await extraFound(env, row, sent, hit, now, fetchImpl);
+    } else if (row.state === 'person') {
+      // Back on its card: found, it's the check's record (prepareCard looks too, hourly)
+      if (hit) await settleFound(env, row, sent, hit, now, fetchImpl);
+    } else if (hit) {
+      await settleFound(env, row, sent, hit, now, fetchImpl);
+    } else if (waited) {
+      if (await toPerson(env, row, 'unsure', { now })) await prepareCard(env, row, { now, fetchImpl }).catch(() => null);
     } else if (row.state === 'creating') {
       await setRow(env.DB, row.id, { state: 'unsure' }, now, 'creating');
     }
@@ -1555,7 +1671,9 @@ async function pull(env, { now, fetchImpl, cfg }) {
     }
   }
   const day = new Date(now - REREAD_EVERY_MS).toISOString();
-  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE final = 0 AND (status != 'sent' OR looked_at IS NULL OR looked_at < ?) ORDER BY looked_at LIMIT 10`).bind(day).all()).results || [];
+  // A card waiting on a person, however long since its check posted: the team may attach its letter any time before it's sent
+  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE (final = 0 AND (status != 'sent' OR looked_at IS NULL OR looked_at < ?)) OR (state IN ('read', 'person') AND (looked_at IS NULL OR looked_at < ?)) ORDER BY looked_at LIMIT 10`)
+    .bind(day, new Date(now - WAITING_REREAD_MS).toISOString()).all()).results || [];
   let reached = 0;
   let lastError = null;
   for (const row of rows) {
@@ -1618,7 +1736,7 @@ async function lookAgain(env, seen, txn, { now }) {
     await tell(env, row, back ? 'back' : `status-${status}`, back
       ? { title: turnedDown ? `Mercury turned down a check: ${money(row.cents)}` : `A check came back: ${money(row.cents)}`,
         lead: `${turnedDown ? 'Mercury didn’t accept this check when it reviewed it' : 'Mercury says this check didn’t go through'}${row.zeffy_id ? ', and the site had already saved it in Zeffy.' : '.'}`,
-        fix: row.zeffy_id ? 'Cancel the record in Zeffy: no money came in for it.' : 'Nothing to do in Zeffy.' }
+        fix: row.zeffy_id ? 'Cancel the record in Zeffy: no money came in for it.' : row.payload ? 'The site is looking in Zeffy for the record it sent for it. If Zeffy saved it, Checks says to cancel it.' : 'Nothing to do in Zeffy.' }
       : { title: `A check needs a look: ${money(row.cents)}`, lead: `Mercury shows this check as “${status}”.`, fix: 'Check it in Mercury.' });
     return;
   }
@@ -1642,7 +1760,7 @@ async function startTry(DB, row, now) {
 }
 
 /** Read one check's picture. Its answers are used and gone: the row keeps only who, when and what the memo says */
-export async function readCheck(env, row, { mode, now, fetchImpl }) {
+export async function readCheck(env, row, { now, fetchImpl }) {
   if (!(await startTry(env.DB, row, now))) return { result: 'busy' };
   const tries = (row.tries || 0) + 1;
   const txn = await getTransaction(env, row.id, { fetchImpl });
@@ -1661,8 +1779,8 @@ export async function readCheck(env, row, { mode, now, fetchImpl }) {
   const giveUp = async (why, shape) => {
     await setRow(env.DB, row.id, { shape }, now);
     if (tries < READ_TRIES) return { result: 'again' };
-    await toPerson(env, row, why, { mode, now });
-    return { result: 'person' };
+    // A card all the same, with the name left for the person (prepareCard notes it can't be read)
+    return (await setRow(env.DB, row.id, { state: 'read', reason: why, try_at: null }, now, 'new')) ? { result: 'read', why } : { result: 'moved' };
   };
 
   if (!files.length) {
@@ -1697,25 +1815,26 @@ export async function readCheck(env, row, { mode, now, fetchImpl }) {
   return read.ok ? done(read, shape) : giveUp(read.why, shape);
 }
 
-/** What the site would do, kept beside the hand entry so the two can be scored */
-const guessOf = (row, v) => JSON.stringify({ do: v.do, reason: v.reason || null, formId: v.form?.id || null, formTitle: v.form?.title || null, payer: row.payer || null });
 
-async function linkTo(env, row, p, { by = null, now, fetchImpl = fetch }) {
+async function linkTo(env, row, p, { by = null, now, fetchImpl = fetch, send = null, nameBy = undefined }) {
   const iso = new Date(now).toISOString();
   // The same check deposited again after it came back takes over its record (one record, one good deposit)
   const bounced = await env.DB.prepare("SELECT * FROM check_gifts WHERE zeffy_id = ? AND state = 'came-back' AND id != ?").bind(String(p.id), row.id).first();
   if (bounced) await env.DB.prepare('UPDATE check_gifts SET zeffy_id = NULL, updated_at = ? WHERE id = ?').bind(iso, bounced.id).run();
   const giveBack = async () => { if (bounced) await env.DB.prepare('UPDATE check_gifts SET zeffy_id = ? WHERE id = ? AND zeffy_id IS NULL').bind(String(p.id), bounced.id).run().catch(() => null); };
-  let guess = {};
-  try { guess = JSON.parse(row.guess || '{}'); } catch { /* an old row */ }
-  const score = guess.do ? JSON.stringify({
-    payer: namesOn(p).some((n) => sameGiver(row.payer, n) || (row.drawer && sameGiver(row.drawer, n))),
-    form: guess.formId ? guess.formId === String(p.campaign_id) : null,
-    gift: guess.do === 'create' || guess.do === 'link',
-  }) : null;
+  // The entry teaches the name it's under: one found under the check writer's name (a letter naming someone else) is theirs.
+  // Never a name copied from the entry onto a check that had none: that name was the entry's, and teaches nothing
+  const learner = !namesOn(p).some((n) => sameGiver(row.payer, n)) && row.drawer && namesOn(p).some((n) => sameGiver(row.drawer, n)) ? row.drawer : row.payer;
   try {
     const fields = {
-      state: 'linked', via: by ? 'person' : 'hand', zeffy_id: String(p.id), note: `entry:${JSON.stringify(entriesToShow([p])[0])}`, by, score,
+      state: 'linked', via: by ? 'person' : 'hand', zeffy_id: String(p.id), note: `entry:${JSON.stringify(entriesToShow([p])[0])}`, by,
+      // What this match teaches is noted once taught, so taking it off undoes that and only that; whose record it took
+      // (the same check that came back) is noted at once, so a run cut off after this still gives it back
+      taught: bounced ? JSON.stringify({ name: '', before: null, after: null, tookFrom: bounced.id }) : '',
+      // What a person chose to put on the donor goes with the send they chose it on (a Send that found its entry typed
+      // by hand), never with a later match to some other record
+      send: send ? JSON.stringify(send) : null,
+      ...(nameBy !== undefined ? { name_by: nameBy } : {}),
       // A new record: its donor is looked at for the address
       address_done: null, address_at: null,
       payer: row.payer || namesOn(p)[0] || null,
@@ -1734,137 +1853,272 @@ async function linkTo(env, row, p, { by = null, now, fetchImpl = fetch }) {
   // A check matched to an entry under someone else's name (a fund's advisor, a donor's promise) says nothing about whose contact
   // this payer is. The contact is the payer's own only when Zeffy's contact itself carries the payer's name: a fund's grant
   // typed under the fund's name but with its advisor's email sits on the advisor's contact
-  // The entry teaches the name it's under: one found under the check writer's name (a letter naming someone else) is theirs
-  const learner = !namesOn(p).some((n) => sameGiver(row.payer, n)) && row.drawer && namesOn(p).some((n) => sameGiver(row.drawer, n)) ? row.drawer : row.payer;
   let theirs = false;
-  if (p.contact && sameGiver(learner, givenName(p.buyer))) {
-    const c = await zeffyGet(env, `/contacts/${encodeURIComponent(p.contact)}`, {}, fetchImpl).catch(() => null);
-    theirs = !!c && sameGiver(learner, givenName({ first_name: c.first_name, last_name: c.last_name }));
-  }
+  const c = p.contact ? await zeffyGet(env, `/contacts/${encodeURIComponent(p.contact)}`, {}, fetchImpl).catch(() => null) : null;
+  if (c && sameGiver(learner, givenName(p.buyer))) theirs = sameGiver(learner, givenName({ first_name: c.first_name, last_name: c.last_name }));
+  // A record Zeffy filed under a contact it made from the site's no-mail address (a send it answered badly): it comes off
+  if (isTag(c?.email)) await strayTagOff(env, p.contact, c.email, fetchImpl, now).catch(() => false);
+  const learnedRow = (key) => (key ? env.DB.prepare('SELECT name, contact_id, campaign_id, by, updated_at FROM check_payers WHERE key = ?').bind(key).first() : null);
+  const key = payerKey(learner);
+  const before = await learnedRow(key);
   await teach(env.DB, learner, { contactId: theirs ? p.contact || null : null, campaignId: p.campaign_id || null, by: by || 'hand entry' }, now);
+  const after = await learnedRow(key);
+  if (key || bounced) await env.DB.prepare("UPDATE check_gifts SET taught = ? WHERE id = ? AND state = 'linked'").bind(JSON.stringify({ name: key ? learner : '', before: before || null, after: after || null, tookFrom: bounced?.id || null }), row.id).run();
   await allClear(env, row, 'Matched to its Zeffy record.');
   return true;
 }
 
-/** A check that's read and posted: link it, make it, or say why not */
-export async function decideCheck(env, row, { mode, now, fetchImpl, gift = false }) {
-  // A file attached in Mercury since the last look is read before anything is decided. Mercury not answering waits, unless
-  // the check was looked at in the last few minutes (pull reads every check under review each run)
-  // Best effort: Mercury not answering never holds a check up (the run's own look at Mercury reports that)
-  const txn = await getTransaction(env, row.id, { fetchImpl }).catch(() => null);
-  if (txn && row.state !== 'store' && await noteLetters(env, row, txn, now)) return { result: 'letter' };
-  if (lettersWaiting(row)) return { result: 'letter' };
-  // Each file read is still the file that was read: a letter swapped for another under the same name is read again first
-  if (txn && await verifyLetters(env, row, txn, now, fetchImpl)) return { result: 'letter' };
-  // Only a check marked as a contribution in Mercury goes into Zeffy. None yet: it waits (asked again in 15 minutes, nothing
-  // read from Zeffy meanwhile). Any other category: left out, and it comes back if the category changes
-  const category = await categoryOf(env, row, txn);
-  if (!category) {
-    await setRow(env.DB, row.id, { try_at: new Date(now).toISOString() }, now, row.state);
-    return { result: 'category' };
+// ─── The card a person approves ─────────────────────────────────────
+
+// (a ZIP+4 is nine digits in a row, which is what a bank number looks like: the first five only, as everywhere the site keeps one)
+const zipOf = (z) => { const t = clean(z); return (t.match(/^\d{5}/) || [])[0] || (hasAccountDigits(t) ? '' : t.slice(0, 10)); };
+const buyerAddress = (a) => (a?.line1 ? { line1: clean(a.line1), city: clean(a.city), state: clean(a.state), postal_code: zipOf(a.postal_code), country: clean(a.country) || 'US' } : null);
+
+/**
+ * The Zeffy donors who could be this giver, from Zeffy's payments: under one of the check's or the letter's names (sameGiver),
+ * the donor this payer was learned as, or the letter's email. Each with what tells them apart: their email, how many gifts,
+ * the last one, and the address Zeffy has. Surest and newest first
+ */
+export function donorsFor(payments, names, { learned = null, email = '' } = {}) {
+  const by = new Map();
+  const wanted = names.filter(Boolean);
+  for (const p of payments || []) {
+    if (!p?.contact || isTestRecord(p) || /fail|cancel/.test(String(p.status || '').toLowerCase())) continue;
+    const on = namesOn(p);
+    const learnedOne = !!learned?.contact_id && String(p.contact) === String(learned.contact_id);
+    const mail = clean(p.buyer?.email).toLowerCase();
+    if (!learnedOne && !(email && mail === email) && !on.some((n) => wanted.some((g) => sameGiver(g, n)))) continue;
+    const id = String(p.contact);
+    const d = by.get(id) || { id, name: '', email: '', gifts: 0, last: 0, address: null, sure: false, mailAt: 0, addressAt: 0 };
+    const at = Number(p.created) || 0;
+    d.gifts += 1;
+    if (at >= d.last) { d.last = at; d.name = givenName(p.buyer) || on[0] || d.name; }
+    if (mail && !isTag(mail) && at >= d.mailAt) { d.email = mail; d.mailAt = at; }
+    const a = buyerAddress(p.buyer?.address);
+    if (a && at >= d.addressAt) { d.address = a; d.addressAt = at; }
+    d.sure ||= learnedOne || on.some((n) => wanted.some((g) => surelySameGiver(g, n)));
+    by.set(id, d);
   }
-  if (!isContribution(category)) {
-    if (!(await setRow(env.DB, row.id, { state: 'left-out', reason: 'category', note: category }, now, row.state))) return { result: 'moved' };
-    return { result: 'left-out', reason: 'category' };
-  }
-  row = { ...row, category };
-  // Who the gift is from: the letter's giver when it names one (the source of truth), else who wrote the check. The check's
-  // name is kept as the drawer, so Zeffy's entries under either name are found (matchBoth)
-  // A name a person gave this check stands, letter or not: they've seen it
-  const said = row.by && row.payer ? {} : letterSays(row);
-  if (said.why) {
-    await toPerson(env, row, said.why, { mode, now });
-    return { result: 'person', reason: said.why };
-  }
-  const own = checkName(row);
-  const giver = (row.by && row.payer) || said.name || own || null;
-  const drawer = own || null;
-  if ((giver || null) !== (row.payer || null) || drawer !== (row.drawer || null)) {
-    if (!(await setRow(env.DB, row.id, { payer: giver, drawer }, now, row.state))) return { result: 'moved' };
-    row = { ...row, payer: giver, drawer };
-  }
-  const [{ payments, whole }, forms, claimed, learned, vendor, drawerLearned] = await Promise.all([
-    readWide(env, secondsOf(earliestDay(row)) - LOOK_BACK_S, now, fetchImpl),
-    openForms(env, fetchImpl),
-    claimedIds(env.DB),
-    row.payer ? learnedFor(env.DB, row.payer) : null,
-    row.payer ? isVendor(env.DB, row.payer) : false,
-    row.drawer ? learnedFor(env.DB, row.drawer) : null,
-  ]);
-  const v = judge(row, { payments, claimed, forms, learned, drawerLearned, isVendor: vendor, gift });
-  // What it would have used is worked out even when a hand entry settles it, so the two can be compared
-  const guess = guessOf(row, { ...v, form: v.form || (row.payer ? pickForm(row, forms, learned) : null) });
-  if (v.do === 'link') {
-    await setRow(env.DB, row.id, { guess: row.guess || guess }, now);
-    await linkTo(env, { ...row, guess: row.guess || guess }, v.payment, { now, fetchImpl });
-    return { result: 'linked' };
-  }
-  // A check that goes to a person keeps the form the site would have used, so their entry starts on it
-  const wouldUse = v.form || (row.payer ? pickForm(row, forms, learned) : null);
-  if (!(await setRow(env.DB, row.id, { guess, form_id: wouldUse?.id || null, form_title: wouldUse?.title || null }, now, row.state))) return { result: 'moved' };
-  if (v.do === 'left-out') {
-    if (!(await setRow(env.DB, row.id, { state: 'left-out', reason: v.reason }, now, row.state))) return { result: 'moved' };
-    if (mode === 'on') await tell(env, row, 'left-out', { title: `A check was left out of Zeffy: ${money(row.cents)}`, lead: LEFT_OUT[v.reason], fix: 'Nothing to do unless it’s really a gift. Then say so on Checks.' });
-    return { result: 'left-out', reason: v.reason };
-  }
-  if (v.do === 'person') {
-    await toPerson(env, row, v.reason, { candidates: v.candidates || null, mode, now });
-    return { result: 'person', reason: v.reason };
-  }
-  if (mode !== 'on') {
-    return (await setRow(env.DB, row.id, { state: 'would' }, now, row.state)) ? { result: 'would' } : { result: 'moved' };
-  }
-  // Turned on with a check long posted that nobody entered: a person looks, rather than it going in unseen
-  if (row.state === 'would' && now - Date.parse(row.posted_at || row.deposited_at) > OLD_CHECK_MS) {
-    await toPerson(env, row, 'old-check', { mode, now });
-    return { result: 'person', reason: 'old-check' };
-  }
-  // The same check number and amount deposited before (a check that bounced and came again, or one picture sent twice)
-  if (row.check_number) {
-    const twin = await env.DB.prepare(`SELECT * FROM check_gifts WHERE id != ? AND cents = ? AND check_number = ? AND deposited_at >= ? LIMIT 1`)
-      .bind(row.id, row.cents, row.check_number, new Date(now - 180 * DAY).toISOString()).first();
-    if (twin) {
-      const theirs = twin.zeffy_id ? payments.filter((p) => String(p.id) === String(twin.zeffy_id)) : [];
-      await toPerson(env, row, 'redeposit', { candidates: theirs.length ? entriesToShow(theirs) : null, note: theirs.length ? null : REASONS.redeposit, mode, now });
-      return { result: 'person', reason: 'redeposit' };
-    }
-  }
-  // The wide look: the site makes a record only when nothing in Zeffy, under any name, could be this check
-  const net = netBoth(row, payments, claimed, { learned, drawerLearned, ...(await freshFor(env, row, await readState(env.DB, KEY))) });
-  if (!whole && !net.length) {
-    await toPerson(env, row, 'look-by-hand', { mode, now });
-    return { result: 'person', reason: 'look-by-hand' };
-  }
-  if (net.length) {
-    await toPerson(env, row, 'maybe-double', { candidates: entriesToShow(net), mode, now });
-    return { result: 'person', reason: 'maybe-double' };
-  }
-  let who;
-  try {
-    who = await learnedContact(env, learned, fetchImpl);
-  } catch (e) {
-    if (!e.later) throw e;
-    // Waits at the back of the line, so this giver never holds up the other checks
-    await setRow(env.DB, row.id, { try_at: new Date(now).toISOString() }, now, row.state);
-    return { result: 'later' };
-  }
-  // The letter's email files the record only on the giver's own donor in Zeffy; otherwise it's added to the donor after (writeAddresses)
-  let mail = '';
-  if (!who.email && !who.join) {
+  return [...by.values()].sort((a, b) => Number(b.sure) - Number(a.sure) || b.last - a.last).slice(0, 8)
+    .map(({ mailAt, addressAt, ...d }) => d);
+}
+
+/**
+ * Each possible donor as Zeffy's own contact has them: its names, email, address and gifts, never a payment's typed names. A
+ * fund's grant typed under the fund's name with its advisor's email sits on the advisor's contact; that contact is no donor
+ * for the fund's next check, whoever recommended it. Kept: a contact under one of the giver's names, the donor this payer
+ * was learned as, or the one holding the letter's email. Zeffy not answering about one: kept as found, never picked by itself
+ */
+async function confirmDonors(env, found, names, { learned = null, learnedName = '', email = '', fetchImpl }) {
+  const out = [];
+  for (const d of found.slice(0, 6)) {
+    let c;
     try {
-      mail = await letterMail(env, row, row.payer, fetchImpl);
-    } catch {
-      await setRow(env.DB, row.id, { try_at: new Date(now).toISOString() }, now, row.state);
-      return { result: 'later' };
+      c = await zeffyGet(env, `/contacts/${encodeURIComponent(d.id)}`, {}, fetchImpl);
+    } catch (e) {
+      if (e.status === 404) continue;
+      // Unread just now: kept to pick, unsure, and tied only to the name it was learned as. The names on its payments are
+      // no proof (a fund's grant typed with its advisor's email sits on her contact), so Send reads the contact itself
+      const learnedOne = !!learned?.contact_id && String(learned.contact_id) === d.id;
+      out.push({ ...d, sure: false, for: learnedOne && learnedName ? [learnedName] : [], sureFor: [], ...(learnedOne ? { learned: true } : {}) });
+      continue;
     }
+    const own = givenName({ first_name: c?.first_name, last_name: c?.last_name });
+    const mail = clean(c?.email).toLowerCase();
+    const learnedOne = !!learned?.contact_id && String(learned.contact_id) === d.id;
+    const byEmail = !!email && mail === email;
+    if (!learnedOne && !byEmail && !names.some((g) => sameGiver(g, own))) continue;
+    // Which of the card's names this donor is: by their own name in Zeffy, or the name they were learned as. One that only
+    // holds the letter's email is listed, tied to nobody (a foundation's letter can give a staff member's own email). The
+    // page keeps who it's from and the donor agreeing by it, and Send checks it
+    const tied = [learnedOne && learnedName].filter(Boolean);
+    out.push({
+      id: d.id, name: own || d.name, email: mail && !isTag(mail) ? mail : '', gifts: Number(c?.donation_count) || d.gifts, last: Number(c?.last_donation_date) || d.last,
+      address: buyerAddress(c?.address) || d.address, sure: learnedOne || names.some((g) => surelySameGiver(g, own)),
+      for: [...new Set([...names.filter((g) => sameGiver(g, own)), ...tied])],
+      sureFor: [...new Set([...names.filter((g) => surelySameGiver(g, own)), ...tied])],
+      ...(learnedOne ? { learned: true } : {}),
+    });
   }
-  const join = mail ? null : await joinable(env, who);
-  const record = { ...recordFor(row, { name: row.payer, form: v.form, email: mail || who.email, now }), ...(mail ? {} : who.names) };
-  return createRecord(env, row, record, { from: row.state, mode, now, fetchImpl, join });
+  return out;
+}
+
+/**
+ * The donor a card starts on, among the donors for the name it goes under (a fund's contact is never where its donor's gift
+ * starts): the one this payer was learned as, else the only sure one, else New when Zeffy has none for them, else nobody
+ * (the person picks). The page's donorFor is the same rule, for a name picked there
+ */
+export function pickDonor(donors, learned = null, name = '') {
+  const theirs = name ? donors.filter((d) => (d.for || []).some((n) => sameName(n, name))) : donors;
+  const learnedOne = learned?.contact_id && theirs.find((d) => d.id === String(learned.contact_id));
+  if (learnedOne) return learnedOne.id;
+  const sure = theirs.filter((d) => (name ? (d.sureFor || []).some((n) => sameName(n, name)) : d.sure));
+  if (sure.length === 1) return sure[0].id;
+  return theirs.length ? null : 'new';
+}
+
+/** The names a check could go under: each letter page's donor, then who wrote the check. One of each giver */
+function namesFor(row) {
+  const l = jsonOf(row.letter, {});
+  const out = [];
+  const add = (name, from) => { if (name && !out.some((x) => surelySameGiver(x.name, name))) out.push({ name, from }); };
+  if (l.why !== 'letter-many') for (const k of l.files || []) { const r = l.reads?.[k]; if (r?.about && r.name) add(r.name, 'letter'); }
+  add(checkName(row), 'check');
+  return out;
+}
+
+/** What a card shows, without the time it was made: two cards that say the same thing are the same card */
+const cardKey = (c) => JSON.stringify([c?.names, c?.formFor, c?.name, (c?.donors || []).map((d) => [d.id, d.name, d.email, d.gifts, d.last, addressKey(d.address), d.for, d.sureFor, !!d.learned]), c?.donor, c?.formId, c?.day, c?.email, c?.letterAddress, c?.letterAddressFor, c?.checkAddress, c?.checkAddressFor, c?.notes, c?.entries, c?.category, c?.suggest, c?.dontReason, c?.sent]);
+
+/**
+ * Entries more than one check still waiting could be: staff catching up a giver's months on one day type entries each of
+ * those checks fits, under the giver's name, and none of them takes one by itself. Counted over every check not sent yet
+ */
+async function contestedOf(env, payments, claimed) {
+  const waiting = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE state IN ('read', 'person') AND status IN ('pending', 'sent') ORDER BY deposited_at DESC LIMIT 200`).all()).results || [];
+  const wanted = new Map();
+  for (const row of waiting) {
+    const m = matchBoth(row, payments, claimedFor(row, claimed), row.payer ? await learnedFor(env.DB, row.payer) : null, row.drawer ? await learnedFor(env.DB, row.drawer) : null);
+    const theirs = (p) => namesOn(p).some((n) => (row.payer && sameGiver(row.payer, n)) || (row.drawer && sameGiver(row.drawer, n)));
+    for (const p of [...m.same, ...m.maybe.filter(theirs)]) wanted.set(String(p.id), (wanted.get(String(p.id)) || 0) + 1);
+  }
+  return new Set([...wanted].filter(([, n]) => n > 1).map(([id]) => id));
+}
+
+/** Zeffy as one card needs it: 400 days of payments and open pledges, the open forms, and which entries other checks hold */
+async function readsFor(env, row, now, fetchImpl) {
+  const [w, forms, claimed] = await Promise.all([readWide(env, secondsOf(earliestDay(row)) - LOOK_BACK_S, now, fetchImpl), openForms(env, fetchImpl), claimedIds(env.DB)]);
+  return { payments: w.payments, whole: w.whole, forms, claimed, contested: await contestedOf(env, w.payments, claimed) };
+}
+
+/**
+ * Fills in a check's card for a person to approve (state 'read' → 'person'), or matches it to a hand entry that surely is it.
+ * Run when a check is read, when a file's reading changes, and every hour while it waits (with `shared`, Zeffy read once for
+ * every waiting check). A refresh that changes nothing writes nothing, so a person's open card never goes stale for nothing.
+ * Nothing here writes to Zeffy
+ */
+export async function prepareCard(env, seen, { now, fetchImpl = fetch, shared = null } = {}) {
+  const row = (await getRow(env.DB, seen.id)) || seen;
+  if (!['read', 'person'].includes(row.state)) return { result: 'moved' };
+  // A file added or changed in Mercury is read before the card is made: the card is made again once it is
+  if (!shared) {
+    const txn = await getTransaction(env, row.id, { fetchImpl }).catch(() => null);
+    if (txn && await noteLetters(env, row, txn, now)) return { result: 'letter' };
+    if (txn && await verifyLetters(env, row, txn, now, fetchImpl)) return { result: 'letter' };
+  }
+  if (lettersWaiting(row)) return { result: 'letter' };
+  const before = jsonOf(row.payload);
+  if (before) {
+    let hit = null;
+    try { hit = await findSent(env, row, before, fetchImpl); } catch { return { result: 'later' }; }
+    if (hit) return (await settleFound(env, row, before, hit, now, fetchImpl)) ? { result: 'created' } : { result: 'moved' };
+  }
+  const category = await categoryOf(env, row);
+  const said = letterSays(row);
+  const own = checkName(row);
+  const names = namesFor(row);
+  // The letter is the source of truth for whose gift it is; a name a person gave stands; pages that disagree leave it to the person
+  const name = (row.name_by && row.payer) || (said.why ? (names.length === 1 ? names[0].name : '') : said.name || own) || '';
+  const work = { ...row, payer: name || null, drawer: own || null, category };
+  const z = shared || await readsFor(env, work, now, fetchImpl);
+  const [learned, drawerLearned, vendor] = await Promise.all([name ? learnedFor(env.DB, name) : null, own ? learnedFor(env.DB, own) : null, name ? isVendor(env.DB, name) : false]);
+  const twin = await twinOf(env, row, [own, name], { now });
+  const net = netBoth(work, z.payments, z.claimed, { learned, drawerLearned, ...(await freshFor(env, work)) });
+  const n = notesFor(work, { payments: z.payments, claimed: z.claimed, forms: z.forms, learned, drawerLearned, isVendor: vendor, whole: z.whole, contested: z.contested, twin, net, category });
+  // Typed into Zeffy by hand already: matched, nothing to send. Only while Mercury has the money
+  if (n.link && ['pending', 'sent'].includes(row.status)) {
+    return (await linkTo(env, work, n.link, { now, fetchImpl })) ? { result: 'linked' } : { result: 'moved' };
+  }
+  const sticky = STICKY.includes(row.reason) ? [row.reason] : [];
+  const buckets = await readSpendConfig(env.DB).then((cfg) => cfg?.accountBuckets || {}, () => ({}));
+  if (buckets[row.account_id] === 'store') sticky.push('store-account');
+  // Zeffy's own reason for refusing the last send, kept with the card (the row's note becomes the entries to show)
+  const words = (n) => (typeof n === 'string' && n && !n.startsWith('[') && !n.startsWith('entry:') ? n : null);
+  const refusal = row.reason === 'zeffy-refused' ? words(row.note) || jsonOf(row.card, {}).refusal || null : null;
+  if (['no-picture', 'unreadable'].includes(row.reason)) sticky.push(row.reason);
+  const lettered = said.why ? [said.why] : [];
+  const notes = [...new Set([...sticky, ...lettered, ...n.notes])];
+  const giverNames = [...names.map((x) => x.name), name].filter(Boolean);
+  const found = donorsFor(z.payments, giverNames, { learned, email: said.email || '' });
+  // The donor this payer was learned as, gone quiet for 400 days, is still a candidate
+  if (learned?.contact_id && !found.some((d) => d.id === String(learned.contact_id))) found.unshift({ id: String(learned.contact_id), name: '', email: '', gifts: 0, last: 0, address: null, sure: true });
+  const looked = await confirmDonors(env, found, giverNames, { learned, learnedName: name, email: said.email || '', fetchImpl });
+  // Donors a person's Send turned up (Zeffy's donor under a name they typed, the one holding an email they typed) stay on
+  // the card when it's made again: they were shown, and may be picked. A deleted one comes off when Send finds it gone
+  const shown = (jsonOf(row.card, {}).donors || []).filter((d) => d.added && !looked.some((x) => x.id === d.id));
+  const donors = [...looked, ...shown];
+  // What a person chose on the send before this card (one Zeffy never answered, then nowhere to be found), for this giver:
+  // the card starts on it, as they left it
+  const last = sentPlan(row);
+  const sent = last && name && sameGiver(last.name, name) ? last : null;
+  // The form the site's rule gives for each name on the card, so picking the other name never drops a form the memo or a
+  // giver's past gifts decided; the one the person sent last stands for that name
+  const formFor = {};
+  for (const x of names) {
+    const f = pickForm({ ...work, payer: x.name }, z.forms || [], x.name === name ? learned : await learnedFor(env.DB, x.name));
+    formFor[x.name] = sent && sameGiver(sent.name, x.name) && (z.forms || []).some((g) => g.id === sent.formId) ? sent.formId : f?.id || null;
+  }
+  const card = {
+    names, name, donors, formFor,
+    donor: sent && (sent.donor === 'new' || donors.some((d) => d.id === sent.donor)) ? sent.donor : pickDonor(donors, learned, name),
+    formId: (sent?.formId && (z.forms || []).some((f) => f.id === sent.formId) && sent.formId) || n.form?.id || null, day: sent?.day || recordDay(row),
+    // The letter's email is its giver's (the check writer's when it names nobody); one the person gave on that send is theirs
+    email: sent ? sent.email : said.email || '',
+    emailFor: sent ? (sent.email ? sent.name : '') : said.email ? said.name || own || name || '' : '',
+    // Each address is someone's: the letter's is its giver's (the check writer's when it names nobody), the check's its writer's
+    letterAddress: said.address || null, letterAddressFor: said.address ? said.name || own || '' : '',
+    checkAddress: jsonOf(row.address), checkAddressFor: jsonOf(row.address) ? jsonOf(row.address)?.for || own || '' : '',
+    notes, entries: entriesToShow(n.entries), category: category || null,
+    suggest: n.suggest, dontReason: n.dontReason,
+    // (and the address that send chose, which the page picks among the card's addresses or types in)
+    sent,
+    refusal,
+  };
+  const fresh = row.state === 'read';
+  // Said in Slack once a card, when it's made: one Slack didn't take is said the next time the card is looked at (tell keeps
+  // what's said). A check put on a person for another reason (a record gone in Zeffy) was told about then, so it isn't again
+  const ready = async () => {
+    if (!fresh && row.alerted) return;
+    await tell(env, { ...row, payer: name || row.payer }, 'ready', {
+      title: `A check is ready to send to Zeffy: ${money(row.cents)}`,
+      lead: notes.length ? `${name ? `From ${name}. ` : ''}${REASONS[notes[0]] || ''}` : `From ${name}. Everything is filled in.`,
+      fix: 'Look it over on Checks, then send it to Zeffy, or say it isn’t for Zeffy.',
+    });
+  };
+  if (!fresh && row.card && cardKey(jsonOf(row.card)) === cardKey(card)) { await ready(); return { result: 'same' }; }
+  const fields = {
+    state: 'person', reason: notes[0] || 'ready', note: card.entries.length ? JSON.stringify(card.entries) : null, card: JSON.stringify({ ...card, at: new Date(now).toISOString() }),
+    payer: name || null, drawer: own || null, form_id: n.form?.id || null, form_title: n.form?.title || null, try_at: null,
+  };
+  if (!(await setRow(env.DB, row.id, fields, now, row.state))) return { result: 'moved' };
+  await ready();
+  return { result: 'card', reason: fields.reason };
+}
+
+/** The choices of a person's send this check is waiting after, for its card */
+function sentPlan(row) {
+  const p = jsonOf(row.send);
+  return p ? { name: p.for || '', donor: p.donor || 'new', formId: p.formId || null, email: p.email || '', address: p.address || null, day: isDay(p.day) ? p.day : null } : null;
+}
+
+/**
+ * The same check deposited before: its number and amount within 180 days, from the same giver. Check numbers are each
+ * checkbook's own, so another giver's #1042 for the same amount is another check. A check with no name either side can't
+ * say, so it counts. saved: only one with its Zeffy record
+ */
+async function twinOf(env, row, names, { now, saved = false }) {
+  if (!row.check_number) return null;
+  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE id != ? AND cents = ? AND check_number = ? AND deposited_at >= ?${saved ? ' AND zeffy_id IS NOT NULL' : ''} ORDER BY deposited_at DESC LIMIT 10`)
+    .bind(row.id, row.cents, row.check_number, new Date(now - 180 * DAY).toISOString()).all()).results || [];
+  const mine = names.filter(Boolean);
+  return rows.find((t) => {
+    const theirs = [t.drawer, t.payer].filter(Boolean);
+    return !mine.length || !theirs.length || theirs.some((a) => mine.some((b) => sameGiver(a, b)));
+  }) || null;
 }
 
 /** One record against Zeffy now: what it asked staff to fix clears itself once it's fixed, and a record that's gone says so. It's never made again by itself */
-async function lookAtRecord(env, row, known, { mode, now, fetchImpl, payments = [], claimed = new Set() }) {
+async function lookAtRecord(env, row, known, { now, fetchImpl, payments = [], claimed = new Set() }) {
   let p = known;
   if (!p) {
     try {
@@ -1880,7 +2134,7 @@ async function lookAtRecord(env, row, known, { mode, now, fetchImpl, payments = 
     // Zeffy can't edit a payment, so staff fix one by deleting it and typing it again: that entry is now this check's record
     const again = matchBoth(row, payments, claimedFor({ ...row, rejected }, claimed)).same[0];
     if (again && await linkTo(env, { ...row, rejected }, again, { now, fetchImpl })) { claimed.add(String(again.id)); return true; }
-    await toPerson(env, { ...row, alerted: null }, 'record-gone', { mode, now });
+    await toPerson(env, { ...row, alerted: null }, 'record-gone', { now });
     await setRow(env.DB, row.id, { zeffy_id: null, via: null, rejected }, now);
     return true;
   }
@@ -1891,129 +2145,80 @@ async function lookAtRecord(env, row, known, { mode, now, fetchImpl, payments = 
 }
 
 /**
- * Once an hour: every check still open against what Zeffy holds now, so a hand entry made since links itself; one under
- * another name is put in front of a person; a record the site made that a person then entered too is flagged; money that
- * went back out for a check is flagged; and a cleared check nobody has entered is said out loud (in Watch nothing else would).
+ * Once an hour: every card waiting on a person is made again against what Zeffy holds now (a hand entry typed since matches
+ * it; an entry under another name joins its list); a record kept for a check is looked at (fixed, marked paid, deleted); a
+ * record a person sent that someone then typed too is flagged; money that went back out for a check is flagged; and a
+ * card that has waited 10 days is said out loud once
  */
-async function matchOpen(env, { mode, now, fetchImpl }) {
+async function matchOpen(env, { now, fetchImpl }) {
   // A check that came back can show as new money going out rather than a change to the deposit
   const held = (await env.DB.prepare(`SELECT c.* FROM check_gifts c WHERE c.zeffy_id IS NOT NULL AND c.final = 0 AND EXISTS (
     SELECT 1 FROM mercury_txns t WHERE t.cents = -c.cents AND t.created_at > c.deposited_at AND t.card_id IS NULL AND t.kind IN ('other', 'checkDeposit')) LIMIT 10`).all()).results || [];
   for (const row of held) await tell(env, row, 'money-out', { title: `A check may have come back: ${money(row.cents)}`, lead: 'The same amount went back out of Mercury after this check. It may have been returned.', fix: 'Check it in Mercury. If it came back, cancel the record in Zeffy.' });
 
-  // Waiting on an entry stays open for 150 days; the rest for the 60 days Mercury is still being watched. Newest first, so
-  // a pile of old ones never holds up this week's, and the read of Zeffy never runs past what it can read whole
+  // Newest first, so a pile of old ones never holds up this week's, and the read of Zeffy never runs past what it can read whole
   const since = new Date(now - MATCH_MAX_AGE_MS).toISOString();
-  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE (state IN ('would', 'person') OR (state IN ('left-out', 'store', 'created') AND final = 0)) AND deposited_at >= ? ORDER BY deposited_at DESC LIMIT 100`).bind(since).all()).results || [];
+  const waiting = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE state = 'person' AND status IN ('pending', 'sent') AND deposited_at >= ? ORDER BY deposited_at DESC LIMIT 100`).bind(since).all()).results || [];
+  const sent = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE state = 'created' AND final = 0 AND deposited_at >= ? ORDER BY deposited_at DESC LIMIT 100`).bind(since).all()).results || [];
   // A record in Zeffy can change after it's matched: fixed, marked paid, moved or deleted
   const kept = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE zeffy_id IS NOT NULL AND (final = 0 OR state = 'came-back') AND deposited_at >= ? ORDER BY deposited_at DESC LIMIT 100`).bind(since).all()).results || [];
-  // Read or not, posted 10 days ago and still not finished: said once, so a stuck check is never silent
+  // Not even read 10 days after it posted: said once, so a stuck check is never silent
   const stuck = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE state IN ('new', 'read') AND status = 'sent' AND posted_at < ? AND deposited_at >= ? LIMIT 20`)
     .bind(new Date(now - NO_RECORD_ALARM_MS).toISOString(), since).all()).results || [];
-  for (const row of stuck) {
-    // One still waiting for its Category in Mercury isn't stuck on Zeffy: it's waiting to be marked a contribution
-    const unmarked = !isContribution(await categoryOf(env, row));
-    await tell(env, row, 'stuck', unmarked
-      ? { title: `A check isn’t marked in Mercury: ${money(row.cents)}`, lead: `This check posted more than 10 days ago and its Category in Mercury isn’t ${GIFT_WORDS}, so it isn’t in Zeffy.`, fix: 'If it’s a gift, set its Category in Mercury and it goes into Zeffy that evening. If it isn’t, say so on Checks.' }
-      : { title: `A check isn’t finished: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and the site hasn’t finished it. Zeffy or Mercury may not be answering.', fix: 'Enter it in Zeffy by hand, and it links itself within the hour.' });
-  }
+  for (const row of stuck) await tell(env, row, 'stuck', { title: `A check isn’t ready to send: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and the site still hasn’t made its card. Zeffy or Mercury may not be answering.', fix: 'Enter it in Zeffy by hand, and it links itself within the hour.' });
   // The whole 400 days every hour, checks open or not: the site's record of when each payment showed up stays current, so
   // the wide look can tell an entry typed this week from one typed long ago
   const recent = await paymentsSince(env, Math.floor(now / 1000) - NET_S, fetchImpl);
   await noteSeen(env, recent, now);
   const recentIds = new Set(recent.map((p) => String(p.id)));
   const payments = [...recent, ...(await openPledges(env, fetchImpl).catch(() => [])).filter((p) => !recentIds.has(String(p.id)))];
-  if (!rows.length && !kept.length) return;
-  const cfg = await readState(env.DB, KEY);
+  // A record named on a check to delete in Zeffy: gone (deleted or cancelled), the to-do goes. Each read by itself, so
+  // this runs whatever else the hour has to look at
+  const extras = (await env.DB.prepare('SELECT * FROM check_gifts WHERE extra IS NOT NULL LIMIT 50').all()).results || [];
+  for (const row of extras) {
+    const left = [];
+    let unsure = false;
+    for (const id of extrasOf(row)) {
+      let p = null;
+      try { p = await zeffyGet(env, `/payments/${encodeURIComponent(id)}`, {}, fetchImpl); } catch (e) { if (e.status !== 404) { unsure = true; left.push(id); continue; } }
+      if (p && !/cancel/.test(String(p.status || '').toLowerCase())) left.push(id);
+    }
+    if (left.length === extrasOf(row).length) continue;
+    await env.DB.prepare('UPDATE check_gifts SET extra = ?, updated_at = ? WHERE id = ? AND extra = ?').bind(left.length ? left.join(',') : null, new Date(now).toISOString(), row.id, row.extra).run();
+    if (!left.length && !unsure) await allClear(env, row, 'That record is gone from Zeffy.');
+  }
+  if (!waiting.length && !kept.length && !sent.length) return;
   const claimed = await claimedIds(env.DB);
   const byId = new Map(payments.map((p) => [String(p.id), p]));
   // A check changed here is looked at again next hour, not from what it was a moment ago
   const changed = new Set();
-  for (const row of kept) if (await lookAtRecord(env, row, byId.get(String(row.zeffy_id)) || null, { mode, now, fetchImpl, payments, claimed })) changed.add(row.id);
-  // No form fitted: once one is open again, the check is decided again
-  let forms = null;
-  if (rows.some((r) => r.state === 'person' && r.reason === 'no-form')) forms = await openForms(env, fetchImpl).catch(() => null);
-  // Staff catching up a giver's months on one day: one entry fits more than one check, so none of them takes it by itself
-  const learnedOf = new Map();
-  const wanted = new Map();
-  for (const row of rows) {
-    if (changed.has(row.id) || !['would', 'person'].includes(row.state)) continue;
-    const learned = row.payer ? await learnedFor(env.DB, row.payer) : null;
-    learnedOf.set(row.id, learned);
-    const m = matchBoth(row, payments, claimedFor(row, claimed), learned, row.drawer ? await learnedFor(env.DB, row.drawer) : null);
-    // Only checks from that giver: another donor's same-amount check is no reason to doubt a name that fits
-    for (const p of [...m.same, ...m.maybe].filter((x) => namesOn(x).some((n) => sameGiver(row.payer, n) || (row.drawer && sameGiver(row.drawer, n))))) wanted.set(String(p.id), (wanted.get(String(p.id)) || 0) + 1);
-  }
-  for (const row of rows) {
+  for (const row of kept) if (await lookAtRecord(env, row, byId.get(String(row.zeffy_id)) || null, { now, fetchImpl, payments, claimed })) changed.add(row.id);
+
+  // Staff catching up a giver's months on one day: an entry that fits more than one waiting check never matches by itself
+  const contested = await contestedOf(env, payments, claimed);
+  const forms = waiting.length ? await openForms(env, fetchImpl) : [];
+  const shared = { payments, whole: true, forms, claimed, contested };
+  for (const row of waiting) {
     if (changed.has(row.id)) continue;
-    if (row.state === 'person' && row.reason === 'no-form') {
-      if (forms && pickForm(row, forms, await learnedFor(env.DB, row.payer || ''))) { await setRow(env.DB, row.id, { state: 'read', reason: null }, now, 'person'); continue; }
-    }
-    // A person said it isn't a gift: nothing here changes that
-    if (row.state === 'left-out' && row.reason === 'person') continue;
-    const m = matchBoth(row, payments, claimedFor(row, claimed), learnedOf.has(row.id) ? learnedOf.get(row.id) : row.payer ? await learnedFor(env.DB, row.payer) : null, row.drawer ? await learnedFor(env.DB, row.drawer) : null);
-    const shared = m.same.filter((p) => (wanted.get(String(p.id)) || 0) > 1);
-    if (shared.length && ['would', 'person'].includes(row.state)) { m.maybe.push(...shared); m.same = m.same.filter((p) => !shared.includes(p)); }
-    if (row.state === 'created') {
-      // Typed by hand as well, under the check's name or another (a fund's check is often typed under its advisor's); or a
-      // pledge marked paid since the site saved it, which this check may have paid
-      const since = await freshSince(env.DB, Math.floor(Date.parse(row.posted_at || row.deposited_at) / 1000) - 86400);
-      const waiting = await openAmounts(env.DB, row.id, now);
-      const typed = [...new Map([...m.same, ...m.maybe, ...m.other, ...netBoth(row, payments, claimedFor(row, claimed), { turnedPaid: since })].map((p) => [String(p.id), p])).values()]
-        .filter((p) => String(p.status || '').toLowerCase() === 'succeeded' && paidByCheck(p) && (madeByHand(p) || since.has(String(p.id))) && !waiting.has(Number(p.amount)));
-      if (typed.length) await tell(env, row, 'double', { title: `This check may be in Zeffy twice: ${money(row.cents)}`, lead: m.same.length ? 'The site made a record for this check, and someone entered it by hand too.' : `The site made a record for this check, and Zeffy has a hand entry for the same amount${namesOn(typed[0])[0] ? ` under ${namesOn(typed[0])[0]}` : ''}. It may be the same check.`, fix: 'If it is, delete the extra one in Zeffy. If that record has an email on it, Zeffy may tell the donor, so keep the one with the email.' });
-      continue;
-    }
-    if (['pending', 'sent'].includes(row.status) && m.same.length && await linkTo(env, row, m.same[0], { now, fetchImpl })) { claimed.add(String(m.same[0].id)); continue; }
-    if (row.state === 'store') continue;
-    // A hand entry under another name: one press from being matched
-    const likely = [...m.promised, ...m.maybe, ...m.other];
-    if (likely.length && (row.state === 'person' || row.state === 'would')) {
-      await setRow(env.DB, row.id, { state: 'person', reason: row.state === 'person' ? row.reason : m.promised.length ? 'pledge' : m.maybe.length ? 'maybe-double' : 'amount-differs', note: JSON.stringify(entriesToShow(likely)) }, now, row.state);
-      continue;
-    }
-    // What it was asked about has gone (matched to another check, or deleted): it goes back to being decided. An entry only
-    // the wide look found is still there, still unclaimed: the question stands
-    const asked = (() => { try { return row.note?.startsWith('[') ? JSON.parse(row.note).map((x) => String(x.id)) : []; } catch { return []; } })();
-    const standing = asked.some((id) => byId.has(id) && !claimedFor(row, claimed).has(id));
-    if (row.state === 'person' && ASKS_ABOUT_ENTRIES.includes(row.reason) && !standing) { await setRow(env.DB, row.id, { state: 'read', reason: null, note: null }, now, 'person'); continue; }
-    if (row.state === 'person' && standing) continue;
-    if (row.state === 'person' && row.note?.startsWith('[')) await setRow(env.DB, row.id, { note: null }, now, 'person');
-    if (row.state === 'person' && mode === 'on') await tell(env, row, row.reason, { title: `A check needs a look: ${money(row.cents)}`, lead: REASONS[row.reason] || '', fix: 'Open Checks in Job Costs.' });
-    const posted = Date.parse(row.posted_at || row.deposited_at);
-    if (row.state !== 'left-out' && row.status === 'sent' && now - posted > NO_RECORD_ALARM_MS) {
-      // Before saying Zeffy has nothing: anything the wide look finds is put to a person, one press from being matched
-      const net = row.state === 'would' ? netBoth(row, payments, claimedFor(row, claimed), { learned: learnedOf.get(row.id) || null, ...(await freshFor(env, row, cfg)) }) : [];
-      if (net.length) { await toPerson(env, row, 'maybe-double', { candidates: entriesToShow(net), mode, now }); continue; }
-      await tell(env, row, 'no-record', { title: `A check isn’t in Zeffy: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and Zeffy has no record of it.', fix: 'Enter it in Zeffy, or say why not on Checks.' });
+    const r = await prepareCard(env, row, { now, fetchImpl, shared });
+    if (r.result === 'linked') { const got = await getRow(env.DB, row.id); if (got?.zeffy_id) claimed.add(String(got.zeffy_id)); continue; }
+    // Waiting 10 days after Mercury posted it: said once more, plainly
+    if (row.status === 'sent' && now - Date.parse(row.posted_at || row.deposited_at) > NO_RECORD_ALARM_MS) {
+      await tell(env, row, 'no-record', { title: `A check is still waiting to be sent to Zeffy: ${money(row.cents)}`, lead: 'This check posted more than 10 days ago and its card is still waiting on a person.', fix: 'Open Checks: send it to Zeffy, match it to an entry, or say it isn’t for Zeffy.' });
     }
   }
+  for (const row of sent) {
+    if (changed.has(row.id)) continue;
+    // Typed by hand as well, under the check's name or another (a fund's check is often typed under its advisor's); or a
+    // pledge or donor-advised gift marked paid since it was sent, which this check may have paid
+    const m = matchBoth(row, payments, claimedFor(row, claimed), row.payer ? await learnedFor(env.DB, row.payer) : null, row.drawer ? await learnedFor(env.DB, row.drawer) : null);
+    const turned = await freshSince(env.DB, Math.floor(Date.parse(row.posted_at || row.deposited_at) / 1000) - 86400);
+    const open = await openAmounts(env.DB, row.id, now);
+    const typed = [...new Map([...m.same, ...m.maybe, ...m.other, ...netBoth(row, payments, claimedFor(row, claimed), { turnedPaid: turned })].map((p) => [String(p.id), p])).values()]
+      .filter((p) => String(p.status || '').toLowerCase() === 'succeeded' && (paidByCheck(p) || byDaf(p)) && (madeByHand(p) || turned.has(String(p.id))) && !open.has(Number(p.amount)));
+    if (typed.length) await tell(env, row, 'double', { title: `This check may be in Zeffy twice: ${money(row.cents)}`, lead: m.same.length ? 'It was sent to Zeffy from Checks, and someone entered it by hand too.' : `It was sent to Zeffy from Checks, and Zeffy has ${byDaf(typed[0]) ? 'a donor-advised gift marked paid' : 'a hand entry'} for the same amount${namesOn(typed[0])[0] ? ` under ${namesOn(typed[0])[0]}` : ''}. It may be the same gift.`, fix: 'If it is, delete the extra one in Zeffy. If that record has an email on it, Zeffy may tell the donor, so keep the one with the email.' });
+  }
 }
-
-/** 7 PM Eastern on a day, as a time: the offset is the day's own, so it's right in summer and winter */
-function eveningOf(day) {
-  const noon = new Date(`${day}T12:00:00Z`);
-  const off = new Intl.DateTimeFormat('en-US', { timeZone: TZ, timeZoneName: 'shortOffset' }).formatToParts(noon).find((x) => x.type === 'timeZoneName')?.value || 'GMT-5';
-  const m = off.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
-  const hours = m ? Number(m[1]) + Math.sign(Number(m[1]) || 1) * (Number(m[2] || 0) / 60) : -5;
-  return Date.parse(`${day}T${String(SAVE_HOUR).padStart(2, '0')}:00:00Z`) - hours * 3600e3;
-}
-
-/**
- * When a check the site decides by itself goes into Zeffy: 7 PM Eastern on the day it was deposited, so a letter the team
- * attaches in Mercury that day is read with it (Peter, Nov 10: "same day"). One deposited in the hour before waits a day
- */
-export function saveAt(depositedAt) {
-  const t = Date.parse(depositedAt || '');
-  if (Number.isNaN(t)) return 0;
-  const day = dayOf(depositedAt);
-  const tonight = eveningOf(day);
-  if (t + SAVE_GAP_MS <= tonight) return tonight;
-  const next = new Date(Date.parse(`${day}T12:00:00Z`) + DAY).toISOString().slice(0, 10);
-  return eveningOf(next);
-}
-/** Ready for the site to decide: its evening has come (a person's answer never waits), and no letter is still being read */
-const isDue = (row, now) => (!!row.by || now >= saveAt(row.deposited_at)) && !lettersWaiting(row);
 
 // ─── The donor's address in Zeffy ───────────────────────────────────
 
@@ -2026,13 +2231,14 @@ const waitingSince = (done) => Number(String(done || '').match(/^wait:(\d+)$/)?.
  * Zeffy has (the newest the donor gave us), except on a staff member's hand entry, where it only fills a blank. An email
  * only fills a blank: Zeffy keeps one a contact, and it's how Zeffy finds the donor. Nothing is sent to anyone
  */
-export async function writeAddresses(env, { now, fetchImpl, mode, cfg }) {
-  if (mode !== 'on' || !cfg?.writeTest?.address?.ok) return { result: 'off' };
+export async function writeAddresses(env, { now, fetchImpl, cfg }) {
+  if (!cfg?.writeTest?.ok || !cfg.writeTest.address?.ok) return { result: 'off' };
   const iso = new Date(now).toISOString();
-  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE zeffy_id IS NOT NULL AND state IN ('created', 'linked') AND (address IS NOT NULL OR letter IS NOT NULL)
+  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts WHERE zeffy_id IS NOT NULL AND state IN ('created', 'linked') AND (address IS NOT NULL OR letter IS NOT NULL OR send IS NOT NULL)
     AND ((address_done IS NULL OR address_done LIKE 'wait:%') AND (address_at IS NULL OR address_at < ?) OR (address_done = 'refused' AND address_at < ?)) ORDER BY address_at IS NOT NULL, address_at LIMIT 10`)
     .bind(new Date(now - ADDRESS_RETRY_MS).toISOString(), new Date(now - DAY).toISOString()).all()).results || [];
-  const wants = (r) => { const l = letterSays(r); return !!(jsonOf(r.address) || l.address || l.email); };
+  // What a person chose when they sent it (personSend), else what the letter and the check say
+  const wants = (r) => { const plan = jsonOf(r.send); if (plan) return !!(plan.address || plan.email); const l = letterSays(r); return !!(jsonOf(r.address) || l.address || l.email); };
   const row = rows.find(wants);
   // Nothing to put on: the rest are settled so they aren't read again
   for (const r of rows) if (r !== row && !wants(r)) await env.DB.prepare('UPDATE check_gifts SET address_done = ? WHERE id = ? AND address_done IS ?').bind('none', r.id, r.address_done ?? null).run();
@@ -2065,29 +2271,44 @@ export async function writeAddresses(env, { now, fetchImpl, mode, cfg }) {
   }
   // The site's no-mail address is on it for a moment while another check is filed (or about to be): its turn comes after
   const filing = await env.DB.prepare('SELECT 1 AS y FROM check_tags WHERE contact = ?').bind(String(p.contact)).first();
-  if (filing || isTag(c?.email)) return later();
-  // Whose donor this is, by the contact's own name, never the record's (a fund's gift typed under the fund's name can sit on
-  // its advisor's contact), and surely, not nearly (North Atlanta Rotary Club's contact never takes Atlanta Rotary Club's mail)
+  if (filing) return later();
+  if (isTag(c?.email)) {
+    if (!(await strayTagOff(env, p.contact, c.email, fetchImpl, now))) return later();
+    c = { ...c, email: '' };
+  }
+  // The contact's own names: who the address goes on, said if a person has to add it by hand
   const names = [givenName({ first_name: c?.first_name, last_name: c?.last_name }), clean(`${clean(c?.first_name)} ${clean(c?.last_name)}`)].filter(Boolean);
-  const theirs = (who) => !!who && names.some((n) => surelySameGiver(who, n));
-  // The letter's address and email are its giver's (the check writer's when it names nobody); the check's address is its writer's
-  const said = letterSays(row);
-  const own = checkName(row);
+  // What a person chose on Send goes on the donor they chose it for: the one they picked, or (a new donor) the contact under
+  // the name they sent it as. A record that ended up on someone else's contact takes none of it
+  const chosen = jsonOf(row.send);
+  const plan = chosen && (chosen.donor ? String(p.contact) === String(chosen.donor) : names.some((n) => sameGiver(chosen.for, n))) ? chosen : null;
   let addr = null;
   let email = '';
-  if ((said.address || said.email) && theirs(said.name || own)) {
-    addr = said.address ? { ...said.address, from: 'letter' } : null;
-    email = said.email || '';
+  if (plan) {
+    // A person sent it with this donor, address and email: they're the record's donor's, by that person's word
+    addr = plan.address ? { ...plan.address, from: 'person' } : null;
+    email = plan.email || '';
+  } else {
+    // A hand entry matched by itself: whose donor this is, by the contact's own name, never the record's (a fund's gift typed
+    // under the fund's name can sit on its advisor's contact), and surely, not nearly (North Atlanta Rotary Club's contact never
+    // takes Atlanta Rotary Club's mail). The letter's address and email are its giver's; the check's address is its writer's
+    const theirs = (who) => !!who && names.some((n) => surelySameGiver(who, n));
+    const said = letterSays(row);
+    const own = checkName(row);
+    if ((said.address || said.email) && theirs(said.name || own)) {
+      addr = said.address ? { ...said.address, from: 'letter' } : null;
+      email = said.email || '';
+    }
+    if (!addr && theirs(own) && jsonOf(row.address)) addr = { ...jsonOf(row.address), from: 'check' };
   }
-  if (!addr && theirs(own) && jsonOf(row.address)) addr = { ...jsonOf(row.address), from: 'check' };
-  if (!addr && !email) { await settle('not-theirs'); return { result: 'not-theirs' }; }
+  if (!addr && !email) { await settle(plan ? 'none' : 'not-theirs'); return { result: plan ? 'none' : 'not-theirs' }; }
   // Turned down before, and someone has since put an address (and an email) on the donor by hand: done, whatever they typed
   if (refused && (!addr || c?.address?.line1) && (!email || clean(c?.email))) { await settle('by-hand'); return { result: 'by-hand' }; }
   const patch = {};
   const has = c?.address?.line1 ? c.address : null;
   if (addr) {
     const same = has && addressKey(has) === addressKey(addr);
-    // An entry someone matched or typed (not one the site made) keeps the address on it: the check's only fills a blank
+    // An entry someone typed or matched keeps the address on it: the check's only fills a blank
     const keep = has && !same && addr.from === 'check' && row.state === 'linked';
     if (!same && !keep) patch.address = { line1: addr.line1, city: addr.city, state: addr.state, postal_code: addr.postal_code, country: addr.country || 'US' };
     else if (keep && !email) { await settle('kept'); return { result: 'kept' }; }
@@ -2102,29 +2323,43 @@ export async function writeAddresses(env, { now, fetchImpl, mode, cfg }) {
   if (refused) return { result: 'refused' };
   // What it's putting on whom, so a person told to finish it by hand is told exactly that
   await env.DB.prepare('UPDATE check_gifts SET address_tried = ? WHERE id = ?').bind(JSON.stringify({ address: patch.address || null, email: patch.email || '', who: names[0] || '' }), row.id).run();
-  const send = (body) => zeffySend(env, 'PATCH', `/contacts/${encodeURIComponent(p.contact)}`, body, fetchImpl);
+  // The contact is the site's while it writes, as it is while a Send files under them (postJoined): one waits for the other,
+  // so an email going on is never written over by the no-mail address, nor the no-mail address by an email. The note's
+  // address never goes on anyone; a run cut off here has it cleared by clearTags
+  const lock = tagFor(`edit${row.id}`, now);
+  const held = await env.DB.prepare('INSERT OR IGNORE INTO check_tags (contact, email, check_id, at) VALUES (?, ?, ?, ?)').bind(String(p.contact), lock, row.id, iso).run();
+  if (!held.meta?.changes) return later();
   try {
-    await send(patch);
-  } catch (e) {
-    if (!e.status || e.status >= 500 || e.status === 429) return later();
-    // An email another donor already has: the address still goes on
-    if (patch.email && patch.address && /email/i.test(`${e.code || ''} ${e.message || ''}`)) {
-      try { await send({ address: patch.address }); } catch (e2) {
-        if (!e2.status || e2.status >= 500 || e2.status === 429) return later();
-        await settle('refused');
-        return { result: 'refused' };
-      }
-      await settle('email-taken');
-      return { result: 'email-taken' };
-    }
-    // Another donor in Zeffy holds the letter's email: said beside the check, nothing more to do
-    if (patch.email && !patch.address && /email/i.test(`${e.code || ''} ${e.message || ''}`)) { await settle('email-taken-only'); return { result: 'email-taken-only' }; }
-    await settle('refused');
-    return { result: 'refused' };
+    return await writeOn();
+  } finally {
+    await env.DB.prepare('DELETE FROM check_tags WHERE contact = ? AND email = ?').bind(String(p.contact), lock).run().catch(() => null);
   }
-  const done = patch.address ? 'written' : addr && has && addressKey(has) === addressKey(addr) ? 'email-same' : 'email';
-  await settle(done);
-  return { result: done };
+  /** The PATCH itself, and what Zeffy's answer means */
+  async function writeOn() {
+    const send = (body) => zeffySend(env, 'PATCH', `/contacts/${encodeURIComponent(p.contact)}`, body, fetchImpl);
+    try {
+      await send(patch);
+    } catch (e) {
+      if (!e.status || e.status >= 500 || e.status === 429) return later();
+      // An email another donor already has: the address still goes on
+      if (patch.email && patch.address && /email/i.test(`${e.code || ''} ${e.message || ''}`)) {
+        try { await send({ address: patch.address }); } catch (e2) {
+          if (!e2.status || e2.status >= 500 || e2.status === 429) return later();
+          await settle('refused');
+          return { result: 'refused' };
+        }
+        await settle('email-taken');
+        return { result: 'email-taken' };
+      }
+      // Another donor in Zeffy holds the letter's email: said beside the check, nothing more to do
+      if (patch.email && !patch.address && /email/i.test(`${e.code || ''} ${e.message || ''}`)) { await settle('email-taken-only'); return { result: 'email-taken-only' }; }
+      await settle('refused');
+      return { result: 'refused' };
+    }
+    const done = patch.address ? 'written' : addr && has && addressKey(has) === addressKey(addr) ? 'email-same' : 'email';
+    await settle(done);
+    return { result: done };
+  }
 }
 
 /**
@@ -2372,22 +2607,21 @@ async function lookForLeftovers(env, test, fetchImpl) {
 export async function runChecks(env, { now = Date.now(), fetchImpl = fetch, cfg = null } = {}) {
   await ensureChecks(env.DB);
   cfg ||= await readState(env.DB, KEY);
-  // On makes records only while the write test stands: a new test that fails puts it back to watching until it passes
-  const mode = cfg.mode === 'on' && cfg.writeTest?.ok ? 'on' : 'watch';
-  const ctx = { now, fetchImpl, mode, cfg };
-  // A failed test tries again a day later, once nothing of it is left for a person to remove, three times in all
+  const ctx = { now, fetchImpl, cfg };
+  // The test of writing to Zeffy, before anything is sent: a failed one tries again a day later, once nothing of it is left
+  // for a person to remove, three times in all; a failed address step the same
   const test = cfg.writeTest;
   const again = test && !test.leftBehind?.length && now - Date.parse(test.at || 0) > DAY
     && ((!test.ok && (Number(test.tries) || 1) < WRITE_TRIES) || (test.ok && test.address && !test.address.ok && (Number(test.address.tries) || 1) < WRITE_TRIES));
   if (test?.id !== WRITE_TEST || again) {
     const report = await testWrite(env, ctx);
-    // Turned on, and the new test failed: it's watching until a test works, and the staff hear that they enter checks again
-    if (cfg.mode === 'on' && !report.ok && env.SLACK_BOT_TOKEN) {
-      const card = slackCard({ icon: '🧾', title: 'The site stopped entering checks in Zeffy', lead: 'Zeffy wouldn’t take the site’s $1 test record, so the site is only watching until a test works.', fix: 'Enter checks deposited in Mercury in Zeffy by hand until Checks says the site enters them again.', buttons: [{ label: 'Open Checks', url: CARDS_URL }] });
+    // Sending stops while Zeffy won't take a test record, and the staff hear so (and hear when it works again)
+    if (!report.ok && env.SLACK_BOT_TOKEN) {
+      const card = slackCard({ icon: '🧾', title: 'Checks can’t be sent to Zeffy right now', lead: 'Zeffy wouldn’t take the site’s $1 test record, so “Send to Zeffy” is off until a test works.', fix: 'Enter checks in Zeffy by hand until Checks says sending works again. Each one links itself within the hour.', buttons: [{ label: 'Open Checks', url: CARDS_URL }] });
       await slackIssue(env, 'checks:paused', card, { title: 'Checks into Zeffy', kind: 'attention' }).catch(() => null);
     }
-    if (cfg.mode === 'on' && report.ok && env.SLACK_BOT_TOKEN) {
-      await slackResolved(env, 'checks:paused', slackCard({ icon: '✅', title: 'The site enters checks in Zeffy again', lead: 'Its test record saved.' }), { summary: 'Entering checks again.' }).catch(() => null);
+    if (report.ok && test && !test.ok && env.SLACK_BOT_TOKEN) {
+      await slackResolved(env, 'checks:paused', slackCard({ icon: '✅', title: 'Checks can be sent to Zeffy again', lead: 'Its test record saved.' }), { summary: 'Sending works again.' }).catch(() => null);
     }
     return { writeTest: report };
   }
@@ -2402,14 +2636,14 @@ export async function runChecks(env, { now = Date.now(), fetchImpl = fetch, cfg 
       await matchOpen(env, ctx);
       if (cfg.matchFailing) {
         await writeState(env.DB, KEY, { matchFailing: null });
-        await slackResolved(env, 'checks:match', slackCard({ icon: '✅', title: 'The hourly look at Zeffy works again', lead: 'Hand entries link themselves again.' }), { summary: 'Working again.' }).catch(() => null);
+        await slackResolved(env, 'checks:match', slackCard({ icon: '✅', title: 'The hourly look at Zeffy works again', lead: 'Cards are up to date again.' }), { summary: 'Working again.' }).catch(() => null);
       }
     } catch (e) {
-      // Without it hand entries don't link and doubles go unseen: three hours of it tells the staff, once
+      // Without it cards go stale and doubles go unseen: three hours of it tells the staff, once
       const since = cfg.matchFailing?.since || new Date(now).toISOString();
       await writeState(env.DB, KEY, { matchFailing: { since, error: plainError(e) } });
       if (now - Date.parse(since) >= 3 * 60 * MIN && env.SLACK_BOT_TOKEN) {
-        const card = slackCard({ icon: '🧾', title: 'The site can’t look at Zeffy for checks', lead: `Since ${new Date(since).toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}, ${plainError(e)}. Hand entries don’t link to their checks until it works.`, fix: 'Nothing to do in Zeffy. If it lasts a day, tell Peter.', buttons: [{ label: 'Open Checks', url: CARDS_URL }] });
+        const card = slackCard({ icon: '🧾', title: 'The site can’t look at Zeffy for checks', lead: `Since ${new Date(since).toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}, ${plainError(e)}. Cards aren’t kept up to date until it works, and Send reads Zeffy again first anyway.`, fix: 'Nothing to do in Zeffy. If it lasts a day, tell Peter.', buttons: [{ label: 'Open Checks', url: CARDS_URL }] });
         await slackIssue(env, 'checks:match', card, { title: 'Checks into Zeffy', kind: 'attention' }).catch(() => null);
       }
     }
@@ -2418,37 +2652,28 @@ export async function runChecks(env, { now = Date.now(), fetchImpl = fetch, cfg 
   }
   // The weekly money check, Monday morning: it reads and writes nothing but its own result, so it never holds up the rest
   if (moneyDue(cfg, now)) await moneyCheck(env, ctx).catch((e) => { ctx.failed ||= e; });
-  // One big job a run: a check waiting to be decided, else one to read
-  // Turned on: what it was only watching goes on too, the same way, one a run, each read against Zeffy again
-  // Decided as soon as it's read, while Mercury is still reviewing it (Peter, Nov 9): a check Mercury turns down later is flagged
-  // Each day's checks wait for 7 PM Eastern, so a letter attached in Mercury that day is read first (saveAt)
-  const readyWhere = `(state = 'read' OR (state = 'would' AND ? = 'on')) AND status IN ('pending', 'sent')`;
-  const due = (list) => (list.results || []).find((r) => isDue(r, now)) || null;
-  const fresh = due(await env.DB.prepare(`SELECT * FROM check_gifts WHERE ${readyWhere} AND try_at IS NULL ORDER BY deposited_at LIMIT 50`).bind(mode).all());
-  // A check Zeffy told to wait gets its turn only when nothing new needs reading, so one giver never holds up the rest
-  const unread = fresh ? null : await env.DB.prepare(`SELECT 1 AS y FROM check_gifts WHERE state = 'new' AND status NOT IN ('cancelled', 'failed', 'reversed', 'blocked') AND (try_at IS NULL OR try_at < ?) LIMIT 1`).bind(new Date(now - CLAIM_MS).toISOString()).first();
+  // One big job a run: a card to make, a letter to read, or a check's picture to read. Cards and letters take turns, so
+  // neither holds the other up while Zeffy or the readers are slow; a card Zeffy made wait goes to the back of the line
   const turn = Math.floor(now / RUN_EVERY_MS) % 2 === 0;
-  const ready = fresh || (unread && !turn ? null : due(await env.DB.prepare(`SELECT * FROM check_gifts WHERE ${readyWhere} AND try_at < ? ORDER BY try_at LIMIT 50`).bind(mode, new Date(now - 15 * MIN).toISOString()).all()));
-  // A letter to read or put to use comes before a new check's picture: its check is waiting on it
-  // A letter's check waits on it, so letters and decisions take turns: neither holds the other up while Zeffy or the readers are slow
-  const letterRow = ((await env.DB.prepare(`SELECT * FROM check_gifts WHERE letter LIKE '%"pending":["%' AND state IN ('read', 'would') ORDER BY deposited_at LIMIT 20`).all()).results || [])
+  const toCard = ((await env.DB.prepare(`SELECT * FROM check_gifts WHERE state = 'read' AND status IN ('pending', 'sent') AND (try_at IS NULL OR try_at < ?) ORDER BY try_at IS NOT NULL, try_at, deposited_at LIMIT 20`)
+    .bind(new Date(now - 15 * MIN).toISOString()).all()).results || []).find((r) => !lettersWaiting(r)) || null;
+  const letterRow = ((await env.DB.prepare(`SELECT * FROM check_gifts WHERE letter LIKE '%"pending":["%' AND state IN ('read', 'person') ORDER BY deposited_at LIMIT 20`).all()).results || [])
     .find((r) => { const l = jsonOf(r.letter, {}); return !l.tryAt || now - Date.parse(l.tryAt) >= 15 * MIN; }) || null;
   let done = { result: 'quiet' };
-  if (ready && !(letterRow && !turn)) {
+  if (toCard && !(letterRow && !turn)) {
     try {
-      done = await decideCheck(env, ready, ctx);
+      done = await prepareCard(env, toCard, ctx);
     } catch (e) {
-      // It goes to the back of the line, so the other checks go on; a day of this goes to a person below
-      await setRow(env.DB, ready.id, { try_at: new Date(now).toISOString() }, now, ready.state).catch(() => null);
+      await setRow(env.DB, toCard.id, { try_at: new Date(now).toISOString() }, now, toCard.state).catch(() => null);
       ctx.failed = e;
       done = { result: 'later' };
     }
-    // Waiting on Zeffy a whole day: a person enters it by hand instead, and it links itself
+    // A whole day of Zeffy not answering for this check: it goes on its card as it is, for a person to send when Zeffy's back
     const waits = { ...((await readState(env.DB, KEY)).waits || {}) };
     if (done.result === 'later') {
-      waits[ready.id] ||= new Date(now).toISOString();
-      if (now - Date.parse(waits[ready.id]) >= DAY && await toPerson(env, ready, 'zeffy-busy', { mode, now })) delete waits[ready.id];
-    } else delete waits[ready.id];
+      waits[toCard.id] ||= new Date(now).toISOString();
+      if (now - Date.parse(waits[toCard.id]) >= DAY && await toPerson(env, toCard, 'zeffy-busy', { now })) delete waits[toCard.id];
+    } else delete waits[toCard.id];
     await writeState(env.DB, KEY, { waits });
     if (ctx.failed) throw ctx.failed;
   } else if (letterRow) {
@@ -2463,10 +2688,12 @@ export async function runChecks(env, { now = Date.now(), fetchImpl = fetch, cfg 
     // Never tried first, then whichever was tried longest ago, so one check that can't be read never holds up the rest
     const next = await env.DB.prepare(`SELECT * FROM check_gifts WHERE state = 'new' AND status NOT IN ('cancelled', 'failed', 'reversed', 'blocked') AND (try_at IS NULL OR try_at < ?)
       ORDER BY try_at IS NOT NULL, try_at, deposited_at LIMIT 1`).bind(new Date(now - CLAIM_MS).toISOString()).first();
+    // Can't be read: a card all the same, with the name left to the person
+    const unread = (why, note = null) => setRow(env.DB, next.id, { state: 'read', reason: why, try_at: null, ...(note ? { note } : {}) }, now, 'new');
     if (next && (next.tries || 0) >= READ_TRIES) {
       // Runs cut short never reach the limit inside a read, so it's checked before one starts
-      await toPerson(env, next, 'unreadable', { mode, now });
-      done = { result: 'person' };
+      await unread('unreadable');
+      done = { result: 'read', why: 'unreadable' };
     } else if (next) {
       try {
         done = await readCheck(env, next, ctx);
@@ -2476,7 +2703,7 @@ export async function runChecks(env, { now = Date.now(), fetchImpl = fetch, cfg 
         }
       } catch (e) {
         // Mercury or the readers not answering is an outage: the try is given back and the check waits its turn, for up to 3 days.
-        // A refusal (Mercury has no such check) is this check's own, and three of those go to a person
+        // A refusal (Mercury has no such check) is this check's own, and three of those make its card unread
         const outage = !e.status || e.status >= 500 || e.status === 429;
         const waited = now - Date.parse(next.created_at || next.deposited_at) >= 3 * DAY;
         if (outage && !waited) {
@@ -2484,8 +2711,8 @@ export async function runChecks(env, { now = Date.now(), fetchImpl = fetch, cfg 
           throw e;
         }
         if (!outage && (next.tries || 0) + 1 < READ_TRIES) throw e;
-        await toPerson(env, next, 'unreadable', { note: outage ? 'The site couldn’t reach Mercury or its check readers for this check for three days.' : null, mode, now });
-        done = { result: 'person' };
+        await unread('unreadable');
+        done = { result: 'read', why: 'unreadable' };
       }
     }
   }
@@ -2534,77 +2761,86 @@ export async function maybeRunChecks(env, { now = Date.now(), fetchImpl = fetch 
 
 // ─── The page ───────────────────────────────────────────────────────
 
-// Reasons that ask a person to save it: while watching, staff enter it by hand instead
-const ON_ONLY = ['unsure', 'record-gone', 'old-check', 'zeffy-refused', 'no-form', 'unlinked', 'zeffy-busy', 'look-by-hand'];
-const BY_HAND = 'Enter it in Zeffy by hand, as usual, and it links itself within the hour.';
-
 /** What a person answered about a check, in short: two screens that differ here aren't looking at the same check */
+/**
+ * A check's version as a person sees it: its state and answers, its letter, and its card as shown (names, donors, form,
+ * addresses: cardKey, never when it was made). An answer given to an older version is refused, so nothing is sent on a
+ * card that changed behind a question
+ */
 export const versionOf = (r) => {
   const l = jsonOf(r.letter, {});
-  const t = [r.state, r.reason, r.zeffy_id, r.rejected, r.by, r.payer, r.note, l.name, (l.late || []).join(','), l.why, r.address_done === 'refused' ? 'refused' : ''].map((x) => x ?? '').join('|');
+  const t = [r.state, r.reason, r.zeffy_id, r.rejected, r.by, r.payer, r.name_by, r.note, l.name, l.email, addressKey(l.address), (l.late || []).join(','), l.why, r.address_done === 'refused' ? 'refused' : '', r.card ? cardKey(jsonOf(r.card, {})) : ''].map((x) => x ?? '').join('|');
   let h = 0;
   for (let i = 0; i < t.length; i++) h = (Math.imul(h, 31) + t.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
 };
 
-function viewOf(r, claimed, mode = 'watch', now = Date.now()) {
+/** A card note in words: a refusal says Zeffy's own reason, and a category says which */
+function noteWords(kind, r) {
+  if (kind === 'zeffy-refused' && typeof r.note === 'string' && r.note && !r.note.startsWith('[') && !r.note.startsWith('entry:')) return r.note;
+  if (kind === 'zeffy-refused' && jsonOf(r.card, {}).refusal) return jsonOf(r.card, {}).refusal;
+  if (kind === 'category' && r.category) return `Its Category in Mercury is ${r.category}, which isn’t a gift (Individual Contribution, Corporate Contribution or Grant).`;
+  return REASONS[kind] || null;
+}
+
+function viewOf(r, claimed, now = Date.now()) {
   let listed = null;
-  let score = null;
-  try { listed = r.reason && r.note?.startsWith('[') ? JSON.parse(r.note) : null; } catch { /* words, not a list */ }
+  try { listed = r.note?.startsWith('[') ? JSON.parse(r.note) : null; } catch { /* words, not a list */ }
   // The Zeffy entry a to-do is about, kept when it was matched
   let entry = null;
   try { entry = r.note?.startsWith('entry:') ? JSON.parse(r.note.slice(6)) : null; } catch { /* an old row */ }
   // A second deposit of one check is asked about the first deposit's record, which that deposit of course holds
   const candidates = listed ? listed.filter((c) => r.reason === 'redeposit' || !claimed.has(String(c.id))) : null;
-  try { score = r.score ? JSON.parse(r.score) : null; } catch { /* an old row */ }
-  const on = mode === 'on';
-  const waitingOnZeffy = r.state === 'unsure' || r.state === 'creating';
-  // Something to do in Zeffy, for a check that has its record: these clear themselves once it's done
+  const sending = r.state === 'unsure' || r.state === 'creating';
   const letter = jsonOf(r.letter, {});
   const addr = jsonOf(r.address);
   const saved = ['linked', 'created'].includes(r.state);
-  // A file added in Mercury after the record went in, or an address Zeffy wouldn't take: done in Zeffy, then "Looked at it"
+  // Something to do in Zeffy for a check that has its record: these clear themselves once done, or with "Looked at it"
   const letterToDo = saved && (letter.late || []).length ? 'late' : null;
-  const said = letterSays(r);
   const tried = jsonOf(r.address_tried);
   const addressToDo = saved && r.address_done === 'refused';
-  const toDo = (saved && ['amount-off', 'still-unpaid'].includes(r.reason)) || (r.state === 'came-back' && !!r.zeffy_id) || !!letterToDo || addressToDo;
-  const askedGone = r.state === 'person' && listed?.length && !candidates?.length;
+  const extras = extrasOf(r);
+  const toDo = (saved && ['amount-off', 'still-unpaid'].includes(r.reason)) || (r.state === 'came-back' && !!r.zeffy_id) || !!letterToDo || addressToDo || extras.length > 0;
   const theEntry = entry ? `Zeffy’s entry (${entry.name || 'no name'}, ${money(entry.cents)}${entry.at ? `, ${new Date(entry.at * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: TZ })}` : ''})` : 'Zeffy’s entry';
-  const why = waitingOnZeffy ? 'Zeffy didn’t answer yet. The site is looking for the record, so don’t enter this one.'
-    : letterToDo && !['amount-off', 'still-unpaid'].includes(r.reason) ? 'A file was added in Mercury after this check went into Zeffy. Look at it there, and fix the record in Zeffy if it says something else (Zeffy can’t move a gift: delete it and enter it again, and it links itself within the hour).'
-    : addressToDo && !['amount-off', 'still-unpaid'].includes(r.reason) ? (tried?.address || tried?.email
-      ? `Zeffy wouldn’t take ${tried.address ? 'the donor’s address' : 'the email from the letter'}. Add it to ${tried.who || r.payer || 'the donor'} in Zeffy: ${[tried.address ? addressLine(tried.address) : '', tried.email ? `${tried.address ? 'and the email ' : ''}${tried.email}` : ''].filter(Boolean).join(', ')}.`
+  const amountToDo = saved && ['amount-off', 'still-unpaid'].includes(r.reason);
+  const why = sending ? 'Zeffy hasn’t answered yet. The site is looking for the record, so don’t enter this one.'
+    : extras.length ? `Zeffy has ${extras.length > 1 ? `${extras.length} more records` : r.state === 'left-out' ? 'a record' : 'a second record'} for this check (${extras.join(', ')}), from ${extras.length > 1 ? 'sends' : 'a send'} it didn’t answer clearly${r.state === 'left-out' ? ', though the check was marked not for Zeffy' : ''}. Delete ${extras.length > 1 ? 'those' : 'that one'} in Zeffy, and this goes away within the hour.`
+    : letterToDo && !amountToDo ? 'A file was added in Mercury after this check went into Zeffy. Look at it there, and fix the record in Zeffy if it says something else (Zeffy can’t move a gift: delete it and enter it again, and it links itself within the hour).'
+    : addressToDo && !amountToDo ? (tried?.address || tried?.email
+      ? `Zeffy wouldn’t take ${tried.address ? 'the donor’s address' : 'the email'}. Add it to ${tried.who || r.payer || 'the donor'} in Zeffy: ${[tried.address ? addressLine(tried.address) : '', tried.email ? `${tried.address ? 'and the email ' : ''}${tried.email}` : ''].filter(Boolean).join(', ')}.`
       : 'Zeffy wouldn’t take the donor’s address. Look at the check in Mercury and add it in Zeffy.')
-    : r.reason === 'amount-off' && ['linked', 'created'].includes(r.state) ? `${theEntry} and the check (${money(r.cents)}) are for different amounts. Fix the amount in Zeffy.`
-    : r.reason === 'still-unpaid' && ['linked', 'created'].includes(r.state) ? `${theEntry} is still unpaid. Mark it paid in Zeffy.`
-    : r.reason === 'zeffy-refused' && on ? r.note || REASONS['zeffy-refused']
+    : r.reason === 'amount-off' && saved ? `${theEntry} and the check (${money(r.cents)}) are for different amounts. Fix the amount in Zeffy.`
+    : r.reason === 'still-unpaid' && saved ? `${theEntry} is still unpaid. Mark it paid in Zeffy.`
     : r.state === 'came-back' && r.zeffy_id ? 'The check came back. Cancel the record in Zeffy, and Zeffy tells the donor.'
+    : r.state === 'left-out' && r.reason === 'person' ? (DONT_REASONS[r.note] ? `Not sent to Zeffy: ${DONT_REASONS[r.note]}.` : LEFT_OUT.person)
     : r.state === 'left-out' || r.state === 'came-back' ? LEFT_OUT[r.reason] || REASONS[r.reason] || null
-    : askedGone ? `The Zeffy entry that might have been this check is now another check’s. ${on ? 'Save this one in Zeffy.' : BY_HAND}`
-    : r.state === 'person' && !on && ON_ONLY.includes(r.reason) ? BY_HAND
-    : REASONS[r.reason] || null;
-  const needsYou = toDo || (r.state === 'person' && (!!candidates?.length || (on && ['pending', 'sent'].includes(r.status))));
+    : r.state === 'person' ? noteWords(r.reason, r)
+    : null;
+  const waiting = r.state === 'person' && ['pending', 'sent'].includes(r.status);
+  const card = r.state === 'person' ? jsonOf(r.card) : null;
   return {
-    needsYou, toDo, old: r.state === 'would' && now - Date.parse(r.posted_at || r.deposited_at) > OLD_CHECK_MS,
+    needsYou: waiting || toDo, toDo,
     id: r.id, cents: r.cents, status: r.status, state: r.state, depositedAt: r.deposited_at, depositDay: dayOf(r.deposited_at), postedAt: r.posted_at,
     payer: r.payer || '', checkDate: r.check_date || '', memo: r.memo || '', checkNumber: r.check_number || '',
     formId: r.form_id || '', formTitle: r.form_title || '', via: r.via || null, by: r.by || null, zeffyId: r.zeffy_id || null, link: r.link || null,
-    reason: r.reason || null, why, note: r.note?.startsWith('[') || r.note?.startsWith('entry:') || r.reason === 'zeffy-refused' ? null : r.note || null,
-    candidates: candidates?.length ? candidates : null, score, ver: versionOf(r),
-    // Goes into Zeffy at 7 PM Eastern on the deposit day, so a letter attached that day is read with it
-    waitsUntil: on && r.state === 'read' && !r.by && now < saveAt(r.deposited_at) ? new Date(saveAt(r.deposited_at)).toISOString() : null,
+    reason: r.reason || null, why, candidates: candidates?.length ? candidates : null, ver: versionOf(r),
     category: r.category || null,
-    // Not in Zeffy yet and not marked as a contribution in Mercury: it can't go in until it is
-    needsCategory: on && !r.zeffy_id && ['new', 'read', 'would', 'person'].includes(r.state) && !isContribution(r.category),
+    // The card a person approves: filled in by prepareCard, with each note in words
+    card: card ? {
+      names: card.names || [], name: r.name_by && r.payer ? r.payer : card.name || '', donors: card.donors || [], donor: card.donor ?? null,
+      formId: card.formId || '', formFor: card.formFor || {}, day: card.day || dayOf(r.deposited_at), email: card.email || '', emailFor: card.emailFor || '',
+      letterAddress: card.letterAddress || null, letterAddressFor: card.letterAddressFor || '', checkAddress: card.checkAddress || null, checkAddressFor: card.checkAddressFor || '',
+      notes: [...new Set([r.reason !== 'ready' ? r.reason : null, ...(card.notes || [])].filter(Boolean))].map((kind) => ({ kind, text: noteWords(kind, r) })).filter((n) => n.text),
+      suggest: card.suggest || 'send', dontReason: card.dontReason || null, sent: card.sent || null,
+    } : waiting ? { names: [], name: r.payer || '', donors: [], donor: null, formId: r.form_id || '', day: dayOf(r.deposited_at), email: '', letterAddress: null, letterAddressFor: '', checkAddress: addr, checkAddressFor: addr?.for || '', notes: noteWords(r.reason, r) ? [{ kind: r.reason, text: noteWords(r.reason, r) }] : [], suggest: 'send', dontReason: null } : null,
     drawer: r.drawer && r.payer && !surelySameGiver(r.drawer, r.payer) ? r.drawer : null,
     letter: letter.about || letter.why || (letter.files || []).length || letterToDo ? {
       unread: (letter.files || []).filter((k) => !letter.reads?.[k]).length,
       // A letter with a problem says nothing the site used: only the problem shows
       name: letter.why ? '' : letter.name || '', email: letter.why ? '' : letter.email || '', address: letter.why ? '' : addressLine(letter.address), why: letter.why ? REASONS[letter.why] || null : null,
-      reading: ['new', 'read', 'would'].includes(r.state) && (letter.pending || []).length > 0, todo: letterToDo,
+      reading: DECIDING.includes(r.state) && (letter.pending || []).length > 0, todo: letterToDo,
     } : null,
-    address: addr ? { line: addressLine(addr), from: 'check', inZeffy: ['written', 'same', 'email-taken'].includes(r.address_done) } : null,
+    address: addr ? { line: addressLine(addr) } : null,
     emailTaken: ['email-taken', 'email-taken-only'].includes(r.address_done),
     mailInZeffy: ['written', 'same', 'email-same', 'email-taken'].includes(r.address_done),
     addressToDo,
@@ -2612,46 +2848,30 @@ function viewOf(r, claimed, mode = 'watch', now = Date.now()) {
   };
 }
 
-/** How Watch did, over every check a hand entry scored: the evidence for turning it on */
-async function scoreOf(DB) {
-  const rows = (await DB.prepare('SELECT score FROM check_gifts WHERE score IS NOT NULL').all()).results || [];
-  let total = 0;
-  let right = 0;
-  for (const r of rows) {
-    try { const sc = JSON.parse(r.score); total++; if (sc.payer && sc.gift && sc.form !== false) right++; } catch { /* an old row */ }
-  }
-  return { total, right };
-}
-
-/** Everything the Checks tab shows, and how Watch is doing */
-/** The Checks page. now: the time it's seen at, for tests and replays; the page's own is the clock's */
+/**
+ * Everything the Checks tab shows: what waits on someone first, so the limit never pushes it off the page. now: the time
+ * it's seen at, for tests and replays; the page's own is the clock's
+ */
 export async function checksView(env, { now = Date.now() } = {}) {
   await ensureChecks(env.DB);
   const cfg = await readState(env.DB, KEY);
-  // What waits on someone comes first, so the limit can never push it off the page
-  const mode = cfg.mode === 'on' && cfg.writeTest?.ok ? 'on' : 'watch';
-  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts ORDER BY CASE WHEN (state = 'person' AND ((? = 'on' AND status IN ('pending', 'sent')) OR note LIKE '[%')) OR (state IN ('linked', 'created') AND (reason IN ('amount-off', 'still-unpaid') OR address_done = 'refused' OR letter LIKE '%"late":["%')) OR (state = 'came-back' AND zeffy_id IS NOT NULL) THEN 1 ELSE 0 END DESC, deposited_at DESC LIMIT ?`).bind(mode, LIST_LIMIT).all()).results || [];
+  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts ORDER BY CASE WHEN (state = 'person' AND status IN ('pending', 'sent')) OR (state IN ('linked', 'created') AND (reason IN ('amount-off', 'still-unpaid') OR address_done = 'refused' OR letter LIKE '%"late":["%')) OR (state = 'came-back' AND zeffy_id IS NOT NULL) OR extra IS NOT NULL THEN 1 ELSE 0 END DESC, deposited_at DESC LIMIT ?`).bind(LIST_LIMIT).all()).results || [];
   const all = (await env.DB.prepare('SELECT COUNT(*) AS n FROM check_gifts').first())?.n || 0;
-  // What turning it on would do, counted over every check, not only the ones listed
-  const w = await env.DB.prepare(`SELECT SUM(CASE WHEN COALESCE(posted_at, deposited_at) >= ? THEN 1 ELSE 0 END) AS fresh, SUM(CASE WHEN COALESCE(posted_at, deposited_at) < ? THEN 1 ELSE 0 END) AS old FROM check_gifts WHERE state = 'would'`)
-    .bind(new Date(now - OLD_CHECK_MS).toISOString(), new Date(now - OLD_CHECK_MS).toISOString()).first();
   const claimed = await claimedIds(env.DB);
   // Each check's Category in Mercury, as last mirrored
   const cats = new Map(((await env.DB.prepare("SELECT id, category_name FROM mercury_txns WHERE kind = 'checkDeposit' AND category_name IS NOT NULL").all().catch(() => null))?.results || []).map((t) => [t.id, t.category_name]));
-  const list = rows.map((r) => viewOf({ ...r, category: cats.get(r.id) || null }, claimed, mode, now));
+  const list = rows.map((r) => viewOf({ ...r, category: cats.get(r.id) || null }, claimed, now));
   return {
-    mode,
-    onBy: cfg.onBy || null, onAt: cfg.onAt || null,
+    // Sending needs the test of writing to Zeffy to have passed; filing under a donor with no email needs its join step
+    sending: !!cfg.writeTest?.ok, joinOk: !!cfg.writeTest?.join?.ok,
     writeTest: cfg.writeTest || null,
-    paused: cfg.mode === 'on' && !cfg.writeTest?.ok,
     lastError: cfg.lastError || null,
     matchFailing: cfg.matchFailing || null,
     money: cfg.money || null,
-    watching: { fresh: w?.fresh || 0, old: w?.old || 0 },
+    dontReasons: DONT_REASONS,
     list,
     limited: all > rows.length, shown: rows.length, all,
     waiting: list.filter((c) => c.needsYou).length,
-    scored: await scoreOf(env.DB),
     zeffyUrl: ZEFFY_PAYMENTS,
     configured: { mercury: mercuryConfigured(env), zeffy: !!String(env.ZEFFY_API_KEY || '').trim(), ai: !!env.AI },
   };
@@ -2661,15 +2881,14 @@ export async function checksView(env, { now = Date.now() } = {}) {
 export async function checksFacts(DB) {
   await ensureChecks(DB);
   const cfg = await readState(DB, KEY);
-  const on = cfg.mode === 'on' && !!cfg.writeTest?.ok;
   const c = await DB.prepare('SELECT COUNT(*) AS total, MAX(deposited_at) AS last FROM check_gifts').first();
   // The same rule the page's Needs you uses, so the tab's count is the list's
-  const open = (await DB.prepare(`SELECT * FROM check_gifts WHERE state = 'person' OR reason IN ('amount-off', 'still-unpaid') OR (state = 'came-back' AND zeffy_id IS NOT NULL) OR address_done = 'refused' OR letter LIKE '%"late":["%'`).all()).results || [];
+  const open = (await DB.prepare(`SELECT * FROM check_gifts WHERE state = 'person' OR reason IN ('amount-off', 'still-unpaid') OR (state = 'came-back' AND zeffy_id IS NOT NULL) OR address_done = 'refused' OR letter LIKE '%"late":["%' OR extra IS NOT NULL`).all()).results || [];
   const claimed = await claimedIds(DB);
-  const waiting = open.filter((r) => viewOf(r, claimed, on ? 'on' : 'watch').needsYou).length;
+  const waiting = open.filter((r) => viewOf(r, claimed).needsYou).length;
   return {
-    mode: on ? 'on' : 'watch', lastRunAt: cfg.lastRunAt || null, error: cfg.lastError?.error || null, total: c?.total || 0, waiting, last: c?.last || null,
-    writeOk: cfg.writeTest ? !!cfg.writeTest.ok : null, paused: cfg.mode === 'on' && !cfg.writeTest?.ok,
+    lastRunAt: cfg.lastRunAt || null, error: cfg.lastError?.error || null, total: c?.total || 0, waiting, last: c?.last || null,
+    writeOk: cfg.writeTest ? !!cfg.writeTest.ok : null,
     matchFailing: cfg.matchFailing ? { since: cfg.matchFailing.since, error: cfg.matchFailing.error } : null,
     moneyLoose: cfg.money?.count ?? cfg.money?.loose?.length ?? 0, moneyAt: cfg.money?.at || null,
   };
@@ -2689,43 +2908,54 @@ async function mustRow(env, id, { saw = null } = {}) {
   if (['creating', 'unsure'].includes(row.state)) throw err('Zeffy hasn’t answered for this check yet. Look again in a few minutes.', 409);
   return row;
 }
-const STATES = new Set(['new', 'read', 'would', 'person', 'creating', 'unsure', 'created', 'linked', 'left-out', 'store', 'came-back']);
+const STATES = new Set(['new', 'read', 'person', 'creating', 'unsure', 'created', 'linked', 'left-out', 'store', 'came-back']);
 const listedIds = (row) => { try { return row.note?.startsWith('[') ? JSON.parse(row.note).map((x) => String(x.id)) : []; } catch { return []; } };
 
-/** Watch or On. On needs the write test passed: a person turning it on is telling staff to stop entering these */
-export async function setMode(env, mode, { by = null, now = Date.now(), saw = null } = {}) {
-  const cfg = await readState(env.DB, KEY);
-  const was = cfg.mode === 'on' ? 'on' : 'watch';
-  if (saw && saw !== was && mode !== was) throw err(`Someone just ${was === 'on' ? 'turned it on' : 'turned it back to watching'}. Look again before changing it.`, 409);
-  if (mode === 'on' && !cfg.writeTest?.ok) throw err('The site hasn’t proven it can write to Zeffy yet.', 409);
-  return writeState(env.DB, KEY, { mode: mode === 'on' ? 'on' : 'watch', onBy: mode === 'on' ? by : null, onAt: mode === 'on' ? new Date(now).toISOString() : null });
+/** An address a person typed or picked, made whole and safe, or null when it can't be (all four parts, five-digit ZIP) */
+function addressFrom(a, checkNumber = '') {
+  if (!a || typeof a !== 'object') return null;
+  return addressOf({ street: a.line1, city: a.city, state: a.state, zip: a.postal_code }, checkNumber);
 }
 
 /**
- * A person fills in what the site couldn't. Zeffy is read again first: an entry made since is linked, not doubled, unless the
- * person is looking right at what the page showed them and says it's another gift (notThose).
+ * A person sends a check to Zeffy from its card: who it's from, which Zeffy donor (one of theirs, or new), the form, the date,
+ * and the email and mailing address to put on the donor. Zeffy is read again first: a hand entry made since is matched, not
+ * doubled, and an entry that may be this check is shown before anything is sent, unless the person is looking right at it
+ * and says it's another gift (notThose). The record goes in with its receipt and email off; the address and email go on the
+ * donor after (writeAddresses). Zeffy has no way to refuse a repeat: one that may have saved is looked for, never sent again
  */
-export async function personCreate(env, id, { name, formId, day = null, notThose = false, shown = [], saw = null, by = null, now = Date.now(), fetchImpl = fetch } = {}) {
+export async function personSend(env, id, { name, donor = 'new', formId, day = null, email = '', address = null, notThose = false, shown = [], donorsShown = [], saw = null, by = null, now = Date.now(), fetchImpl = fetch } = {}) {
   const first = await getRow(env.DB, id);
-  if (first && sameAnswer(first, by, now, (r) => r.state === 'created' && r.via === 'person')) return { result: 'created', id: String(first.zeffy_id), again: true };
+  if (first && sameAnswer(first, by, now, (r) => ['created', 'creating', 'unsure'].includes(r.state) && r.by === by)) {
+    return first.state === 'created' ? { result: 'created', id: String(first.zeffy_id), again: true } : { result: 'unsure', again: true };
+  }
   const row = await mustRow(env, id, { saw });
   const cfg = await readState(env.DB, KEY);
-  if (cfg.mode !== 'on' || !cfg.writeTest?.ok) throw err('The site is watching, so enter this one in Zeffy by hand.', 409);
-  if (!['person', 'left-out', 'store', 'would'].includes(row.state)) throw err('This check has moved on. Look again.', 409);
+  if (!cfg.writeTest?.ok) throw err('Sending is off until the site’s test record saves in Zeffy. Enter this one in Zeffy by hand, and it links itself within the hour.', 409);
+  if (row.state !== 'person') throw err('This check has moved on. Look again.', 409);
   // The record lands when the money does
-  if (!['pending', 'sent'].includes(row.status)) throw err('Mercury didn’t take this check, so it isn’t saved in Zeffy.', 409);
-  const category = await categoryOf(env, row);
-  if (!isContribution(category)) throw err(`Set its Category in Mercury to ${GIFT_WORDS} first, then save it here.`, 409);
-  if (hasAccountDigits(clean(name), row.check_number)) throw err('Leave the long number out of the name. Six or more digits in a row look like a bank account number, so the site never saves them.');
+  if (!['pending', 'sent'].includes(row.status)) throw err('Mercury didn’t take this check, so it isn’t sent to Zeffy.', 409);
+  if (nameProblem(name, row.check_number)) throw err(nameProblem(name, row.check_number));
   const payer = safeText(name, 120, row.check_number);
-  if (!payer) throw err('Who wrote this check?');
+  if (!payer) throw err('Who is this gift from?');
   if (day != null) {
     const deposited = dayOf(row.deposited_at);
-    const tooOld = isDay(day) && Date.parse(`${deposited}T12:00:00Z`) - Date.parse(`${day}T12:00:00Z`) > 366 * DAY;
     if (!isDay(day)) throw err('That date doesn’t look right.');
     if (day > deposited) throw err('That date is after the check was deposited. Use the date on the check, or the day it was deposited.');
-    if (tooOld) throw err('That date is more than a year before the check was deposited. Use the day it was deposited instead.');
+    if (Date.parse(`${deposited}T12:00:00Z`) - Date.parse(`${day}T12:00:00Z`) > 366 * DAY) throw err('That date is more than a year before the check was deposited. Use the day it was deposited instead.');
   }
+  const mail = clean(email).toLowerCase();
+  if (emailProblem(mail)) throw err(emailProblem(mail));
+  const addr = address ? addressFrom(address, row.check_number) : null;
+  if (address && !addr) throw err(`That address isn’t right. ${addressProblem(address, row.check_number) || 'It needs the street, the city, a two-letter state and a five-digit ZIP.'}`);
+  const donorId = donor && donor !== 'new' ? String(donor) : null;
+  if (donorId && !/^[A-Za-z0-9_-]{1,80}$/.test(donorId)) throw err('Pick a Zeffy donor.');
+  // Every file the team attached in Mercury is read first, as it is now: one added, taken off or swapped since the card was made
+  // is read again, and the card is made again with it. Mercury not answering doesn't hold a send up
+  const unread = 'A letter attached in Mercury is still being read. Its card is ready again in a few minutes.';
+  if (lettersWaiting(row)) throw err(unread, 409);
+  const txn = await getTransaction(env, row.id, { fetchImpl }).catch(() => null);
+  if (txn && ((await noteLetters(env, row, txn, now)) || (await verifyLetters(env, row, txn, now, fetchImpl)))) throw err(unread, 409);
   let forms;
   let payments;
   let claimed;
@@ -2734,57 +2964,181 @@ export async function personCreate(env, id, { name, formId, day = null, notThose
     // A date the person picked reaches back as far as a stale check can, no further: past that Zeffy's whole read won't fit
     const reach = new Date(Date.parse(`${recordDay(row)}T12:00:00Z`) - STALE_REACH_MS).toISOString().slice(0, 10);
     const from = isDay(day) && day < earliestDay(row) ? (day < reach ? reach : day) : earliestDay(row);
-    // A person saves on what they can see in Zeffy themselves: a read too big to see whole still shows what's near
+    // A person sends on what they can see in Zeffy themselves: a read too big to see whole still shows what's near
     payments = (await readWide(env, secondsOf(from) - LOOK_BACK_S, now, fetchImpl)).payments;
     claimed = await claimedIds(env.DB);
   } catch {
-    throw err('Zeffy didn’t answer, so nothing was saved. Try again in a minute.', 503);
+    throw err('Zeffy didn’t answer, so nothing was sent. Try again in a minute.', 503);
   }
   const form = forms.find((f) => f.id === formId);
   if (!form) throw err('Pick an open donation form.');
   const seen = { ...row, payer, form_id: form.id, form_title: form.title };
+  // The name is the person's own answer when they changed it from the card's (or gave it before): it then stands when the
+  // card is made again. The card's own name, sent as it was, still follows the check and a letter attached later
+  const cardName = clean(jsonOf(row.card, {}).name);
+  const nameBy = payer !== cardName ? by : row.name_by && row.payer === payer ? row.name_by : null;
+  // What the person chose to put on the donor, for the record this send makes or matches, and only for this giver's
+  const plan = { donor: donorId, address: addr, email: mail, for: payer, formId: form.id, day: day || recordDay(row) };
+  // A send before this one that Zeffy never answered: its record is looked for first, where it would be, so one check is
+  // never saved twice however its date was typed. Found, it's this check's, with what the person chose now
+  const before = jsonOf(row.payload);
+  if (before) {
+    let hit;
+    try { hit = await findSent(env, row, before, fetchImpl); } catch { throw err('Zeffy didn’t answer, so nothing was sent. Try again in a minute.', 503); }
+    if (hit) {
+      // It went in as that earlier send was made: this press's address and email go on only if it's the same donor and name
+      const first = jsonOf(row.send);
+      const same = !!first && String(first.donor || 'new') === String(plan.donor || 'new') && sameName(first.for, plan.for);
+      if (!(await settleFound(env, row, before, hit, now, fetchImpl, same ? { send: plan } : {}))) throw err('This check just changed. Look again.', 409);
+      if (!same) throw err(`Zeffy saved the earlier send of this check after all${first?.for ? `, as from ${first.for}` : ''}, so nothing new was sent. If that’s the wrong donor, fix the record in Zeffy.`, 409);
+      return { result: 'created', id: String(hit.id), found: true };
+    }
+  }
+  const learned = await learnedFor(env.DB, payer);
   const drawerLearned = row.drawer ? await learnedFor(env.DB, row.drawer) : null;
-  const m = matchBoth(seen, payments, claimedFor(seen, claimed), await learnedFor(env.DB, payer), drawerLearned);
-  if (m.same.length) {
-    await linkTo(env, seen, m.same[0], { by, now, fetchImpl });
-    return { result: 'linked' };
-  }
-  const netted = netBoth(seen, payments, claimedFor(seen, claimed), { learned: await learnedFor(env.DB, payer), drawerLearned, ...(await freshFor(env, seen, cfg)) });
-  // The same check number and amount deposited before: that deposit's record is shown first, though its check holds it
-  if (row.check_number) {
-    const twin = await env.DB.prepare('SELECT zeffy_id FROM check_gifts WHERE id != ? AND cents = ? AND check_number = ? AND zeffy_id IS NOT NULL AND deposited_at >= ? LIMIT 1')
-      .bind(row.id, row.cents, row.check_number, new Date(now - 180 * DAY).toISOString()).first();
-    if (twin) netted.push(...payments.filter((p) => String(p.id) === String(twin.zeffy_id)));
-  }
-  const likely = [...new Map([...m.promised, ...m.maybe, ...m.other, ...netted].map((p) => [String(p.id), p])).values()];
+  const m = matchBoth(seen, payments, claimedFor(seen, claimed), learned, drawerLearned);
   // "It's a different gift" covers only the entries the person was shown: one that turned up since is shown first
   const looked = new Set(Array.isArray(shown) ? shown.map(String) : []);
+  // D6: an entry more than one waiting check fits never matches by itself here either, and one the person said is another
+  // gift never matches at all: the first is asked about, the second left be
+  const contested = await contestedOf(env, payments, claimed);
+  const sameOk = m.same.filter((p) => !looked.has(String(p.id)) && !contested.has(String(p.id)));
+  const sameAsk = m.same.filter((p) => !looked.has(String(p.id)) && contested.has(String(p.id)));
+  if (sameOk.length) {
+    if (!(await linkTo(env, seen, sameOk[0], { by, now, fetchImpl, send: plan, nameBy }))) throw err('This check just changed. Look again.', 409);
+    return { result: 'linked' };
+  }
+  const netted = netBoth(seen, payments, claimedFor(seen, claimed), { learned, drawerLearned, ...(await freshFor(env, seen)) });
+  // The same check number and amount deposited before: that deposit's record is shown first, though its check holds it
+  const twin = await twinOf(env, row, [checkName(row), payer], { now, saved: true });
+  if (twin) netted.push(...payments.filter((p) => String(p.id) === String(twin.zeffy_id)));
+  const likely = [...new Map([...sameAsk, ...m.promised, ...m.maybe, ...m.other, ...netted].map((p) => [String(p.id), p])).values()];
   if (likely.length && (!notThose || likely.some((x) => !looked.has(String(x.id))))) {
     const entries = entriesToShow(likely);
-    // The name the person typed is their answer (by): if the check is decided again, it stands
-    if (!(await setRow(env.DB, id, { state: 'person', payer, by, form_id: form.id, form_title: form.title, reason: m.promised.length ? 'pledge' : m.maybe.length ? 'maybe-double' : 'amount-differs', note: JSON.stringify(entries) }, now, row.state))) throw err('This check just changed. Look again.', 409);
-    throw Object.assign(err('Zeffy has an entry that may be this check. Look at it first.', 409), { entries });
+    // The name the person typed is their answer (by): the card keeps it when it's made again
+    if (!(await setRow(env.DB, id, { payer, by, name_by: nameBy, reason: m.promised.length ? 'pledge' : 'maybe-double', note: JSON.stringify(entries) }, now, row.state))) throw err('This check just changed. Look again.', 409);
+    // The version the page now holds, so "Send a new record" is refused if the check changes while the person decides
+    throw await refusedAfter(env, id, 'Zeffy has an entry that may be this check. Look at it first.', 409, { entries });
+  }
+  // The donor: one Zeffy already has (filed by their email, or under their contact when they have none), or a new one
+  let record;
+  let join = null;
+  if (donorId) {
+    let c;
+    try {
+      c = await zeffyGet(env, `/contacts/${encodeURIComponent(donorId)}`, {}, fetchImpl);
+    } catch (e) {
+      if (e.status !== 404) throw err('Zeffy didn’t answer, so nothing was sent. Try again in a minute.', 503);
+      const card = jsonOf(row.card, {});
+      if (card.donors) await setRow(env.DB, id, { card: JSON.stringify({ ...card, donors: card.donors.filter((d) => d.id !== donorId), donor: card.donor === donorId ? null : card.donor }) }, now, row.state);
+      throw await refusedAfter(env, id, 'That donor isn’t in Zeffy any more. Pick another, or New donor.', 409);
+    }
+    let theirs = clean(c?.email).toLowerCase();
+    // The record carries the names Zeffy already has for them, so filing under them never renames them
+    const names = clean(c?.first_name) || clean(c?.last_name) ? { first_name: clean(c.first_name) || clean(c.last_name), last_name: clean(c.last_name) || clean(c.first_name) } : {};
+    // So the donor has to be who it's from: by their own name in Zeffy, as the one this name was learned as, or tied to
+    // the name on the card (the letter's email on them). A gift from a fund never goes in under a person's contact
+    const own = givenName({ first_name: c?.first_name, last_name: c?.last_name });
+    const listed = (jsonOf(row.card, {}).donors || []).find((d) => d.id === donorId);
+    if (own && !sameGiver(payer, own) && String(learned?.contact_id || '') !== donorId && !(listed?.for || []).some((n) => sameName(n, payer))) {
+      throw err(`That Zeffy donor is ${own}, and the gift would go in under their name. Pick the Zeffy donor for ${payer}, or New donor.`, 409);
+    }
+    if (isTag(theirs)) {
+      if (!(await strayTagOff(env, donorId, theirs, fetchImpl, now).catch(() => false))) throw err('Zeffy is filing another check under this donor right now. Try again in a minute.', 503);
+      theirs = '';
+    }
+    if (theirs) {
+      if (mail && mail !== theirs) {
+        // Zeffy has an email for them since the card was made: the card shows it, and a Send files by it
+        const card = jsonOf(row.card, {});
+        if (card.donors) await setRow(env.DB, id, { card: JSON.stringify({ ...card, donors: card.donors.map((d) => (d.id === donorId ? { ...d, email: theirs } : d)) }) }, now, row.state);
+        throw await refusedAfter(env, id, `Zeffy has ${theirs} for this donor now, and the card shows it. Press Send again to use it, or change their email in Zeffy first.`, 409);
+      }
+      record = { ...recordFor(seen, { name: payer, form, email: theirs, day, now }), ...names };
+    } else {
+      if (!cfg.writeTest?.join?.ok) throw err('Zeffy can’t file a gift under a donor with no email yet. Pick New donor, or add their email in Zeffy first.', 409);
+      // The email to add to them: one another donor holds would never go on, so it's asked about now, not refused after
+      if (mail) await emailFree(env, row, id, mail, { payer, not: donorId, now, fetchImpl });
+      record = { ...recordFor(seen, { name: payer, form, day, now }), ...names };
+      join = donorId;
+    }
+  } else {
+    // A new donor only once the person has seen the ones Zeffy has under this name: a name typed that the card never looked
+    // up (a check the site couldn't read) can be a giver Zeffy knows, and a second contact for them splits their giving
+    const seenDonors = new Set((Array.isArray(donorsShown) ? donorsShown : []).map(String));
+    const found = donorsFor(payments, [payer], { learned });
+    if (learned?.contact_id && !found.some((d) => d.id === String(learned.contact_id))) found.unshift({ id: String(learned.contact_id), name: '', email: '', gifts: 0, last: 0, address: null, sure: true });
+    const unseen = found.filter((d) => !seenDonors.has(d.id));
+    if (unseen.length) {
+      const named = await confirmDonors(env, unseen, [payer], { learned, learnedName: payer, fetchImpl });
+      if (named.length) {
+        const card = jsonOf(row.card, {});
+        const donors = [...(card.donors || []).filter((d) => !named.some((a) => a.id === d.id)), ...named.map((d) => ({ ...d, added: true }))];
+        // The name typed is the person's answer: the card keeps it, with these donors, when it's made again
+        await setRow(env.DB, id, { card: JSON.stringify({ ...card, donors }), payer, name_by: nameBy }, now, row.state);
+        throw await refusedAfter(env, id, `Zeffy already has ${named.length === 1 ? `a donor named ${named[0].name || payer}` : `${named.length} donors named ${payer}`}. Look at Zeffy donor, then press Send again: pick ${named.length === 1 ? 'them' : 'theirs'}, or New donor if this is someone else.`, 409);
+      }
+    }
+    // Zeffy files a record under whoever has the email: one another donor holds would put this gift on them
+    if (mail) await emailFree(env, row, id, mail, { payer, now, fetchImpl });
+    record = recordFor(seen, { name: payer, form, email: mail || null, day, now });
   }
   // Entries the person said are other gifts: never offered for this check again, nor called a double of it
   const ruledOut = notThose ? [...new Set([...rejectedBy(row), ...looked])] : rejectedBy(row);
-  if (!(await setRow(env.DB, id, { payer, form_id: form.id, form_title: form.title, rejected: JSON.stringify(ruledOut) }, now, row.state))) throw err('This check just changed. Look again.', 409);
-  const learned = await learnedFor(env.DB, payer);
-  let who;
-  try { who = await learnedContact(env, learned, fetchImpl); } catch (e) { if (e.later) throw err('Zeffy didn’t answer, so nothing was saved. Try again in a minute.', 503); throw e; }
-  // Filed under the giver's own contact, the record carries the names Zeffy already has for them; a letter's email files it by that
-  let mail = '';
-  if (!who.email && !who.join) {
-    try { mail = await letterMail(env, row, payer, fetchImpl); } catch { throw err('Zeffy didn’t answer, so nothing was saved. Try again in a minute.', 503); }
-  }
-  const record = { ...recordFor(seen, { name: payer, form, email: mail || who.email, day, now }), ...(mail ? {} : who.names) };
-  const r = await createRecord(env, seen, record, { from: row.state, mode: 'on', now, fetchImpl, by, learnWith: { name: payer }, join: mail ? null : await joinable(env, who) });
-  // Not saved (busy, or nothing to claim): the check keeps the name and form it had, so the row never shows a typed guess
-  if (['later', 'busy'].includes(r.result)) await setRow(env.DB, id, { payer: row.payer, form_id: row.form_id, form_title: row.form_title }, now, row.state).catch(() => null);
-  if (r.result === 'later') throw err('Zeffy is busy, so nothing was saved. Try again in a minute.', 503);
+  const keep = { payer, name_by: nameBy, form_id: form.id, form_title: form.title, rejected: JSON.stringify(ruledOut), send: JSON.stringify(plan) };
+  const undo = Object.fromEntries(Object.keys(keep).map((k) => [k, row[k] ?? null]));
+  const r = await createRecord(env, seen, record, { from: row.state, now, fetchImpl, by, learnWith: { name: payer }, join, keep, undo });
+  if (r.result === 'later') throw err('Zeffy is busy, so nothing was sent. Try again in a minute.', 503);
   if (r.result === 'refused') throw err(`${r.error} Try again, or enter it in Zeffy by hand.`, 422);
-  if (r.result === 'unsure') throw err('Zeffy didn’t answer. The site is looking for the record, so don’t enter this one again.', 503);
+  if (r.result === 'unsure') throw err('Zeffy didn’t answer. The site is looking for the record, so don’t send this one again.', 503);
   if (r.result === 'busy') throw err('This check has moved on. Look again.', 409);
   return r;
+}
+
+/**
+ * An email a person gave for the donor, free to use: one Zeffy has on another donor is shown on the card under Zeffy
+ * donor (tied to this name, by the email), and nothing is sent. not: the donor it's going on
+ */
+async function emailFree(env, row, id, mail, { payer, not = null, now, fetchImpl }) {
+  let held;
+  try {
+    // Zeffy's email filter is exact on a contact's main or second email (its spec), and filing by email may take either:
+    // every contact it gives holds this one
+    held = ((await zeffyGet(env, '/contacts', { email: mail, limit: 10 }, fetchImpl))?.data || []).filter((c) => String(c.id) !== String(not));
+  } catch {
+    throw err('Zeffy didn’t answer, so nothing was sent. Try again in a minute.', 503);
+  }
+  if (!held.length) return;
+  const card = jsonOf(row.card, {});
+  const add = held.map((c) => ({ id: String(c.id), name: givenName({ first_name: c.first_name, last_name: c.last_name }), email: clean(c.email).toLowerCase() || mail, gifts: Number(c.donation_count) || 0, last: Number(c.last_donation_date) || 0, address: buyerAddress(c.address), sure: false, for: [], sureFor: [], added: true }));
+  const donors = [...(card.donors || []).filter((d) => !add.some((a) => a.id === d.id)), ...add];
+  await setRow(env.DB, id, { card: JSON.stringify({ ...card, donors }) }, now, row.state);
+  throw await refusedAfter(env, id, `Zeffy already has ${mail} on ${add[0].name || 'another donor'}. If the gift is theirs, pick them under Zeffy donor (it goes in under their name). If not, check the email, or leave it empty.`, 409);
+}
+
+/**
+ * Before a person decides a check another way (Don't send, This is the check): a send of it Zeffy never answered clearly
+ * may have saved after all. Found, that's the check's record, and the person is told so; Zeffy not answering stops them
+ * (so nothing is decided on a guess)
+ */
+async function earlierSendFirst(env, row, { now, fetchImpl }) {
+  const before = jsonOf(row.payload);
+  if (!before || !['person', 'unsure'].includes(row.state)) return;
+  let hit;
+  try { hit = await findSent(env, row, before, fetchImpl); } catch { throw err('Zeffy didn’t answer, so nothing changed. Try again in a minute.', 503); }
+  if (!hit) return;
+  await settleFound(env, row, before, hit, now, fetchImpl);
+  throw err('Zeffy saved the earlier send of this check after all, so it’s in Zeffy now and nothing else changed. Look at it on Checks.', 409);
+}
+
+/**
+ * A refusal that changed the check itself (donors found and added, the name kept, a donor gone, Zeffy's email learned):
+ * it says the version it left, so the page takes the card it comes back to as the person's own doing. A refusal that
+ * changed nothing (the check changed by someone else first) says none, and the page says the card was updated
+ */
+async function refusedAfter(env, id, message, status, extra = {}) {
+  const row = await getRow(env.DB, id);
+  return Object.assign(err(message, status), { ver: row ? versionOf(row) : null, ...extra });
 }
 
 /** A person says this check is that Zeffy entry */
@@ -2795,6 +3149,7 @@ export async function personLink(env, id, zeffyId, { saw = null, by = null, now 
   const row = await mustRow(env, id, { saw });
   if (rejectedBy(row).includes(String(zeffyId))) throw err('Someone said that entry isn’t this check. Look again.', 409);
   if (row.zeffy_id) throw err('This check already has its Zeffy record.', 409);
+  await earlierSendFirst(env, row, { now, fetchImpl });
   let p;
   try {
     p = await zeffyGet(env, `/payments/${encodeURIComponent(zeffyId)}`, {}, fetchImpl);
@@ -2806,10 +3161,9 @@ export async function personLink(env, id, zeffyId, { saw = null, by = null, now 
       await setRow(env.DB, id, { note: JSON.stringify(left) }, now, row.state);
       throw err('That Zeffy entry was deleted. Pick another one, or decide this check another way.', 409);
     }
-    if (ASKS_ABOUT_ENTRIES.includes(row.reason)) {
-      await setRow(env.DB, id, { state: 'read', reason: null, note: null }, now, row.state);
-      const on = (await readState(env.DB, KEY)).mode === 'on';
-      throw err(`That Zeffy entry was deleted, so there’s nothing to match. ${on ? 'The site decides this check again in a few minutes.' : 'The check waits for its hand entry.'}`, 409);
+    if (row.state === 'person') {
+      await setRow(env.DB, id, { state: 'read', note: null }, now, row.state);
+      throw err('That Zeffy entry was deleted, so there’s nothing to match. Its card is made again in a few minutes.', 409);
     }
     await setRow(env.DB, id, { note: null }, now, row.state);
     throw err('That Zeffy entry was deleted, so there’s nothing to match.', 409);
@@ -2823,21 +3177,39 @@ export async function personLink(env, id, zeffyId, { saw = null, by = null, now 
   return { result: 'linked' };
 }
 
-/** A person says the matched entry isn't this check: it comes off, never gets offered again, and the check is decided afresh */
+/** A person says the matched entry isn't this check: it comes off, is never offered again, and the check gets its card again */
 export async function personUnlink(env, id, { saw = null, by = null, now = Date.now() } = {}) {
   const row = await mustRow(env, id, { saw });
   if (row.state !== 'linked' || !row.zeffy_id) throw err('Only a matched entry can be taken off.', 409);
-  let read = {};
-  try { read = JSON.parse(row.guess || '{}'); } catch { /* an old row */ }
-  // The name may have come from that entry: what was read off the check is what stands
-  const payer = read.payer || null;
-  // The person who said so decides what it is next, right where they are: the site never makes a record on its own after this
+  // The name it's sent under is worked out again from the check and its letter (a name copied from the entry was someone else's)
   if (!(await setRow(env.DB, id, {
-    state: 'person', reason: payer ? 'unlinked' : 'unreadable', note: null, payer, zeffy_id: null, via: null, score: null, by,
+    state: 'read', reason: 'unlinked', note: null, payer: null, name_by: null, by: null, send: null, zeffy_id: null, via: null, try_at: null, address_done: null, address_at: null, taught: null,
     rejected: JSON.stringify([...rejectedBy(row), String(row.zeffy_id)]),
   }, now, 'linked'))) throw err('This check just changed. Look again.', 409);
-  // Only a name read off the check taught anything wrong: one copied from the entry belongs to someone else
-  if (read.payer) await env.DB.prepare('DELETE FROM check_payers WHERE key = ?').bind(payerKey(read.payer)).run();
+  // What the wrong match taught about whose donor this is is undone, and nothing else: what earlier gifts taught about that
+  // giver is put back as it was, and a name copied from the entry onto a check with none taught nothing. If another check
+  // has taught that name since, that stands. A match made before the site noted what it taught (taught is null) forgets the
+  // check's names, as it did then
+  const t = jsonOf(row.taught);
+  // The record was the returned deposit's: it goes back to it, and its "cancel it in Zeffy" to-do with it
+  if (t?.tookFrom) {
+    const back = await env.DB.prepare("UPDATE check_gifts SET zeffy_id = ?, updated_at = ? WHERE id = ? AND state = 'came-back' AND zeffy_id IS NULL").bind(String(row.zeffy_id), new Date(now).toISOString(), t.tookFrom).run();
+    if (back.meta?.changes) {
+      const returned = await getRow(env.DB, t.tookFrom);
+      if (returned) await tell(env, { ...returned, alerted: null }, 'back', { title: `A check came back: ${money(returned.cents)}`, lead: 'Its Zeffy record was matched to the same check deposited again, and that match was taken off.', fix: 'Cancel the record in Zeffy: no money came in for it.' });
+    }
+  }
+  if (t?.name) {
+    const key = payerKey(t.name);
+    const nowRow = await env.DB.prepare('SELECT contact_id, campaign_id FROM check_payers WHERE key = ?').bind(key).first();
+    const untouched = !nowRow || (t.after && String(nowRow.contact_id ?? '') === String(t.after.contact_id ?? '') && String(nowRow.campaign_id ?? '') === String(t.after.campaign_id ?? ''));
+    if (untouched && t.before) {
+      await env.DB.prepare('INSERT OR REPLACE INTO check_payers (key, name, contact_id, campaign_id, by, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(key, t.before.name, t.before.contact_id ?? null, t.before.campaign_id ?? null, t.before.by ?? null, t.before.updated_at).run();
+    } else if (untouched) await env.DB.prepare('DELETE FROM check_payers WHERE key = ?').bind(key).run();
+  } else if (row.taught == null) {
+    for (const name of [row.payer, row.drawer].filter(Boolean)) await env.DB.prepare('DELETE FROM check_payers WHERE key = ?').bind(payerKey(name)).run();
+  }
   return { result: 'unlinked' };
 }
 
@@ -2875,21 +3247,28 @@ export async function personLetterDone(env, id, { saw = null, by = null, now = D
   return { result: 'done' };
 }
 
-/** While watching, a person takes back "not a gift": it waits for the hand entry again */
-export async function personIsGift(env, id, { saw = null, by = null, now = Date.now() } = {}) {
-  const row = await mustRow(env, id, { saw });
-  if (!['left-out', 'store'].includes(row.state)) throw err('This check has moved on. Look again.', 409);
-  if (!(await setRow(env.DB, id, { state: 'person', reason: 'told-gift', note: null, by }, now, row.state))) throw err('This check just changed. Look again.', 409);
-  return { result: 'waiting' };
-}
-
-/** A person says this isn't a gift */
-export async function personNotGift(env, id, { saw = null, by = null, now = Date.now() } = {}) {
+/** A person says not to send this check to Zeffy, and why (DONT_REASONS). "Send to Zeffy after all" undoes it */
+export async function personDontSend(env, id, { reason, saw = null, by = null, now = Date.now(), fetchImpl = fetch } = {}) {
+  if (!DONT_REASONS[reason]) throw err('Say why it isn’t for Zeffy.');
   const first = await getRow(env.DB, id);
   if (first && sameAnswer(first, by, now, (r) => r.state === 'left-out' && r.reason === 'person')) return { result: 'left-out', again: true };
   const row = await mustRow(env, id, { saw });
   if (row.zeffy_id) throw err('This check has a Zeffy record. Delete it in Zeffy first, and this page catches up within the hour.', 409);
-  if (!(await setRow(env.DB, id, { state: 'left-out', reason: 'person', note: null, by }, now, row.state))) throw err('This check just changed. Look again.', 409);
-  await allClear(env, row, 'Left out: not a gift.');
+  if (!['new', 'read', 'person'].includes(row.state)) throw err('This check has moved on. Look again.', 409);
+  await earlierSendFirst(env, row, { now, fetchImpl });
+  if (!(await setRow(env.DB, id, { state: 'left-out', reason: 'person', note: reason, by }, now, row.state))) throw err('This check just changed. Look again.', 409);
+  await allClear(env, row, `Not sent to Zeffy: ${DONT_REASONS[reason]}.`);
   return { result: 'left-out' };
+}
+
+/** A person takes back "don't send": the check gets its card again, made fresh against Zeffy */
+export async function personReopen(env, id, { saw = null, by = null, now = Date.now() } = {}) {
+  const row = await mustRow(env, id, { saw });
+  if (!['left-out', 'store'].includes(row.state) || row.zeffy_id) throw err('This check has moved on. Look again.', 409);
+  if (!['pending', 'sent'].includes(row.status)) throw err('Mercury didn’t take this check, so it can’t go to Zeffy.', 409);
+  // (a store-account check says so on its card: prepareCard knows the account)
+  // (one from the store's account was never read: it's read now, as every check is)
+  const store = row.state === 'store';
+  if (!(await setRow(env.DB, id, { state: store && !row.shape ? 'new' : 'read', reason: null, note: null, by: null, try_at: null, tries: store && !row.shape ? 0 : row.tries }, now, row.state))) throw err('This check just changed. Look again.', 409);
+  return { result: 'reopened' };
 }
