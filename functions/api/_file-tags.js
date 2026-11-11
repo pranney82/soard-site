@@ -71,13 +71,22 @@ export async function tagIds(DB) {
 }
 
 async function readOrg(key, fetchImpl) {
+  // Roles and tag names first; each kept tag's audience after, one tag at a time (all of them at once is more than JobTread answers)
   const body = await pave(key, { organization: { $: { id: SOARD_ORG_ID },
     roles: { $: { size: 100 }, nodes: { id: {}, name: {}, type: {} } },
-    fileTags: { $: { size: 100 }, nodes: { id: {}, name: {}, aces: { $: { size: 50 }, nodes: { id: {}, role: { id: {} } } } } },
+    fileTags: { $: { size: 100 }, nodes: { id: {}, name: {} } },
   } }, fetchImpl);
   const org = body?.organization;
   if (!Array.isArray(org?.roles?.nodes) || !Array.isArray(org?.fileTags?.nodes)) throw new Error('JobTread sent no roles or tags');
-  return { roles: org.roles.nodes, tags: org.fileTags.nodes };
+  return { roles: org.roles.nodes, tags: org.fileTags.nodes.map((t) => ({ ...t, aces: null })) };
+}
+
+/** A tag's access entries: [{ id, role: { id } }] */
+async function tagAces(key, tagId, fetchImpl) {
+  const body = await pave(key, { fileTag: { $: { id: tagId }, aces: { $: { size: 50 }, nodes: { id: {}, role: { id: {} } } } } }, fetchImpl);
+  const nodes = body?.fileTag?.aces?.nodes;
+  if (!Array.isArray(nodes)) throw new Error('JobTread sent no access entries for a tag');
+  return nodes;
 }
 
 /**
@@ -98,7 +107,8 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
   const missingRoles = new Set();
 
   const setAudience = async (tag, wanted) => {
-    const have = new Map((tag.aces?.nodes || []).filter((a) => a.role?.id).map((a) => [a.role.id, a.id]));
+    const aces = tag.aces ?? await tagAces(key, tag.id, fetchImpl);
+    const have = new Map(aces.filter((a) => a.role?.id).map((a) => [a.role.id, a.id]));
     for (const roleId of wanted) {
       if (have.has(roleId)) continue;
       // A create answers with the query root (as createRole and createFile do); nothing is needed back
@@ -119,7 +129,7 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
       const body = await pave(key, { createFileTag: { $: { organizationId: SOARD_ORG_ID, name: spec.name, description: spec.description, color: spec.color }, createdFileTag: { id: {}, name: {} } } }, fetchImpl);
       const id = body?.createFileTag?.createdFileTag?.id;
       if (!id) throw new Error(`JobTread didn’t make the ${spec.name} tag`);
-      tag = { id, name: spec.name, aces: { nodes: [] } };
+      tag = { id, name: spec.name, aces: [] };
       made.push(spec.name);
     }
     await save.bind(spec.name, tag.id, new Date(now).toISOString()).run();
@@ -135,7 +145,7 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
   const family = roleByName.get(low(FAMILY_ROLE));
   for (const name of FAMILY_OFF) {
     const tag = tags.find((t) => low(t.name) === low(name));
-    const ace = family && (tag?.aces?.nodes || []).find((a) => a.role?.id === family.id);
+    const ace = family && tag && (await tagAces(key, tag.id, fetchImpl)).find((a) => a.role?.id === family.id);
     if (!ace) continue;
     await pave(key, { deleteAce: { $: { id: ace.id } } }, fetchImpl);
     removed.push(`${tag.name}: ${FAMILY_ROLE}`);

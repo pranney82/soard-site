@@ -19,8 +19,11 @@ function world({ tags = [], roles = ROLES } = {}) {
   w.fetchImpl = async (_url, init) => {
     const q = JSON.parse(init.body).query;
     if (q.organization) {
-      return Response.json({ organization: { roles: { nodes: roles }, fileTags: { nodes: w.tags.map((t) => ({ id: t.id, name: t.name, aces: { nodes: t.aces.map((a) => ({ id: a.id, role: { id: a.roleId } })) } })) } } });
+      // As JobTread: every tag's audience in one answer is too large, so the site mustn't ask for it
+      if (q.organization.fileTags?.nodes?.aces) return new Response('Request Entity Too Large', { status: 413 });
+      return Response.json({ organization: { roles: { nodes: roles }, fileTags: { nodes: w.tags.map((t) => ({ id: t.id, name: t.name })) } } });
     }
+    if (q.fileTag) { const t = w.tags.find((x) => x.id === q.fileTag.$.id); return Response.json({ fileTag: { aces: { nodes: t.aces.map((a) => ({ id: a.id, role: { id: a.roleId } })) } } }); }
     w.writes.push(q);
     if (q.createFileTag) { const t = { id: `t${w.next++}`, name: q.createFileTag.$.name, description: q.createFileTag.$.description, color: q.createFileTag.$.color, aces: [] }; w.tags.push(t); return Response.json({ createFileTag: { createdFileTag: { id: t.id, name: t.name } } }); }
     if (q.createAce) { const t = w.tags.find((x) => x.id === q.createAce.$.targetId); t.aces.push({ id: `a${w.next++}`, roleId: q.createAce.$.assignee.role.roleId, notify: q.createAce.$.notify }); return Response.json({}); }
