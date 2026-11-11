@@ -201,3 +201,14 @@ test('Nov 11 review 3: an undone check-in is left out of a shelf move (a move th
   assert.equal(r.success, false);
   assert.equal((await env.DB.prepare("SELECT shelf FROM kid_receipts WHERE id = 'tap-undone-0001'").first()).shelf, '1');
 });
+
+test('Nov 11: something from an order bought on top and checked in, put on an allowance by a person: its line moves there, its check-in stays with it', async () => {
+  await mail('o1', 'The Container Store', daysAgo(3), { kind: 'delivered', orderNumber: '899120272699', items: [{ name: 'Elfa Mesh Drawer', quantity: 2 }] });
+  await decide(env.DB, { orderKey: 'The Container Store|899120272699', itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-nico' } });
+  let drawer = (await view()).kids.find((k) => k.jobId === 'j-nico').items.find((i) => /Elfa/.test(i.name));
+  await receive(env.DB, { tap: 'tap-drawer-001', jobId: 'j-nico', itemId: drawer.itemId, partKey: drawer.partKey, name: drawer.name, line: drawer.line, units: 2, boxes: 1 });
+  // The page's choice on the thing's own sheet (as Wrong kid or line sends it)
+  await post('decide', { orderKey: drawer.order.key, from: 'j-nico', items: [{ itemName: drawer.orderedAs || drawer.name, decision: { type: 'line', kid: 'j-nico', itemId: 'n-decor', partKey: 'allow' } }] });
+  drawer = (await view()).kids.find((k) => k.jobId === 'j-nico').items.find((i) => /Elfa/.test(i.name));
+  assert.deepEqual([drawer.also.allowItemId, drawer.line, drawer.status, drawer.receipts.length], ['n-decor', 'Decor/Accessories allowance', 'here', 1]);
+});

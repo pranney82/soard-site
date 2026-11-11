@@ -757,7 +757,8 @@ function hereSheet(kid, it, { keep = false } = {}) {
  * of their allowances or in Also bought. The site sorts it; a person's answer here stands over that
  */
 function budgetPick(kid, it) {
-  if (!it.also?.typed || !kid.allowances?.length) return '';
+  // Anything bought on top: typed in, or from an order (checked in, its Wrong kid or line is gone: its place is here)
+  if (!it.also || !kid.allowances?.length) return '';
   const now = it.also.pending ? '' : it.also.allowItemId ? `allow:${it.also.allowItemId}` : 'also';
   const opt = (v, t) => `<option value="${esc(v)}"${v === now ? ' selected' : ''}>${esc(t)}</option>`;
   return `<div class="field"><label for="budget">On ${esc(kid.short)}’s budget</label><select id="budget">${now ? '' : '<option value="" selected>Being sorted</option>'}${kid.allowances.map((a) => opt(`allow:${a.itemId}`, `Next to the ${a.line} allowance`)).join('')}${opt('also', 'Also bought')}</select></div>`;
@@ -769,7 +770,10 @@ function bindBudget(kid, it) {
     if (!sel.value) return;
     sel.disabled = true;
     try {
-      await send('allow', { key: it.also.key, jobId: kid.jobId, itemId: sel.value.startsWith('allow:') ? sel.value.slice(6) : null });
+      const itemId = sel.value.startsWith('allow:') ? sel.value.slice(6) : null;
+      // From an order: a person's answer for that thing, as Wrong kid or line gives (it stands over the site's sorting)
+      if (it.order?.key && !it.also.typed) await sendOrKeep('decide', { orderKey: it.order.key, from: kid.jobId, items: [{ itemName: it.orderedAs || it.name, decision: itemId ? { type: 'line', kid: kid.jobId, itemId, partKey: 'allow' } : { type: 'also', kid: kid.jobId } }] });
+      else await send('allow', { key: it.also.key, jobId: kid.jobId, itemId });
       toast('Its line moves on the budget in a minute');
     } catch (err) {
       toast(`Not saved: ${clean(err.message)}`);
