@@ -271,7 +271,15 @@ export async function writeLine(env, ids, line, { fetchImpl = fetch, now = new D
   const last = parse(row?.wrote, null);
   const computed = lineValues(line.items, { allowance: line.allowance });
   if (!computed.status && !last) return { wrote: false, values: computed };
-  if (last && same(withHand(computed, null, null, parse(row?.hand, {})).values, last)) return { wrote: false, values: last };
+  const stored = parse(row?.hand, {});
+  const kept = withHand(computed, null, null, stored);
+  // A person's status from before the four, moved onto the line as it is now: kept so, on this run, written or not (the
+  // next run with news on the line takes it away, as with any hand edit)
+  if (row && JSON.stringify(kept.hand) !== JSON.stringify(stored) && !dry) {
+    await env.DB.prepare('UPDATE kid_jt_lines SET hand = ? WHERE job_id = ? AND item_id = ?').bind(JSON.stringify(kept.hand), line.jobId, line.itemId).run();
+    row.hand = JSON.stringify(kept.hand);
+  }
+  if (last && same(kept.values, last)) return { wrote: false, values: last };
   if (dry) {
     await env.DB.prepare('INSERT INTO kid_jt_lines (job_id, item_id, kind, planned, wrote_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(job_id, item_id) DO UPDATE SET planned = excluded.planned')
       .bind(line.jobId, line.itemId, line.also ? 'also' : 'line', JSON.stringify(computed), now).run();

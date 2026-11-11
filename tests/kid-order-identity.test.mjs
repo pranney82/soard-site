@@ -463,3 +463,24 @@ test('a refund naming a thing its own way: that thing is asked about', async () 
   const v = await view();
   assert.deepEqual(v.needsLook.map((x) => [x.undo, x.items.map((i) => i.name)]), [['refunded', ['Mini Desk Fan, White 6in']]]);
 });
+
+test('Nov 11 review 2: a cancel naming a thing two of the order’s things fit as well as each other asks about both', async () => {
+  await mail('o1', 'Maple Market', daysAgo(6), { kind: 'order', orderNumber: 'MM-50019', jobPo: 'AVA', items: [{ name: 'Large Woven Storage Basket', cents: 3400 }, { name: 'Small Woven Storage Basket', cents: 2400 }, { name: 'Cloud Pendant Light', cents: 4500 }] });
+  await mail('x1', 'Maple Market', daysAgo(1), { kind: 'cancelled', orderNumber: 'MM-50019', items: [{ name: 'Woven Storage Basket' }] });
+  const v = await view();
+  assert.deepEqual(v.needsLook.map((x) => x.items.map((i) => i.name).sort()), [['Large Woven Storage Basket', 'Small Woven Storage Basket']]);
+});
+
+test('Nov 11 review 2: a box checked in from one of two orders its email could be, scanned again: “Already checked in”', async () => {
+  const g = [{ name: 'Felt Star Garland', quantity: 1, cents: 2200 }];
+  await mail('o1', 'Juniper Gifts', daysAgo(9), { kind: 'order', orderNumber: '#JG30001', jobPo: 'AVA', items: g, tracking: [] });
+  await mail('o2', 'Juniper Gifts', daysAgo(6), { kind: 'order', orderNumber: '#JG30002', jobPo: 'ROWAN', items: g, tracking: [] });
+  await mail('s1', 'Juniper Gifts', daysAgo(4), { kind: 'shipped', orderNumber: null, items: g, tracking: [{ carrier: 'USPS', number: '9400111899223344550001' }] });
+  let { view: v, reads, keyOf } = await checkinData(env, { photos: false });
+  const label = { ...blank, trackingNumbers: ['9400111899223344550001'] };
+  assert.ok(findBox(v, reads, label, { keyOf }).which);
+  const garland = v.kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.order?.key === 'Juniper Gifts|#JG30001');
+  await receive(env.DB, { tap: 'tap-garland-01', jobId: 'j-ava', itemId: garland.itemId, partKey: garland.partKey, name: garland.name, line: garland.line, units: 1, boxes: 1, track: '9400111899223344550001' });
+  ({ view: v, reads, keyOf } = await checkinData(env, { photos: false }));
+  assert.equal(findBox(v, reads, label, { keyOf }).already?.short, 'Ava E.');
+});

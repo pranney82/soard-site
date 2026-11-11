@@ -668,14 +668,20 @@ function labelSheet(kid, it, tap, box = null, { keep = false } = {}) {
   const r = (it.receipts || []).find((x) => x.id === tap);
   if (!r) { itemSheet(kid, it, { keep }); return; }
   const of = Math.max(1, r.boxes || 1);
-  const out = (it.receipts || []).some((x) => x.kind === 'out' && !x.undone && x.ref === tap && (!box || !x.box || Number(x.box) === Number(box)));
-  const more = !isHere(it) && it.status !== 'not';
+  // On the truck: this box (its own label), or (no box said) every box of the check-in; some of them: said so, and the
+  // rest is still on its shelf
+  const p = outStateOf(it).per.get(tap);
+  const out = Boolean(p && (box ? p.boxes.has(Number(box)) : p.full));
+  const loadedSome = !out && p && p.boxes.size ? `${p.boxes.size} of ${p.total} boxes loaded` : null;
+  // What of the thing hasn't come yet (or, this check-in undone, all of it): checked in from its own sheet
+  const more = !isHere(it);
   openSheet(`${head(kidTitle(kid), { kid: true, sub: esc([box && of > 1 ? `Box ${box} of ${of}` : of > 1 ? `${of} boxes` : null, `Checked in ${dayOf(r.at)}${byWho(r)}`].filter(Boolean).join(' · ')) })}
     <p class="item-name">${esc(it.name)}</p>
     ${r.undone ? '<p class="why-line">This check-in was undone.</p>' : out ? '<div class="shelf-callout static"><span class="who">Loaded</span><b>At the house</b></div>'
       : `<button class="shelf-callout" type="button" data-move="${esc(tap)}" aria-label="Move it to another shelf"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><span class="sc-shelf"><b>${esc(shelfName(r.shelf) || 'Shelf')}</b>${ICON.chev}</span></button>`}
-    <div class="sheet-foot">${r.undone ? '' : `<button class="btn btn-primary btn-big" type="button" id="labelagain" data-focus>Print ${box || of === 1 ? 'this label' : 'its labels'} again</button>`}
-      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button>${more ? '<button class="btn btn-text" type="button" id="checkmore">Check in the rest of it</button>' : ''}</div></div>`, { keep });
+    ${loadedSome ? `<p class="why-line">${esc(loadedSome)}</p>` : ''}
+    <div class="sheet-foot">${r.undone ? (more ? '<button class="btn btn-primary btn-big" type="button" id="checkmore" data-focus>Check it in</button>' : '') : `<button class="btn btn-primary btn-big" type="button" id="labelagain" data-focus>Print ${box || of === 1 ? 'this label' : 'its labels'} again</button>`}
+      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button>${more && !r.undone ? `<button class="btn btn-text" type="button" id="checkmore">${it.got ? 'Check in the rest of it' : 'Check it in'}</button>` : ''}</div></div>`, { keep });
   bindMoves(kid);
   if ($('labelagain')) $('labelagain').onclick = async () => { try { toast(printSaid((await send('reprint', { tap, ...(box ? { box } : {}) })).print).text); } catch (err) { toast(err.message); } };
   if ($('checkmore')) $('checkmore').onclick = () => itemSheet(kid, it, { keep: true });
@@ -915,9 +921,12 @@ function shelfPicker(kid, tap, then) {
   document.querySelectorAll('#sheet-root [data-shelf]').forEach((b) => {
     b.onclick = async () => {
       let r;
-      try { r = await sendOrKeep('shelf', Array.isArray(tap) ? { tap: newTap(), taps: tap, shelf: b.dataset.shelf } : { tap, shelf: b.dataset.shelf }); } catch (err) { toast(err.message); return; }
+      // Its own request, with its own id (one check-in's tap is that check-in's, maybe still waiting on this phone)
+      try { r = await sendOrKeep('shelf', { tap: newTap(), taps: Array.isArray(tap) ? tap : [tap], shelf: b.dataset.shelf }); } catch (err) { toast(err.message); return; }
       const p = r.queued ? null : printSaid(r.out?.print);
-      toast(`On ${shelfName(b.dataset.shelf)}${r.queued ? '. It goes when the connection is back' : p?.ok ? '. New labels printing' : `. ${p?.text || ''}`}`);
+      toast(r.queued ? `On ${shelfName(b.dataset.shelf)}. It goes when the connection is back`
+        : !r.out?.moved ? `It’s on ${shelfName(b.dataset.shelf)} already`
+          : `On ${shelfName(b.dataset.shelf)}${p?.ok ? '. New labels printing' : `. ${p?.text || ''}`}`);
       await close();
       render();
       then?.();

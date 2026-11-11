@@ -150,7 +150,40 @@ test('Nov 11 review: a shelf move sent again (its answer was lost) moves nothing
   await env.DB.prepare("UPDATE kid_receipts SET printed_at = 'printed'").run();
   await post('shelf', { taps: ['tap-move-0001'], shelf: '9' });
   assert.equal((await env.DB.prepare("SELECT printed_at FROM kid_receipts WHERE id = 'tap-move-0001'").first()).printed_at, 'printed', 'the same move again: nothing to print again');
+  const same = await post('shelf', { taps: ['tap-move-0001'], shelf: '9' });
+  assert.equal(same.moved, 0, 'the page says it’s on that shelf already (no labels promised)');
+  // One never saved (undone on the phone before it went): left out, the saved one moves
   const missing = await post('shelf', { taps: ['tap-move-0001', 'tap-not-saved'], shelf: '4' });
-  assert.equal(missing.success, false);
-  assert.equal((await env.DB.prepare("SELECT shelf FROM kid_receipts WHERE id = 'tap-move-0001'").first()).shelf, '9', 'one not saved: none moves');
+  assert.deepEqual([missing.success, missing.moved], [true, 1]);
+  assert.equal((await env.DB.prepare("SELECT shelf FROM kid_receipts WHERE id = 'tap-move-0001'").first()).shelf, '4');
+  assert.equal((await post('shelf', { taps: ['tap-not-saved'], shelf: '4' })).success, false, 'none saved: nothing to move');
+});
+
+test('Nov 11 review 2: a person’s status from before the four, moved onto the line as it is, is saved on the first run (no news) and gives way to the next news', async () => {
+  const { writeLine, lineValues } = await import('../functions/api/_kid-jt.js');
+  const ids = { status: 'f-status', details: 'f-details', shelf: 'f-shelf' };
+  const o = { store: 'Maple Market', orderNumber: 'MM-7001', at: '2026-11-02T15:00:00Z', cents: 12900 };
+  const head = { name: 'Raincan Shower Head', qty: 1, got: 0, status: 'ordered', order: o, receipts: [] };
+  const valve = { name: 'Shower Valve', qty: 1, got: 0, status: 'not', order: null, receipts: [] };
+  const arrived = (it) => ({ ...it, order: it.order || o, got: 1, status: 'here', shelf: '3', boxesLeft: 1, receipts: [{ kind: 'receive', units: 1, boxes: 1, at: '2026-11-12T15:00:00Z' }] });
+  const jt = { status: 'Ordered', details: null, shelf: null };
+  const fetchImpl = async (url, init) => {
+    const q = JSON.parse(init.body).query;
+    if (q.costItem) return new Response(JSON.stringify({ costItem: { id: q.costItem.$.id, customFieldValues: { nodes: [{ value: jt.status, customField: { id: ids.status } }, { value: jt.details, customField: { id: ids.details } }, { value: jt.shelf, customField: { id: ids.shelf } }] } } }));
+    if (q.updateCostItem) { const v = q.updateCostItem.$.customFieldValues; Object.assign(jt, { status: v[ids.status], details: v[ids.details], shelf: v[ids.shelf] }); return new Response('{}'); }
+    return new Response('not faked', { status: 400 });
+  };
+  const line = { jobId: 'j-nico', itemId: 'c-shower', allowance: false, items: [head, valve] };
+  const before = lineValues(line.items);
+  jt.details = before.details;
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS kid_jt_lines (job_id TEXT NOT NULL, item_id TEXT NOT NULL, kind TEXT, wrote TEXT, hand TEXT, planned TEXT, wrote_at TEXT, error TEXT, PRIMARY KEY (job_id, item_id))');
+  await env.DB.prepare("INSERT INTO kid_jt_lines (job_id, item_id, kind, wrote, hand, wrote_at) VALUES ('j-nico', 'c-shower', 'line', ?, ?, '2026-11-10')")
+    .bind(JSON.stringify({ status: 'Ordered', details: before.details, shelf: null }), JSON.stringify({ status: { value: 'Ordered', basis: 'Partly ordered' } })).run();
+  const jtEnv = { DB: env.DB, JOBTREAD_GRANT_KEY: 'k' };
+  await writeLine(jtEnv, ids, line, { fetchImpl });
+  assert.equal(jt.status, 'Ordered', 'their status stands');
+  const hand = JSON.parse((await env.DB.prepare("SELECT hand FROM kid_jt_lines WHERE item_id = 'c-shower'").first()).hand);
+  assert.deepEqual(hand.status, { value: 'Ordered', basis: 'Not ordered' }, 'saved, moved onto the line as it is');
+  await writeLine(jtEnv, ids, { ...line, items: [arrived(head), arrived(valve)] }, { fetchImpl });
+  assert.equal(jt.status, 'At the Office', 'news on the line: the site’s status');
 });

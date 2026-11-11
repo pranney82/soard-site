@@ -197,14 +197,16 @@ export async function onRequestPost(context) {
     } else if (q.get('shelf')) {
       // One check-in, or a shipment's for one kid: moved to that shelf, and their labels printed again with it (the
       // ones on the boxes say the old shelf)
-      const taps = Array.isArray(body.taps) ? body.taps.map(String).slice(0, 60) : [String(body.tap || '')];
-      // All of them saved first, or none moves (a shipment's boxes go together)
-      for (const t of taps) {
-        if (!(await env.DB.prepare('SELECT 1 FROM kid_receipts WHERE id = ?').bind(t).first())) return Response.json({ success: false, error: 'That check-in isn’t saved yet. Try again in a moment.' }, { status: 404, headers });
-      }
+      const asked = Array.isArray(body.taps) ? body.taps.map(String).slice(0, 60) : [String(body.tap || '')];
+      // The ones saved move together. One never saved (undone on the phone before it was sent) is left out; none saved:
+      // nothing to move
+      const taps = [];
+      for (const t of asked) if (await env.DB.prepare('SELECT 1 FROM kid_receipts WHERE id = ?').bind(t).first()) taps.push(t);
+      if (!taps.length) return Response.json({ success: false, error: 'That check-in isn’t saved yet. Try again in a moment.' }, { status: 404, headers });
       const moved = [];
       for (const t of taps) { const m = await moveShelf(env.DB, t, String(body.shelf || '')); jobId = m.jobId; if (m.moved) moved.push(t); }
       out.shelf = String(body.shelf);
+      out.moved = moved.length;
       // The labels of what moved print again (now, or when the printer's ready, like any that never printed). A move
       // sent again (its answer was lost) moves nothing, and prints nothing twice
       for (const t of moved) {

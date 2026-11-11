@@ -51,10 +51,13 @@ const wordsAlike = (a, b) => { const x = allWords(a), y = allWords(b); const sha
 /**
  * Which of an order's things some emails name → Set of the things' names. Each name goes to its one likeliest thing: the
  * same words exactly; else the most alike (by their words, then by every word: "Large Woven Basket" is the Large one).
- * Two things alike to the end ("JASPER 1G" and "JASPER 3G" read the same way): neither, so a person is asked
+ * Two things alike to the end ("JASPER 1G" and "JASPER 3G" read the same way): neither, and both are in .tied, so
+ * a person is asked about them
  */
 export function namedIn(items, names) {
   const out = new Set();
+  // The things a name fits as well as each other (out.tied): neither is named, and whoever reads this asks about both
+  out.tied = new Set();
   const same = (a, b) => String(a || '').toLowerCase().replace(/\s+/g, ' ').trim() === String(b || '').toLowerCase().replace(/\s+/g, ' ').trim();
   for (const n of names || []) {
     const exact = items.filter((it) => same(n, it.name));
@@ -63,7 +66,10 @@ export function namedIn(items, names) {
       .sort((x, y) => y.a - x.a || y.b - x.b);
     if (!scored.length) continue;
     const [top, next] = scored;
-    if (next && Math.abs(next.a - top.a) < 1e-9 && Math.abs(next.b - top.b) < 1e-9) continue;
+    if (next && Math.abs(next.a - top.a) < 1e-9 && Math.abs(next.b - top.b) < 1e-9) {
+      for (const x of scored) if (Math.abs(x.a - top.a) < 1e-9 && Math.abs(x.b - top.b) < 1e-9) out.tied.add(x.it.name);
+      continue;
+    }
     out.add(top.it.name);
   }
   return out;

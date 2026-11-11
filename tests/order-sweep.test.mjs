@@ -29,6 +29,8 @@ const ACCOUNTS = [
 
 const b64u = (s) => Buffer.from(s).toString('base64url');
 let seq, store, calls, aiAnswers, aiCap, env;
+// Google failing on purpose: these messages answer 500, these inboxes' sign-in is refused
+let failMsgs = new Set(), refuseBoxes = new Set();
 function mail({ box, at, from, to = box, subject, text = '', html = '', msgid = null, labels = ['INBOX'], extra = [] }) {
   const n = ++seq;
   const headers = [{ name: 'From', value: from }, { name: 'To', value: to }, { name: 'Subject', value: subject }, { name: 'Message-ID', value: msgid || `<o${n}@mail.example>` }, ...extra];
@@ -43,7 +45,7 @@ function mail({ box, at, from, to = box, subject, text = '', html = '', msgid = 
 const realFetch = globalThis.fetch;
 
 beforeEach(async () => {
-  seq = 0; store = []; calls = []; aiAnswers = {}; aiCap = false;
+  seq = 0; store = []; calls = []; aiAnswers = {}; aiCap = false; failMsgs = new Set(); refuseBoxes = new Set();
   env = {
     DB: await createD1(), GOOGLE_CALENDAR_KEY: SERVICE_ACCOUNT,
     AI: { run: async (model, { messages }, opts) => {
@@ -61,6 +63,7 @@ beforeEach(async () => {
     const url = String(input);
     if (url === 'https://oauth2.googleapis.com/token') {
       const claims = JSON.parse(Buffer.from(new URLSearchParams(init.body).get('assertion').split('.')[1], 'base64url').toString());
+      if (refuseBoxes.has(claims.sub)) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens' }, { status: 401 });
       return Response.json({ access_token: `tok:${claims.sub}`, expires_in: 3600 });
     }
     if (url.startsWith('https://gmail.googleapis.com/gmail/v1/users/me/')) {
@@ -82,6 +85,7 @@ beforeEach(async () => {
       if (m) {
         const msg = mine.find((x) => x.id === m[1]);
         if (!msg) return Response.json({ error: { message: 'not found' } }, { status: 404 });
+        if (failMsgs.has(msg.id)) return Response.json({ error: { message: 'backend error' } }, { status: 500 });
         const { box: _b, ...clean } = msg;
         return Response.json(u.searchParams.get('format') === 'metadata' ? { ...clean, payload: { headers: clean.payload.headers } } : clean);
       }
@@ -344,5 +348,28 @@ test('Nov 11 review: one email let go by and since deleted from Gmail is let go 
   const byId = new Map((await rows()).map((r) => [r.id, r]));
   assert.deepEqual([byId.get(gone.id).state, byId.get(gone.id).detail], ['skipped', 'looked at again: gone from Gmail']);
   assert.deepEqual([byId.get(cart.id).state, byId.get(cart.id).kind], ['read', 'delivered']);
+  assert.equal(JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data).triageV, 2);
+});
+
+test('Nov 11 review 2: the look again counts each email’s and each inbox’s failures on their own: one Google keeps failing on is let go after five runs, and a refused sign-in for a staff inbox waits instead of letting go', async () => {
+  const bad = mail({ box: PAT, at: T0 - 3 * DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Oak Step Stool...', text: 'Your package arrived.' });
+  const fine = mail({ box: PAT, at: T0 - 2 * DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Desk Lamp...', text: 'Not ours after all', extra: [] });
+  const cart = mail({ box: SAM, at: T0 - DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Bathroom Storage Cart...', text: 'Your package arrived.' });
+  await run(T0);
+  const st0 = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  for (const m of [bad, fine, cart]) await env.DB.prepare("UPDATE order_mail SET state = 'skipped', kind = NULL, store = NULL, read = NULL, detail = NULL WHERE id = ?").bind(m.id).run();
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st0, triageV: 1 })).run();
+  failMsgs.add(bad.id);
+  refuseBoxes.add(SAM);
+  aiAnswers['Arrived: Your Bathroom Storage Cart...'] = { kind: 'delivered', orderNumber: '2000155-53264812', items: [{ name: 'Bathroom Storage Cart', quantity: 1, price: '' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
+  for (let i = 1; i <= 3; i++) await run(T0 + i * 4 * MIN);
+  let byId = new Map((await rows()).map((r) => [r.id, r]));
+  assert.deepEqual([byId.get(bad.id).detail, byId.get(cart.id).detail], [null, null], 'still trying both');
+  // Sam's sign-in is back; the bad one fails on
+  refuseBoxes.clear();
+  for (let i = 4; i <= 9; i++) await run(T0 + i * 4 * MIN);
+  byId = new Map((await rows()).map((r) => [r.id, r]));
+  assert.match(byId.get(bad.id).detail || '', /^looked at again: Gmail answered 500/);
+  assert.deepEqual([byId.get(cart.id).state, byId.get(cart.id).kind], ['read', 'delivered'], 'the cart was looked at once Sam’s inbox opened');
   assert.equal(JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data).triageV, 2);
 });

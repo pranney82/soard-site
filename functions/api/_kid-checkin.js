@@ -327,7 +327,7 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
     const asked = new Set(looks.map((x) => x.name));
     if (partly) {
       for (const it of g.items) {
-        if (!asked.has(it.name) && (undoNow.all || undoNow.named.has(it.name)) && !record.decisions.get(decisionKey(g.key, it.name))) looks.push({ name: it.name, look: `part of the order was ${partly}: is this one?`, current: current.get(it.name) || null });
+        if (!asked.has(it.name) && (undoNow.all || undoNow.named.has(it.name) || undoNow.unsure.has(it.name)) && !record.decisions.get(decisionKey(g.key, it.name))) looks.push({ name: it.name, look: `part of the order was ${partly}: is this one?`, current: current.get(it.name) || null });
       }
     }
     // Nobody's: no thing in it placed by an answer, nothing to ask item by item, not going to a house, and recent. Part
@@ -463,7 +463,9 @@ export function undoneBy(reads, keyOf = orderKeys(reads), moved = new Map()) {
     u.kinds = u.emails.map((e) => e.kind);
     u.since = (items, after = '') => {
       const es = u.emails.filter((e) => e.at > after);
-      return { any: es.length > 0, all: es.some((e) => !e.names.length), named: namedIn(items, es.flatMap((e) => e.names)), kinds: es.map((e) => e.kind) };
+      const named = namedIn(items, es.flatMap((e) => e.names));
+      // unsure: things a name fits as well as another (it's one of them): asked about, both
+      return { any: es.length > 0, all: es.some((e) => !e.names.length), named, unsure: named.tied, kinds: es.map((e) => e.kind) };
     };
     u.allAt = (items) => {
       if (!items.length) return null;

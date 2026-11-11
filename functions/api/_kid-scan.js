@@ -238,7 +238,8 @@ export function findBox(view, reads, label, { keyOf = orderKeys(reads), nameOf =
     const how = `Tracking …${clean(t).slice(-6)}`;
     // Its email is about one of several orders (the same thing on each): those orders, for a person to pick
     const which = hits.length && hits.every((x) => keyOf.maybe?.(x)) ? [...new Set(hits.flatMap((x) => keyOf.maybe(x)))] : null;
-    if (which) return { which, how, track: clean(t) };
+    // About one of several orders, and this very box was checked in from it: where it is (never offered twice)
+    if (which) return seen || { which, how, track: clean(t) };
     const keys = [...new Set(hits.filter((x) => !keyOf.maybe?.(x)).map(keyOf))];
     if (keys.length) {
       const found = { ...ofOrders(keys, how), track: clean(t) };

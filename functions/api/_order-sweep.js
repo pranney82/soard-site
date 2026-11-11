@@ -146,7 +146,7 @@ async function queue(DB, mailbox, msg, t, source, now) {
  * The emails the first look let go by (state skipped, no reason kept) whose subject the rules now call order mail:
  * looked at again (their headers), and queued when they are. Done in turns; once none are left, st.triageV is current
  */
-export async function retriage(env, ctx, st, budget) {
+export async function retriage(env, ctx, st, budget, boxes = null) {
   const [at0, id0] = st.retriageAfter || ['', ''];
   const rows = (await env.DB.prepare("SELECT mailbox, id, at, subject FROM order_mail WHERE state = 'skipped' AND detail IS NULL AND (at > ? OR (at = ? AND id > ?)) ORDER BY at, id LIMIT 400")
     .bind(at0, at0, id0).all()).results || [];
@@ -157,29 +157,34 @@ export async function retriage(env, ctx, st, budget) {
   const byBox = new Map();
   for (const r of take) byBox.set(r.mailbox, [...(byBox.get(r.mailbox) || []), r]);
   const meta = HEADERS.map((x) => `&metadataHeaders=${x}`).join('');
-  // One that can't be looked at again: gone from Gmail (deleted), or its inbox can't be opened any more (a removed
-  // account), is let go with that said, and the rest go on. Anything else (Google failing for a moment) stops this turn,
-  // to try again next run; the same one failing five runs running is let go too
+  // One that can't be looked at again is let go with that said, and the rest go on: gone from Gmail (deleted), or in an
+  // inbox no longer among the staff's (a removed account). Anything else (Google failing for a moment, its sign-in
+  // refused while its settings change) stops this turn to try again next run; the same email, or the same inbox,
+  // failing five runs is let go then. Counted for each, so one that's fine never resets another's count
   const letGo = (r, why) => env.DB.prepare("UPDATE order_mail SET detail = ?, updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'").bind(why, iso(ctx.now), r.mailbox, r.id).run();
+  const fails = (st.retriageFails && typeof st.retriageFails === 'object') ? st.retriageFails : (st.retriageFails = {});
+  const failed = (k) => (fails[k] = (fails[k] || 0) + 1) >= 5;
   for (const [mailbox, list] of byBox) {
     let token;
-    try { token = await ctx.open(mailbox); } catch (err) {
-      if (!/Gmail answered 404|not found|unauthorized|deleted|suspended|invalid_grant/i.test(err.message) && (st.retriageFails = (st.retriageFails || 0) + 1) < 5) throw err;
+    try { token = await ctx.open(mailbox); delete fails[mailbox]; } catch (err) {
+      const gone = boxes && !boxes.includes(mailbox);
+      if (!gone && !failed(mailbox)) throw err;
       for (const r of list) await letGo(r, 'looked at again: its inbox can’t be opened');
-      st.retriageFails = 0;
+      delete fails[mailbox];
       continue;
     }
     for (const r of list) {
       budget.meta -= 1;
+      const k = `${r.mailbox}|${r.id}`;
       let msg;
       try { msg = await gmail(token, `/messages/${r.id}?format=metadata${meta}`, ctx.fetchImpl); } catch (err) {
-        if (err.status === 404) { await letGo(r, 'looked at again: gone from Gmail'); continue; }
-        if ((st.retriageFails = (st.retriageFails || 0) + 1) < 5) throw err;
+        if (err.status === 404) { await letGo(r, 'looked at again: gone from Gmail'); delete fails[k]; continue; }
+        if (!failed(k)) throw err;
         await letGo(r, `looked at again: ${String(err.message).slice(0, 80)}`);
-        st.retriageFails = 0;
+        delete fails[k];
         continue;
       }
-      st.retriageFails = 0;
+      delete fails[k];
       const t = orderTriage(msg, ctx);
       // Still not a store's order mail: left as it was (better rules some day may take it)
       if (!t) continue;
@@ -402,7 +407,7 @@ async function sweep(env, st, { fetchImpl, now }) {
   await env.DB.prepare("UPDATE order_mail SET state = 'failed', tries = COALESCE(tries, 0) + 1 WHERE state = 'working' AND updated_at < ?").bind(retryBefore).run();
   // Better rules for what's an order email: those let go by before (skipped at the first look, with no reason kept),
   // whose subject the rules now take, are looked at again, a few a run, and queued if they are a store's order mail
-  if ((st.triageV || 1) < TRIAGE_V) await retriage(env, ctx, st, budget).catch((err) => errors.push(`looking again: ${err.message}`));
+  if ((st.triageV || 1) < TRIAGE_V) await retriage(env, ctx, st, budget, boxes).catch((err) => errors.push(`looking again: ${err.message}`));
   let reads = 0;
   while (reads < READS_A_RUN && Date.now() - started < READ_MS && (st.aiRestUntil || 0) <= now && !ctx.capped) {
     // Oldest first, so an order's confirmation is read before its shipping and delivery
