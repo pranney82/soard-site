@@ -142,7 +142,7 @@ test('a sub is what JobTread’s vendor fields say; a card store or a materials 
 function rolesJT(people) {
   const roles = [
     { id: 'r-vendor', name: 'Vendor', type: 'vendor', permissions: ['readJobPlans', 'readJobTasks', 'updateJobToDoProgresses'] },
-    { id: 'r-ms', name: 'Monetary Sponsor', type: 'vendor', permissions: ['readDailyLogs', 'readJobTaskGroups'] },
+    { id: 'r-ms', name: 'Monetary Sponsor', type: 'vendor', permissions: ['readDailyLogs', 'showDailyLogs', 'readJobTaskGroups'] },
     { id: 'r-family', name: 'Makeover Family', type: 'customer', permissions: ['readJobTasks'] },
     { id: 'r-design', name: 'Design Partner', type: 'vendor', permissions: ['readJobPlans'] },
   ];
@@ -188,7 +188,7 @@ test('always on: grants give the level roles, roles change and are logged, and t
   assert.deepEqual(made.map((m) => m.name), ['Signature', 'Champion', 'Builder', 'Friend', 'Trade Partner']);
   for (const m of made) {
     assert.equal(m.type, 'vendor');
-    assert.deepEqual(m.permissions, ['readJobPlans', 'readJobTaskGroups', 'readJobTasks', 'updateJobToDoProgresses'], 'nobody moved loses anything, except daily logs: staff only (Peter, Nov 10 2026)');
+    assert.deepEqual(m.permissions, ['readJobPlans', 'readJobTaskGroups', 'readJobTasks', 'showDailyLogs', 'updateJobToDoProgresses'], 'nobody moved loses anything, except seeing every daily log: staff only; a log shared on purpose still shows (Peter, Nov 10 2026)');
   }
   const r = await reconcileRoles(env, ctxOf(), { fetchImpl: jt.fetchImpl, now: Date.parse('2026-10-30T12:00:00Z') });
   assert.deepEqual(r, { changed: 2, pending: 0, unplaced: 1 });

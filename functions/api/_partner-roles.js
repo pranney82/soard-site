@@ -50,7 +50,9 @@ const OLD_ROLES = [OLD_VENDOR_ROLE, OLD_SPONSOR_ROLE, 'Sponsor'];
 // A new role can do what both old ones did, so nobody moved loses anything, except daily logs:
 // they're for staff only (Peter, Nov 10 2026: "its for internal staff only, we will share specific things with them")
 const FALLBACK_PERMISSIONS = ['readJobPlans', 'readJobTaskGroups', 'readJobTasks', 'updateJobToDoProgresses'];
-export const staffOnlyPermission = (p) => /dailylog/i.test(String(p || ''));
+// Only seeing every daily log on a job is staff-only; seeing one shared on purpose (showDailyLogs, "Only if given access") stays,
+// so staff can still share a specific log (Peter: "we will share specific things with them")
+export const staffOnlyPermission = (p) => p === 'readDailyLogs';
 const MAX_CHANGES = 25;
 const PAGE = 100;
 
