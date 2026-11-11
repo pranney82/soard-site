@@ -445,7 +445,9 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
     /* Centred with the text: the yellow mark sits under it instead of beside it */
     .rh-when { margin-inline: auto; padding: 0 0 10px; border-left: 0; border-bottom: 3px solid var(--c-yellow); justify-items: center; }
     .rh-when__line { justify-content: center; }
-    .hero-frame { max-width: 380px; margin: 0 auto; }
+    /* A set width (the photo's own: sizes says 80vw), so the frame has its 4:5 shape before the photo arrives; centred by
+       auto margins alone it shrank to nothing until then, and everything under it jumped */
+    .hero-frame { width: min(80vw, 380px); max-width: 380px; margin: 0 auto; }
 
     .rv-cta__inner { grid-template-columns: 1fr; }
     .rv-cta__actions { max-width: 460px; }
