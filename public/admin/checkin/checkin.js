@@ -452,6 +452,8 @@ const sheetEl = () => document.querySelector('#sheet-root .sheet');
 function close() {
   const scrim = document.querySelector('#sheet-root .scrim');
   if (!scrim || scrim.classList.contains('closing')) return Promise.resolve();
+  // The box a scan found is checked in from its sheets: once they're gone, a check-in from the list isn't that box
+  state.scanTrack = null;
   const sheet = sheetEl();
   // From wherever a drag left it
   if (sheet?.style.transform) { sheet.style.transition = 'transform 240ms cubic-bezier(0.32, 0, 0.67, 0)'; sheet.style.transform = 'translateY(100%)'; }
@@ -722,7 +724,8 @@ async function printed(kid, it, { units = 1, boxes = 1, other = null, tap = newT
       <div class="btn-row"><button class="btn btn-text" type="button" id="done">Done</button><button class="btn btn-text" type="button" id="undo">Undo</button></div></div>`, { keep: true });
   document.querySelectorAll('canvas[data-qr]').forEach((c) => drawQr(c, `${location.origin}/admin/checkin/?r=${encodeURIComponent(tap)}&b=${c.dataset.qr}`));
   const started = Date.now();
-  const body = other ? { tap, jobId: kid.jobId, ...other, units, boxes } : { tap, jobId: kid.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units, boxes };
+  const track = state.scanTrack ? { track: state.scanTrack } : {};
+  const body = other ? { tap, jobId: kid.jobId, ...other, units, boxes, ...track } : { tap, jobId: kid.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units, boxes, ...track };
   let res = null, failed = null;
   try { res = await sendOrKeep(other ? 'other' : 'receive', body); } catch (err) { failed = err; }
   // The labels finish feeding before the answer shows
@@ -1071,7 +1074,10 @@ let stream = null;
 const stopCamera = () => { stream?.getTracks().forEach((t) => t.stop()); stream = null; document.querySelectorAll('.cam').forEach((c) => c.remove()); };
 
 /** The camera in the page, its shutter where Scan a box sits; the phone's own camera when the page can't have one */
-async function scan() {
+/** add: another photo of the same box (what it says is read with what the photos before said); else a new box */
+async function scan({ add = false } = {}) {
+  state.scanAdd = Boolean(add && state.scanSoFar);
+  if (!state.scanAdd) state.scanSoFar = null;
   if (!navigator.mediaDevices?.getUserMedia) { $('camera').click(); return; }
   if (camOpening || document.querySelector('.cam')) return;
   camOpening = true;
@@ -1087,7 +1093,7 @@ async function scan() {
   const cam = document.createElement('div');
   cam.className = 'cam';
   cam.innerHTML = `<video autoplay playsinline muted></video><div class="frame" aria-hidden="true"></div><div class="flash"></div>
-    <div class="cam-top"><b class="cam-count">Label, packing slip or the product’s box</b></div>
+    <div class="cam-top"><b class="cam-count">${state.scanAdd ? 'Another photo of the same box' : 'Label, packing slip or the product’s box'}</b></div>
     <button class="cam-close" type="button" aria-label="Close the camera">${ICON.x}</button>
     <button class="shutter" type="button" aria-label="Take the photo"></button>`;
   document.body.appendChild(cam);
@@ -1123,11 +1129,18 @@ async function fromFile(file) {
 }
 
 async function read(image, preview) {
-  openSheet(`${head('<span class="with-spin"><span class="spin" aria-hidden="true"></span>Reading the label</span>', { sub: '' })}
+  // SOARD's own label (its QR): that check-in, at once, with no reading
+  const own = await ownLabel(image);
+  if (own) { openOwn(own); return; }
+  openSheet(`${head('<span class="with-spin"><span class="spin" aria-hidden="true"></span>Reading the label</span>', { sub: state.scanAdd ? 'With the photo before' : '' })}
     <img class="photo" src="${preview}" alt="The photo of the box's label" />`, { label: 'Reading the label' });
   try {
-    // The answer brings the list as it is now (an order read since this page loaded is on it): drawn behind the sheet
-    const out = await send('scan', { image });
+    // The answer brings the list as it is now (an order read since this page loaded is on it): drawn behind the sheet.
+    // Another photo of the same box goes with what the ones before it said
+    const out = await send('scan', { image, ...(state.scanAdd && state.scanSoFar ? { also: state.scanSoFar } : {}) });
+    state.scanSoFar = out.label || state.scanSoFar;
+    // The box's tracking number, kept on what's checked in from it: scanned again, it says where it went
+    state.scanTrack = out.found?.track || out.label?.trackingNumbers?.[0] || null;
     render();
     showFound(out, preview);
   } catch (err) {
@@ -1138,14 +1151,66 @@ async function read(image, preview) {
   }
 }
 
+/**
+ * A photo with SOARD's own label in it (the QR on every label: ?r=<check-in>&b=<box>) → { r, b } or null. The phone's
+ * own reader when it has one, else the page's (jsqr.js), on the whole photo and then its middle
+ */
+async function ownLabel(dataUrl) {
+  const img = await new Promise((resolve) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = dataUrl; });
+  if (!img) return null;
+  const parse = (raw) => { const m = /\/admin\/checkin\/\?r=([^&#\s]+)(?:&b=(\d+))?/.exec(String(raw || '')); return m ? { r: decodeURIComponent(m[1]), b: Number(m[2]) || null } : null; };
+  try {
+    if ('BarcodeDetector' in window) {
+      const codes = await new window.BarcodeDetector({ formats: ['qr_code'] }).detect(img);
+      for (const c of codes) { const x = parse(c.rawValue); if (x) return x; }
+      return null;
+    }
+    const jsQR = (await import('./jsqr.js')).default;
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    for (const k of [1, 0.6]) {
+      const w0 = img.naturalWidth * k, h0 = img.naturalHeight * k;
+      const scale = Math.min(1, 1000 / Math.max(w0, h0));
+      c.width = Math.round(w0 * scale); c.height = Math.round(h0 * scale);
+      ctx.drawImage(img, (img.naturalWidth - w0) / 2, (img.naturalHeight - h0) / 2, w0, h0, 0, 0, c.width, c.height);
+      const x = parse(jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: 'dontInvert' })?.data);
+      if (x) return x;
+    }
+  } catch { /* no reader: the label is read as any other */ }
+  return null;
+}
+/** SOARD's own label, scanned: its check-in (where it is, Print again), never checked in a second time */
+function openOwn({ r, b }) {
+  for (const k of state.kids) {
+    const it = k.items.find((i) => (i.receipts || []).some((x) => x.id === r));
+    if (it) { itemSheet(k, it, { ref: r, box: b, keep: Boolean(sheetEl()) }); return; }
+  }
+  openSheet(`${head('One of our labels', { sub: 'Its check-in isn’t on the list any more' })}
+    <p class="why-line">Its makeover may be finished, or the check-in was undone.</p>
+    <button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan another box</button>`, { keep: Boolean(sheetEl()) });
+}
+
 function showFound({ found, label, likely = [] }, preview) {
+  // This very box was checked in already (its label scanned then): where it is, never offered again
+  if (found?.already) {
+    const a = found.already;
+    const k = kidById(a.kid);
+    const it = k?.items.find((i) => i.id === a.item);
+    openSheet(`${head('Already checked in', { sub: esc([found.how, `${dayOf(a.at)}${a.who ? ` by ${a.who}` : ''}`].join(' · ')) })}
+      <p class="item-name">${esc(a.name)}</p>
+      <div class="shelf-callout static"><span class="who">${face(k, 36)}${esc(a.short)}${a.out ? '' : '’s shelf'}</span><b>${esc(a.out ? 'At the house' : shelfName(a.shelf) || 'Shelf')}</b></div>
+      <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan the next box</button>
+      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button>${it && !a.out ? '<button class="btn btn-text" type="button" id="seeit">Print again or move it</button>' : ''}</div></div>`, { keep: true });
+    if ($('seeit')) $('seeit').onclick = () => itemSheet(k, it, { keep: true });
+    return;
+  }
   // Its email is about one of several orders (the same thing on each, and no order number): which one, by a tap
   if (found?.which) {
     const cards = found.which.map((k) => state.shipments.find((x) => x.key === k)).filter(Boolean).map((x) => shipCard(x, { compact: true })).join('');
     if (cards) {
       openSheet(`${head('Which order is it?', { sub: esc(`${found.how} · its email has no order number`) })}
         <div class="ship-pick">${cards}</div>
-        <button class="btn btn-text" type="button" data-rescan="1">Scan the packing slip or the product’s box</button>`, { keep: true });
+        <button class="btn btn-text" type="button" data-rescan="add">Scan the packing slip or the product’s box</button>`, { keep: true });
       return;
     }
   }
@@ -1182,7 +1247,7 @@ function showFound({ found, label, likely = [] }, preview) {
     if (cards) {
       openSheet(`${head(kidTitle(kid), { kid: true, sub: esc(`${found.how} · which shipment is it?`) })}
         <div class="ship-pick">${cards}</div>
-        <button class="btn btn-text" type="button" data-rescan="1">Scan the packing slip or the product’s box</button>`, { keep: true });
+        <button class="btn btn-text" type="button" data-rescan="add">Scan the packing slip or the product’s box</button>`, { keep: true });
       return;
     }
   }
@@ -1216,7 +1281,7 @@ function showFound({ found, label, likely = [] }, preview) {
   const cards = choices.slice(0, 6).map((c) => `<div class="likely">${c.why ? `<span class="likely-why">${esc(c.why)}</span>` : ''}${c.html}</div>`).join('');
   openSheet(`${head(cards ? 'Which is it?' : 'Couldn’t match this box', { sub: bits.length ? `Read: ${bits.map(esc).join(' · ')}` : 'Nothing readable on the label' })}
     ${cards ? `<div class="ship-pick">${cards}</div>` : `<img class="photo" src="${preview}" alt="The photo of the box's label" />`}
-    <div class="sheet-foot"><button class="btn ${cards ? '' : 'btn-primary '}btn-big" type="button" data-rescan="1"${cards ? '' : ' data-focus'}>Scan the packing slip or the product’s box</button>
+    <div class="sheet-foot"><button class="btn ${cards ? '' : 'btn-primary '}btn-big" type="button" data-rescan="add"${cards ? '' : ' data-focus'}>Scan the packing slip or the product’s box</button>
     <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div></div>`, { keep: true });
 }
 
@@ -1282,7 +1347,7 @@ function knownSheet(found, preview) {
   openSheet(`${head(esc(k.store), { sub: esc([found.how, k.orderNumber ? `Order ${k.orderNumber}` : null, shipStatus(sh)[1]].filter(Boolean).join(' · ')) })}
     <p class="why-line">Its emails don’t say what’s in it. Scan the packing slip or the product’s box, or type it in.</p>
     <img class="photo" src="${preview}" alt="The photo of the box's label" />
-    <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-rescan="1" data-focus>Scan the packing slip or the product’s box</button>
+    <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" data-rescan="add" data-focus>Scan the packing slip or the product’s box</button>
     <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Pick from the list</button><button class="btn btn-text" type="button" data-other="1">Something else</button></div></div>`, { keep: true });
 }
 
@@ -1292,7 +1357,7 @@ document.addEventListener('click', async (e) => {
   const t = e.target.closest('button, .scrim');
   if (!t) return;
   if (t.dataset.close && (t === e.target || t.tagName === 'BUTTON')) { close(); return; }
-  if (t.dataset.rescan) { await close(); scan(); return; }
+  if (t.dataset.rescan) { const add = t.dataset.rescan === 'add'; await close(); scan({ add }); return; }
   if (t.dataset.other) { otherSheet(); return; }
   if (t.id === 'looks') { looksSheet(); return; }
   if (t.dataset.look) { lookSheet(Number(t.dataset.look)); return; }
@@ -2504,7 +2569,7 @@ function shipmentSheet(key, { pick = null, how = '', boxes: preset = 1, keep = f
   $('shipgo').onclick = () => {
     const chosen = waiting.filter((i) => ticked.has(i.id));
     if (!chosen.length) return;
-    const items = chosen.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return { tap: taps.get(i.id), jobId: k.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: Math.max(1, it.qty - (it.got || 0)), boxes: boxes.get(i.id) }; });
+    const items = chosen.map((i) => { const it = itemOfId(i.id), k = kidOfItem(i.id); return { tap: taps.get(i.id), jobId: k.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: Math.max(1, it.qty - (it.got || 0)), boxes: boxes.get(i.id), ...(state.scanTrack ? { track: state.scanTrack } : {}) }; });
     shipDone(sh, items);
   };
 }

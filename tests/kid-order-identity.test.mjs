@@ -172,7 +172,7 @@ test('a scanned Needs-a-look order (its things fit two kids) opens Needs a look,
   const v = await view();
   assert.equal(v.needsLook.find((x) => x.key === 'Shop|MX-10001')?.why, 'its items fit Ava E. and Rowan S.');
   const reads = await orderReads(env.DB);
-  assert.deepEqual(findBox(v, reads, { ...blank, trackingNumbers: ['1ZBBB2220300000002'] }), { look: 'Shop|MX-10001', how: 'Tracking …000002', exact: true });
+  assert.deepEqual(findBox(v, reads, { ...blank, trackingNumbers: ['1ZBBB2220300000002'] }), { look: 'Shop|MX-10001', how: 'Tracking …000002', exact: true, track: '1ZBBB2220300000002' });
 });
 
 // ─── Cancelled ───

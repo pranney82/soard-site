@@ -108,6 +108,22 @@ export async function readLabel(env, bytes) {
   throw Object.assign(new Error('The label couldn’t be read. Take the photo again, closer and straight on.'), { status: 502 });
 }
 
+/**
+ * Several photos of one box (the label, the packing slip, another side): what each was read to say, together. Lists
+ * are joined (each once), and the first photo's store or PO stands unless it said none
+ */
+export function mergeLabels(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  const list = (x) => (Array.isArray(x) ? x : []).filter((v) => typeof v === 'string' && v.trim()).slice(0, 30);
+  const join = (x, y) => { const m = new Map(); for (const v of [...list(x), ...list(y)]) { const k = v.toUpperCase().replace(/\s+/g, ' ').trim(); if (!m.has(k)) m.set(k, v.slice(0, 200)); } return [...m.values()]; };
+  const out = { ...a };
+  for (const k of ['trackingNumbers', 'orderNumbers', 'items', 'references', 'models', 'names']) out[k] = join(a[k], b[k]);
+  for (const k of ['store', 'po']) out[k] = String(a[k] || b[k] || '').slice(0, 200);
+  out.boxTotal = Math.max(Number(a.boxTotal) || 0, Number(b.boxTotal) || 0);
+  return out;
+}
+
 /** Do two tracking numbers name the same package? Equal, or one ends with the other (12 characters at least) */
 export function sameTracking(a, b) {
   const x = clean(a), y = clean(b);
@@ -154,6 +170,9 @@ export function storeOfTracking(numbers, reads) {
  *   { kid, short, items: [], done, exact, order }     its order is all checked in already
  *   { look: order key, how, exact }                  its order is in Needs a look: each thing in it to its kid
  *   { which: [order keys], how }                     its email is about one of these orders (the same thing on each)
+ *   { already: { kid, short, item, name, shelf, at, who, out }, how, track }   this very box was checked in (its label
+ *                                                    scanned then): where it is, never offered again
+ * A box's own order also carries track: the tracking number on its label that found it, kept on its check-in
  *   { unplaced: order key, how, exact, known }        its order is known and nobody's: whose is it?
  *   { known: { key, store, orderNumber, at, buyer, things, stage, …when }, how }   its order is in the emails but on no list
  *   null
@@ -200,14 +219,23 @@ export function findBox(view, reads, label, { keyOf = orderKeys(reads), nameOf =
     return all.find((x) => x.kid && x.items.length) || all.find((x) => x.look) || all.find((x) => x.unplaced) || all.find((x) => x.kid) || all.find((x) => x.known?.things.length) || all[0];
   };
   const keysOf = (hit) => [...new Set(reads.filter(hit).map(keyOf))];
+  // This very box, checked in already (its label was scanned then): where it is
+  for (const t of label.trackingNumbers || []) {
+    for (const k of view.kids) {
+      for (const it of k.items) {
+        const r = (it.receipts || []).find((x) => x.kind === 'receive' && !x.undone && x.track && sameTracking(x.track, t));
+        if (r) return { already: { kid: k.jobId, short: k.short, item: it.id, name: it.name, shelf: r.shelf || null, at: r.at, who: r.who || null, out: it.status === 'out' }, how: `Tracking …${clean(t).slice(-6)}`, track: clean(t) };
+      }
+    }
+  }
   for (const t of label.trackingNumbers || []) {
     const hits = reads.filter((x) => (x.read.tracking || []).some((tr) => sameTracking(tr.number, t)));
     const how = `Tracking …${clean(t).slice(-6)}`;
     // Its email is about one of several orders (the same thing on each): those orders, for a person to pick
     const which = hits.length && hits.every((x) => keyOf.maybe?.(x)) ? [...new Set(hits.flatMap((x) => keyOf.maybe(x)))] : null;
-    if (which) return { which, how };
+    if (which) return { which, how, track: clean(t) };
     const keys = [...new Set(hits.filter((x) => !keyOf.maybe?.(x)).map(keyOf))];
-    if (keys.length) return ofOrders(keys, how);
+    if (keys.length) return { ...ofOrders(keys, how), track: clean(t) };
   }
   for (const o of [...(label.orderNumbers || []), ...(label.references || [])]) {
     const keys = keysOf((x) => !isCarrier(x.store) && (sameOrder(x.read.orderNumber, o) || inOrder(x.read.orderNumber, o)));

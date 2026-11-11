@@ -26,7 +26,7 @@
 import { orderSweepStatus } from './_order-sweep.js';
 import { selectionPartsStatus } from './_selection-parts.js';
 import { checkinView, checkinData } from './_kid-checkin.js';
-import { readLabel, findBox, likelyBoxes } from './_kid-scan.js';
+import { readLabel, findBox, likelyBoxes, mergeLabels } from './_kid-scan.js';
 import { receive, undoMany, moveShelf, decide, answeredAt, setPrice, typedIn, checkOut, checkOutMany, OUT_BATCH, shelfName, SHELVES, ensureRecord, WHOLE_ORDER } from './_kid-record.js';
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { shelfLabel } from './_kid-labels.js';
@@ -102,7 +102,8 @@ export async function onRequestPost(context) {
       const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.image || ''));
       if (!m) return Response.json({ success: false, error: 'That isn’t a photo the site can read. Take it again.' }, { status: 400, headers });
       const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
-      const label = await readLabel(env, bytes);
+      // Another photo of the same box: what this one says, with what the photos before it said
+      const label = mergeLabels(body.also && typeof body.also === 'object' ? body.also : null, await readLabel(env, bytes));
       // The list as it is now (the page's may be older than the email this box's order came in), matched to the label the
       // way it was made, and sent back with the answer so the page opens the order the site found
       const { view, reads, keyOf, nameOf } = await checkinData(env);

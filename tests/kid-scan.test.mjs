@@ -164,7 +164,7 @@ test('Peter’s Container Store box: its tracking finds its order, nobody’s ye
   await decide(env.DB, { orderKey: sh.key, itemName: WHOLE_ORDER, decision: { type: 'notKid' } });
   view = await checkinView(env);
   assert.equal(view.shipments.some((x) => x.key === sh.key), false);
-  assert.deepEqual(Object.keys(findBox(view, reads, label)), ['known', 'how']);
+  assert.deepEqual(Object.keys(findBox(view, reads, label)).sort(), ['how', 'known', 'track']);
 });
 
 test('the store from the tracking number (Amazon’s own, a UPS shipper account another email used), and the label’s words and names rank the likely boxes', async () => {
@@ -186,4 +186,36 @@ test('the store from the tracking number (Amazon’s own, a UPS shipper account 
   // Another box from the Container Store's UPS account, nothing else on it: its nobody's order is first
   const cs = likelyBoxes(view, reads, { ...blank, trackingNumbers: ['1Z12D1R20399999999'] });
   assert.deepEqual([cs[0].order, cs[0].why], ['The Container Store|899120272624', 'From The Container Store · Delivered lately']);
+});
+
+// ─── Nov 11 (later): this very box again, and several photos of one box ───
+
+test('a box checked in from its scan, scanned again: “already checked in”, where it is, never offered again; undone, it’s offered', async () => {
+  const { checkinView, orderReads } = await import('../functions/api/_kid-checkin.js');
+  const { receive, undoMany } = await import('../functions/api/_kid-record.js');
+  let view = await checkinView(env);
+  const reads = await orderReads(env.DB);
+  const label = { ...blank, trackingNumbers: ['9622001900005105600771234567890'] };
+  const first = findBox(view, reads, label);
+  assert.deepEqual([first.short, first.track], ['Rowan S.', '9622001900005105600771234567890']);
+  const head = view.kids.find((k) => k.jobId === 'j-rowan').items.find((i) => i.name === 'Raincan Shower Head');
+  await receive(env.DB, { tap: 'tap-box-00001', jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, line: head.line, units: 1, boxes: 1, track: first.track });
+  view = await checkinView(env);
+  const again = findBox(view, reads, { ...blank, trackingNumbers: ['771234567890'] });
+  assert.deepEqual([again.already?.short, again.already?.name, again.already?.shelf, again.already?.out], ['Rowan S.', 'Raincan Shower Head', '1', false]);
+  await undoMany(env.DB, ['tap-box-00001']);
+  view = await checkinView(env);
+  assert.equal(findBox(view, reads, label).short, 'Rowan S.', 'undone: offered again');
+});
+
+test('several photos of one box: what each says, together (lists joined once, the first store stands)', async () => {
+  const { mergeLabels } = await import('../functions/api/_kid-scan.js');
+  const a = { ...blank, store: 'UPS', trackingNumbers: ['1Z12D1R20300649275'], names: ['CLAREECE'] };
+  const b = { ...blank, store: 'The Container Store', items: ['Elfa Mesh Drawer'], names: ['Clareece'], orderNumbers: ['899120272624'], boxTotal: 3 };
+  assert.deepEqual(mergeLabels(a, b), { ...blank, store: 'UPS', trackingNumbers: ['1Z12D1R20300649275'], names: ['CLAREECE'], items: ['Elfa Mesh Drawer'], orderNumbers: ['899120272624'], boxTotal: 3 });
+  assert.equal(mergeLabels(null, b), b);
+  // The POST reads the new photo with what the one before said: the packing slip's order number finds Ava's lamp
+  aiAnswer = { ...blank, orderNumbers: ['Order # 111-1234567-7654321'], boxTotal: 0 };
+  const body = await (await post({ image: JPEG, also: { ...blank, store: 'Amazon', trackingNumbers: ['TBA123456789000'] } })).json();
+  assert.deepEqual([body.found?.short, body.label.store, body.label.trackingNumbers, body.label.orderNumbers], ['Ava E.', 'Amazon', ['TBA123456789000'], ['Order # 111-1234567-7654321']]);
 });
