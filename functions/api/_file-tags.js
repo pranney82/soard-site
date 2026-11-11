@@ -158,6 +158,29 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
   return { made, added, removed, missingRoles: [...missingRoles] };
 }
 
+/**
+ * Every tag in JobTread, as it stands: name, who outside staff sees it, and
+ * how many photos, videos and other files carry it (for moving the old tags
+ * onto the five). One small read per tag. → [{ name, roles: [names], files, photos, videos }]
+ */
+export async function tagInventory(env, { fetchImpl = fetch } = {}) {
+  const key = env.JOBTREAD_GRANT_KEY;
+  const { roles, tags } = await readOrg(key, fetchImpl);
+  const roleName = new Map(roles.map((r) => [r.id, r.name]));
+  const out = [];
+  for (const t of tags) {
+    const body = await pave(key, { fileTag: { $: { id: t.id },
+      all: { _: 'files', $: { size: 1 }, count: {} },
+      img: { _: 'files', $: { size: 1, where: ['type', 'like', 'image/%'] }, count: {} },
+      vid: { _: 'files', $: { size: 1, where: ['type', 'like', 'video/%'] }, count: {} },
+      aces: { $: { size: 50 }, nodes: { role: { id: {} } } } } }, fetchImpl);
+    const f = body?.fileTag;
+    out.push({ name: t.name, roles: (f?.aces?.nodes || []).map((a) => roleName.get(a.role?.id)).filter(Boolean).sort(),
+      files: f?.all?.count ?? null, photos: f?.img?.count ?? null, videos: f?.vid?.count ?? null });
+  }
+  return out.sort((a, b) => (b.files || 0) - (a.files || 0));
+}
+
 /** The heartbeat's call: once an hour (one run at a time), the five tags kept; the last result kept for Site → Automations. Never throws. */
 export async function maybeKeepTags(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const { DB } = env;
@@ -175,6 +198,8 @@ export async function maybeKeepTags(env, { fetchImpl = fetch, now = Date.now() }
     try {
       const r = await ensureTags(env, { fetchImpl, now });
       last = { at: iso, ...r, error: null };
+      // What every tag holds, kept for moving the old ones over (names and counts only)
+      try { last.inventory = await tagInventory(env, { fetchImpl }); } catch (e) { last.inventoryError = String(e?.message || e).slice(0, 200); }
     } catch (e) {
       last = { at: iso, made: [], added: [], removed: [], missingRoles: [], error: String(e?.message || e).slice(0, 300) };
     }

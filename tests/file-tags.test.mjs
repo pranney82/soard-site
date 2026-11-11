@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { ensureTags, tagIds, TAGS, maybeKeepTags, tagsFacts } from '../functions/api/_file-tags.js';
+import { ensureTags, tagIds, TAGS, maybeKeepTags, tagsFacts, tagInventory } from '../functions/api/_file-tags.js';
 
 const ROLES = [
   { id: 'r-sig', name: 'Signature', type: 'vendor' }, { id: 'r-champ', name: 'Champion', type: 'vendor' },
@@ -23,7 +23,11 @@ function world({ tags = [], roles = ROLES } = {}) {
       if (q.organization.fileTags?.nodes?.aces) return new Response('Request Entity Too Large', { status: 413 });
       return Response.json({ organization: { roles: { nodes: roles }, fileTags: { nodes: w.tags.map((t) => ({ id: t.id, name: t.name })) } } });
     }
-    if (q.fileTag) { const t = w.tags.find((x) => x.id === q.fileTag.$.id); return Response.json({ fileTag: { aces: { nodes: t.aces.map((a) => ({ id: a.id, role: { id: a.roleId } })) } } }); }
+    if (q.fileTag) {
+      const t = w.tags.find((x) => x.id === q.fileTag.$.id);
+      const n = t.files || { all: 0, img: 0, vid: 0 };
+      return Response.json({ fileTag: { aces: { nodes: t.aces.map((a) => ({ id: a.id, role: { id: a.roleId } })) }, all: { count: n.all }, img: { count: n.img }, vid: { count: n.vid } } });
+    }
     w.writes.push(q);
     if (q.createFileTag) { const t = { id: `t${w.next++}`, name: q.createFileTag.$.name, description: q.createFileTag.$.description, color: q.createFileTag.$.color, aces: [] }; w.tags.push(t); return Response.json({ createFileTag: { createdFileTag: { id: t.id, name: t.name } } }); }
     if (q.createAce) {
@@ -104,4 +108,17 @@ test('hourly on the heartbeat, one run at a time; the last result kept for Site 
   const facts = await tagsFacts(e.DB);
   assert.match(facts.last.error, /JobTread/);
   assert.deepEqual(facts.kept.sort(), ['After', 'Before', 'Design', 'During', 'Plans']);
+});
+
+test('the inventory: every tag, who sees it, and how many photos, videos and files it holds', async () => {
+  const e = await env();
+  const w = world({ tags: [
+    { id: 'bp', name: '.BeforePics', aces: [{ id: 'b2', roleId: 'r-design' }], files: { all: 120, img: 118, vid: 2 } },
+    { id: 'fp', name: '.FinalPlans', aces: [], files: { all: 14, img: 0, vid: 0 } },
+  ] });
+  const inv = await tagInventory(e, { fetchImpl: w.fetchImpl });
+  assert.deepEqual(inv, [
+    { name: '.BeforePics', roles: ['Design Partner'], files: 120, photos: 118, videos: 2 },
+    { name: '.FinalPlans', roles: [], files: 14, photos: 0, videos: 0 },
+  ]);
 });
