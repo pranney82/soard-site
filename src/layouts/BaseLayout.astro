@@ -204,9 +204,11 @@ const structuredData = buildSchemaGraph(...graphSchemas);
        project's Web Analytics and the zone's automatic setup, Nov 10 2026). */}
   <script is:inline>addEventListener('load',function(){setTimeout(function(){if(document.querySelector('script[src*="cloudflareinsights.com/beacon"]'))return;var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token": "43b83df2d48941e496276682ee4bf0a4"}');document.head.appendChild(s)},0)},{once:true})</script>
 
-  {/* Preload critical fonts */}
+  {/* Preload critical fonts: the body's, the headlines', and the italic word nearly every hero headline has ("the first
+      time", "room reveal"). Not preloaded, the italic arrived after the hero was drawn and nudged what follows it */}
   <link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/fonts/libre-baskerville-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/libre-baskerville-latin-400-italic.woff2" as="font" type="font/woff2" crossorigin />
 
   {/* Self-hosted fonts, and their stand-ins until they arrive.
     Metric-matched fallback faces: Georgia and Arial resized to the webfonts'
