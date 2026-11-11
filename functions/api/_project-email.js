@@ -211,7 +211,7 @@ export function askBand({ kicker, headline, words, action, url, fit = { size: 30
     return `<tr><td bgcolor="${look.paper}" style="background:${look.paper};padding:0;${SIDE}" class="pd">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" bgcolor="${look.dark}" style="background:${look.dark};border-radius:22px;"><tr>
       <td align="center" style="padding:40px 26px 42px;text-align:center;">
-        <p style="margin:0 0 12px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${look.labelOnDark};">${escapeHtml(kicker)}</p>
+        <p style="margin:0 0 12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${look.labelOnDark};">${escapeHtml(kicker)}</p>
         <h2 class="${fit.phone}" style="margin:0 0 12px;font-family:${SERIF};font-size:${fit.size}px;font-weight:700;line-height:1.22;color:#FFFFFF;">${headline}</h2>
         <p style="margin:0 0 24px;font-family:${SANS};font-size:16px;line-height:1.6;color:${look.onDark};">${noWidow(escapeHtml(words))}</p>
         ${button(action, url, { center: true })}
