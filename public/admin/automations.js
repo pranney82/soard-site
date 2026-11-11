@@ -624,6 +624,22 @@ const MAP = { t: 'SOARD', children: [
             const did = [l.made?.length && `made ${l.made.join(', ')}`, l.removed?.length && `took ${plural(l.removed.length, 'role')} off`].filter(Boolean).join('; ');
             return ON(`${(t.kept || []).length} tags kept with their audiences${did ? ` (this run: ${did})` : ''}.`, l.at);
           } },
+        { t: 'Photos sorted into Before, During and After', s: 'live', k: 'schedule',
+          when: 'Every 2 minutes, one open job at a time, on the heartbeat; each job again about every few hours.',
+          does: 'Reads when each camera photo on a job was taken (the time the camera wrote into the file) and puts it on Before (before the Demo date), During (from the Demo date until reveal day) or After (reveal day on). A job with no Demo date yet: Before while it’s still before the build (On Site, Awaiting Funding, Design, Finalization, Approval). Never a screenshot, render or scan, a daily log’s or a document’s photo, or one already on one of the three.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_photo-stages.js (broadcast-hooks.js)',
+          info: 'Started Nov 11, 2026 writing nothing: every pick is recorded and counted here, and it starts tagging once the picks are checked. Community projects go by dates only.',
+          live: (f) => {
+            if (!env(f)) return null;
+            const p = f.photoStages;
+            if (!p || p.error?.error && !p.lastAt) return p?.error?.error ? ATTN(`JobTread didn’t answer: ${p.error.error}`, p.error.at) : null;
+            if (!p.lastAt) return ATTN('It hasn’t sorted a job yet. It rides on the heartbeat, so check the Heartbeat entry.');
+            if (stale(p.lastAt, 3 * HOUR)) return ATTN(`Hasn’t sorted a job since ${stamp(p.lastAt)}. It rides on the heartbeat.`, p.lastAt);
+            const k = p.picks || {};
+            const counts = `${plural(k.Before || 0, 'Before')}, ${k.During || 0} During, ${k.After || 0} After, ${plural(k.none || 0, 'photo')} with no pick`;
+            const demo = p.missingDemo?.length ? ` Missing a Demo date: ${p.missingDemo.slice(0, 3).join(', ')}${p.missingDemo.length > 3 ? ` and ${p.missingDemo.length - 3} more` : ''}.` : '';
+            return ON(`${plural(p.jobs, 'job')} sorted: ${counts}${p.write ? `; ${plural(p.written || 0, 'tag')} written` : ' (writing nothing yet)'}.${demo}`, p.lastAt);
+          } },
         { t: 'CompanyCam photos on every job', s: 'live', k: 'schedule',
           when: 'Every open job (not TEST) about once an hour, a couple a minute on the heartbeat. A new photo in a job’s project moves that job to the front (CompanyCam’s webhook).',
           does: 'Copies to each job any CompanyCam photo or video it doesn’t have, under JobTread’s own name (“CompanyCam 123…”). A job’s photos come from the project it’s linked to, the project its own earlier photos came from, and a project at the same address under the family’s name. A photo in the project JobTread is still linked to waits an hour, so JobTread’s own sync goes first. It never relinks a job: relinking makes JobTread copy every photo again. Second copies JobTread makes are removed. Slack hears once a pass what was copied and removed.',
