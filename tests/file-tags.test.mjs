@@ -26,7 +26,11 @@ function world({ tags = [], roles = ROLES } = {}) {
     if (q.fileTag) { const t = w.tags.find((x) => x.id === q.fileTag.$.id); return Response.json({ fileTag: { aces: { nodes: t.aces.map((a) => ({ id: a.id, role: { id: a.roleId } })) } } }); }
     w.writes.push(q);
     if (q.createFileTag) { const t = { id: `t${w.next++}`, name: q.createFileTag.$.name, description: q.createFileTag.$.description, color: q.createFileTag.$.color, aces: [] }; w.tags.push(t); return Response.json({ createFileTag: { createdFileTag: { id: t.id, name: t.name } } }); }
-    if (q.createAce) { const t = w.tags.find((x) => x.id === q.createAce.$.targetId); t.aces.push({ id: `a${w.next++}`, roleId: q.createAce.$.assignee.role.roleId, notify: q.createAce.$.notify }); return Response.json({}); }
+    if (q.createAce) {
+      // As JobTread: the assignee is flat ({ roleId }); anything else is read as a person, who needs an email
+      if (!q.createAce.$.assignee?.roleId) return new Response('A non-null value is required at "createAce"."$"."assignee"."emailAddress"', { status: 400 });
+      const t = w.tags.find((x) => x.id === q.createAce.$.targetId); t.aces.push({ id: `a${w.next++}`, roleId: q.createAce.$.assignee.roleId, notify: q.createAce.$.notify }); return Response.json({});
+    }
     if (q.deleteAce) { for (const t of w.tags) t.aces = t.aces.filter((a) => a.id !== q.deleteAce.$.id); return Response.json({}); }
     throw new Error(`unexpected ${JSON.stringify(q).slice(0, 80)}`);
   };

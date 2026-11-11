@@ -112,7 +112,8 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
     for (const roleId of wanted) {
       if (have.has(roleId)) continue;
       // A create answers with the query root (as createRole and createFile do); nothing is needed back
-      await pave(key, { createAce: { $: { assignee: { role: { roleId } }, notify: false, targetType: 'fileTag', targetId: tag.id } } }, fetchImpl);
+      // The assignee is flat, as for a membership in ./_jt-access.js: { roleId } (seen Nov 11: { role: { roleId } } is read as a person)
+      await pave(key, { createAce: { $: { assignee: { roleId }, notify: false, targetType: 'fileTag', targetId: tag.id } } }, fetchImpl);
       added.push(`${tag.name}: ${roleName.get(roleId)}`);
     }
     for (const [roleId, aceId] of have) {
