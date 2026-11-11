@@ -632,8 +632,8 @@ test('a tick cut off right after saving the go-live loses none of its side effec
   assert.equal(outputPosts(), 1);
   assert.equal(alerts(/Live now/).length, 1, 'staff hear about it');
   assert.equal(await count(`SELECT COUNT(*) AS n FROM broadcast_events WHERE type = 'live_start' AND id > ?`, since), 1);
-  assert.equal(await count(`SELECT COUNT(*) AS n FROM broadcast_sends WHERE broadcast_id = ? AND kind = 'live' AND channel = 'email'`, s.broadcastId), 1, 'the "we\'re live" reminder started');
-  assert.equal(liveReminderEmails().length, 1, 'and reached the subscriber');
+  // Reveal emails come from Kit (tests/reminder-signups.test.mjs), never one each from Resend
+  assert.equal(liveReminderEmails().length, 0, 'nothing from Resend to the subscriber');
   assert.equal((await DB.prepare('SELECT phase FROM broadcasts WHERE id = ?').bind(s.broadcastId).first())?.phase, 'live', 'the row is there');
   assert.equal((await b.readState(DB)).fb.liveVideoId, 'fbv1');
 
@@ -642,7 +642,7 @@ test('a tick cut off right after saving the go-live loses none of its side effec
   await flush();
   assert.equal(fbPosts(), 1, 'and only once');
   assert.equal(alerts(/Live now/).length, 1);
-  assert.equal(liveReminderEmails().length, 1);
+  assert.equal(liveReminderEmails().length, 0);
 });
 
 test('a tick cut off right after saving the end still ends Facebook and announces it once', async () => {

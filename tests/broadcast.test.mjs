@@ -5,6 +5,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
+import { fakeKitTags } from './lib/fake-kit-tags.mjs';
 
 // ─── Time travel ────────────────────────────────────────────────────
 const realNow = Date.now;
@@ -16,6 +17,9 @@ const H = 3600e3, M = 60e3, S = 1000;
 // ─── Fake network ───────────────────────────────────────────────────
 const sim = { live: false, videoUID: null, videoState: 'live-inprogress', viewers: 3 };
 const calls = [];
+// A pretend Kit: reveal sign-ups are put there, and every reveal email goes from there
+const kit = { subs: new Map(), posts: [], nextId: 500 };
+const kitTags = fakeKitTags();
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input.url;
@@ -35,6 +39,20 @@ globalThis.fetch = async (input, init = {}) => {
   if (/\/stream\/vid1\/captions\//.test(url)) return json({ success: true, result: {} });
   if (/\/stream\/vid1$/.test(url)) return json({ success: true, result: { uid: 'vid1', status: { state: sim.videoState } } });
   if (url.startsWith('https://api.resend.com/emails/batch')) return json({ data: [] });
+  if (url.startsWith('https://api.kit.com/v4/')) {
+    const body = init.body && init.body !== '{}' ? JSON.parse(init.body) : null;
+    const tagged = await kitTags.answer(url, method, body);
+    if (tagged) return tagged;
+    const path = url.replace('https://api.kit.com/v4', '');
+    if (path === '/subscribers' && method === 'POST') {
+      const had = kit.subs.get(body.email_address);
+      if (had) return json({ subscriber: had }, 200);
+      const sub = { id: kit.nextId++, email_address: body.email_address, state: 'active' };
+      kit.subs.set(body.email_address, sub);
+      return json({ subscriber: sub }, 201);
+    }
+    if (path === '/broadcasts' && method === 'POST') { kit.posts.push(body); return json({ broadcast: { id: 9000 + kit.posts.length } }, 201); }
+  }
   if (url.startsWith('https://hook.test/')) return new Response('ok', { status: 200 });
   return new Response('not mocked: ' + url, { status: 599 });
 };
@@ -66,7 +84,7 @@ const post = (url, body, headers = {}) => new Request(url, { method: 'POST', hea
 before(async () => {
   const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
   await DB.prepare(`INSERT INTO kids (slug, data, name, year, status) VALUES (?, ?, ?, ?, ?)`).bind('remi', JSON.stringify({ name: 'Remi', slug: 'remi', heroImage: 'kids/remi/hero' }), 'Remi', 2026, 'completed').run();
-  env = { DB, LIVE_HUB, CF_ACCOUNT_ID: 'acct', CF_STREAM_TOKEN: 'tok', RESEND_API_KEY: 're_test', CF_PAGES_DEPLOY_HOOK: 'https://hook.test/deploy' };
+  env = { DB, LIVE_HUB, CF_ACCOUNT_ID: 'acct', CF_STREAM_TOKEN: 'tok', RESEND_API_KEY: 're_test', KIT_API_KEY: 'kit_test', CF_PAGES_DEPLOY_HOOK: 'https://hook.test/deploy' };
   b = await import('../functions/api/_broadcast.js');
   notify = await import('../functions/api/_broadcast-notify.js');
   streamLive = await import('../functions/api/_stream-live.js');
@@ -142,6 +160,11 @@ test('visitor signs up for email reminders', async () => {
   const bot = await endpoints.reminders.onRequestPost(ctx(post('https://x/api/reminders', { channel: 'email', email: 'bot@x.com', hp: 'filled' })));
   assert.equal((await bot.json()).ok, true, 'honeypot pretends success');
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM broadcast_reminders').first()).n, 1);
+  // In Kit, for every reveal now (the second sign-up named none), and reveal emails only
+  await flush();
+  const id = kit.subs.get('fan@example.com')?.id;
+  const tags = kitTags.list.filter((t) => kitTags.members.get(Number(t.id))?.has(id)).map((t) => t.name).sort();
+  assert.deepEqual(tags, ['Reveal sign-ups', 'Reveal sign-ups only (no newsletter)']);
   const ics = await endpoints.reminders.onRequestGet(ctx(new Request('https://x/api/reminders?ics=1')));
   assert.equal(ics.status, 200);
   assert.match(await ics.text(), /BEGIN:VEVENT[\s\S]*DTSTART:/);
@@ -150,25 +173,28 @@ test('visitor signs up for email reminders', async () => {
 test('day-before reminder fires once', async () => {
   travel(24 * H + 30 * M); // now ~23.5h before
   calls.length = 0;
+  const posted = kit.posts.length;
   const r = await b.runTick(env, { source: 'test', force: true });
-  assert.ok(r.work.some(w => w.startsWith('email:day')), r.work.join(','));
+  assert.ok(r.work.includes('kit-signups:day'), r.work.join(','));
   const sends = await env.DB.prepare(`SELECT * FROM broadcast_sends WHERE kind = 'day'`).all();
   assert.equal(sends.results.length, 1);
+  assert.equal(sends.results[0].channel, 'kit-signups');
   assert.equal(sends.results[0].sent, 1);
-  const resend = calls.filter(c => c.url.includes('resend.com/emails/batch'));
-  assert.equal(resend.length, 1);
-  const payload = JSON.parse(resend[0].body)[0];
-  assert.match(payload.subject, /Tomorrow/);
-  assert.match(payload.html, /unsubscribe=/);
+  assert.equal(calls.filter(c => c.url.includes('resend.com/emails/batch')).length, 0, 'nothing from Resend');
+  const made = kit.posts.slice(posted);
+  assert.equal(made.length, 1, 'one email, from Kit');
+  assert.match(made[0].subject, /Tomorrow/);
+  assert.match(made[0].content, /\{\{ unsubscribe_url \}\}/);
   const r2 = await b.runTick(env, { source: 'test', force: true });
-  assert.ok(!r2.work.some(w => w.startsWith('email:day')), 'idempotent');
+  assert.ok(!r2.work.some(w => w.startsWith('kit-signups:day')), 'idempotent');
+  assert.equal(kit.posts.length, posted + 1);
 });
 
 test('arms 30 minutes before', async () => {
   travel(23 * H + 15 * M); // ~15 min before
   const r = await b.runTick(env, { source: 'test', force: true });
   assert.equal(r.state.phase, 'armed');
-  assert.ok(r.work.includes('armed') || r.work.some(w => w.startsWith('email:hour')));
+  assert.ok(r.work.includes('armed') || r.work.includes('kit-signups:hour'));
   const hour = await env.DB.prepare(`SELECT * FROM broadcast_sends WHERE kind = 'hour'`).first();
   assert.ok(hour, 'hour reminder claimed');
 });
@@ -275,7 +301,7 @@ test('hub heartbeat: nonce verified over the binding', async () => {
   const waits = ctx.pending.length;
   const ok = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick', source: 'alarm' }, { 'x-hub-nonce': GOOD_NONCE })));
   assert.equal(ok.status, 200);
-  assert.equal(ctx.pending.length - waits, 39, 'the heartbeat also wakes the reveal stats (hearts, Facebook and YouTube totals), the checks going into Zeffy, the AI spending watch, the reveal checks, the invite sweep, the invite guest check, the reveal design import, the demo day invite check, the JobTread schedule check, the application sweep, the kid status sync, the vendor and sponsor logos (then monetary sponsors), vendors on their JobTread jobs, the Zeffy gift check, Zeffy donors onto the newsletter, the applications waitlist, the press monitor, the event recaps, the Event Recap and Monthly Impact drafts in Kit, CompanyCam for families in review, the CompanyCam job check, the one-time Slack preview, the application limit\'s one-time self-test, the email delivery check, job costs, finance, vendors, the quiet Kit subscribers check, the insurance audit, the board, the board’s signed copies and receipts, the board’s report asks, staff sign-in from Google, the staff inboxes sweep, the store order emails and selections as parts (kid items), the old certificates and W-9s, the process Docs’ hourly check, SOARD’s facts against the IRS, and a tick slower than the answer publishes itself');
+  assert.equal(ctx.pending.length - waits, 41, 'the heartbeat also wakes the reveal stats (hearts, Facebook and YouTube totals), the checks going into Zeffy, the AI spending watch, the reveal checks, the invite sweep, the invite guest check, the reveal sign-ups into Kit, who emails written in Kit go to, the reveal design import, the demo day invite check, the JobTread schedule check, the application sweep, the kid status sync, the vendor and sponsor logos (then monetary sponsors), vendors on their JobTread jobs, the Zeffy gift check, Zeffy donors onto the newsletter, the applications waitlist, the press monitor, the event recaps, the Event Recap and Monthly Impact drafts in Kit, CompanyCam for families in review, the CompanyCam job check, the one-time Slack preview, the application limit\'s one-time self-test, the email delivery check, job costs, finance, vendors, the quiet Kit subscribers check, the insurance audit, the board, the board’s signed copies and receipts, the board’s report asks, staff sign-in from Google, the staff inboxes sweep, the store order emails and selections as parts (kid items), the old certificates and W-9s, the process Docs’ hourly check, SOARD’s facts against the IRS, and a tick slower than the answer publishes itself');
   await flush();
   const body = await ok.json();
   assert.equal(body.ok, true);

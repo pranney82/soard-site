@@ -6918,6 +6918,7 @@
     // scheduled here; dates, times and notes change only in JobTread.
     // Server: /api/reveal-invites-admin (listUpcoming + addTracking).
     const RT_CHANNEL = { email: ['email', 'emails'], sms: ['text', 'texts'], push: ['browser alert', 'browser alerts'] };
+    // A reveal email to the people who signed up is one Kit email (./functions/api/_reveal-signups.js): Kit, not the site, counts who got it
     const rtWhen = (iso) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const rtPeople = (n) => `${n} ${n === 1 ? 'person' : 'people'}`;
     // One reminder kind's sends across channels → "Sent Tue, Oct 20, 4:05 PM: 12 emails, 3 texts"
@@ -6927,6 +6928,13 @@
       const at = rows.map((x) => x.created_at).sort()[0];
       const recipients = rows.reduce((a, x) => a + (x.recipients || 0), 0);
       const failed = rows.reduce((a, x) => a + (x.failed || 0), 0);
+      const kit = rows.find((x) => x.channel === 'kit-signups');
+      // Kit hasn't taken it yet: the site takes it back every minute while it's still news
+      if (kit?.error === 'sending') return { at, text: `Going to Kit now (${rtWhen(at)})` };
+      if (kit?.error) return { at, text: `Not sent yet: ${kit.error}. The site tries again every minute while it would still be on time`, failed: 1 };
+      if (!recipients && kit) return kit.sent
+        ? { at, text: `Sent from Kit ${rtWhen(at)}${rows.some((x) => x.channel === 'push' && x.sent) ? ', and as browser alerts' : ''}` }
+        : { at, text: `Nobody it was for when it was due (${rtWhen(at)})` };
       if (!recipients) return { at, text: `Went out ${rtWhen(at)}, before anyone had asked for reminders` };
       const parts = rows.filter((x) => x.recipients).map((x) => { const [one, many] = RT_CHANNEL[x.channel] || [x.channel, x.channel]; return `${x.sent} ${x.sent === 1 ? one : many}`; });
       return { at, text: `Sent ${rtWhen(at)}: ${parts.join(', ')}${failed ? `, ${failed} failed` : ''}`, failed };
@@ -7036,7 +7044,7 @@
       const saveDate = rtSent(b?.sends, 'scheduled');
       steps.push({ key: 'save-date', label: 'Save-the-date reminder', ...(saveDate ? { state: saveDate.failed ? 'warn' : 'done', text: said(saveDate) }
         : remOff || (b && at && at - Date.parse(b.createdAt) <= 26 * 3600e3 ? { state: 'off', text: 'Skipped: less than a day\'s notice. The day-before and hour-before reminders cover it.' }
-        : { state: 'wait', text: r.test ? 'Goes out when the countdown goes up, to the test address only' : `Goes out when the countdown goes up, to everyone who asked for reminders (${rtPeople(signups)} so far)` })) });
+        : { state: 'wait', text: r.test ? 'Goes out when the countdown goes up, to the test address only' : `Goes from Kit when the countdown goes up, only to people who signed up for ${r.name}'s reveal alone. Everyone else (${rtPeople(signups)} signed up so far) hears the date through the whole-list invite` })) });
       const moved = rtSent(b?.sends, 'moved');
       if (moved) steps.push({ key: 'moved', label: 'New date reminder', state: moved.failed ? 'warn' : 'done', text: said(moved) });
       for (const [kind, hours, label] of [['day', 24, 'Day-before reminder'], ['hour', 1, 'Hour-before reminder']]) {
@@ -7049,7 +7057,7 @@
 
       // 8–9. When the stream starts
       const goLive = rtSent(b?.sends, 'live');
-      steps.push({ key: 'live', label: '"We\'re live" reminder', ...(goLive ? { state: goLive.failed ? 'warn' : 'done', text: said(goLive) } : remOff || { state: 'wait', text: 'Goes out the moment the stream starts' }) });
+      steps.push({ key: 'live', label: '"We\'re live" reminder', ...(goLive ? { state: goLive.failed ? 'warn' : 'done', text: said(goLive) } : remOff || { state: 'wait', text: `Goes from Kit the moment the stream starts, to people who signed up for ${r.name}'s reveal alone; everyone else gets the Kit list email below` }) });
       const kit = live.kit || {};
       const kitLive = b?.kit?.live;
       const kitWanted = typeof b?.kitLiveEmail === 'boolean' ? b.kitLiveEmail : kit.enabled;

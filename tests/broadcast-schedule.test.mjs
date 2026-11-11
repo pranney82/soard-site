@@ -4,6 +4,7 @@
  */
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeKitTags } from './lib/fake-kit-tags.mjs';
 import { createD1 } from './lib/d1-shim.mjs';
 import { confirmedReveals, planBroadcast, syncBroadcastSchedule } from '../functions/api/_broadcast-schedule.js';
 import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternToUtcIso, easternParts } from '../functions/api/_reveals.js';
@@ -137,6 +138,10 @@ before(async () => {
     const u = String(url);
     if (u.startsWith('https://api.resend.com/emails/batch')) { emails.push(...JSON.parse(init.body)); return Response.json({ data: [] }); }
     if (u.startsWith('https://hooks.slack.test/')) { slack.push(renderSlack(JSON.parse(init.body))); return new Response('ok'); }
+    if (u.startsWith('https://api.kit.com/v4/') && !u.startsWith('https://api.kit.com/v4/broadcasts')) {
+      const tagged = await kit.tags.answer(u, init.method || 'GET', init.body && init.body !== '{}' ? JSON.parse(init.body) : null);
+      if (tagged) return tagged;
+    }
     if (u.startsWith('https://api.kit.com/v4/broadcasts')) {
       const method = init.method || 'GET';
       kit.calls.push({ method, url: u, body: init.body ? JSON.parse(init.body) : null });
@@ -164,11 +169,11 @@ beforeEach(async () => {
   jtStatus = 200;
   emails = [];
   slack = [];
-  kit = { calls: [], lastId: 100, status: 'draft' };
+  kit = { calls: [], lastId: 100, status: 'draft', tags: fakeKitTags() };
   delete env.KIT_API_KEY;
 });
 
-test('sync: a confirmed reveal puts the countdown up, as JobTread, with a save-the-date', async () => {
+test('sync: a confirmed reveal puts the countdown up, as JobTread (its save-the-date is the whole-list invite, from Kit)', async () => {
   const r = await sync();
   assert.equal(r.action, 'schedule', r.error);
   const st = await b.readState(env.DB);
@@ -177,8 +182,7 @@ test('sync: a confirmed reveal puts the countdown up, as JobTread, with a save-t
   assert.equal(st.jobId, 'jobMax0001');
   assert.equal(st.scheduledAt, at(5));
   assert.equal(st.updatedBy, 'JobTread');
-  assert.equal(emails.length, 1);
-  assert.match(emails[0].subject, /Save the date: Max’s room reveal/);
+  assert.equal(emails.length, 0, 'nothing from Resend: the list hears the date through the whole-list invite in Kit');
   const row = await env.DB.prepare('SELECT data FROM broadcasts WHERE id = ?').bind(st.broadcastId).first();
   assert.equal(JSON.parse(row.data).jobId, 'jobMax0001', 'History rows know their job (the tracker matches sends by it)');
   assert.equal(r.record.next.jobId, 'jobMax0001');
@@ -221,11 +225,13 @@ test('two reveals two days apart: the first holds the countdown, its replay hand
     assert.equal(emails.filter((e) => /Save the date/.test(e.subject)).length, 0, 'inside 26 hours the day-before note covers it');
     assert.notEqual(st.broadcastId, undefined);
 
-    // The next tick sends the second reveal its day-before reminder
+    // The next tick sends the second reveal its day-before reminder, from Kit, to everyone who signed up
+    env.KIT_API_KEY = 'kit_test';
     await b.runTick(env, { force: true });
-    const dayBefore = emails.filter((e) => /Lizzie/.test(e.subject));
-    assert.equal(dayBefore.length, 1, 'one day-before email, about the second reveal');
-    assert.equal(emails.filter((e) => /Max/.test(e.subject)).length, 0, 'nothing more about the first');
+    const made = kit.calls.filter((c) => c.method === 'POST' && /reveal sign-ups · /.test(c.body?.description || ''));
+    assert.deepEqual(made.map((c) => c.body.description), [`[auto] Lizzie day · reveal sign-ups · ${st.broadcastId}`], 'one day-before email, about the second reveal');
+    assert.match(made[0].body.subject, /Lizzie/);
+    assert.equal(emails.length, 0, 'nothing from Resend');
 
     // And a real stream for it picks up the planned reveal, kid and all
     clock = Date.parse(second);
@@ -237,7 +243,7 @@ test('two reveals two days apart: the first holds the countdown, its replay hand
   }
 });
 
-test('sync: a new time the same day moves it quietly; a new day re-arms reminders and tells subscribers', async () => {
+test('sync: a new time the same day moves it quietly; a new day re-arms the day-before and hour-before', async () => {
   await sync();
   const first = await b.readState(env.DB);
   jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(5, '18:00') })];
@@ -245,17 +251,16 @@ test('sync: a new time the same day moves it quietly; a new day re-arms reminder
   let st = await b.readState(env.DB);
   assert.equal(st.broadcastId, first.broadcastId, 'same broadcast');
   assert.equal(st.scheduledAt, at(5, '18:00'));
-  assert.equal(emails.length, 1, 'same day: no new email');
+  assert.equal(emails.length, 0, 'same day: no email');
 
   await env.DB.prepare("INSERT INTO broadcast_sends (broadcast_id, kind, channel, created_at) VALUES (?, 'day', 'email', ?)").bind(st.broadcastId, new Date().toISOString()).run();
   jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(9) })];
   assert.equal((await sync()).action, 'update');
   st = await b.readState(env.DB);
   assert.equal(st.scheduledAt, at(9));
-  assert.equal(emails.length, 2);
-  assert.match(emails[1].subject, /New date: Max’s room reveal/);
+  assert.equal(emails.length, 0, 'a new date reaches the list through the whole-list invite in Kit (rewritten, or Linzi told to send an update)');
   const kinds = (await env.DB.prepare('SELECT kind FROM broadcast_sends WHERE broadcast_id = ?').bind(st.broadcastId).all()).results.map((x) => x.kind).sort();
-  assert.deepEqual(kinds, ['moved', 'scheduled'], 'the day-before reminder goes out again for the new date');
+  assert.ok(!kinds.includes('day'), 'the day-before reminder goes out again for the new date');
   const ev = await env.DB.prepare("SELECT meta FROM broadcast_events WHERE broadcast_id = ? AND type = 'moved'").bind(st.broadcastId).first();
   assert.equal(JSON.parse(ev.meta).to, at(9));
 });
@@ -295,7 +300,7 @@ test('sync: two JobTread wake-ups at once plan the reveal once (one save-the-dat
   assert.deepEqual([a.action, c.action].sort(), ['none', 'schedule'], 'the second waits its turn, then finds it done');
   const rows = await env.DB.prepare('SELECT COUNT(*) AS n FROM broadcasts').first();
   assert.equal(rows.n, 1);
-  assert.equal(emails.length, 1);
+  assert.equal(emails.length, 0);
 });
 
 test('public wake-ups check JobTread at most once a minute site-wide; one turned away is owed to the next heartbeat', async () => {
@@ -309,7 +314,7 @@ test('public wake-ups check JobTread at most once a minute site-wide; one turned
   // A flood of wake-ups inside the minute: no JobTread reads, no second save-the-date
   for (let i = 1; i <= 20; i++) assert.equal((await wake(t0 + i * 1000)).action, 'skipped');
   assert.equal(reads, 1);
-  assert.equal(emails.length, 1);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM broadcasts').first()).n, 1, 'planned once');
   // The change a turned-away wake-up was about: the reveal moved
   jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(5, '18:00') })];
   assert.equal((await beat(t0 + 30_000)).action, 'skipped', 'inside the minute, even the owed check waits');
@@ -335,7 +340,7 @@ test('tracker: each upcoming reveal gets its broadcast, reminder sends, signups 
   const [max, liz] = upcoming;
   assert.equal(max.broadcast.phase, 'scheduled');
   assert.equal(max.broadcast.scheduledAt, at(5));
-  assert.deepEqual(max.broadcast.sends.map((x) => [x.kind, x.channel, x.sent]), [['scheduled', 'email', 1]], 'the save-the-date, counted');
+  assert.deepEqual(max.broadcast.sends, [], 'nothing sent yet: the date reaches the list through the whole-list invite');
   assert.equal(max.reminderSignups, 1, 'people who asked about every reveal count for each kid');
   assert.equal(max.checkComment, null);
   assert.equal(liz.broadcast, null, 'no countdown yet');

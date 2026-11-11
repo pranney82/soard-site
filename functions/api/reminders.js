@@ -27,6 +27,10 @@
  * GET  ?key=1                 VAPID public key for push subscriptions
  *
  * kidSlug scopes reminders to one reveal; omitted = every reveal.
+ *
+ * Email sign-ups go into Kit (./_reveal-signups.js), and every reveal email
+ * comes from Kit, so nobody on the newsletter and this list gets two. The row
+ * here is the sign-up itself (address, reveal, the Stop link's token).
  */
 
 import { ensureSchema, readConfig, readState, visibleState, liveUrlFor, recordEvent } from './_broadcast.js';
@@ -35,6 +39,8 @@ import { notePage, NOTE_PAGE_CSP } from './_note-page.js';
 import { crossSiteChange } from './_origin-guard.js';
 import { clientIp, shownAddress, turnstileOn, turnstileSiteKey, verifyTurnstile } from './_secure.js';
 import { limit, limitAll, tooMany } from './_rate-limit.js';
+import { kitConfigured } from './_kit.js';
+import { syncSignup, stopSignup } from './_reveal-signups.js';
 
 const SITE = notify.SITE_ORIGIN;
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -307,7 +313,8 @@ export async function onRequestPost(context) {
     if (channel === 'email') {
       address = String(body.email || '').trim().toLowerCase();
       if (!notify.isEmail(address) || address.length > 254) return json({ ok: false, error: 'Enter a valid email address.' }, 400);
-      if (!notify.emailConfigured(env)) return json({ ok: false, error: 'Email reminders are not available right now.' }, 503);
+      // Kit sends every reveal email; Resend sends the one "You're on the list"
+      if (!kitConfigured(env) || !notify.emailConfigured(env)) return json({ ok: false, error: 'Email reminders are not available right now.' }, 503);
     } else if (channel === 'push') {
       let sub = body.subscription;
       if (typeof sub === 'string') { try { sub = JSON.parse(sub); } catch { sub = null; } }
@@ -353,10 +360,13 @@ async function emailSignup(context, { address, kid, source, config }) {
   const kidSlug = kid?.slug || null;
   if (was && !was.unsubscribed_at) {
     await activate(env.DB, { channel: 'email', address, kid_slug: kidSlug, source });
-    return json({ ok: true, channel: 'email' });
+    // Already on the list: Kit is told again, in case they left Kit since. Kit then asks them itself, but only as
+    // often as the form may email an address, so nobody can use it to fill someone's inbox with Kit's confirmations
+    const synced = await toKit(context, address, { askAgain: () => mayEmail(env, address) });
+    return json({ ok: true, channel: 'email', ...(synced?.pending ? { pending: true } : {}) });
   }
   // Anything that emails the address: per address, hashed so the limits table never holds anyone's email
-  const perTarget = await limit(env.DB, `reminders:to:${(await notify.sha256Hex(`email:${address}`)).slice(0, 32)}`, LIMITS.perTargetPerDay, 86400);
+  const perTarget = await emailLimit(env, address);
   if (!perTarget.ok) {
     return tooMany(perTarget.retryAfter, was
       ? 'We already sent this address a few links today. Look for the newest one in your inbox or spam folder.'
@@ -366,12 +376,39 @@ async function emailSignup(context, { address, kid, source, config }) {
 
   await activate(env.DB, { channel: 'email', address, kid_slug: kidSlug, source });
   later(context, signedUp(env, 'email', { kid_slug: kidSlug, source }));
+  // Kit has them as unsubscribed: Kit's own "confirm your subscription" is the email they get, not ours
+  const synced = await toKit(context, address);
+  if (synced?.pending) return json({ ok: true, channel: 'email', pending: true });
   const row = await env.DB.prepare(`SELECT token FROM broadcast_reminders WHERE channel = 'email' AND address = ?`).bind(address).first();
   const stopUrl = `${SITE}/api/reminders?unsubscribe=${encodeURIComponent(row.token)}`;
   const mail = notify.welcomeEmail({ stopUrl, kidName: kid?.name || null, kidSlug, hours: hoursOf(config), ...(await revealTiming(env.DB, kid)) });
   // On the list either way: a welcome that can't go now doesn't undo the sign-up
   later(context, notify.sendEmailItems(env, [{ to: address, ...mail, headers: notify.listUnsubscribeHeaders(stopUrl) }], { replyTo: notify.REVEAL_REPLY_TO, tags: [{ name: 'category', value: 'reminder-welcome' }] }));
   return json({ ok: true, channel: 'email' });
+}
+
+/** The per-address limit on emails a sign-up sends (ours or Kit's confirmation), hashed so the table never holds an address */
+async function emailLimit(env, address) {
+  return limit(env.DB, `reminders:to:${(await notify.sha256Hex(`email:${address}`)).slice(0, 32)}`, LIMITS.perTargetPerDay, 86400);
+}
+const mayEmail = async (env, address) => (await emailLimit(env, address)).ok;
+
+/**
+ * The sign-up into Kit, while the form waits a few seconds: long enough to
+ * say "check your email" to someone Kit holds. Slower than that, it carries
+ * on in the background and the heartbeat finishes it. Never throws.
+ */
+async function toKit(context, address, { waitMs = 6000, askAgain = true } = {}) {
+  const { env } = context;
+  try {
+    const row = await env.DB.prepare(`SELECT * FROM broadcast_reminders WHERE channel = 'email' AND address = ?`).bind(address).first();
+    if (!row) return null;
+    const run = syncSignup(env, row, { askAgain });
+    later(context, run);
+    return await Promise.race([run, new Promise((r) => setTimeout(() => r(null), waitMs))]);
+  } catch {
+    return null;
+  }
 }
 
 /** An address that pressed Stop: held until its own tap on the link we email puts it back */
@@ -417,9 +454,12 @@ async function confirm(context, url) {
     if (!config.reminders?.enabled) return pausedPage();
     await activate(env.DB, row);
     later(context, signedUp(env, 'email', row));
+    const synced = await toKit(context, row.address);
     // What they're really on the list for: a different reveal than before means every reveal
     const now = await env.DB.prepare('SELECT kid_slug FROM broadcast_reminders WHERE channel = ? AND address = ?').bind(row.channel, row.address).first();
     const kid = await knownKid(env.DB, now?.kid_slug);
+    // They had unsubscribed from our mailing list: it emails them its own confirmation, and that tap is the last one
+    if (synced?.pending) return page('One more tap', `<p>Our mailing list just sent you one more email, because you had unsubscribed from it. Tap Confirm in it, and we'll email you ${whatTheyHear(kid, config, await revealTiming(env.DB, kid))}.</p>`);
     return page("You're on the list", `<p>We'll email you ${whatTheyHear(kid, config, await revealTiming(env.DB, kid))}. Nothing else, ever.</p>`);
   } catch {
     return page('Something went wrong', '<p>Please open the link from your email again in a minute.</p>', { status: 500 });
@@ -434,6 +474,9 @@ async function unsubscribe(env, url) {
     const row = t ? await env.DB.prepare('SELECT id, unsubscribed_at FROM broadcast_reminders WHERE token = ?').bind(t).first() : null;
     if (!row) return page('This link has expired', "<p>You won't get reminders from this link. Still getting them? Tap Stop these reminders in the newest email.</p>", { status: 404 });
     if (!row.unsubscribed_at) await env.DB.prepare('UPDATE broadcast_reminders SET unsubscribed_at = ? WHERE id = ?').bind(nowIso(), row.id).run();
+    // Off the list in Kit too, at once if Kit answers (the heartbeat finishes it if not)
+    const full = await env.DB.prepare('SELECT * FROM broadcast_reminders WHERE id = ?').bind(row.id).first();
+    if (full?.channel === 'email') await Promise.race([stopSignup(env, full), new Promise((r) => setTimeout(r, 6000))]).catch(() => {});
     return page('Reminders stopped', '<p>You will not get any more reveal reminders. You can sign up again any time from a reveal page.</p>');
   } catch {
     return page('Something went wrong', '<p>Please try the link again in a minute.</p>', { status: 500 });

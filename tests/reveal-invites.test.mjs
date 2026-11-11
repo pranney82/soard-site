@@ -5,6 +5,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
+import { fakeKitTags } from './lib/fake-kit-tags.mjs';
 import { createD1 } from './lib/d1-shim.mjs';
 import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, reconcileAll, sendTestInvite, draftInviteEmailNow, displayName, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, BY_HAND, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL, admitWake, runOwedWakes, allowedOrganizers, DEFAULT_ORGANIZER } from '../functions/api/_reveal-invites.js';
 import * as wakeRoute from '../functions/api/reveal-invites.js';
@@ -1080,13 +1081,15 @@ test('the invite organizer is one of the mailboxes set aside for it, never any s
 // ─── JobTread confirms → the invite email in Kit (./_reveal-invite-kit.js) ──
 async function withKit(fn, { kitDown = false } = {}) {
   const posts = []; const mail = []; const drafts = new Map();
+  const tags = fakeKitTags();
   const real = globalThis.fetch;
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input?.url || input);
     const method = init.method || 'GET';
     if (url.startsWith('https://api.kit.com/v4/')) {
       if (kitDown) return new Response('down', { status: 500 });
-      if (url.includes('/tags')) return Response.json({ tags: [] });
+      const tagged = await tags.answer(url, method, init.body ? JSON.parse(init.body) : null);
+      if (tagged) return tagged;
       if (url.includes('/segments')) return Response.json({ segments: [{ id: 587253, name: 'Reveal Emails' }] });
       // Each draft its own id: the invite and the whole-list invite are two drafts
       if (method === 'POST') { const b = JSON.parse(init.body); posts.push(b); const id = String(500 + posts.length); drafts.set(id, { id: Number(id), status: 'draft', ...b }); return Response.json({ broadcast: { id: Number(id) } }, { status: 201 }); }
@@ -1123,7 +1126,8 @@ test('JobTread confirms a reveal: the same look drafts the Kit email to Reveal E
   assert.equal(whole.subject, 'Join Us Live for Max’s Reveal Day!');
   assert.equal(whole.public, false);
   assert.equal(whole.send_at, null);
-  assert.equal(whole.subscriber_filter, undefined, 'the whole list');
+  assert.deepEqual(whole.subscriber_filter[0].all, [{ type: 'all_subscribers' }], 'the whole list');
+  assert.equal(whole.subscriber_filter[0].none.length, 1, 'but the one-reveal-only sign-ups (their kid\'s comes to them on its own)');
   assert.match(whole.content, /Tuesday, October 27<[\s\S]*4:00 PM/);
   assert.match(whole.content, /Live on our website/);
   assert.match(whole.content, /calendar\.ics\?reveal=[^"]*&amp;watch=1&amp;app=google/);

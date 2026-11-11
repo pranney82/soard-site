@@ -38,6 +38,7 @@
 import { kitConfigured, kitCreateBroadcast, kitUpdateDraft, kitListAudiences, kitReadBroadcast, kitFindDraft } from './_kit.js';
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
+import { wholeListFilter, aimedBySite, leftOut } from './_reveal-signups.js';
 import { revealInviteEmail, revealWhen, partnerLogoUrls, kidPhotoUrls, cleanAddress, TEAM_PICTURE, TIME_LATER, SITE_URL, EMAIL_DESIGN } from './_reveal-invite-email.js';
 
 // reviewer: who's emailed to review every draft the site makes in Kit (Peter, Nov 9 2026: him too). One address or several, comma-separated.
@@ -465,7 +466,10 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
       if (!id) {
         const r = await render();
         if (r.error) return await trouble(r.error, { fix: PAGE_FIX });
-        const c = await kitCreateBroadcast(env, { ...body(r.email), audience: group });
+        // The whole-list invite: everyone but waitlist-only families and one-reveal-only sign-ups (./_reveal-signups.js)
+        const aim = v.private ? null : await wholeListFilter(env);
+        if (!v.private && !aim) return await trouble(`Kit couldn’t say who signed up for one reveal only, so ${name}’s ${v.email} wasn’t drafted.`);
+        const c = await kitCreateBroadcast(env, { ...body(r.email), audience: group, filter: aim });
         id = String(c.broadcast?.id || '');
         if (!c.ok || !id) return await trouble(`Kit didn’t take the draft: ${c.error || `HTTP ${c.status}`}`);
         made = true;
@@ -506,14 +510,18 @@ export async function syncKitInvite(env, { jobId, plan = null, hold = null, who,
     // Asked for by hand on a draft from before the site kept its copy
     const forced = rewrite && row.content_hash === NO_BASELINE;
     // A new design reaches a draft nobody has touched by itself, like a JobTread change does
-    const stale = row.design !== EMAIL_DESIGN;
+    // The whole-list invite aimed by the site (not at a group someone picked in Kit) is re-aimed when who it
+    // leaves out has changed: a draft made before the sign-ups moved to Kit, or a leave-out tag made since
+    const freshAim = !v.private && !went && aimedBySite(b) ? await wholeListFilter(env) : null;
+    const reaim = !!freshAim && String(leftOut(freshAim)) !== String(leftOut(b.subscriber_filter));
+    const stale = row.design !== EMAIL_DESIGN || reaim;
     let wrote = false;
     if (!hold && !went && (!edited || forced) && !made && (changed || rewrite || stale)) {
       const r = await render();
       if (r.error) return await trouble(`${r.error} The draft in Kit still has the old details.`, { fix: PAGE_FIX });
       // Kit resets what an update leaves out, so the audience is sent every time
       // The whole-list invite has no address, so staff may put it on the Newsletter site: a rewrite keeps that
-      const u = await kitUpdateDraft(env, row.broadcast_id, { ...body(r.email), audience, keepPublic: !v.private });
+      const u = await kitUpdateDraft(env, row.broadcast_id, { ...body(r.email), audience, keepPublic: !v.private, filter: freshAim });
       if (u.status) {
         went = u.status === 'scheduled' ? 'scheduled' : 'sent';
         wrongAim = aimedWrong(b);

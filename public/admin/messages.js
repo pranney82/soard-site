@@ -86,11 +86,11 @@ const reminderLive = (kind) => (f) => {
   if (!r.enabled) return OFF(REM_OFF);
   if (kind === 'day' && !r.dayBefore) return OFF(`“The day before” is unticked in ${REM_SETTINGS}.`);
   if (kind === 'hour' && !r.hourBefore) return OFF(`“One hour before” is unticked in ${REM_SETTINGS}.`);
-  if (!f.env.resend) return ATTN(NO_RESEND);
+  if (!f.env.kit) return ATTN(NO_KIT);
   const s = r.sends?.[kind] || {};
-  const by = [['email', 'emails'], ['push', 'browser alerts']].filter(([c]) => s[c]?.total).map(([c, n]) => `${s[c].total} ${n}`);
-  const channels = ['email', r.push && r.vapid ? 'browser alert' : null].filter(Boolean);
-  return ON(`Goes by ${channels.join(' and ')}.${signed}${by.length ? ` Sent so far: ${by.join(', ')}.` : ''}`, latest(s.email?.last, s.push?.last));
+  const by = [['kit-signups', 'emails from Kit'], ['email', 'emails from Resend (before Nov 10, 2026)'], ['push', 'browser alerts']].filter(([c]) => s[c]?.total).map(([c, n]) => `${s[c].total} ${n}`);
+  const channels = ['one email from Kit', r.push && r.vapid ? 'browser alert' : null].filter(Boolean);
+  return ON(`Goes as ${channels.join(' and ')}.${signed}${by.length ? ` Sent so far: ${by.join(', ')}.` : ''}`, latest(s['kit-signups']?.last, s.email?.last, s.push?.last));
 };
 // Staff texts: Twilio connected, someone on the list, and did the last ones arrive (Twilio's delivery reports)
 const textsLive = (f) => {
@@ -346,15 +346,15 @@ const MAP = { t: 'Everything we send', children: [
     ]},
 
   { t: 'Reveal watchers', sub: 'People who asked for reminders on a reveal page', color: 'live', side: 'r',
-    about: 'Anyone can sign up on a reveal or kid page for reminders by email or browser alert. The public is never texted. Newsletter subscribers hear about reveals through Kit instead. A rehearsal on a TEST job sends “TEST ·” copies only to the test address, and an address that bounces or reports spam is unsubscribed by itself.',
+    about: 'Anyone can sign up on a reveal or kid page for reveal emails or browser alerts. The public is never texted. An email sign-up goes into Kit, tagged “Reveal sign-ups” (or “Reveal sign-ups: {kid}” for one kid), and someone new to Kit also “Reveal sign-ups only (no newsletter)”, so newsletters leave them out. Every reveal email then comes from Kit, one email for everyone it’s for, so nobody also on the newsletter gets two. Only “You’re on the list” and “Confirm your reminders” come from Resend, because Kit can’t email one person. A rehearsal on a TEST job sends “TEST ·” copies only to the test address.',
     children: [
       { t: 'Signing up', children: [
         { t: 'You’re on the list', s: 'live', k: 'email', by: 'visitor', preview: 'rem-welcome', change: CHANGE.revealSettings,
           who: 'A new address signed up on a reveal page. One press of Email me puts it on the list: there’s nothing to confirm.',
           when: 'Right after they sign up. An address already on the list gets nothing more.',
           subject: 'You’re on the list for {kid}’s reveal (or: for every reveal)',
-          does: 'Says what they’ll hear about and when, links to the live page, and has a one-tap Stop for anyone who didn’t sign up.',
-          touches: ['Resend', 'D1'], where: 'functions/api/reminders.js · _broadcast-notify.js (welcomeEmail)',
+          does: 'Says what they’ll hear about and when, links to the live page, and has a one-tap Stop for anyone who didn’t sign up (it takes them off in Kit too). Someone Kit has as unsubscribed gets Kit’s own “confirm your subscription” instead, and only their tap there brings them back.',
+          touches: ['Resend', 'Kit', 'D1'], where: 'functions/api/reminders.js · _broadcast-notify.js (welcomeEmail)',
           info: 'While reminders are switched off, reveal pages hide the sign-up box.',
           live: first((f) => (!f.reminders ? null : !f.reminders.enabled ? OFF(REM_OFF) : null), needs('resend', NO_RESEND), () => ON()) },
         { t: 'Confirm your reminders', s: 'live', k: 'email', by: 'visitor', preview: 'rem-confirm', change: CHANGE.revealSettings,
@@ -367,47 +367,47 @@ const MAP = { t: 'Everything we send', children: [
           live: first((f) => (!f.reminders ? null : !f.reminders.enabled ? OFF(REM_OFF) : null), needs('resend', NO_RESEND), () => ON()) },
       ]},
       { t: 'Reminders', children: [
-        { t: 'Save the date', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-scheduled', change: CHANGE.revealSettings,
-          who: 'Everyone signed up for reminders (for this kid, or for every reveal).',
+        { t: 'Save the date', s: 'live', k: 'kit', also: ['push'], by: 'auto', preview: 'rem-scheduled', change: CHANGE.revealSettings,
+          who: 'Only people who signed up for this one kid’s reveal and aren’t on the newsletter. Everyone else hears the date through the whole-list invite.',
           when: 'A reveal is scheduled (by hand, or by JobTread’s countdown) more than 26 hours ahead.',
           subject: 'Save the date: {kid}’s room reveal',
           does: 'The date and time, and that reminders come the day before and an hour before.',
-          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (sendReminders) · _broadcast-notify.js (reminderEmail, reminderPush)',
+          touches: ['Kit', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (sendReminders) · _broadcast-notify.js (reminderEmail, reminderPush)',
           live: reminderLive('scheduled') },
-        { t: 'New date', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-moved', change: CHANGE.revealSettings,
-          who: 'Everyone signed up for this reveal.',
+        { t: 'New date', s: 'live', k: 'kit', also: ['push'], by: 'auto', preview: 'rem-moved', change: CHANGE.revealSettings,
+          who: 'Only people who signed up for this one kid’s reveal and aren’t on the newsletter. For everyone else the whole-list invite is rewritten, or Linzi is told to send an update.',
           when: 'The reveal moves to another day, more than 26 hours out.',
           subject: 'New date: {kid}’s room reveal',
           does: 'The new date and time.',
-          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
+          touches: ['Kit', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
           live: reminderLive('moved') },
-        { t: 'The day before', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-day', change: CHANGE.revealSettings,
-          who: 'Everyone signed up for this reveal.',
+        { t: 'The day before', s: 'live', k: 'kit', also: ['push'], by: 'auto', preview: 'rem-day', change: CHANGE.revealSettings,
+          who: 'Everyone who signed up for every reveal or for this kid’s (Kit tags “Reveal sign-ups” and “Reveal sign-ups: {kid}”), in one Kit email.',
           when: '24 hours before the reveal (the same day, when the countdown goes up that day).',
           subject: 'Tomorrow: {kid}’s room reveal, live',
           does: 'Tomorrow (or today) is reveal day, and when it goes live.',
-          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (dueReminderKinds)',
+          touches: ['Kit', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (dueReminderKinds)',
           live: reminderLive('day') },
-        { t: 'One hour to go', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-hour', change: CHANGE.revealSettings,
-          who: 'Everyone signed up for this reveal.',
+        { t: 'One hour to go', s: 'live', k: 'kit', also: ['push'], by: 'auto', preview: 'rem-hour', change: CHANGE.revealSettings,
+          who: 'Everyone who signed up for every reveal or for this kid’s, in one Kit email.',
           when: 'An hour before the reveal.',
           subject: 'One hour to go: {kid}’s reveal',
           does: 'It goes live in about an hour, with the link to watch.',
-          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (dueReminderKinds)',
+          touches: ['Kit', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js (dueReminderKinds)',
           live: reminderLive('hour') },
-        { t: 'We’re live', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-live', change: CHANGE.revealSettings,
-          who: 'Everyone signed up for this reveal.',
+        { t: 'We’re live', s: 'live', k: 'kit', also: ['push'], by: 'auto', preview: 'rem-live', change: CHANGE.revealSettings,
+          who: 'Only people who signed up for this one kid’s reveal and aren’t on the newsletter: everyone else gets “We’re live (Kit)”. With that switched off for a reveal, everyone who signed up.',
           when: 'The stream goes live.',
           subject: 'We’re live: {kid}’s room reveal',
           does: 'It’s happening right now, with the link to watch.',
-          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
+          touches: ['Kit', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
           live: reminderLive('live') },
-        { t: 'The replay is ready', s: 'live', k: 'email', also: ['push'], by: 'auto', preview: 'rem-replay', change: CHANGE.revealSettings,
-          who: 'Everyone signed up for this reveal.',
+        { t: 'The replay is ready', s: 'live', k: 'kit', also: ['push'], by: 'auto', preview: 'rem-replay', change: CHANGE.revealSettings,
+          who: 'Everyone who signed up for every reveal or for this kid’s, in one Kit email. The whole list’s replay draft leaves them out.',
           when: 'The replay is ready after the stream ends.',
           subject: 'Watch the replay: {kid}’s room reveal',
           does: 'A link to the replay for anyone who missed it.',
-          touches: ['Resend', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
+          touches: ['Kit', 'Web Push', 'D1'], where: 'functions/api/_broadcast.js',
           live: reminderLive('replay') },
       ]},
       { t: 'To the newsletter list', children: [
@@ -653,6 +653,12 @@ const MAP = { t: 'Everything we send', children: [
           subject: 'Review {kid}’s reveal invite in Kit',
           does: 'The day, the place and who it goes to, with a button straight to the draft in Kit.',
           touches: ['Resend'], where: 'functions/api/_reveal-invite-kit.js (reviewNote)' },
+        { t: 'Check who an email in Kit goes to', s: 'live', k: 'email', by: 'auto', preview: 'staff-kit-audience',
+          who: 'Linzi and Peter (the reviewers), by email only.',
+          when: 'An email written in Kit, not sent yet, is set to go to all subscribers and would reach people who signed up for reveal emails only, or families waiting only for applications to open. Once for each email (again only if what it reaches changes).',
+          subject: 'Check who “{email’s subject}” goes to',
+          does: 'Who it would reach, how many, and the fix: “Everyone on the newsletter” under Recipients for a newsletter, or leave it for a reveal or applications email. Nothing in Kit is changed.',
+          touches: ['Kit', 'Resend'], where: 'functions/api/_kit-audience-guard.js' },
         { t: 'Review the whole-list invite', s: 'live', k: 'email', by: 'auto', preview: 'staff-watch-review', change: CHANGE.invites,
           who: 'Linzi and Peter (the reviewers), by email only. When it can’t be drafted: the invite alert list by email.',
           when: 'The whole-list invite is drafted in Kit, the draft is rewritten, JobTread changes a draft she edited, JobTread says the reveal may be off or back on, or the reveal changes once the email is scheduled or sent.',

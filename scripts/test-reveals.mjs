@@ -336,7 +336,7 @@ try {
   await pause(100);
   const mi = await stepsOf(idle.page, 'Max');
   ok(mi.find((s) => s.label.startsWith('Countdown')).text.startsWith('Goes up at the next JobTread check'), 'a confirmed reveal with no countdown yet says when it goes up');
-  ok(mi.find((s) => s.label === 'Save-the-date reminder').text.includes('15 people so far'), 'save the date says how many asked for reminders');
+  ok(mi.find((s) => s.label === 'Save-the-date reminder').text.includes('15 people signed up so far') && /from Kit/.test(mi.find((s) => s.label === 'Save-the-date reminder').text), 'save the date says it goes from Kit, and how many signed up');
   ok(idle.errors.length === 0, `no console errors (${idle.errors.join(' | ')})`);
   await idle.page.screenshot({ path: join(OUT, 'now-idle.png'), fullPage: true });
   await idle.page.close();

@@ -218,7 +218,8 @@ test('every message says who sends it: Resend, JobTread, Kit, Google Calendar, T
   assert.deepEqual(by('Pick up where you left off'), ['resend']);
   assert.deepEqual(by('Applications are open'), ['kit', 'resend'], 'Kit, with Resend for families Kit can’t reach');
   assert.deepEqual(by('We’re live (Kit)'), ['kit']);
-  assert.deepEqual(by('Save the date'), ['resend', 'push'], 'the public is never texted');
+  assert.deepEqual(by('Save the date'), ['kit', 'push'], 'reveal emails to sign-ups come from Kit; the public is never texted');
+  assert.deepEqual(by('You’re on the list'), ['resend'], 'the one email Kit can’t send: to one person');
   assert.deepEqual(by('Live reveal alerts'), ['resend', 'twilio'], 'staff alerts also text the staff numbers');
   assert.deepEqual(by('Confirmed invite'), ['google']);
   assert.deepEqual(by('New application'), ['resend']);

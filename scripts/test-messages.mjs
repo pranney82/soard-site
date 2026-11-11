@@ -203,7 +203,7 @@ try {
   const tags = await page.evaluate(() => [...document.querySelectorAll('.am-node.leaf')].map((g) => ({ name: g.querySelector(':scope > text').textContent, tags: [...g.querySelectorAll('.am-tag text')].map((t) => t.textContent) })));
   ok(tags.length > 30 && tags.every((t) => t.tags.length > 0), `every message on the map says who sends it (${tags.filter((t) => !t.tags.length).map((t) => t.name).join(', ') || 'all do'})`);
   const tagOf = (name) => tags.find((t) => t.name === name)?.tags.join(' + ');
-  for (const [name, want] of [['Approved', 'JobTread'], ['New application', 'Resend'], ['Applications are open', 'Kit + Resend'], ['Save the date', 'Resend + Browser'], ['Live reveal alerts', 'Resend + Twilio'], ['Save-the-date invite', 'Google Calendar'], ['Bio request', 'Your email']]) ok(tagOf(name) === want, `${name}: ${want} (shows ${tagOf(name)})`);
+  for (const [name, want] of [['Approved', 'JobTread'], ['New application', 'Resend'], ['Applications are open', 'Kit + Resend'], ['Save the date', 'Kit + Browser'], ['Live reveal alerts', 'Resend + Twilio'], ['Save-the-date invite', 'Google Calendar'], ['Bio request', 'Your email']]) ok(tagOf(name) === want, `${name}: ${want} (shows ${tagOf(name)})`);
   await clickButton(page, '.am-tools', 'Reset');
   await pause(300);
 
@@ -320,7 +320,7 @@ try {
   await page.select('.am-filters--pick select', 's:kit');
   await pause(400);
   const kitHits = await page.$$eval('.am-node.leaf.hit-on text:not(.am-tag text)', (t) => t.map((x) => x.textContent).filter((x) => x !== 'Kit'));
-  const KIT = ['Applications are open', 'Invite email (Kit draft)', 'Whole-list invite (Kit draft)', 'We’re live (Kit)', 'Project Kickoff (Kit draft)', 'Project Reveal (Kit draft)', 'Event Recap (Kit draft)', 'Monthly Impact (Kit draft)', 'Replay draft in Kit', 'Newsletter', 'Welcome to the newsletter'];
+  const KIT = ['Applications are open', 'Invite email (Kit draft)', 'Whole-list invite (Kit draft)', 'Save the date', 'New date', 'The day before', 'One hour to go', 'We’re live', 'The replay is ready', 'We’re live (Kit)', 'Project Kickoff (Kit draft)', 'Project Reveal (Kit draft)', 'Event Recap (Kit draft)', 'Monthly Impact (Kit draft)', 'Replay draft in Kit', 'Newsletter', 'Welcome to the newsletter'];
   ok(KIT.every((k) => kitHits.includes(k)) && kitHits.length === KIT.length, `Sent by Kit finds what Kit sends (${kitHits.join(', ')})`);
   await clickButton(page, '.am-tools', 'Reset');
   const resendCount = await page.evaluate(() => [...document.querySelectorAll('.am-lede button')].find((b) => b.textContent.includes('sent by Resend')).querySelector('b').textContent);

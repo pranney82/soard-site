@@ -501,12 +501,14 @@ function whenPanel(day, time) {
 
 /**
  * kind: 'scheduled' | 'moved' | 'day' | 'hour' | 'live' | 'replay'
- * list: true for newsletter-list sends (Kit), which get list footer copy
- *       instead of "you asked for reminders", and no promise of notes they
- *       didn't ask for.
+ * list: true for sends from Kit, which carry Kit's own unsubscribe link.
+ *       Alone, it's for the newsletter list: list footer copy instead of "you
+ *       asked for reminders", and no promise of notes they didn't ask for.
+ * asked: with list, for the people who signed up for reveal emails: "you
+ *       asked" in the footer, and what comes next.
  * Fill it from reminderArgs (_broadcast.js), so a test can't differ from the real thing.
  */
-export function reminderEmail({ kind, kidName, kidSlug = null, scheduledAt, liveUrl, replayUrl, image, unsubscribeUrl, tz, hours = [24, 1], signUpOpen = true, list = false, site = SITE_ORIGIN, now = Date.now() }) {
+export function reminderEmail({ kind, kidName, kidSlug = null, scheduledAt, liveUrl, replayUrl, image, unsubscribeUrl, tz, hours = [24, 1], signUpOpen = true, list = false, asked = false, site = SITE_ORIGIN, now = Date.now() }) {
   const name = kidName ? curly(kidName) : '';
   // With no kid named: "the next" until it starts, then "the", because it isn't next any more
   const over = kind === 'live' || kind === 'replay';
@@ -518,7 +520,7 @@ export function reminderEmail({ kind, kidName, kidSlug = null, scheduledAt, live
   const today = isRevealToday(scheduledAt, tz, now);
   const cal = kidSlug ? calendarLinks(kidSlug, site, { watch: true }) : null;
   const left = scheduledAt ? Date.parse(scheduledAt) - now : Infinity;
-  const ahead = list ? (signUpOpen ? 'Want a reminder before it starts? Sign up on the reveal page.' : '') : nextNote(hours, left);
+  const ahead = list && !asked ? (signUpOpen ? 'Want a reminder before it starts? Sign up on the reveal page.' : '') : nextNote(hours, left);
   const map = {
     scheduled: {
       subject: `Save the date: ${who} room reveal`,
@@ -593,7 +595,7 @@ export function reminderEmail({ kind, kidName, kidSlug = null, scheduledAt, live
     t.signed && SIGNATURE,
   ].filter(Boolean).join('');
   const stop = list ? 'Unsubscribe' : 'Stop these reminders';
-  const footerHtml = `${list ? 'You’re getting this because you subscribed to updates from Sunshine on a Ranney Day.' : 'You asked us to remind you about live room reveals.'} <a class="muted" href="${esc(unsubscribeUrl)}" target="_blank" style="color:#6B6C72;text-decoration:underline;">${stop}</a>.`;
+  const footerHtml = `${list && !asked ? 'You’re getting this because you subscribed to updates from Sunshine on a Ranney Day.' : 'You asked us to email you about live room reveals.'} <a class="muted" href="${esc(unsubscribeUrl)}" target="_blank" style="color:#6B6C72;text-decoration:underline;">${stop}</a>.`;
   const html = emailShell({ preheader: t.preheader, eyebrow: t.eyebrow, heading: t.heading, intro: esc(t.intro), bodyHtml, footerHtml, banner: logoBand(site) });
   const text = [
     t.heading, '',

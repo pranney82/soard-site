@@ -179,8 +179,9 @@ test('tag ids are kept in D1, so a fresh isolate doesn’t page through Kit’s 
   const fresh1 = await import('../functions/api/_kit.js?isolate=1');
   const fresh2 = await import('../functions/api/_kit.js?isolate=2');
   await fresh1.kitSubscribe(env, 'fan@example.com', { source: 'newsletter' });
-  // Newsletter (found) and the waitlist-only tag (not in this Kit, and that's remembered too)
-  assert.equal(calls.filter(c => c.url.startsWith('https://api.kit.com/v4/tags?')).length, 2, 'each looked up once');
+  // Newsletter (found), and the leave-out tags a newsletter sign-up takes off (waitlist only, reveal sign-ups only,
+  // one reveal only): not in this Kit, and that's remembered too
+  assert.equal(calls.filter(c => c.url.startsWith('https://api.kit.com/v4/tags?')).length, 4, 'each looked up once');
   calls = [];
   await fresh2.kitSubscribe(env, 'fan2@example.com', { source: 'newsletter' });
   assert.equal(calls.filter(c => c.url.startsWith('https://api.kit.com/v4/tags?')).length, 0, 'the next isolate reads D1');

@@ -32,6 +32,8 @@ globalThis.fetch = async (input, init = {}) => {
     const path = url.slice('https://api.kit.com/v4'.length);
     kit.calls.push(`${method} ${path.split('?')[0]}`);
     if (kit.groupsDown && /^\/(tags|segments)/.test(path)) return new Response('down', { status: 503 });
+    // Kit makes a tag the site names (the reveal sign-up tags are made on first use)
+    if (path === '/tags' && method === 'POST') { const t = { id: 70000 + kit.groups.tags.length, name: body.name, subscriber_count: 0 }; kit.groups.tags.push(t); return Response.json({ tag: t }, { status: 201 }); }
     if (path.startsWith('/tags')) return Response.json({ tags: kit.groups.tags });
     if (path.startsWith('/segments')) return Response.json({ segments: kit.groups.segments });
     if (path.startsWith('/broadcasts?')) {

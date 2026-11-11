@@ -44,7 +44,8 @@ import * as stream from './_stream-live.js';
 import * as notify from './_broadcast-notify.js';
 import * as fb from './_broadcast-fb.js';
 import { attachToKid, matchKids } from './_fb-archive.js';
-import { kitConfigured, kitCreateBroadcast } from './_kit.js';
+import { kitConfigured, kitCreateBroadcast, kitFindBroadcast } from './_kit.js';
+import { wholeListFilter, signupsFilter, oneRevealFilter, signupTagIds } from './_reveal-signups.js';
 import * as reels from './_broadcast-reel.js';
 import * as monitor from './_broadcast-monitor.js';
 import * as preflight from './_broadcast-preflight.js';
@@ -825,8 +826,65 @@ async function finishSend(DB, broadcastId, kind, channel, { recipients, sent, fa
   } catch { /* stats only */ }
 }
 
-function unsubscribeUrl(token) {
-  return `${SITE_ORIGIN}/api/reminders?unsubscribe=${encodeURIComponent(token)}`;
+/**
+ * Who a reveal email from Kit goes to, of the people who signed up → a Kit
+ * subscriber filter; undefined: this kind isn't for any of them; null: Kit
+ * couldn't say, so try again. The date and a new date reach every sign-up but
+ * the one-reveal-only ones through the whole-list invite, so those go only to
+ * them; the rest go to every sign-up for this kid, the moment they're due (the
+ * whole list's "we're live" and replay leave the sign-ups out).
+ */
+/** The tag ids a sign-ups filter goes to (any of them, or all of them) */
+const leftOutOf = (filter) => [...new Set((filter || []).flatMap((g) => [...(g?.any || []), ...(g?.all || [])].flatMap((e) => (e?.ids || []).map(Number))))];
+
+/** What the sign-ups' copy went to, so the whole list's copy leaves exactly them out (signupsCovered) */
+async function settleSignupsTags(DB, broadcastId, kind, tags) {
+  const key = `kit-signups-tags:${kind}`;
+  await claimOnce(DB, broadcastId, key);
+  await settleClaim(DB, broadcastId, key, { tags });
+}
+
+async function signupsAim(env, state, kind) {
+  if (kind === 'scheduled' || kind === 'moved') return oneRevealFilter(env, state.kidSlug);
+  return signupsFilter(env, state.kidSlug);
+}
+
+// While a sign-ups' Kit email is on its way its row says so; one still saying so after this long died on the way
+const KIT_SENDING = 'sending';
+const KIT_SENDING_STALE_MS = 3 * 60e3;
+
+/**
+ * The sign-ups' Kit email for a kind → 'new' (claimed now), 'again' (taken back
+ * after a failed or dead try), or null (sent already, nobody to send to, or on
+ * its way from another tick).
+ */
+async function claimKitSignups(DB, broadcastId, kind) {
+  const now = Date.now();
+  const made = await DB.prepare(`INSERT OR IGNORE INTO broadcast_sends (broadcast_id, kind, channel, created_at, error) VALUES (?, ?, 'kit-signups', ?, ?)`)
+    .bind(broadcastId, kind, nowIso(), KIT_SENDING).run().catch(() => null);
+  if ((made?.meta?.changes || 0) > 0) return 'new';
+  const r = await DB.prepare(`UPDATE broadcast_sends SET error = ?, created_at = ? WHERE broadcast_id = ? AND kind = ? AND channel = 'kit-signups'
+      AND error IS NOT NULL AND (error != ? OR created_at < ?)`)
+    .bind(KIT_SENDING, new Date(now).toISOString(), broadcastId, kind, KIT_SENDING, new Date(now - KIT_SENDING_STALE_MS).toISOString()).run();
+  return (r?.meta?.changes || 0) > 0 ? 'again' : null;
+}
+
+/** How a sign-ups' Kit email is told from any other in Kit, so a try whose answer was lost is never made twice */
+const signupsMark = (state, kind) => `${kind} · reveal sign-ups · ${state.broadcastId}`;
+
+/**
+ * Which tags the whole list's own copy of a kind leaves out, because those
+ * people get theirs from sendReminders: the tags their copy went to, or will
+ * go to once Kit takes it. None when the sign-ups get no copy of this kind
+ * (reminders off, Kit not connected, a "we're live" with no stream), so
+ * nobody is left without one. null: Kit couldn't say.
+ */
+async function signupsCovered(env, config, state, kind) {
+  if (!config.reminders?.enabled || !kitConfigured(env) || state.test) return [];
+  if (kind === 'live' && state.source !== 'stream') return [];
+  const sent = await claimResult(env.DB, state.broadcastId, `kit-signups-tags:${kind}`);
+  if (Array.isArray(sent?.tags)) return sent.tags;
+  return signupTagIds(env, state.kidSlug);
 }
 
 /**
@@ -879,17 +937,51 @@ export async function sendReminders(env, config, state, kind, work, { budgetMs =
     }
   };
 
+  // Email: one Kit email to the people who signed up, never one each from Resend (./_reveal-signups.js), so
+  // nobody also on the newsletter gets two. Claimed once per broadcast and kind ('kit-signups'); a Kit
+  // that doesn't take it releases the claim, so the next tick tries again, and staff hear once.
+  const kitSignups = async () => {
+    let claimed = false;
+    try {
+      if (!kitConfigured(env) || !news) return;
+      const claim = await claimKitSignups(DB, state.broadcastId, kind);
+      if (!claim) return;
+      claimed = true;
+      const aim = await signupsAim(env, state, kind);
+      // Nobody this kind is for: done, with nothing sent
+      if (aim === undefined) { await finishSend(DB, state.broadcastId, kind, 'kit-signups', { recipients: 0, sent: 0, failed: 0, error: null }); return; }
+      if (!aim) throw new Error('Kit couldn’t say who signed up');
+      const tags = leftOutOf(aim);
+      // Taken back after a try whose answer may have been lost: if Kit has it, it's sent, never made twice
+      if (claim === 'again') {
+        const had = await kitFindBroadcast(env, signupsMark(state, kind));
+        if (!had.ok) throw new Error(`Kit couldn’t say whether it already has it (${had.error})`);
+        if (had.broadcast) {
+          await settleSignupsTags(DB, state.broadcastId, kind, tags);
+          await finishSend(DB, state.broadcastId, kind, 'kit-signups', { recipients: 0, sent: 1, failed: 0, error: null });
+          work.push(`kit-signups:${kind}:found`);
+          return;
+        }
+      }
+      const tpl = notify.reminderEmail({ ...common, unsubscribeUrl: '{{ unsubscribe_url }}', list: true, asked: true });
+      const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${state.kidName || 'Reveal'} ${signupsMark(state, kind)}`, html: tpl.html, sendAt: new Date(Date.now() + KIT_SEND_DELAY_MS).toISOString(), filter: aim });
+      if (!r.ok) throw new Error(r.error || `Kit HTTP ${r.status}`);
+      await settleSignupsTags(DB, state.broadcastId, kind, tags);
+      await finishSend(DB, state.broadcastId, kind, 'kit-signups', { recipients: 0, sent: 1, failed: 0, error: null });
+      summary.kit = { id: r.broadcast?.id || null };
+      work.push(`kit-signups:${kind}`);
+    } catch (e) {
+      // Kept with its error, so the next tick takes it back (dueReminderKinds) while it's still news
+      if (claimed) await finishSend(DB, state.broadcastId, kind, 'kit-signups', { recipients: 0, sent: 0, failed: 1, error: String(e.message || e).slice(0, 300) });
+      work.push(`kit-signups:${kind}:error`);
+      if (await claimOnce(DB, state.broadcastId, `kit-signups-alert:${kind}`).catch(() => false)) {
+        await notify.alertAdmins(env, config, { level: 'warn', title: `Reveal email to sign-ups not sent yet (${kind})`, detail: `${e.message}. The site keeps trying every minute while it's still news.`, url: `${SITE_ORIGIN}/admin/` }).catch(() => {});
+      }
+    }
+  };
+
   await Promise.all([
-    // Email: each recipient gets their own unsubscribe link, in the footer and as one-click List-Unsubscribe
-    channel('email', notify.emailConfigured(env), async (rows) => {
-      const items = rows.map(r => {
-        const url = unsubscribeUrl(r.token || r.id);
-        const tpl = notify.reminderEmail({ ...common, unsubscribeUrl: url });
-        return { to: r.address, subject: tpl.subject, html: tpl.html, text: tpl.text, headers: notify.listUnsubscribeHeaders(url) };
-      });
-      const res = await notify.sendEmailItems(env, items, { replyTo: notify.REVEAL_REPLY_TO, tags: [{ name: 'category', value: `reveal-${kind}` }] });
-      return { sent: res.sent, failed: res.failed, error: res.errors.slice(0, 3).join('; ') || null };
-    }),
+    kitSignups(),
     // Push: a dead subscription (404/410, or not a browser push service) is dropped
     channel('push', !!(config.reminders?.push && config.vapid?.privateJwk), async (rows) => {
       const subs = rows.map(r => { try { return { id: r.id, subscription: JSON.parse(r.subscription) }; } catch { return null; } }).filter(Boolean);
@@ -903,7 +995,18 @@ export async function sendReminders(env, config, state, kind, work, { budgetMs =
   return summary;
 }
 
-async function dueReminderKinds(DB, state, config) {
+/** Is a reminder kind still worth sending late? The same windows that make it due, so a retry is never out of date */
+function stillOnTime(kind, state, now = Date.now()) {
+  if (!reminderStillNews(kind, state)) return false;
+  const lead = state.scheduledAt ? Date.parse(state.scheduledAt) - now : null;
+  if (kind === 'scheduled' || kind === 'moved') return lead !== null && lead > 26 * 3600e3;
+  if (kind === 'day') return lead !== null && lead > 2 * 3600e3;
+  if (kind === 'hour') return lead !== null && lead > 5 * 60e3;
+  if (kind === 'live') return !!state.liveAt && now - Date.parse(state.liveAt) <= 30 * 60e3;
+  return true;
+}
+
+async function dueReminderKinds(DB, state, config, { kit = true } = {}) {
   if (!state.broadcastId) return [];
   // Sends with people still waiting carry on every tick (sendReminders drops them once they're old news)
   const carrying = (await openReminderKinds(DB, state.broadcastId).catch(() => []))
@@ -919,12 +1022,22 @@ async function dueReminderKinds(DB, state, config) {
   }
   // "We're live": due from the tick that saves the go-live until it has started (see EFFECTS_RETRY_MS)
   if ((state.phase === 'live' || state.phase === 'ending') && state.source === 'stream' && state.liveAt && now - Date.parse(state.liveAt) <= EFFECTS_RETRY_MS) kinds.push('live');
-  if (!kinds.length && !carrying.length) return [];
-  // Kit's "we're live" email is also kind 'live' (channel 'kit'); it doesn't count as the reminders having started
-  const res = await DB.prepare('SELECT kind, channel FROM broadcast_sends WHERE broadcast_id = ?').bind(state.broadcastId).all();
-  const done = new Set((res?.results || []).filter(r => r.channel !== 'kit').map(r => r.kind));
+  const res = await DB.prepare('SELECT kind, channel, error, created_at FROM broadcast_sends WHERE broadcast_id = ?').bind(state.broadcastId).all();
+  const rows = res?.results || [];
+  // The sign-ups' Kit email that failed (or died on its way) is tried again while it would still be on time: a
+  // "tomorrow" never lands after "one hour to go", nor a save-the-date in the last day
+  const stale = (r) => r.error !== KIT_SENDING || Date.parse(r.created_at) < now - KIT_SENDING_STALE_MS;
+  const retry = rows.filter(r => r.channel === 'kit-signups' && r.error && stale(r) && stillOnTime(r.kind, state, now)).map(r => r.kind);
+  if (!kinds.length && !carrying.length && !retry.length) return [];
+  // A kind is done once each way it goes has been claimed: the sign-ups' Kit email (when Kit is connected) and browser
+  // alerts (when they're on). Kit's own "we're live" to the whole list (channel 'kit') isn't one of them. A send from
+  // before the sign-ups moved to Kit (channel 'email') counts as done.
+  const has = (kind, channel) => rows.some(r => r.kind === kind && r.channel === channel);
+  const pushOn = !!(config.reminders?.push && config.vapid?.privateJwk);
+  // A rehearsal goes by email to the test address only (sendTestReminder, channel 'email'), Kit or no Kit
+  const done = (k) => has(k, 'email') || (!state.test && (!kit || has(k, 'kit-signups')) && (!pushOn || has(k, 'push')));
   // A run carries on only while its send is still claimed: a moved date un-claims day and hour, which then wait for their new window
-  return [...new Set([...kinds.filter(k => !done.has(k)), ...carrying.filter(k => done.has(k))])];
+  return [...new Set([...kinds.filter(k => !done(k)), ...carrying.filter(k => rows.some(r => r.kind === k)), ...retry])];
 }
 
 // ─── Kit drafts ─────────────────────────────────────────────────────
@@ -938,7 +1051,12 @@ async function draftKit(env, state, kind) {
   if (!kitConfigured(env) || state.test) return null; // a rehearsal leaves Kit alone
   try {
     const tpl = notify.reminderEmail({ ...reminderArgs(state, kind, await readConfig(env.DB)), unsubscribeUrl: '{{ unsubscribe_url }}', list: true });
-    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${state.kidName || 'Reveal'} ${kind}`, html: tpl.html });
+    // The whole list, but not the reveal sign-ups whose own replay Kit sends (sendReminders)
+    const config = await readConfig(env.DB);
+    const covered = await signupsCovered(env, config, state, kind);
+    const filter = covered ? await wholeListFilter(env, { leaveOut: covered }) : null;
+    if (!filter) return null;
+    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${state.kidName || 'Reveal'} ${kind}`, html: tpl.html, filter });
     return r.ok ? (r.broadcast?.id || true) : null;
   } catch {
     return null;
@@ -981,7 +1099,13 @@ export async function sendKitLive(env, config, state, work, { by = 'live-broadca
   try {
     const tpl = notify.reminderEmail({ ...reminderArgs(s, 'live', config), unsubscribeUrl: '{{ unsubscribe_url }}', list: true });
     const sendAt = new Date(Date.now() + KIT_SEND_DELAY_MS).toISOString();
-    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${s.kidName || 'Reveal'} live`, html: tpl.html, sendAt, audience });
+    // Everyone (or the group picked in Kit), but not the reveal sign-ups whose own copy went (or is on its way) when it started
+    const covered = await signupsCovered(env, config, s, 'live');
+    if (!covered) throw new Error('Kit couldn’t say who signed up for reveal emails');
+    const filter = audience.type === 'all' ? await wholeListFilter(env, { leaveOut: covered })
+      : [{ all: [{ type: audience.type, ids: [Number(audience.id)] }], any: null, none: covered.length ? [{ type: 'tag', ids: covered.map(Number) }] : null }];
+    if (!filter) throw new Error('Kit couldn’t say who to leave out');
+    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${s.kidName || 'Reveal'} live`, html: tpl.html, sendAt, audience, filter });
     if (r.ok) {
       s.kit.live = { id: r.broadcast?.id || null, audience: audience.name || audience.type, sendAt, by, error: null };
       await finishSend(env.DB, s.broadcastId, 'live', 'kit', { recipients: 0, sent: 1, failed: 0, error: null });
@@ -1464,7 +1588,7 @@ async function tick(env, { source, force, by, keepLease = async () => true }) {
     async () => { if (state.phase === 'scheduled' || state.phase === 'armed') await preflight.auto(env, config, state, health, work, { hubStatus }).catch((e) => work.push(`preflight-error: ${e.message}`)); },
     async () => { if (!live() && await monitor.watchRehearsal(env, config, health).catch(() => false)) work.push('mic-check'); },
     async () => { state = await kitAutoLive(env, config, state, work); },
-    async () => { for (const kind of await dueReminderKinds(DB, state, config)) await sendReminders(env, config, state, kind, work); },
+    async () => { for (const kind of await dueReminderKinds(DB, state, config, { kit: kitConfigured(env) })) await sendReminders(env, config, state, kind, work); },
     async () => { state = await checkReplayReady(env, config, state, health, work); },
     async () => { state = await tickReel(env, config, state, work); },
     async () => { await runHealth(env, config, state, health, work); },
@@ -1599,7 +1723,7 @@ async function runAdminAction(env, action, body, userEmail) {
       if (movedFrom) {
         // Moved to another day: the day-before and hour-before reminders go out again for the new date,
         // and people who could have seen the old date hear about the new one (Kit's whole-list invite follows JobTread by itself)
-        await DB.prepare("DELETE FROM broadcast_sends WHERE broadcast_id = ? AND kind IN ('moved', 'day', 'hour')").bind(state.broadcastId).run();
+        await DB.prepare("DELETE FROM broadcast_sends WHERE broadcast_id = ? AND (kind IN ('moved', 'day', 'hour') OR (kind = 'scheduled' AND channel = 'kit-signups' AND error IS NOT NULL))").bind(state.broadcastId).run();
         await recordEvent(DB, state.broadcastId, 'moved', { from: movedFrom, to: state.scheduledAt });
         if (Date.parse(state.scheduledAt) - Date.now() > 26 * 3600e3) await sendReminders(env, config, state, 'moved', []);
       }

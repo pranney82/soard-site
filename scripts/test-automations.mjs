@@ -183,7 +183,7 @@ try {
   // the application limit's notices, Resend's own reports on each email, the board packet, a vendor or sponsor with no logo,
   // the insurance audits' asks, the board's next four meetings when an invite breaks, and the minutes' action item reminders
   const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
-    'Invite email drafted in Kit', 'Project emails drafted in Kit', 'Signed copies and receipts', 'Remind by email', 'AI spending watch',
+    'Invite email drafted in Kit', 'Project emails drafted in Kit', 'Newsletter emails drafted in Kit', 'Who an email written in Kit goes to', 'Signed copies and receipts', 'Remind by email', 'AI spending watch',
     'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Donors join the newsletter', 'Kid and project status follow JobTread', 'Text delivery reports',
     'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert', 'The packet email',
     'Receipts both ways', 'Receipts from inboxes', 'Trade partners', 'Vendor and sponsor logos on kid pages', 'Insurance audits', 'The next four meetings', 'Action item reminders'];

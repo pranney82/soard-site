@@ -18,7 +18,7 @@
 import { runTick, verifyHubNonce, publishToHub, publicPayload, readState, readConfig, hubStatus } from './_broadcast.js';
 import { maybeRefreshRevealStats } from './_reveal-stats.js';
 import { maybeNudge } from './_reveal-nudges.js';
-import { maybeSweep, maybeCheckGuests } from './_reveal-invites.js';
+import { maybeSweep, maybeCheckGuests, readConfig as readInviteConfig } from './_reveal-invites.js';
 import { maybeCheckDemos } from './_demo-invites.js';
 import { maybeRunRevealDesigns } from './_reveal-design-auto.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
@@ -54,6 +54,8 @@ import { maybeSweepOrders } from './_order-sweep.js';
 import { maybeReadSelections } from './_selection-parts.js';
 import { maybeWriteKidItems } from './_kid-jt.js';
 import { maybeRunQuiet } from './_kit-quiet.js';
+import { syncSignups } from './_reveal-signups.js';
+import { maybeGuardAudiences } from './_kit-audience-guard.js';
 import { maybeRunBackfill } from './_coi-backfill.js';
 import { maybeCheckOrgFacts } from './_org-facts.js';
 import { maybeRunAiWatch } from './_ai-watch.js';
@@ -96,6 +98,11 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRefreshRevealStats(env, { readState, hubStatus: () => hubStatus(env) }));
     context.waitUntil(maybeSweep(env));
     context.waitUntil(maybeCheckGuests(env));
+    // Reveal sign-ups into Kit, and Stops carried out there, for any the sign-up itself couldn't finish (see _reveal-signups.js)
+    context.waitUntil(readConfig(env.DB).then((config) => syncSignups(env, { alert: (o) => alertAdmins(env, config, o) })).catch(() => {}));
+    // Every 4 minutes: an email written in Kit, set to go to all subscribers, that would reach people who asked for
+    // reveal emails or the applications opening only; the reviewers hear once (see _kit-audience-guard.js)
+    context.waitUntil(readInviteConfig(env.DB).then((config) => maybeGuardAudiences(env, { config })).catch(() => {}));
     // Each confirmed reveal's design (before photos, drawings, board) brought in from JobTread before it, and staff told
     // 3 days and 1 day out whether it's ready (every 10 minutes; see _reveal-design-auto.js)
     context.waitUntil(maybeRunRevealDesigns(env));

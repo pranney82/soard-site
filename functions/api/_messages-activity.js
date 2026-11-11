@@ -207,12 +207,14 @@ export async function activity(env, { before = null, limit = 150, q = '', now = 
   for (const r of sends) {
     if (r.channel === 'email' && trackedSince && r.created_at >= trackedSince) continue;
     const kit = r.channel === 'kit';
+    // The reveal sign-ups' own email: one Kit email, so Kit, not the site, knows how many it reached
+    const signups = r.channel === 'kit-signups';
     items.push({
-      key: `b:${r.id}`, at: r.created_at, entry: kit ? 'kit-live' : REMINDER_ENTRY[r.kind] || null, channel: kit ? 'kit' : r.channel === 'push' ? 'push' : 'email',
-      sender: kit ? 'kit' : r.channel === 'push' ? 'push' : 'resend',
-      who: kit ? 'The newsletter list in Kit' : `${plural(r.sent || 0, 'person', 'people')}${r.kid_name ? ` watching for ${possessive(r.kid_name)} reveal` : ''}`,
-      count: kit ? null : r.sent || 0, failedCount: r.failed || 0,
-      status: r.failed && !r.sent ? 'failed' : kit ? 'handed' : 'sent', detail: r.failed ? `${r.failed} didn’t go${r.error ? `: ${String(r.error).slice(0, 140)}` : ''}.` : null,
+      key: `b:${r.id}`, at: r.created_at, entry: kit ? 'kit-live' : REMINDER_ENTRY[r.kind] || null, channel: kit || signups ? 'kit' : r.channel === 'push' ? 'push' : 'email',
+      sender: kit || signups ? 'kit' : r.channel === 'push' ? 'push' : 'resend',
+      who: kit ? 'The newsletter list in Kit' : signups ? `Everyone signed up for ${r.kid_name ? `${possessive(r.kid_name)} reveal` : 'reveal emails'}, in Kit` : `${plural(r.sent || 0, 'person', 'people')}${r.kid_name ? ` watching for ${possessive(r.kid_name)} reveal` : ''}`,
+      count: kit || signups ? null : r.sent || 0, failedCount: signups ? 0 : r.failed || 0,
+      status: r.failed && !r.sent ? 'failed' : kit || signups ? 'handed' : 'sent', detail: r.failed ? `${r.failed} didn’t go${r.error ? `: ${String(r.error).slice(0, 140)}` : ''}.` : null,
       broadcastId: kit ? r.broadcast_id : null,
     });
   }

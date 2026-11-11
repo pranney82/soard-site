@@ -1288,13 +1288,18 @@ const MAP = { t: 'SOARD', children: [
     ]},
 
   { t: 'Email & newsletters', sub: 'Kit for the list, Resend for one-off mail', color: 'email', side: 'l',
-    about: 'Kit holds the list, and staff write and send newsletters there. Resend only sends one-off mail: application links and notices, reveal reminders and staff alerts.',
+    about: 'Kit holds the list, and staff write and send newsletters there. Resend only sends one-off mail: application links and notices, the reveal sign-up’s “You’re on the list”, and staff alerts.',
     children: [
       { t: 'Signups', children: [
         { t: 'Newsletter signup', s: 'live', k: 'visitor',
           when: 'A visitor signs up in the footer or a form.',
           does: 'Adds them to Kit, tagged by where they signed up. A newsletter signup waits until its owner taps the link in Kit’s confirmation email (the “SOARD website signup (confirm by email)” form in Kit); the applications waitlist never waits.',
           touches: ['Kit'], where: 'functions/api/newsletter.js · _kit.js', live: needsKey('kit', 'KIT_API_KEY is missing, so signups fail.') },
+        { t: 'Who an email written in Kit goes to', s: 'live', k: 'schedule',
+          when: 'Every 4 minutes, for each email waiting in Kit (a draft, or scheduled) that staff wrote in Kit.',
+          does: 'If it’s set to go to all subscribers and would reach people who asked for reveal emails only or for the applications opening only, Linzi and Peter get one email saying who, with the fix: pick the “Everyone on the newsletter” segment, or leave it if it’s about a reveal or applications. It only reads; it never changes an email in Kit.',
+          touches: ['Kit', 'Resend', 'D1'], where: 'functions/api/_kit-audience-guard.js (the heartbeat)',
+          live: needsKey('kit', 'KIT_API_KEY is missing, so Kit can’t be read.') },
         { t: 'Quiet subscribers check-in', s: 'off', k: 'schedule',
           when: 'Once a day after 10am, while it’s on in Site Config → Newsletter.',
           does: 'Finds up to 300 people in Kit who haven’t opened or clicked anything in 90 days and emails them “Do you still want our emails?” (store subscribers get the store’s version from the store’s address), then a last call a week later. Anyone who opens or clicks stays; after 3 weeks the rest are unsubscribed in Kit, never deleted. Families waiting for applications to open and the board are never asked.',
@@ -1304,9 +1309,9 @@ const MAP = { t: 'SOARD', children: [
               : f.kitQuiet.on ? ON(`${f.kitQuiet.waiting} in their three weeks, ${f.kitQuiet.kept} stayed, ${f.kitQuiet.unsubscribed} unsubscribed.`, f.kitQuiet.lastRunAt)
                 : OFF('Switched off in Site Config → Newsletter.')) },
         { t: 'Reveal reminder signup', s: 'live', k: 'visitor',
-          when: 'A visitor asks to be reminded about a reveal.',
-          does: 'Stores their email, phone or browser for the reminder sends.',
-          touches: ['D1', 'Web Push'], where: 'functions/api/reminders.js',
+          when: 'A visitor asks for reveal emails (every reveal, or one kid’s) or browser alerts.',
+          does: 'Puts an email in Kit, tagged “Reveal sign-ups” (or “Reveal sign-ups: {kid}”), and someone new to Kit “Reveal sign-ups only (no newsletter)” too, so the site’s newsletters leave them out. Every reveal email then comes from Kit, so nobody also on the newsletter gets two. Stop takes them off in Kit too. Browser alerts stay on the site.',
+          touches: ['Kit', 'D1', 'Web Push'], where: 'functions/api/reminders.js · _reveal-signups.js (the heartbeat retries and carries out Stops)',
           live: (f) => reminderBlock(f, 'email') || (f.broadcast ? ON(typeof f.reminders?.subscribers === 'number' ? `${plural(f.reminders.subscribers, 'person has', 'people have')} signed up.` : null) : null) },
       ]},
       { t: 'Did it arrive', children: [

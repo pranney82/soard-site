@@ -1,11 +1,12 @@
 /**
- * Reveal reminders: one-press sign-ups (a link only after a Stop), text codes, push hosts, unsubscribe,
- * limits, and the batched send that never holds up go-live
+ * Reveal reminders: one-press sign-ups (a link only after a Stop) that go into Kit with their tags, text
+ * codes, push hosts, unsubscribe (off in Kit too), limits, and every reminder email one Kit email
  * Run: node --test tests/reminder-signups.test.mjs
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
+import { fakeKitTags } from './lib/fake-kit-tags.mjs';
 
 const realNow = Date.now;
 let offset = 0;
@@ -16,10 +17,41 @@ const travel = (ms) => { offset += ms; };
 const emails = [];   // every message Resend was asked to send
 const texts = [];    // { to, body }
 const slackPosts = [];
-const sim = { twilioStop: new Set(), turnstileOk: 'good-token' };
+const sim = { twilioStop: new Set(), turnstileOk: 'good-token', kitDown: false };
+// A pretend Kit: subscribers by address, their tags, broadcasts made, and Kit's own confirm emails
+const kit = { subs: new Map(), posts: [], confirms: [], nextId: 1000 };
+// SOARD's Kit has always had the applications waitlist's tags
+const kitTags = fakeKitTags({ idOf: (email) => kit.subs.get(email)?.id, tags: [{ id: 24835326, name: 'Application Waitlist only (no newsletter)' }, { id: 23000001, name: 'Application Waitlist' }] });
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input.url;
+  if (url.startsWith('https://api.kit.com/v4/')) {
+    if (sim.kitDown) return Response.json({ errors: ['Kit is down'] }, { status: 503 });
+    const method = (init.method || 'GET').toUpperCase();
+    const body = init.body && typeof init.body === 'string' && init.body !== '{}' ? JSON.parse(init.body) : null;
+    const path = url.replace('https://api.kit.com/v4', '');
+    const tagged = await kitTags.answer(url, method, body);
+    if (tagged) return tagged;
+    if (path === '/subscribers' && method === 'POST') {
+      const had = kit.subs.get(body.email_address);
+      if (had) return Response.json({ subscriber: had }, { status: 200 });
+      const sub = { id: kit.nextId++, email_address: body.email_address, state: 'active' };
+      kit.subs.set(body.email_address, sub);
+      return Response.json({ subscriber: sub }, { status: 201 });
+    }
+    if (path.startsWith('/subscribers?') && method === 'GET') {
+      const want = new URL(url).searchParams.get('email_address').split(',');
+      return Response.json({ subscribers: want.map((e) => kit.subs.get(e)).filter(Boolean) });
+    }
+    let m = path.match(/^\/subscribers\/(\d+)\/unsubscribe$/);
+    if (m) { for (const sub of kit.subs.values()) if (sub.id === Number(m[1])) sub.state = 'cancelled'; return Response.json({}); }
+    m = path.match(/^\/forms\/\w+\/subscribers$/);
+    if (m) { kit.confirms.push(body.email_address); return Response.json({ subscriber: kit.subs.get(body.email_address) || {} }, { status: 201 }); }
+    if (path === '/broadcasts' && method === 'POST') { kit.posts.push(body); return Response.json({ broadcast: { id: 9000 + kit.posts.length } }, { status: 201 }); }
+    // Every broadcast, any state, by description (how a send whose answer was lost is found)
+    if (path.startsWith('/broadcasts?') && method === 'GET') return Response.json({ broadcasts: kit.posts.map((p, i) => ({ id: 9001 + i, description: p.description, send_at: p.send_at })) });
+    return Response.json({ errors: [`unexpected ${method} ${path}`] }, { status: 500 });
+  }
   if (url.startsWith('https://api.resend.com/emails/batch')) { emails.push(...JSON.parse(init.body)); return Response.json({ data: [] }); }
   if (url.startsWith('https://api.twilio.com/')) {
     const to = init.body.get('To');
@@ -51,6 +83,11 @@ const confirmLink = (to) => {
   const m = [...emails].reverse().find(e => e.to[0] === to && /\?confirm=/.test(e.text));
   return m && m.text.match(/https:\/\/sunshineonaranneyday\.com\/api\/reminders\?confirm=[\w-]+/)[0];
 };
+/** The names of the tags Kit has on an address */
+const kitTagsOf = (email) => {
+  const id = kit.subs.get(email)?.id;
+  return kitTags.list.filter((t) => kitTags.members.get(Number(t.id))?.has(id)).map((t) => t.name).sort();
+};
 /** Press Stop on an address's row (the stop page's button) */
 const stop = async (address) => {
   const [row] = await rows('address = ?', address);
@@ -62,7 +99,7 @@ before(async () => {
   await DB.prepare(`INSERT INTO kids (slug, data, name, year, status) VALUES (?, ?, ?, ?, ?)`).bind('remi', JSON.stringify({ name: 'Remi', slug: 'remi' }), 'Remi', 2026, 'in-progress').run();
   await DB.prepare(`INSERT INTO kids (slug, data, name, year, status) VALUES (?, ?, ?, ?, ?)`).bind('max', JSON.stringify({ name: 'Max', slug: 'max' }), 'Max', 2026, 'in-progress').run();
   env = {
-    DB, RESEND_API_KEY: 're_test',
+    DB, RESEND_API_KEY: 're_test', KIT_API_KEY: 'kit_test',
     TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+18885550100',
     SLACK_WEBHOOK_URL: 'https://hooks.slack.test/alerts',
   };
@@ -130,6 +167,10 @@ test('one press puts a new address on the list, and it gets a "You’re on the l
   assert.match(mail.text, /\/live\/remi\//, 'it links to Remi’s live page');
   const ev = await DB.prepare(`SELECT COUNT(*) AS n FROM broadcast_events WHERE type = 'reminder_signup'`).first();
   assert.equal(ev.n, 1, 'counted once');
+  // In Kit at once: new to Kit and here for Remi's reveal, so reveal emails only, and Remi's only
+  assert.equal(kit.subs.get('ana@example.com')?.state, 'active');
+  assert.deepEqual(kitTagsOf('ana@example.com'), ['Reveal sign-ups for one reveal only', 'Reveal sign-ups only (no newsletter)', 'Reveal sign-ups: remi']);
+  assert.equal(kit.confirms.length, 0, 'Kit isn’t asked to confirm anyone new');
 
   // Pressing again: still on, no second email, not counted again
   const n = emails.length;
@@ -144,9 +185,14 @@ test('a sign-up form never undoes a Stop: only the address’s own tap on the em
   await post({ channel: 'email', email: 'ana@example.com', kidSlug: 'nobody-real' });
   let [row] = await rows('address = ?', 'ana@example.com');
   assert.equal(row.kid_slug, null, 'widened to every reveal, not narrowed');
+  await flush();
+  assert.deepEqual(kitTagsOf('ana@example.com'), ['Reveal sign-ups', 'Reveal sign-ups only (no newsletter)'], 'in Kit: every reveal now, and still no newsletter');
 
-  // She presses Stop; a new sign-up doesn't put her back, it emails her the link
+  // She presses Stop: off in Kit too, and since she was only there for reveal emails, unsubscribed there
   await stop('ana@example.com');
+  assert.deepEqual(kitTagsOf('ana@example.com'), ['Reveal sign-ups only (no newsletter)']);
+  assert.equal(kit.subs.get('ana@example.com').state, 'cancelled');
+  // A new sign-up doesn't put her back, it emails her the link
   const res = await post({ channel: 'email', email: 'ana@example.com', kidSlug: 'max' });
   assert.deepEqual(await res.json(), { ok: true, channel: 'email', pending: true });
   [row] = await rows('address = ?', 'ana@example.com');
@@ -169,14 +215,19 @@ test('a sign-up form never undoes a Stop: only the address’s own tap on the em
   assert.equal(page.headers.get('Referrer-Policy'), 'strict-origin');
   assert.ok((await rows('address = ?', 'ana@example.com'))[0].unsubscribed_at);
 
-  // Her button: back on, for the reveal the link named
+  // Her button: back on, for the reveal the link named. Kit has her as unsubscribed (her Stop did that), so the page
+  // says Kit's own email is the last tap, not "you're on the list"
   const done = await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST', headers: { Origin: SITE } })));
   assert.equal(done.status, 200);
-  assert.match(await done.text(), /on the list/);
+  assert.match(await done.text(), /One more tap[\s\S]*Tap Confirm in it/);
   await flush();
   [row] = await rows('address = ?', 'ana@example.com');
   assert.equal(row.unsubscribed_at, null);
   assert.equal(row.kid_slug, 'max');
+  // Kit has her as unsubscribed: the site never puts her back itself; Kit emails her its own confirmation
+  assert.deepEqual(kit.confirms, ['ana@example.com']);
+  assert.ok(kitTagsOf('ana@example.com').includes('Reveal sign-ups: max'));
+  kit.subs.get('ana@example.com').state = 'active'; // she taps Kit's button
   assert.equal((await endpoint.onRequestPost(ctx(new Request(link, { method: 'POST' })))).status, 410, 'a link already used is spent');
 });
 
@@ -292,6 +343,8 @@ test('unsubscribe: the link only asks; the button and one-click List-Unsubscribe
   })));
   assert.equal(oneClick.status, 200);
   assert.ok((await rows('address = ?', 'ana@example.com'))[0].unsubscribed_at);
+  assert.ok(!kitTagsOf('ana@example.com').some((t) => /^Reveal sign-ups(:| for)/.test(t) || t === 'Reveal sign-ups'), 'her reveal tags are off in Kit');
+  assert.equal(kit.subs.get('ana@example.com').state, 'cancelled', 'and Kit stops her too');
   assert.match(await (await get(`/api/reminders?unsubscribe=${row.token}`)).text(), /off the list/);
   assert.equal((await get('/api/reminders?unsubscribe=nope')).status, 404);
 });
@@ -417,7 +470,7 @@ test('push: only browser push services, and only when push is on', async () => {
   assert.equal((await rows(`channel = 'push'`)).length, 1);
 });
 
-// ─── The send: batches, one-click unsubscribe, never twice ──────────
+// ─── The send: one Kit email to everyone who signed up ─────────────
 
 async function confirmEmails(list) {
   for (const email of list) {
@@ -426,103 +479,304 @@ async function confirmEmails(list) {
   }
 }
 
-test('reminder emails carry one-click List-Unsubscribe headers', async () => {
-  await confirmEmails(['one@example.com']);
-  const cfg = await b.readConfig(DB);
-  const state = { ...(await b.readState(DB)), broadcastId: 'bc-headers', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString() };
-  emails.length = 0;
-  await b.sendReminders(env, { ...cfg, reminders: { ...cfg.reminders, push: false } }, state, 'day', []);
-  const mail = emails.find(e => e.to[0] === 'one@example.com');
-  const [row] = await rows('address = ?', 'one@example.com');
-  const url = `${SITE}/api/reminders?unsubscribe=${encodeURIComponent(row.token)}`;
-  assert.equal(mail.headers['List-Unsubscribe'], `<${url}>`);
-  assert.equal(mail.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
-  assert.ok(mail.html.includes(url.replace(/&/g, '&amp;')));
-});
-
-test('a long list goes out in batches across ticks, each person once, without holding up the tick', async () => {
+test('a reminder is one Kit email to the sign-ups, however many: never one each from Resend, and never twice', async () => {
   const list = Array.from({ length: 330 }, (_, i) => `bulk${String(i).padStart(3, '0')}@example.com`);
   await confirmEmails(list);
   const cfg = await b.readConfig(DB);
   const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
-  const at = new Date(Date.now() + 20 * 3600e3).toISOString();
   await b.writeConfig(DB, config);
-  await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-bulk', phase: 'scheduled', kidSlug: null, kidName: null, scheduledAt: at, test: false, source: null });
+  await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-bulk', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString(), test: false, source: null });
   const state = await b.readState(DB);
   emails.length = 0;
-
-  // The first call has no time to spare: one batch, and the run stays open
+  const posts = kit.posts.length;
   const work = [];
-  const first = await b.sendReminders(env, config, state, 'day', work, { budgetMs: 0 });
-  assert.equal(first.email.recipients, 100);
-  assert.ok(work.includes('email:day:continues'), work.join(','));
-  const run = await DB.prepare(`SELECT * FROM broadcast_reminder_runs WHERE broadcast_id = 'bc-bulk' AND kind = 'day' AND channel = 'email'`).first();
-  assert.equal(run.finished_at, null);
-
-  // Two ticks at once split what's left between them
-  await Promise.all([
-    b.sendReminders(env, config, state, 'day', [], { budgetMs: 0 }),
-    b.sendReminders(env, config, state, 'day', [], { budgetMs: 0 }),
-  ]);
-  // The scheduler's next tick carries on by itself
+  await b.sendReminders(env, config, state, 'day', work);
+  const made = kit.posts.slice(posts);
+  assert.equal(made.length, 1, 'one email in Kit');
+  const k = made[0];
+  assert.match(k.subject, /Tomorrow: Remi’s room reveal, live/);
+  assert.ok(Date.parse(k.send_at) > Date.now(), 'sent by Kit a moment from now');
+  assert.deepEqual(k.subscriber_filter, [{ all: null, any: [{ type: 'tag', ids: [kitTags.byName('Reveal sign-ups').id, kitTags.byName('Reveal sign-ups: remi').id] }], none: null }], 'every-reveal sign-ups and Remi’s own');
+  assert.match(k.content, /\{\{ unsubscribe_url \}\}/, 'Kit’s own unsubscribe link');
+  assert.match(k.content, /You asked us to email you about live room reveals/);
+  assert.equal(emails.length, 0, 'nothing from Resend');
+  assert.ok(work.includes('kit-signups:day'), work.join(','));
+  const sends = await DB.prepare(`SELECT * FROM broadcast_sends WHERE broadcast_id = 'bc-bulk' AND kind = 'day' AND channel = 'kit-signups'`).first();
+  assert.equal(sends.sent, 1);
+  // Again, or on the next ticks: done is done
+  await b.sendReminders(env, config, state, 'day', []);
   travel(5000);
-  const tick = await b.runTick(env, { source: 'test', force: true });
-  assert.ok(tick.work.some(w => w.startsWith('email:day:')), tick.work.join(','));
-
-  const to = emails.map(e => e.to[0]);
-  const everyone = (await rows(`channel = 'email' AND unsubscribed_at IS NULL`)).map(r => r.address);
-  assert.equal(new Set(to).size, to.length, 'nobody got it twice');
-  assert.deepEqual([...new Set(to)].sort(), everyone.sort(), 'everyone got it');
-  const sends = await DB.prepare(`SELECT * FROM broadcast_sends WHERE broadcast_id = 'bc-bulk' AND kind = 'day' AND channel = 'email'`).first();
-  assert.equal(sends.recipients, everyone.length);
-  assert.equal(sends.sent, everyone.length);
-  assert.ok((await DB.prepare(`SELECT finished_at FROM broadcast_reminder_runs WHERE broadcast_id = 'bc-bulk' AND kind = 'day'`).first()).finished_at);
-
-  const again = await b.runTick(env, { source: 'test', force: true });
-  assert.ok(!again.work.some(w => w.startsWith('email:day')), 'done is done');
+  await b.runTick(env, { source: 'test', force: true });
+  assert.equal(kit.posts.slice(posts).filter((p) => /day · reveal sign-ups · /.test(p.description)).length, 1, 'never twice');
 });
 
-test('a date moved in the middle of a send waits for its new window', async () => {
+test('what each sign-up gets from Kit: the date only to one-reveal-only people (the whole-list invite covers the rest), and the day before, hour before, "we\'re live" and replay to everyone signed up for the kid', async () => {
   const cfg = await b.readConfig(DB);
   const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
-  await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-midmove', phase: 'scheduled', kidSlug: null, scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString(), test: false });
+  const base = { ...(await b.readState(DB)), kidSlug: 'max', kidName: 'Max', scheduledAt: new Date(Date.now() + 3 * 24 * 3600e3).toISOString(), test: false };
+  let seq = 0;
+  const made = async (kind, phase, extra = {}) => {
+    const n = kit.posts.length;
+    await b.sendReminders(env, config, { ...base, broadcastId: `bc-aim-${kind}-${++seq}`, phase, ...extra }, kind, []);
+    return kit.posts.slice(n);
+  };
+  const ids = (p) => p.subscriber_filter[0].any[0].ids.slice().sort();
+  // Nobody has signed up for this kid alone: the date goes only through the whole-list invite
+  assert.equal((await made('scheduled', 'scheduled', { kidSlug: 'nobody-alone', kidName: 'Lee' })).length, 0);
+  const lee = await made('live', 'live', { kidSlug: 'nobody-alone', kidName: 'Lee', source: 'stream', liveAt: new Date().toISOString() });
+  assert.deepEqual(ids(lee[0]), [kitTags.byName('Reveal sign-ups').id], '"we\'re live" still reaches every-reveal sign-ups at once');
+  // Someone new signs up for Max alone
+  await post({ channel: 'email', email: 'maxfan@example.com', kidSlug: 'max' });
+  await flush();
+  const one = [{ all: [{ type: 'tag', ids: [kitTags.byName('Reveal sign-ups: max').id] }, { type: 'tag', ids: [kitTags.byName('Reveal sign-ups for one reveal only').id] }], any: null, none: null }];
+  const date = await made('scheduled', 'scheduled');
+  assert.equal(date.length, 1);
+  assert.deepEqual(date[0].subscriber_filter, one, 'the date: just Max’s one-reveal-only sign-ups');
+  assert.match(date[0].content, /We’ll email you again the day before and an hour before/, 'it says what comes next, never "sign up"');
+  const everyone = [kitTags.byName('Reveal sign-ups').id, kitTags.byName('Reveal sign-ups: max').id].sort();
+  for (const [kind, phase, extra] of [['day', 'scheduled', {}], ['live', 'live', { source: 'stream', liveAt: new Date().toISOString() }], ['live', 'live', { source: 'stream', liveAt: new Date().toISOString(), kitLiveEmail: false }], ['replay', 'replay', {}]]) {
+    const got = await made(kind, phase, extra);
+    assert.deepEqual(ids(got[0]), everyone, `${kind}${extra.kitLiveEmail === false ? ' (list email off)' : ''}: everyone signed up for Max`);
+  }
+});
+
+test('a date moved in the middle waits for its new window, and a moved date sends the day-before again', async () => {
+  const cfg = await b.readConfig(DB);
+  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
+  await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-midmove', phase: 'scheduled', kidSlug: null, kidName: null, scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString(), test: false });
   const state = await b.readState(DB);
-  emails.length = 0;
-  await b.sendReminders(env, config, state, 'day', [], { budgetMs: 0 });
-  const sentBefore = emails.length;
-  assert.equal(sentBefore, 100, 'one batch went out, the rest wait');
-  // What the admin's "moved to another day" does: un-claim day and hour, then the new date
+  const n = kit.posts.length;
+  await b.sendReminders(env, config, state, 'day', []);
+  assert.equal(kit.posts.length, n + 1);
+  // What "moved to another day" does: un-claim day and hour, then the new date
   await DB.prepare(`DELETE FROM broadcast_sends WHERE broadcast_id = 'bc-midmove' AND kind IN ('moved', 'day', 'hour')`).run();
   await b.writeState(DB, { ...state, scheduledAt: new Date(Date.now() + 5 * 24 * 3600e3).toISOString() });
   travel(5000);
   await b.runTick(env, { source: 'test', force: true });
-  assert.equal(emails.length, sentBefore, 'no "tomorrow" email for a reveal next week');
+  assert.equal(kit.posts.filter((p) => /day · reveal sign-ups · /.test(p.description)).length, kit.posts.slice(0, n + 1).filter((p) => /day · reveal sign-ups · /.test(p.description)).length, 'no "tomorrow" email for a reveal next week');
+  // Moved to tomorrow instead: the day-before goes again
+  await b.writeState(DB, { ...state, scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString() });
+  await b.sendReminders(env, config, await b.readState(DB), 'day', []);
+  assert.equal(kit.posts.slice(n + 1).filter((p) => /day · reveal sign-ups · /.test(p.description)).length, 1, 'everyone hears the new date');
 });
 
-test('a batch left over once its news is old is dropped, not sent late', async () => {
+test('old news is never sent late, and a Kit that won\'t take it is tried again, with staff told once', async () => {
   const cfg = await b.readConfig(DB);
   const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
-  const live = { ...(await b.readState(DB)), broadcastId: 'bc-old-news', phase: 'live', kidSlug: null };
-  await b.sendReminders(env, config, live, 'live', [], { budgetMs: 0 });
-  emails.length = 0;
+  const live = { ...(await b.readState(DB)), broadcastId: 'bc-old-news', phase: 'replay', kidSlug: null, test: false };
+  const n = kit.posts.length;
+  await b.sendReminders(env, config, live, 'live', []);
+  assert.equal(kit.posts.length, n, "no \"we're live\" after it ended");
+
+  const due = { ...live, broadcastId: 'bc-kit-down', phase: 'scheduled', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString() };
+  sim.kitDown = true;
+  const slack = slackPosts.length;
   const work = [];
-  await b.sendReminders(env, config, { ...live, phase: 'replay' }, 'live', work, { budgetMs: 0 });
-  assert.equal(emails.length, 0, "no \"we're live\" after it ended");
-  assert.ok((await DB.prepare(`SELECT finished_at FROM broadcast_reminder_runs WHERE broadcast_id = 'bc-old-news' AND kind = 'live'`).first()).finished_at);
+  try {
+    await b.sendReminders(env, config, due, 'day', work);
+    await b.sendReminders(env, config, due, 'day', []);
+  } finally { sim.kitDown = false; }
+  assert.ok(work.includes('kit-signups:day:error'), work.join(','));
+  const kept = await DB.prepare(`SELECT * FROM broadcast_sends WHERE broadcast_id = 'bc-kit-down' AND kind = 'day' AND channel = 'kit-signups'`).first();
+  assert.ok(kept.error && kept.sent === 0, 'kept with its error, so the next tick takes it back');
+  assert.equal(slackPosts.length - slack <= 1, true, 'staff are told once');
+  await b.sendReminders(env, config, due, 'day', []);
+  assert.equal(kit.posts.slice(n).filter((p) => /day · reveal sign-ups · /.test(p.description)).length, 1, 'and it goes once Kit is back');
 });
 
-test('a moved date sends the day-before reminder again', async () => {
+// ─── Found in review (Nov 10 2026) ──────────────────────────────────
+
+test('a failed Kit send to the sign-ups is tried again on the next tick even with browser alerts on, and for the replay too', async () => {
+  const cfg = await b.readConfig(DB);
+  const config = { ...cfg, vapid: cfg.vapid || await notify.generateVapidKeys(), reminders: { ...cfg.reminders, enabled: true, push: true } };
+  await b.writeConfig(DB, config);
+  await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-push-retry', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString(), test: false, source: null });
+  const n = kit.posts.length;
+  sim.kitDown = true;
+  try { travel(5000); await b.runTick(env, { source: 'test', force: true }); } finally { sim.kitDown = false; }
+  assert.equal(kit.posts.length, n, 'Kit took nothing');
+  assert.ok(await DB.prepare(`SELECT 1 FROM broadcast_sends WHERE broadcast_id = 'bc-push-retry' AND kind = 'day' AND channel = 'push'`).first(), 'browser alerts went');
+  travel(5000);
+  const t = await b.runTick(env, { source: 'test', force: true });
+  assert.ok(t.work.includes('kit-signups:day'), t.work.join(','));
+  assert.equal(kit.posts.slice(n).filter((p) => /Remi day · reveal sign-ups · /.test(p.description)).length, 1, 'the sign-ups get it once Kit is back');
+  // The replay is sent once, from the replay tick: a failure there is taken back the same way
+  const replay = { ...(await b.readState(DB)), broadcastId: 'bc-replay-retry', phase: 'replay', kidSlug: 'remi', kidName: 'Remi' };
+  sim.kitDown = true;
+  try { await b.sendReminders(env, config, replay, 'replay', []); } finally { sim.kitDown = false; }
+  await b.writeState(DB, replay);
+  travel(5000);
+  await b.runTick(env, { source: 'test', force: true });
+  assert.equal(kit.posts.slice(n).filter((p) => /Remi replay · reveal sign-ups · /.test(p.description)).length, 1);
+  await b.writeConfig(DB, { ...config, reminders: { ...config.reminders, push: false } });
+});
+
+test('Kit took it but its answer was lost: the next try finds it in Kit and sends nothing more', async () => {
   const cfg = await b.readConfig(DB);
   const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
-  const state = { ...(await b.readState(DB)), broadcastId: 'bc-moved', phase: 'scheduled', kidSlug: null };
+  const state = { ...(await b.readState(DB)), broadcastId: 'bc-lost-answer', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString(), test: false };
+  const n = kit.posts.length;
+  const inner = globalThis.fetch;
+  // Kit makes the broadcast, then the answer is lost on its way back
+  globalThis.fetch = async (input, init = {}) => {
+    if (String(input) === 'https://api.kit.com/v4/broadcasts' && (init.method || 'GET') === 'POST') { await inner(input, init); return new Response('gateway', { status: 502 }); }
+    return inner(input, init);
+  };
+  try { await b.sendReminders(env, config, state, 'day', []); } finally { globalThis.fetch = inner; }
+  assert.equal(kit.posts.length, n + 1, 'Kit has it');
+  const work = [];
+  await b.sendReminders(env, config, state, 'day', work);
+  assert.ok(work.includes('kit-signups:day:found'), work.join(','));
+  assert.equal(kit.posts.length, n + 1, 'never made twice');
+  const row = await DB.prepare(`SELECT * FROM broadcast_sends WHERE broadcast_id = 'bc-lost-answer' AND kind = 'day' AND channel = 'kit-signups'`).first();
+  assert.equal(row.sent, 1);
+  assert.equal(row.error, null);
+});
+
+test('a try that died on its way to Kit is taken back once it\'s clearly gone, never while another tick may still be sending it', async () => {
+  const cfg = await b.readConfig(DB);
+  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
+  const state = { ...(await b.readState(DB)), broadcastId: 'bc-died', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString(), test: false };
+  // A tick claimed it and died before it finished
+  await DB.prepare(`INSERT INTO broadcast_sends (broadcast_id, kind, channel, created_at, error) VALUES ('bc-died', 'day', 'kit-signups', ?, 'sending')`).bind(new Date(Date.now()).toISOString()).run();
+  const n = kit.posts.length;
   await b.sendReminders(env, config, state, 'day', []);
-  const firstCount = (await DB.prepare(`SELECT sent FROM broadcast_sends WHERE broadcast_id = 'bc-moved' AND kind = 'day'`).first()).sent;
-  assert.ok(firstCount > 200);
-  // What the admin's "moved to another day" does
-  await DB.prepare(`DELETE FROM broadcast_sends WHERE broadcast_id = 'bc-moved' AND kind IN ('moved', 'day', 'hour')`).run();
-  emails.length = 0;
-  await b.sendReminders(env, config, state, 'day', []);
-  assert.equal(emails.length, firstCount, 'everyone hears the new date');
+  assert.equal(kit.posts.length, n, 'just now: another tick may still be sending it');
+  travel(4 * 60e3);
+  await b.sendReminders(env, config, { ...state, scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString() }, 'day', []);
+  assert.equal(kit.posts.slice(n).filter((p) => /Remi day · reveal sign-ups · bc-died$/.test(p.description)).length, 1, 'taken back and sent once');
+});
+
+test('a failed "tomorrow" isn\'t sent once it would arrive late', async () => {
+  const cfg = await b.readConfig(DB);
+  const config = { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } };
+  await b.writeConfig(DB, config);
+  const at = new Date(Date.now() + 3 * 3600e3).toISOString();
+  await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-late', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: at, test: false, source: null });
+  await DB.prepare(`INSERT INTO broadcast_sends (broadcast_id, kind, channel, created_at, error, sent) VALUES ('bc-late', 'day', 'kit-signups', ?, 'Kit HTTP 503', 0)`).bind(new Date(Date.now()).toISOString()).run();
+  travel(90 * 60e3); // now 1.5 hours before: inside the last 2 hours, "tomorrow" is out of date
+  const n = kit.posts.length;
+  await b.runTick(env, { source: 'test', force: true });
+  assert.equal(kit.posts.slice(n).filter((p) => /day · reveal sign-ups · bc-late$/.test(p.description)).length, 0);
+});
+
+test('a new person whose first trip to Kit fails halfway is still kept off the newsletter', async () => {
+  const { syncSignup } = await import('../functions/api/_reveal-signups.js');
+  await endpoint.activate(DB, { channel: 'email', address: 'half@example.com', kid_slug: null, source: 'test' });
+  const [row] = await rows('address = ?', 'half@example.com');
+  // Kit makes the subscriber, then refuses the tag
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => (/\/tags\/\d+\/subscribers\/\d+$/.test(String(input)) && init.method === 'POST' ? new Response('busy', { status: 429 }) : inner(input, init));
+  let first;
+  try { first = await syncSignup(env, row); } finally { globalThis.fetch = inner; }
+  assert.equal(first.ok, false);
+  assert.equal(kit.subs.get('half@example.com').state, 'active', 'Kit has made them');
+  const again = await syncSignup(env, row);
+  assert.equal(again.ok, true);
+  assert.deepEqual(kitTagsOf('half@example.com'), ['Reveal sign-ups', 'Reveal sign-ups only (no newsletter)'], 'Kit answered 200 the second time, and they are still reveal emails only');
+});
+
+test('Stop after a first trip to Kit that failed halfway still takes everything off', async () => {
+  const { syncSignup } = await import('../functions/api/_reveal-signups.js');
+  await endpoint.activate(DB, { channel: 'email', address: 'halfstop@example.com', kid_slug: 'remi', source: 'test' });
+  const [row] = await rows('address = ?', 'halfstop@example.com');
+  // The kid's tag lands, then Kit refuses the rest
+  let tagged = 0;
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => (/\/tags\/\d+\/subscribers\/\d+$/.test(String(input)) && init.method === 'POST' && ++tagged > 1 ? new Response('busy', { status: 429 }) : inner(input, init));
+  try { assert.equal((await syncSignup(env, row)).ok, false); } finally { globalThis.fetch = inner; }
+  assert.deepEqual(kitTagsOf('halfstop@example.com'), ['Reveal sign-ups: remi']);
+  await stop('halfstop@example.com');
+  assert.deepEqual(kitTagsOf('halfstop@example.com'), [], 'the kid’s tag comes off too');
+  assert.equal(kit.subs.get('halfstop@example.com').state, 'cancelled', 'new to Kit, so unsubscribed there: no newsletter either');
+});
+
+test('a rehearsal\'s day-before goes to the test address even with Kit not connected', async () => {
+  const cfg = await b.readConfig(DB);
+  await b.writeConfig(DB, { ...cfg, reminders: { ...cfg.reminders, enabled: true, push: false } });
+  await b.writeState(DB, { ...(await b.readState(DB)), broadcastId: 'bc-rehearsal', phase: 'scheduled', kidSlug: 'remi', kidName: 'Remi', scheduledAt: new Date(Date.now() + 20 * 3600e3).toISOString(), test: true, source: null });
+  travel(5000);
+  await b.runTick({ ...env, KIT_API_KEY: undefined }, { source: 'test', force: true });
+  assert.ok(await DB.prepare(`SELECT 1 FROM broadcast_sends WHERE broadcast_id = 'bc-rehearsal' AND kind = 'day' AND channel = 'email'`).first(), 'the rehearsal’s TEST copy was claimed');
+  await b.writeState(DB, { ...(await b.readState(DB)), test: false });
+});
+
+test('a sign-up Kit has as having complained is left alone, and never crowds out the Stops behind it', async () => {
+  const { syncSignups } = await import('../functions/api/_reveal-signups.js');
+  for (let i = 0; i < 10; i++) {
+    const email = `spam${i}@example.com`;
+    kit.subs.set(email, { id: kit.nextId++, email_address: email, state: 'complained' });
+    await endpoint.activate(DB, { channel: 'email', address: email, kid_slug: null, source: 'test' });
+  }
+  travel(120e3);
+  await syncSignups(env, { limit: 1000 });
+  const again = await syncSignups(env, { limit: 1000 });
+  assert.ok(!again.some((r) => /spam/.test(r.id)) && again.every((r) => r.ok), 'complained rows aren\'t picked up again');
+  const left = await DB.prepare(`SELECT COUNT(*) AS n FROM reveal_signup_kit k JOIN broadcast_reminders r ON r.id = k.reminder_id WHERE r.address LIKE 'spam%' AND k.scope = 'all'`).first();
+  assert.equal(left.n, 10);
+});
+
+test('Stop keeps what isn\'t reveals: someone who joined the newsletter keeps it, and a family waiting for applications keeps that email', async () => {
+  const { kitSubscribe } = await import('../functions/api/_kit.js');
+  // New for reveals, then joins the newsletter from the footer (that takes the "only" tags off in Kit)
+  await post({ channel: 'email', email: 'both-lists@example.com' });
+  await flush();
+  await kitSubscribe(env, 'both-lists@example.com', { source: 'newsletter' });
+  assert.deepEqual(kitTagsOf('both-lists@example.com'), ['Newsletter', 'Reveal sign-ups']);
+  // Asking about one kid widens nothing here; a fresh trip to Kit must not put "no newsletter" back
+  await post({ channel: 'email', email: 'both-lists@example.com', kidSlug: 'remi' });
+  await flush();
+  assert.ok(!kitTagsOf('both-lists@example.com').includes('Reveal sign-ups only (no newsletter)'), 'the newsletter they joined keeps reaching them');
+  await stop('both-lists@example.com');
+  assert.equal(kit.subs.get('both-lists@example.com').state, 'active', 'Stop ends reveal emails only');
+  assert.ok(!kitTagsOf('both-lists@example.com').includes('Reveal sign-ups'));
+
+  // A family on the applications waitlist (waitlist only) signs up for reveals, then presses Stop
+  const fam = { id: kit.nextId++, email_address: 'family@example.com', state: 'active' };
+  kit.subs.set('family@example.com', fam);
+  for (const name of ['Application Waitlist', 'Application Waitlist only (no newsletter)']) {
+    const t = kitTags.byName(name);
+    if (!kitTags.members.has(Number(t.id))) kitTags.members.set(Number(t.id), new Set());
+    kitTags.members.get(Number(t.id)).add(fam.id);
+  }
+  await post({ channel: 'email', email: 'family@example.com' });
+  await flush();
+  assert.deepEqual(kitTagsOf('family@example.com'), ['Application Waitlist', 'Reveal sign-ups', 'Reveal sign-ups only (no newsletter)'], 'reveal emails reach them now; still no newsletter');
+  await stop('family@example.com');
+  assert.equal(kit.subs.get('family@example.com').state, 'active', 'still in Kit for the applications email');
+  assert.deepEqual(kitTagsOf('family@example.com'), ['Application Waitlist', 'Application Waitlist only (no newsletter)']);
+});
+
+test('nobody can use the form to make Kit email someone over and over', async () => {
+  await post({ channel: 'email', email: 'left@example.com' });
+  await flush();
+  kit.subs.get('left@example.com').state = 'cancelled'; // they used Kit's unsubscribe link; the site's row stays on
+  const before = kit.confirms.filter((e) => e === 'left@example.com').length;
+  const answers = [];
+  for (let i = 0; i < 6; i++) answers.push(await (await post({ channel: 'email', email: 'left@example.com' })).json());
+  await flush();
+  const asked = kit.confirms.filter((e) => e === 'left@example.com').length - before;
+  assert.ok(asked >= 1 && asked <= 3, `Kit asked them ${asked} times`);
+  assert.ok(answers.every((a) => a.ok), 'the form still answers plainly');
+});
+
+test('a Kit that doesn\'t answer about its tags never widens who a reveal email goes to', async () => {
+  const signups = await import('../functions/api/_reveal-signups.js');
+  const kitMod = await import('../functions/api/_kit.js?fresh=strict'); // its own memory of tag ids: none
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => (/\/v4\/tags\?/.test(String(input)) ? new Response('busy', { status: 503 }) : inner(input, init));
+  try {
+    const fresh = { ...env, DB: await createD1({ schemaFiles: ['scripts/schema.sql'] }) }; // no remembered tag ids
+    // A kid's tag Kit couldn't be asked about: no audience at all, rather than one without it
+    assert.equal(await signups.signupsFilter(fresh, 'never-asked'), null);
+    assert.equal(await signups.oneRevealFilter(fresh, 'never-asked'), null);
+    assert.equal(await signups.signupTagIds(fresh, 'never-asked'), null);
+    assert.deepEqual(await kitMod.kitFindTagId(fresh, 'Application Waitlist only (no newsletter)'), { ok: false });
+    const r = await kitMod.kitCreateBroadcast(fresh, { subject: 'A newsletter', description: 'x', html: '<p>x</p>' });
+    assert.equal(r.ok, false, 'a newsletter waits rather than going to the reveal-only people');
+  } finally {
+    globalThis.fetch = inner;
+  }
 });
 
 test('push sends skip and drop a stored endpoint that is not a push service', async () => {

@@ -100,9 +100,12 @@ export async function kitSubscribe(env, email, opts = {}) {
     await kitTagSubscriber(env, email, tagName, { create: ALLOWED_TAG_NAMES.has(tagName) });
     // A family who first only asked to hear when applications open has now
     // asked for the newsletter too: list mail may reach them from here on
+    // (and someone who only asked for reveal emails gets the whole list's from here on too)
     if (opts.source === 'newsletter' && subscriberId) {
-      const onlyId = await kitTagId(env, WAITLIST_ONLY_TAG, { create: false });
-      if (onlyId) await kitUntagSubscriber(env, onlyId, subscriberId);
+      for (const name of [WAITLIST_ONLY_TAG, REVEAL_ONLY_TAG, REVEAL_ONE_TAG]) {
+        const onlyId = await kitTagId(env, name, { create: false });
+        if (onlyId) await kitUntagSubscriber(env, onlyId, subscriberId);
+      }
     }
 
     return { configured: true, ok: true, confirm };
@@ -191,6 +194,25 @@ async function forgetTagId(env, id) {
 export const WAITLIST_ONLY_TAG = 'Application Waitlist only (no newsletter)';
 
 /**
+ * People who signed up for reveal emails on the site (/api/reminders) live in
+ * Kit like everyone else, so every reveal email is one Kit email and nobody
+ * gets two (Peter, Nov 10 2026: "why wouldn't a sub for reveal emails get put
+ * into a segment or tag in kit and be a part of that group"). See ./_reveal-signups.js.
+ * - REVEAL_TAG: every reveal. REVEAL_KID_TAG(slug): just that kid's reveal.
+ * - REVEAL_ONLY_TAG: they came for reveal emails, not the newsletter, so the
+ *   site's newsletters leave them out, as WAITLIST_ONLY_TAG does for the waitlist.
+ * - REVEAL_ONE_TAG: reveal emails only, and for one kid only, so the whole
+ *   list's reveal emails (the whole-list invite, "we're live", the replay)
+ *   leave them out; their kid's come to them on their own. A fixed name, so a
+ *   draft written today still leaves out someone who signs up tomorrow.
+ * Never "Reveal Emails": that group gets the family's address.
+ */
+export const REVEAL_TAG = 'Reveal sign-ups';
+export const REVEAL_ONLY_TAG = 'Reveal sign-ups only (no newsletter)';
+export const REVEAL_ONE_TAG = 'Reveal sign-ups for one reveal only';
+export const REVEAL_KID_TAG = (slug) => `Reveal sign-ups: ${slug}`;
+
+/**
  * Find a tag id by name, creating the tag on first use (unless
  * `create: false`, which answers null for a tag that isn't there). Never throws.
  */
@@ -227,6 +249,33 @@ export async function kitTagId(env, name, { create = true } = {}) {
   }
 }
 
+/**
+ * Look a tag up without making it, telling "Kit has no such tag" ({ ok: true,
+ * id: null }) from "Kit didn't answer" ({ ok: false }), so an audience is
+ * never worked out from a lookup that failed. Never throws.
+ */
+export async function kitFindTagId(env, name) {
+  if (_tagIds.has(name)) return { ok: true, id: _tagIds.get(name) };
+  const cached = await cachedTagId(env, name, { create: false });
+  if (cached) { _tagIds.set(name, cached); return { ok: true, id: cached }; }
+  if (cached === null) return { ok: true, id: null };
+  try {
+    let cursor = null;
+    for (let page = 0; page < 20; page++) {
+      const res = await kitFetch(env, `/tags?per_page=500${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`);
+      if (!res.ok) return { ok: false };
+      const data = await res.json();
+      const hit = (data.tags || []).find(t => (t.name || '').toLowerCase() === name.toLowerCase());
+      if (hit) { await rememberTagId(env, name, hit.id); return { ok: true, id: hit.id }; }
+      if (!data.pagination?.has_next_page) { await rememberTagId(env, name, 0); return { ok: true, id: null }; }
+      cursor = data.pagination.end_cursor;
+    }
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
+
 /** Add a tag to an existing subscriber by email. `create: false` skips a tag Kit doesn't have. Never throws. */
 export async function kitTagSubscriber(env, email, tagName, { create = true } = {}) {
   if (!kitConfigured(env) || !tagName) return false;
@@ -242,6 +291,43 @@ export async function kitTagSubscriber(env, email, tagName, { create = true } = 
     return true;
   } catch (err) {
     console.error('Kit tag subscriber failed:', err);
+    return false;
+  }
+}
+
+/** The ids of a subscriber's tags, or null when Kit can't say. Never throws. */
+export async function kitSubscriberTagIds(env, subscriberId) {
+  if (!kitConfigured(env) || !subscriberId) return null;
+  try {
+    const ids = [];
+    let cursor = null;
+    for (let page = 0; page < 5; page++) {
+      const res = await kitFetch(env, `/subscribers/${subscriberId}/tags?per_page=500${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`);
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => ({}));
+      for (const t of data.tags || []) ids.push(Number(t.id));
+      if (!data.pagination?.has_next_page) return ids;
+      cursor = data.pagination.end_cursor;
+    }
+    return ids;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ask someone Kit has as unsubscribed to come back: Kit emails them its own
+ * "confirm your subscription", and only their tap there brings them back.
+ * The site never resubscribes anyone itself. Never throws.
+ */
+export async function kitAskToConfirm(env, email) {
+  if (!kitConfigured(env)) return false;
+  try {
+    const res = await kitFetch(env, `/forms/${confirmFormId(env)}/subscribers`, { method: 'POST', body: JSON.stringify({ email_address: email }) });
+    if (!res.ok) console.error(`Kit add-to-form error ${res.status}: ${await res.text()}`);
+    return res.ok;
+  } catch (err) {
+    console.error('Kit add-to-form failed:', err);
     return false;
   }
 }
@@ -453,7 +539,7 @@ export async function kitBroadcastStats(env, id) {
  *
  * @returns {Promise<{ok: boolean, status?: number, error?: string, broadcast?: object}>}
  */
-export async function kitCreateBroadcast(env, { subject, previewText, description, html, sendAt = null, audience = null, from = null }) {
+export async function kitCreateBroadcast(env, { subject, previewText, description, html, sendAt = null, audience = null, from = null, filter: given = null }) {
   const body = {
     subject,
     preview_text: previewText || '',
@@ -463,12 +549,18 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
     send_at: sendAt,
   };
   if (from) body.email_address = from; // a confirmed sending address in Kit; the account's default otherwise
-  const filter = kitSubscriberFilter(audience);
+  // given: a whole subscriber_filter the caller worked out (the reveal emails'), sent exactly as it is
+  const filter = given || kitSubscriberFilter(audience);
   if (filter) body.subscriber_filter = filter;
   // "Everyone" means everyone who asked for list mail: not the families who
-  // only asked to hear when applications open (see WAITLIST_ONLY_TAG)
-  const onlyWaitlist = filter ? null : await kitTagId(env, WAITLIST_ONLY_TAG, { create: false });
-  if (onlyWaitlist) body.subscriber_filter = [{ all: null, any: null, none: [{ type: 'tag', ids: [onlyWaitlist] }] }];
+  // only asked to hear when applications open (WAITLIST_ONLY_TAG), nor people
+  // who only asked for reveal emails (REVEAL_ONLY_TAG)
+  const found = filter ? [] : await Promise.all([WAITLIST_ONLY_TAG, REVEAL_ONLY_TAG].map((n) => kitFindTagId(env, n)));
+  // A leave-out that couldn't be looked up is never taken for one that isn't there: the email waits for the next try
+  if (found.some((f) => !f.ok)) return { ok: false, status: 0, error: 'Kit didn’t say which tags to leave out; try again' };
+  const leaveOut = found.map((f) => f.id).filter(Boolean);
+  const onlyWaitlist = leaveOut.length ? leaveOut : null;
+  if (onlyWaitlist) body.subscriber_filter = [{ all: null, any: null, none: [{ type: 'tag', ids: leaveOut }] }];
   const templateId = parseInt(env.KIT_EMAIL_TEMPLATE_ID, 10);
   if (Number.isFinite(templateId)) body.email_template_id = templateId;
 
@@ -476,12 +568,9 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
     method: 'POST',
     body: JSON.stringify(body),
   });
-  if (res.status === 422 && onlyWaitlist) {
-    // Kit turned the leave-out filter down: the email matters more than the filter
-    console.error(`Kit refused the waitlist-only filter (${await res.text()}); sending to every subscriber`);
-    delete body.subscriber_filter;
-    res = await kitFetch(env, '/broadcasts', { method: 'POST', body: JSON.stringify(body) });
-  }
+  // Kit refusing the leave-out filter is never answered by sending wider: the families waiting only for
+  // applications and the people who asked for reveal emails only were promised nothing else (Nov 10 2026)
+  if (res.status === 422 && onlyWaitlist) console.error(`Kit refused the leave-out filter (${await res.clone().text()}); not sent`);
   const result = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error(`Kit broadcast error ${res.status}:`, JSON.stringify(result));
@@ -499,7 +588,7 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
  * @returns {Promise<{ok: boolean, status?: string, error?: string}>} status is
  *   Kit's (draft | scheduled | sending | completed | aborted) when not a draft
  */
-export async function kitUpdateDraft(env, id, { subject, previewText, description, html, audience = null, guard = null, keepPublic = false }) {
+export async function kitUpdateDraft(env, id, { subject, previewText, description, html, audience = null, guard = null, keepPublic = false, filter: given = null }) {
   if (!kitConfigured(env) || !Number.isFinite(Number(id))) return { ok: false, error: 'no draft' };
   try {
     const cur = await kitFetch(env, `/broadcasts/${id}`);
@@ -513,7 +602,17 @@ export async function kitUpdateDraft(env, id, { subject, previewText, descriptio
     // to all of your subscribers"), so a draft with its own audience says it again:
     // the one asked for, else the one Kit has now (the newsletter's leave-out for
     // families who only asked about applications)
-    const filter = kitSubscriberFilter(audience) || (Array.isArray(b.subscriber_filter) && b.subscriber_filter.length ? b.subscriber_filter : null);
+    // given: a whole subscriber_filter the caller worked out (the whole-list invite's, re-aimed), sent exactly as it is.
+    // A newsletter the site aimed at everyone gets today's leave-outs added to the ones it has (waitlist only,
+    // reveal emails only): a draft written before someone signed up for reveal emails only must leave them out too.
+    let filter = given || kitSubscriberFilter(audience) || (Array.isArray(b.subscriber_filter) && b.subscriber_filter.length ? b.subscriber_filter : null);
+    if (!given && !audience && !(b.subscriber_filter || []).some((g) => [...(g?.all || []), ...(g?.any || [])].some((e) => e?.type !== 'all_subscribers'))) {
+      const found = await Promise.all([WAITLIST_ONLY_TAG, REVEAL_ONLY_TAG].map((n) => kitFindTagId(env, n)));
+      if (found.some((f) => !f.ok)) return { ok: false, error: 'Kit didn’t say which tags to leave out' };
+      const had = (b.subscriber_filter || []).flatMap((g) => (g?.none || []).flatMap((e) => (e?.type === 'tag' ? e.ids || [] : []).map(Number)));
+      const none = [...new Set([...had, ...found.map((f) => f.id).filter(Boolean).map(Number)])];
+      if (none.length) filter = [{ all: null, any: null, none: [{ type: 'tag', ids: none }] }];
+    }
     const res = await kitFetch(env, `/broadcasts/${id}`, {
       method: 'PUT',
       body: JSON.stringify({
@@ -537,6 +636,23 @@ export async function kitReadBroadcast(env, id) {
     const res = await kitFetch(env, `/broadcasts/${id}`);
     const got = await res.json().catch(() => ({}));
     return res.ok ? { ok: true, broadcast: got.broadcast || got } : { ok: false, error: `HTTP ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * A broadcast in any state (draft, scheduled, sending, sent) by words in its
+ * description, for a send whose answer never arrived: if Kit took it, it is
+ * never made twice. → { ok, broadcast | null }. Never throws.
+ */
+export async function kitFindBroadcast(env, words) {
+  if (!kitConfigured(env)) return { ok: false, error: 'KIT_API_KEY is not set' };
+  try {
+    const res = await kitFetch(env, '/broadcasts?slim=true&per_page=1000');
+    const got = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    return { ok: true, broadcast: (got.broadcasts || []).find((b) => String(b.description || '').includes(words)) || null };
   } catch (e) {
     return { ok: false, error: e.message };
   }

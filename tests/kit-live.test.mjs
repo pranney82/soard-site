@@ -5,6 +5,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
+import { fakeKitTags } from './lib/fake-kit-tags.mjs';
 
 const realNow = Date.now;
 let offset = 0;
@@ -14,12 +15,17 @@ const H = 3600e3, M = 60e3, S = 1000;
 
 const sim = { live: false, videoUID: null, kitFail: false, fbVideos: [], fbPosts: [] };
 const kitPosts = [];
+const kitTags = fakeKitTags();
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   const method = (init.method || 'GET').toUpperCase();
   const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
   if (url.includes('cloudflarestream.com/') && url.endsWith('/lifecycle')) return json({ isInput: true, videoUID: sim.live ? sim.videoUID : null, live: sim.live });
+  if (url.startsWith('https://api.kit.com/v4/') && !url.includes('/broadcasts')) {
+    const hit = await kitTags.answer(url, method, init.body ? JSON.parse(init.body) : null);
+    if (hit) return hit;
+  }
   if (url === 'https://api.kit.com/v4/broadcasts' && method === 'POST') {
     const body = JSON.parse(init.body);
     kitPosts.push(body);
@@ -33,7 +39,9 @@ globalThis.fetch = async (input, init = {}) => {
 };
 
 let env, b;
-const liveKitPosts = () => kitPosts.filter(p => p.send_at);
+// The whole list's "we're live" (the sign-ups' own Kit emails say so in their description)
+const liveKitPosts = () => kitPosts.filter(p => p.send_at && !/reveal sign-ups · /.test(p.description || ''));
+const signupPosts = () => kitPosts.filter(p => p.send_at && /reveal sign-ups · /.test(p.description || ''));
 
 async function goLive() {
   sim.live = true; sim.videoUID = 'vid1';
@@ -93,13 +101,18 @@ test('scheduled reveal going live emails the whole Kit list once', async () => {
   const k = sends[0];
   assert.match(k.subject, /We’re live: Remi’s room reveal/);
   assert.ok(Date.parse(k.send_at) > Date.now(), 'scheduled a moment ahead so Kit accepts it');
-  assert.equal(k.subscriber_filter, undefined, 'no filter = every subscriber');
+  // Every subscriber but the one-reveal-only people and the reveal sign-ups: Kit sent the sign-ups theirs the moment it started
+  assert.deepEqual(k.subscriber_filter, [{ all: [{ type: 'all_subscribers' }], any: null, none: [{ type: 'tag', ids: [kitTags.byName('Reveal sign-ups for one reveal only').id, kitTags.byName('Reveal sign-ups').id] }] }]);
+  const own = signupPosts();
+  assert.equal(own.length, 1, 'the sign-ups heard at once, in their own email');
+  assert.ok(Date.parse(own[0].send_at) < Date.parse(k.send_at), 'before the whole list');
+  assert.deepEqual(own[0].subscriber_filter, [{ all: null, any: [{ type: 'tag', ids: [kitTags.byName('Reveal sign-ups').id] }], none: null }]);
   assert.match(k.content, /\{\{ unsubscribe_url \}\}/);
   assert.match(k.content, /subscribed to updates/);
   assert.doesNotMatch(k.content, /You asked us to remind you/);
   assert.match(k.content, /live\/remi\//);
   const st = await b.readState(env.DB);
-  assert.equal(st.kit.live.id, 9001);
+  assert.equal(st.kit.live.id, 9001 + kitPosts.indexOf(k), 'the whole list’s email, after the sign-ups’ own');
   assert.equal(st.kit.live.audience, 'All subscribers');
 
   const again = await b.runTick(env, { source: 'test', force: true });
@@ -117,6 +130,12 @@ test('per-reveal opt out skips the automatic send; manual button still works', a
   const t = await goLiveSteady();
   assert.ok(!t.work.includes('kit-live'));
   assert.equal(liveKitPosts().length, 0);
+  // The people who signed up for reveal emails still hear, from Kit, in one email
+  const own = signupPosts();
+  assert.equal(own.length, 1, 'the sign-ups still hear');
+  assert.match(own[0].subject, /We’re live: Remi’s room reveal/);
+  assert.deepEqual(own[0].subscriber_filter, [{ all: null, any: [{ type: 'tag', ids: [kitTags.byName('Reveal sign-ups').id] }], none: null }]);
+  assert.match(own[0].content, /You asked us to email you about live room reveals/);
   const m = await b.adminAction(env, 'sendKitLive', {}, 'peter@test');
   assert.equal(m.success, true, m.error);
   assert.equal(liveKitPosts().length, 1);
@@ -264,7 +283,24 @@ test('a tag audience in the config becomes a Kit subscriber filter', async () =>
   kitPosts.length = 0;
   await goLiveSteady();
   const k = liveKitPosts()[0];
-  assert.deepEqual(k.subscriber_filter, [{ all: [{ type: 'tag', ids: [42] }], any: null, none: null }]);
+  // The group picked in Kit, but not the reveal sign-ups, who had theirs the moment it started
+  assert.deepEqual(k.subscriber_filter, [{ all: [{ type: 'tag', ids: [42] }], any: null, none: [{ type: 'tag', ids: [kitTags.byName('Reveal sign-ups').id] }] }]);
   assert.equal((await b.readState(env.DB)).kit.live.audience, 'Newsletter');
   await endAndReset();
+});
+
+test('with reveal reminders off, the whole list\'s "we\'re live" reaches the sign-ups too (they get no copy of their own)', async () => {
+  const cfg = await b.readConfig(env.DB);
+  await b.writeConfig(env.DB, { ...cfg, kitLive: { enabled: true, audience: { type: 'all', id: null, name: 'All subscribers' } }, reminders: { ...cfg.reminders, enabled: false } });
+  try {
+    await b.adminAction(env, 'schedule', { kidSlug: 'remi', scheduledAt: new Date(Date.now() + 5 * M).toISOString() }, 'peter@test');
+    kitPosts.length = 0;
+    await goLiveSteady();
+    assert.equal(signupPosts().length, 0, 'no copy of their own');
+    const k = liveKitPosts()[0];
+    assert.deepEqual(k.subscriber_filter[0].none[0].ids, [kitTags.byName('Reveal sign-ups for one reveal only').id], 'nobody signed up is left out but one-reveal-only people of other kids');
+    await endAndReset();
+  } finally {
+    await b.writeConfig(env.DB, cfg);
+  }
 });
