@@ -108,8 +108,10 @@ let flushChain = Promise.resolve();
  * it, so nothing waits 15 seconds for no reason) → { landed: Set, refused: Map id → { why, status }, answers: Map
  * id → the site's answer, signIn }. What the caller says itself (mine) isn't said here.
  */
+let flushing = 0;
 function flush(opts = {}) {
-  const run = flushChain.then(() => flushOnce(opts));
+  flushing++;
+  const run = flushChain.then(() => flushOnce(opts)).finally(() => { flushing--; reloadWhenQuiet(); });
   flushChain = run.catch(() => {});
   return run;
 }
@@ -443,6 +445,7 @@ function close() {
       $('sheet-root').innerHTML = '';
       // What changed while the sheet was up shows once it's gone; focus goes back to what opened it (or the next card)
       if (state.renderOnClose) { state.renderOnClose = false; settleAfter(); }
+      reloadWhenQuiet();
       const back = state.openedFrom && document.querySelector(state.openedFrom);
       (back || document.querySelector('#list .ship, #list .row, #list button'))?.focus({ preventScroll: true });
       state.openedFrom = null;
@@ -1281,6 +1284,42 @@ async function loadPage() {
   }
 }
 loadPage();
+
+// ─── A page left open is never yesterday's ──────────────────────────
+// Peter, Nov 11 2026: the site found his box ("whose is it?"), but his phone still ran the page from before the update,
+// which didn't know that answer. The page checks its own files (a few bytes: their tags, not the files) every few
+// minutes and whenever the phone comes back to it; changed, it reloads itself at a quiet moment: no sheet or camera up,
+// nothing being sent. What's in a load and what waits to be sent are kept on the phone, so nothing is lost
+const OWN_FILES = ['./checkin.js', './checkin.css', './'];
+let ownTags = null;
+let updated = false;
+async function ownVersion() {
+  try {
+    const tags = await Promise.all(OWN_FILES.map(async (u) => {
+      const r = await fetch(u, { method: 'HEAD', cache: 'no-cache', redirect: 'manual', credentials: 'same-origin' });
+      // A sign-in that ran out (a redirect) or no answer: nothing to compare
+      return r.ok ? r.headers.get('etag') || r.headers.get('last-modified') || '' : null;
+    }));
+    return tags.includes(null) ? null : tags.join('|');
+  } catch {
+    return null;
+  }
+}
+async function checkForUpdate() {
+  if (updated) { reloadWhenQuiet(); return; }
+  const now = await ownVersion();
+  if (now == null) return;
+  if (ownTags == null) { ownTags = now; return; }
+  if (now !== ownTags) { updated = true; reloadWhenQuiet(); }
+}
+function reloadWhenQuiet() {
+  if (!updated || document.visibilityState !== 'visible') return;
+  if (sheetEl() || document.querySelector('.cam') || flushing || camOpening) return;
+  location.reload();
+}
+checkForUpdate();
+setInterval(checkForUpdate, 3 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
 
 // ─── Check out: load-out to the house ───────────────────────────────
 // Christian loads one makeover at a time: pick the kid, then their boxes by shelf, ticked off by scanning each label
