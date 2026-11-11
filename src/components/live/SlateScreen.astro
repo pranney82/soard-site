@@ -441,8 +441,11 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     }
 
     /* ── Canvas ── */
+    /* Fixed, not absolute: a 1920 (or 1080 × 1920) box in the page's flow made a phone widen its page to hold it (a
+       390 phone reported 833), so the screen was scaled for a window it wasn't in and showed as a zoomed-in crop.
+       A fixed box never widens the page; fit() scales it to the window */
     .canvas {
-      position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px;
+      position: fixed; left: 50%; top: 50%; width: 1920px; height: 1080px;
       transform-origin: center; overflow: hidden; background: var(--c-cream);
     }
     body[data-o='portrait'] .canvas { width: 1080px; height: 1920px; }

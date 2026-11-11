@@ -10,7 +10,7 @@ import { buildSync } from 'esbuild';
 const load = (entry) => import(`data:text/javascript,${encodeURIComponent(buildSync({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent', packages: 'external' }).outputFiles[0].text)}`);
 const { formatWhen, relativeUntil, revealLabel } = await load('src/utils/live-when.ts');
 const { plannedText, betweenText, ctasThatApply, ctaPicks } = await load('src/utils/live-hero-text.ts');
-const { firstView, messagesInSection, messageHtml, pastFirst } = await load('functions/live/[[path]].js');
+const { firstView, messagesInSection, messageHtml, pastFirst, musicThere, MUSIC_KEY } = await load('functions/live/[[path]].js');
 
 const NOW = Date.parse('2026-11-10T15:00:00Z'); // Tuesday 10 AM Eastern
 const DYLAN = '2026-11-18T21:00:00.000Z';       // Wednesday 4 PM Eastern
@@ -93,5 +93,16 @@ test('between reveals, past reveals go before the story in the page itself, so a
   assert.ok(out.indexOf('class="live-past"') < out.indexOf('class="live-body"'));
   assert.equal(out.match(/class="live-past"/g).length, 1);
   assert.equal(pastFirst('<div>none</div>'), null);
+});
+
+test('the starting-soon screen asks for its music only when the track is in the files bucket, asked at most every 5 minutes', async () => {
+  let asked = 0;
+  const env = (there) => ({ FILES: { head: async (key) => { asked++; assert.equal(key, MUSIC_KEY); return there ? { key } : null; } } });
+  const t0 = Date.parse('2026-11-11T15:00:00Z');
+  assert.equal(await musicThere(env(false), t0), false, 'no track: the screen goes out without its music');
+  assert.equal(await musicThere(env(true), t0 + 60e3), false, 'remembered for 5 minutes');
+  assert.equal(asked, 1);
+  assert.equal(await musicThere(env(true), t0 + 6 * 60e3), true, 'an upload is seen within 5 minutes');
+  assert.equal(await musicThere({}, t0), true, 'no bucket bound: left to the screen');
 });
 

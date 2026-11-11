@@ -91,6 +91,19 @@ function designFor(slug, data, state, schedule = null) {
   return open && revealSlides(kid, { after }).length ? { slug, name: String(data.name || '').trim() } : null;
 }
 
+/** The starting-soon track (docs/live-runbook.md: live/starting-soon.mp3 in the files bucket) is there: asked of R2 at
+ * most every 5 minutes. Without the bucket bound, taken as there (the screen copes with a missing one) */
+export const MUSIC_KEY = 'live/starting-soon.mp3';
+let musicSeen = { at: 0, there: true };
+export async function musicThere(env, now = Date.now()) {
+  if (!env.FILES) return true;
+  if (now - musicSeen.at < 5 * 60_000) return musicSeen.there;
+  let there = musicSeen.there;
+  try { there = !!(await env.FILES.head(MUSIC_KEY)); } catch { /* keep what was known */ }
+  musicSeen = { at: now, there };
+  return there;
+}
+
 const setAttrs = (attrs) => ({
   element(e) { for (const [k, v] of Object.entries(attrs)) { if (v === null) e.removeAttribute(k); else e.setAttribute(k, v); } },
 });
@@ -322,17 +335,25 @@ export async function onRequest(context) {
   const slugMatch = url.pathname.match(/^\/live\/([^/]+)\/$/);
   const pageKid = slugMatch && slugMatch[1] !== 'slate' ? slugMatch[1] : '';
 
-  // A child's starting-soon screen: marked as showing the design before it goes out when the design is out, so its
-  // frame is drawn where the design puts it rather than moving there once the screen has asked (SlateScreen.astro)
-  const slateMatch = url.pathname.match(/^\/live\/([^/]+)\/slate\/$/);
-  if (slateMatch && url.searchParams.get('design') !== 'preview' && env.DB) {
+  // The starting-soon screen (a child's, or /live/slate/ that follows whichever is scheduled), before it goes out:
+  // marked as showing the design when the design is out, so its frame is drawn where the design puts it rather than
+  // moving there once the screen has asked; and left without its music when the track isn't in the files bucket, so
+  // it never asks for a file that isn't there (SlateScreen.astro)
+  const slateMatch = url.pathname.match(/^\/live\/(?:([^/]+)\/)?slate\/$/);
+  if (slateMatch && env.DB) {
     try {
-      const slug = slateMatch[1];
-      const [state, schedule, row] = await Promise.all([readState(env.DB), cachedReveals(env).catch(() => null), kidData(env, slug)]);
-      const design = designFor(slug, row.data, visibleState(state), schedule);
-      const res = await next(design ? fresh(request) : request);
-      if (!design || res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
-      const out = new HTMLRewriter().on('body', setAttrs({ 'data-design': '' })).transform(res);
+      const slug = slateMatch[1] || '';
+      const forKid = !!slug && url.searchParams.get('design') !== 'preview';
+      const [state, schedule, row, music] = await Promise.all([
+        forKid ? readState(env.DB) : null,
+        forKid ? cachedReveals(env).catch(() => null) : null,
+        forKid ? kidData(env, slug) : null,
+        musicThere(env),
+      ]);
+      const design = forKid && state ? designFor(slug, row.data, visibleState(state), schedule) : null;
+      const res = await next(design || !music ? fresh(request) : request);
+      if ((!design && music) || res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html')) return res;
+      const out = new HTMLRewriter().on('body', setAttrs({ ...(design ? { 'data-design': '' } : {}), ...(music ? {} : { 'data-music': null }) })).transform(res);
       const headers = new Headers(out.headers);
       headers.set('Cache-Control', PAGE_REUSE);
       headers.delete('ETag');
