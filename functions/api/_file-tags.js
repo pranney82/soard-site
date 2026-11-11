@@ -101,6 +101,8 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
   const { roles, tags } = await readOrg(key, fetchImpl);
   const roleByName = new Map(roles.filter((r) => r.type !== 'internal').map((r) => [low(r.name), r]));
   const roleName = new Map(roles.map((r) => [r.id, r.name]));
+  // Staff roles are never touched: an entry staff gave their own role stays (it may be how that role sees the files)
+  const staffRole = new Set(roles.filter((r) => r.type === 'internal').map((r) => r.id));
   const made = [];
   const added = [];
   const removed = [];
@@ -108,7 +110,7 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
 
   const setAudience = async (tag, wanted) => {
     const aces = tag.aces ?? await tagAces(key, tag.id, fetchImpl);
-    const have = new Map(aces.filter((a) => a.role?.id).map((a) => [a.role.id, a.id]));
+    const have = new Map(aces.filter((a) => a.role?.id && !staffRole.has(a.role.id)).map((a) => [a.role.id, a.id]));
     for (const roleId of wanted) {
       if (have.has(roleId)) continue;
       // A create answers with the query root (as createRole and createFile do); nothing is needed back
@@ -166,7 +168,7 @@ export async function ensureTags(env, { fetchImpl = fetch, now = Date.now() } = 
 export async function tagInventory(env, { fetchImpl = fetch } = {}) {
   const key = env.JOBTREAD_GRANT_KEY;
   const { roles, tags } = await readOrg(key, fetchImpl);
-  const roleName = new Map(roles.map((r) => [r.id, r.name]));
+  const roleName = new Map(roles.map((r) => [r.id, `${r.name} (${r.type === 'internal' ? 'staff' : r.type})`]));
   const out = [];
   for (const t of tags) {
     const body = await pave(key, { fileTag: { $: { id: t.id },

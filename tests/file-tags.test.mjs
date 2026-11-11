@@ -118,7 +118,16 @@ test('the inventory: every tag, who sees it, and how many photos, videos and fil
   ] });
   const inv = await tagInventory(e, { fetchImpl: w.fetchImpl });
   assert.deepEqual(inv, [
-    { name: '.BeforePics', roles: ['Design Partner'], files: 120, photos: 118, videos: 2 },
+    { name: '.BeforePics', roles: ['Design Partner (vendor)'], files: 120, photos: 118, videos: 2 },
     { name: '.FinalPlans', roles: [], files: 14, photos: 0, videos: 0 },
   ]);
+});
+
+test('staff roles on a tag are never touched: only outside roles are kept to the list', async () => {
+  const e = await env();
+  const w = world({ tags: [{ id: 'tb', name: 'Before', aces: [{ id: 's1', roleId: 'r-pm' }, { id: 'x1', roleId: 'r-family' }] }] });
+  const r = await ensureTags(e, { fetchImpl: w.fetchImpl });
+  assert.ok(audience(w, 'Before').includes('Project Manager'), 'the staff role staff gave stays');
+  assert.ok(!audience(w, 'Before').includes('Makeover Family'));
+  assert.ok(!r.removed.some((x) => /Project Manager/.test(x)));
 });
