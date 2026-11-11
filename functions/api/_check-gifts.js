@@ -857,6 +857,15 @@ export async function readLetter(env, row, { mode, now, fetchImpl }) {
 const namesOn = (p) => [clean(p?.buyer?.company_name), givenName(p?.buyer)].filter(Boolean);
 const paidByCheck = (p) => /che(ck|que)/i.test(String(p?.payment_method?.type || ''));
 const madeByHand = (p) => p?.type === 'manual' || p?.type === 'imported';
+/**
+ * A gift given on a Zeffy form with "Donor-advised fund": Zeffy records it at once (Due until someone marks it paid) and
+ * the money comes days or weeks later from the fund, usually as a check under the fund's name (Fidelity Charitable, the
+ * family fund), not the donor's. Zeffy's word for the method is "daf" (read in SOARD's Zeffy, Nov 10 2026: a real DAF gift
+ * says paymentMethod "daf" where a check says "cheque", the API's word); other spellings of it count too
+ */
+export const byDaf = (p) => /(^|[^a-z])daf|donor.?advised/i.test(String(p?.payment_method?.type || ''));
+/** How long before a check's date a DAF gift already marked paid can still be the gift that check pays */
+const DAF_DAYS = 90;
 
 /**
  * What Zeffy has that could be this check, measured from the day it would go on (recordDay, so a misread date or a
@@ -885,8 +894,9 @@ export function matchZeffy(row, payments, claimed = new Set(), learned = null) {
     if (/fail|cancel/.test(status)) continue;
     const byHand = madeByHand(p);
     const byCheck = paidByCheck(p);
+    const daf = byDaf(p);
     const unpaid = status !== 'succeeded';
-    if (!byHand && !byCheck && !unpaid) continue;
+    if (!byHand && !byCheck && !daf && !unpaid) continue;
     // Goods given, not this check's money
     const method = String(p?.payment_method?.type || '').toLowerCase();
     if (/in.?kind/.test(method)) continue;
@@ -901,6 +911,15 @@ export function matchZeffy(row, payments, claimed = new Set(), learned = null) {
     }
     const near = at >= anchor - SAME_GIVER_DAYS * 86400 || (early < anchor && Math.abs(at - early) <= SAME_GIVER_DAYS * 86400);
     const promise = byCheck && !byHand;
+    if (daf) {
+      // A DAF gift: the fund's check names the fund, so any name; it never links by itself, as the gift is marked paid in
+      // Zeffy, by a person. Still Due: any age, the money hasn't come. Paid: one given in the DAF_DAYS before the check
+      if (Number(p.amount) === Number(row.cents)) {
+        if (unpaid) (giver ? out.promised : out.maybe).push(p);
+        else if (at >= Math.min(anchor, early) - DAF_DAYS * 86400) out.maybe.push(p);
+      } else if (giver && unpaid) out.promised.push(p);
+      continue;
+    }
     if (Number(p.amount) === Number(row.cents)) {
       if (giver && unpaid) out.promised.push(p);
       else if (sure && near && byCheck) out.same.push(p);
@@ -969,15 +988,16 @@ export function netOf(row, payments, claimed = new Set(), { learned = null, turn
     if (/in.?kind/.test(String(p?.payment_method?.type || '').toLowerCase())) continue;
     const byHand = madeByHand(p);
     const byCheck = paidByCheck(p);
-    if (!byHand && !byCheck) continue;
+    const daf = byDaf(p);
+    if (!byHand && !byCheck && !daf) continue;
     const unpaid = status !== 'succeeded';
     const at = Number(p.created) || 0;
     const giver = !!row.payer && (namesOn(p).some((n) => sameGiver(row.payer, n)) || (learned?.contact_id && String(p.contact) === String(learned.contact_id)));
     const fresh = turnedPaid.has(id);
     if (Number(p.amount) === Number(row.cents)) {
-      // Made since the check was written; typed in or marked paid since then, however it's dated, under any name; or the
-      // giver's own pledge still open
-      if (at >= written || fresh || (giver && unpaid)) out.push(p);
+      // Made since the check was written; typed in or marked paid since then, however it's dated, under any name; the
+      // giver's own pledge still open; or a DAF gift under any name (byDaf): still Due, or given in the DAF_DAYS before
+      if (at >= written || fresh || (giver && unpaid) || (daf && (unpaid || at >= written - DAF_DAYS * 86400))) out.push(p);
     } else if (!unpaid && Number(p.amount) < Number(row.cents) && ((at >= written && at >= secondsOf(MERCURY_FROM)) || fresh)) {
       // (an entry dated before checks went through Mercury counts only if it was typed since: older ones are other banks' checks)
       parts.push(p);

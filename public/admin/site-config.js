@@ -1875,7 +1875,7 @@ function QuietCard() {
 // over a fresh copy, so nothing else on an event is touched. A kid's fundraising link is on their page in Kids: it's
 // part of setting up that kid, and their page says when it's missing.
 const GIVING = [
-  { key: 'donateUrl', label: 'Donate page: one-time gifts', hint: 'Donate Now and the one-time amounts on /donate/ open it in a pop-up.' },
+  { key: 'donateUrl', label: 'Donate page: one-time gifts', hint: 'Donate Now and the one-time amounts on /donate/ open it in a pop-up, and so does Give from your DAF on /donate/ and /ways-to-give/. For that one, turn on “Offer payment by donor-advised fund” in this form’s Advanced settings in Zeffy.' },
   { key: 'monthlyUrl', label: 'Donate page: monthly gifts', hint: 'The monthly amounts on /donate/ open it in a pop-up.' },
   { key: 'liveUrl', label: 'Live reveal: Fund the next room', hint: 'Opens beside the video on /live/ while a reveal plays.' },
 ];

@@ -16,7 +16,9 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import CopyChip from '../components/ui/CopyChip.astro';
+import ZeffyPopup from '../components/ui/ZeffyPopup.astro';
 import siteSettings from '../content/site/settings.json';
+import { siteForm, embedOf, dafGiftUrl, DAF_MIN_TEXT } from '../../public/admin/zeffy-links.js';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfUrl, cfSrcset, cfLqip } from '../utils/cf-image';
 
@@ -30,6 +32,10 @@ const email = siteSettings.email;
 const phone = siteSettings.phone;
 const addressLine = `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
 const legalName = 'Sunshine on a Ranney Day, Inc.';
+/* Give from Your DAF opens the donation form (Admin → Site Config → Zeffy) in the pop-up, at the amount Zeffy
+   starts offering "Donor-advised fund" (DAF_MIN) */
+const dafGift = dafGiftUrl(siteSettings);
+const dafGiftEmbed = embedOf(siteForm(siteSettings, 'donateUrl'));
 
 /* ── Photos (from admin settings, with fallbacks) ── */
 const wtg = siteSettings.waysToGivePhotos || {};
@@ -218,7 +224,7 @@ const jsonLd = {
               </div>
             </div>
             <h3>Donor-Advised Fund</h3>
-            <p>Recommend a grant from Fidelity Charitable, Schwab, Vanguard, or any DAF sponsor.</p>
+            <p>Give {DAF_MIN_TEXT} or more on our donation form and choose <strong>Donor-advised fund</strong> at checkout, or recommend a grant from Fidelity Charitable, Schwab, Vanguard, or any DAF sponsor.</p>
             <div class="wtg-daf-info">
               <div class="wtg-daf-row"><span>Legal Name</span><span class="wtg-daf-val"><strong>{legalName}</strong><CopyChip text={legalName} label="Copy legal name to clipboard" /></span></div>
               <div class="wtg-daf-row"><span>EIN / Tax ID</span><span class="wtg-daf-val"><strong class="wtg-daf-ein">{ein}</strong><CopyChip text={ein} label="Copy EIN to clipboard" /></span></div>
@@ -229,7 +235,8 @@ const jsonLd = {
               <span class="wtg-pill">Grant at your pace</span>
             </div>
             <div class="wtg-method-action">
-              <a href={`mailto:${email}?subject=DAF Grant to SOARD`} class="wtg-method-cta">Send a Grant →</a>
+              <a href={dafGift} target="_blank" rel="noopener noreferrer" data-zeffy={dafGiftEmbed} class="wtg-method-cta">Give from Your DAF →</a>
+              <span class="wtg-method-hint wtg-method-hint--under">{DAF_MIN_TEXT} or more. Choose Donor-advised fund at checkout.</span>
             </div>
           </div>
         </div>
@@ -519,6 +526,8 @@ const jsonLd = {
       <p class="wtg-finale-note" data-reveal data-delay="3">501(c)(3) · EIN {ein} · All donations tax-deductible</p>
     </div>
   </section>
+
+  <ZeffyPopup />
 
 </BaseLayout>
 
@@ -1042,6 +1051,7 @@ const jsonLd = {
   }
   .wtg-method-cta:hover { color: var(--c-accent); }
   .wtg-method-hint { display: block; font-size: 13px; color: var(--c-text-muted); line-height: 1.5; }
+  .wtg-method-hint--under { margin-top: 4px; }
   .wtg-method-ein { display: block; font-size: 14px; font-weight: 700; color: var(--c-dark); margin-top: 4px; }
 
   /* DAF info table — everything a grant form asks for, copy-ready */

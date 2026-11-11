@@ -52,3 +52,12 @@ export function withParam(url, key, value) {
     return url;
   }
 }
+
+// ─── Giving from a donor-advised fund ──────────────────────────────
+// Zeffy offers "Donor-advised fund" at checkout for one-time gifts from DAF_MIN, on a form with "Offer payment by
+// donor-advised fund" on (Edit → Advanced settings). Zeffy's API doesn't say which forms have it, so Site Config says so.
+export const DAF_MIN = 1000;
+/** "$1,000": the minimum as the pages say it */
+export const DAF_MIN_TEXT = '$' + DAF_MIN.toLocaleString('en-US');
+/** The donate form (Site Config → Zeffy) opened at the minimum, so "Donor-advised fund" is there after Continue */
+export const dafGiftUrl = (settings) => withParam(siteForm(settings, 'donateUrl'), 'amount', DAF_MIN);
