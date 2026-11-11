@@ -1573,9 +1573,13 @@ export async function pageOf(DB, record) {
 /**
  * Launch found JobTread and the website disagreeing on a room: a person says
  * which is right. use: 'jobtread' (the website takes JobTread's) or 'website'
- * (JobTread's extra names come out of the field).
+ * (JobTread's extra names come out of the field). Taking JobTread's credits the
+ * companies it names that the page didn't have, a person's say now, so each is
+ * put on the makeover as a pick here would be (credited means on the makeover;
+ * an open job). → { record, kind, credits, put: [{ partner, name, logo, people,
+ * waiting, retry? }], owed? }
  */
-export async function settleHeld(env, { record, kind: kindKey, use }, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
+export async function settleHeld(env, { record, kind: kindKey, use }, by = null, { fetchImpl = fetch, now = Date.now(), deps = realDeps } = {}) {
   const { DB } = env;
   const kind = KINDS[kindKey];
   if (!kind || !['jobtread', 'website'].includes(use)) throw Object.assign(new Error('Bad request'), { status: 400 });
@@ -1587,6 +1591,7 @@ export async function settleHeld(env, { record, kind: kindKey, use }, by = null,
   let rec;
   let partners;
   let owed = null;
+  const put = [];
   try {
     const [rows, ps, links, contacts, kids, projects] = await Promise.all([readJobRows(DB), readPartners(DB), readLinks(DB), readContacts(DB), loadAllKids(DB), loadAllProjects(DB)]);
     partners = ps;
@@ -1616,16 +1621,37 @@ export async function settleHeld(env, { record, kind: kindKey, use }, by = null,
         }
       }
     }
+    // JobTread's answer: the companies it names that the page didn't have are credited now, by this person
+    const credited = use === 'jobtread' ? row.held.jobtread.filter((s) => !row.held.website.includes(s) && partners.some((p) => p.slug === s)) : [];
     if (!copy) {
-      row = { ...row, held: null };
+      const f = followOf(row.follow);
+      for (const s of credited) { f.picked[s] = at; f.went = f.went.filter((w) => w.s !== s); }
+      row = { ...row, held: null, follow: f };
       await writeJobRow(DB, row, at);
     }
     // JobTread's answer: what it holds, with any change a person made here that's still owed to it
     await saveCopy(env, rec, kind.key, keepGone(copy || copyOf(meantOf(row, ctx)), partners), at, `${kind.label}: ${use === 'jobtread' ? 'JobTread’s' : 'the website’s'} kept`, { by: by || 'unknown' });
+    // Credited means on the makeover: each goes on it now, as a pick here would (an open job; one a put-on can't
+    // finish is finished by the next run, as a pick's is)
+    if (credited.length && !copy) {
+      const jobNow = await readJobValues(env.JOBTREAD_GRANT_KEY, row.jobId, await creditIds(env, fetchImpl), fetchImpl);
+      const full = { ...ctx, accounts: await readAccounts(DB) };
+      for (const s of credited) {
+        const partner = partners.find((p) => p.slug === s);
+        try {
+          const r = await putOnRoom(env, rec, partner, kind, { job: { id: row.jobId, closedOn: jobNow.closedOn }, ctx: full, fetchImpl, now, by: by || 'unknown', deps, pickedAt: at });
+          if (r.logo || r.people.length || r.waiting) put.push({ partner: s, name: partner.name, ...r });
+        } catch (e) {
+          row = { ...row, retry: [...(row.retry || []).filter((x) => (typeof x === 'string' ? x : x.s) !== s), { s, r: !!e.decided, at }] };
+          await writeJobRow(DB, row, at);
+          put.push({ partner: s, name: partner.name, logo: false, people: [], waiting: false, ...(e.done || {}), retry: true, error: e.message });
+        }
+      }
+    }
   } finally { await freeLock(DB, LOCK); }
   await logAudit(DB, { userEmail: by || 'unknown', action: 'updated', entityType: 'room-credits', entitySlug: record, entityName: rec.data?.name || record, changes: { settled: kind.key, use } }).catch(() => {});
   // A person's change goes live with Publish, like any save in the admin (only the JobTread sweep deploys, as the other syncs do)
-  return { record, kind: kind.key, credits: Array.isArray(rec.data?.[kind.record]) ? rec.data[kind.record] : copyOf(row.seen), ...(owed ? { owed } : {}) };
+  return { record, kind: kind.key, credits: Array.isArray(rec.data?.[kind.record]) ? rec.data[kind.record] : copyOf(row.seen), put, ...(owed ? { owed } : {}) };
 }
 
 /**

@@ -12260,6 +12260,8 @@
       const more = off.pending?.length ? ' JobTread didn’t answer for the job, so that finishes on its own.' : '';
       return `${line[0].toUpperCase()}${line.slice(1)}${more}`;
     }
+    /** What putting several companies on the room did (taking JobTread's answer), in words: one line each, by name */
+    const kdCreditsPutAll = (list) => (list || []).map((x) => (x.retry ? kdCreditPutSaid(x.name, x) : `${x.name}: ${kdCreditPutSaid(x.name, x) || 'already on the makeover.'}`)).join(' ');
     /** What putting a company on the room did, in words */
     function kdCreditPutSaid(name, put) {
       if (!put) return '';
@@ -12567,7 +12569,9 @@
         // Only the logo this request put on joins the editor's list: one the person took off here, not saved yet, stays
         // off. One it took off (the company off the makeover with its credit) leaves it
         const gone = new Set((r.off?.removed || []).map((l) => l.url));
-        const added = partnerLogos.filter((l) => l.url === r.put?.logoUrl && !(dataRef.current.partnerLogos || []).some((x) => x.url === l.url));
+        // (a pick puts on one; taking JobTread's answer to launch's question can put on several)
+        const putUrls = new Set([r.put?.logoUrl, ...(Array.isArray(r.put) ? r.put.map((x) => x.logoUrl) : [])].filter(Boolean));
+        const added = partnerLogos.filter((l) => putUrls.has(l.url) && !(dataRef.current.partnerLogos || []).some((x) => x.url === l.url));
         set((d) => ({ designers, sponsors, partnerLogos: [...added.map((l) => ({ ...l, _key: l.url })), ...(d.partnerLogos || []).filter((l) => !gone.has(l.url))] }));
         // Through the editor's own save shape, so the saved copy compares equal and nothing reads as unsaved
         setBase((b) => JSON.stringify(toBase({ ...JSON.parse(b || '{}'), designers, sponsors, partnerLogos })));
@@ -12614,7 +12618,7 @@
         const r = await credits.post(kind, () => ({ settle: { record, kind, use, sha: getSha() } }));
         if (!r.success) { addToast(`Couldn’t settle it: ${r.error}`, 'error'); return; }
         takePage(r);
-        addToast(use === 'jobtread' ? 'This page now says what JobTread says.' : r.owed ? 'This page’s answer stands. JobTread didn’t take it just now, so it’s taken out there within 10 minutes.' : 'Taken out of JobTread, so it says what this page says.', 'success');
+        addToast(use === 'jobtread' ? `This page now says what JobTread says. ${kdCreditsPutAll(r.put)}`.trim() : r.owed ? 'This page’s answer stands. JobTread didn’t take it just now, so it’s taken out there within 10 minutes.' : 'Taken out of JobTread, so it says what this page says.', 'success');
       };
       const sameAsCredit = async (kind, value, partner) => {
         const r = await credits.post(kind, () => ({ sameAs: { value, partner, record, sha: getSha() } }));
@@ -15561,7 +15565,7 @@
         setBusy(null);
       };
       const settleCredit = (h, use) => creditAct(`c-${h.record}-${h.kind}`, { settle: { record: h.record, kind: h.kind, use } },
-        (r) => addToast(use === 'jobtread' ? `${h.name}’s page now says what JobTread says.` : r.owed ? `${h.name}’s page’s answer stands. JobTread didn’t take it just now, so it’s taken out there within 10 minutes.` : `Taken out of JobTread, so it says what ${h.name}’s page says.`, 'success'));
+        (r) => addToast(use === 'jobtread' ? `${h.name}’s page now says what JobTread says. ${kdCreditsPutAll(r.put)}`.trim() : r.owed ? `${h.name}’s page’s answer stands. JobTread didn’t take it just now, so it’s taken out there within 10 minutes.` : `Taken out of JobTread, so it says what ${h.name}’s page says.`, 'success'));
       const sameAsCredit = (u, slug) => creditAct(`u-${u.key}`, { sameAs: { value: u.value, partner: slug } },
         () => addToast(`“${u.value}” in JobTread is ${partners.find((p) => p.slug === slug)?.name || slug} now, everywhere.`, 'success'));
       const notCompanyCredit = (u, undo = false) => creditAct(`u-${u.key}`, { notCompany: { value: u.value, undo } },

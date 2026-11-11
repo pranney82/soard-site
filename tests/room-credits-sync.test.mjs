@@ -343,11 +343,14 @@ test('launch: the website’s sponsors go into JobTread; JobTread naming one the
   assert.deepEqual(r.held.map((h) => [h.record, h.jobtread]), [['lizzie', ['brian-robins-family-foundation']]]);
   assert.deepEqual((await w.kid('lizzie')).sponsors || [], [], 'the copy keeps the website’s answer until a person says');
   assert.deepEqual(w.put, []);
-  await settleHeld(w.env, { record: 'lizzie', kind: 'sponsored', use: 'jobtread' }, 'staff@soardcharity.com', { fetchImpl: w.jt.fetchImpl, now: w.now() });
+  const s = await settleHeld(w.env, { record: 'lizzie', kind: 'sponsored', use: 'jobtread' }, 'staff@soardcharity.com', { fetchImpl: w.jt.fetchImpl, now: w.now(), deps: w.deps });
   assert.deepEqual((await w.kid('lizzie')).sponsors, ['brian-robins-family-foundation']);
-  assert.deepEqual(w.put, [], 'settling puts nobody on');
+  // Credited means on the makeover: a person taking JobTread's answer puts the sponsor on, as a pick here would
+  assert.deepEqual(w.put, [{ logo: ROBINS.name, slug: 'lizzie' }, { job: ROBINS.name, record: 'lizzie' }], 'their logo on the page, then Add to job');
+  assert.deepEqual(s.put.map((x) => [x.partner, x.logo]), [['brian-robins-family-foundation', true]], 'and said, for the toast');
+  assert.deepEqual(w.jt.jobs[1].access, ['brian@robins.org'], 'the sponsor’s contact on the job (JobTread doesn’t email them)');
   await w.run(); await w.run();
-  assert.equal(aces(w.jt), 0, 'and nobody is given access to any job: no invite starts from launch or settling');
+  assert.equal(aces(w.jt), 1, 'once; launch itself gave nobody access');
 });
 
 test('a name she picked after launch, settled with Same as, is knowing more, not a pick: credited, nobody put on', async () => {
@@ -375,9 +378,20 @@ test('a name the job had from before launch, later said to be a company the page
   assert.deepEqual((await w.kid('axel')).sponsors, ['means-interiors'], 'the page keeps its answer');
   const v = await creditsView(w.env);
   assert.deepEqual(v.held.map((h) => [h.record, h.jobtread.map((x) => x.slug), h.website.map((x) => x.slug)]), [['axel', ['jimmy-helen-carlos'], ['means-interiors']]], 'asked, as launch asks');
-  await settleHeld(w.env, { record: 'axel', kind: 'sponsored', use: 'jobtread' }, 'staff', { fetchImpl: w.jt.fetchImpl, now: w.now() });
+  await settleHeld(w.env, { record: 'axel', kind: 'sponsored', use: 'jobtread' }, 'staff', { fetchImpl: w.jt.fetchImpl, now: w.now(), deps: w.deps });
   assert.deepEqual((await w.kid('axel')).sponsors, ['means-interiors', 'jimmy-helen-carlos'], 'a person said JobTread’s');
-  assert.deepEqual(w.put, []);
+  assert.deepEqual(w.put.map((x) => x.logo || x.job), [CARLOS.name, CARLOS.name], 'and Carlos, credited now, goes on the makeover');
+  await w.run(); await w.run();
+  assert.equal(w.put.length, 2, 'once');
+});
+
+test('taking JobTread’s answer on a finished room credits it and puts nobody on', async () => {
+  const w = await world({ kids: [{ slug: 'lizzie', name: 'Lizzie Francis', year: 2026 }], jobs: [{ id: 'j-liz', name: 'Lizzie Francis (2026)', closedOn: '2026-01-01', values: { [FIELD_MONETARY_SPONSOR]: ['Brian Robins Family Foundation'] }, access: [] }],
+    fields: [{ id: FIELD_MONETARY_SPONSOR, name: 'Monetary Sponsor', type: 'option', options: ['Brian Robins Family Foundation'], maxValuesAllowed: null }] });
+  await w.run();
+  const s = await settleHeld(w.env, { record: 'lizzie', kind: 'sponsored', use: 'jobtread' }, 'staff', { fetchImpl: w.jt.fetchImpl, now: w.now(), deps: w.deps });
+  assert.deepEqual((await w.kid('lizzie')).sponsors, ['brian-robins-family-foundation']);
+  assert.deepEqual([w.put, s.put], [[], []]);
 });
 
 test('Not a company: never asked about again', async () => {
@@ -1109,7 +1123,7 @@ test('Use JobTread’s keeps a pick a person made here that JobTread hasn’t ta
   assert.ok((await w.set({ record: 'lizzie', kind: 'sponsored', partner: 'jimmy-helen-carlos', on: true, put: false })).owed);
   w.jt.fetchImpl = real;
   w.later(MIN);
-  await settleHeld(w.env, { record: 'lizzie', kind: 'sponsored', use: 'jobtread' }, 'staff', { fetchImpl: w.jt.fetchImpl, now: w.now() });
+  await settleHeld(w.env, { record: 'lizzie', kind: 'sponsored', use: 'jobtread' }, 'staff', { fetchImpl: w.jt.fetchImpl, now: w.now(), deps: w.deps });
   assert.deepEqual((await w.kid('lizzie')).sponsors.sort(), ['brian-robins-family-foundation', 'jimmy-helen-carlos'], 'JobTread’s, with the pick still owed to it');
   await w.run();
   assert.deepEqual((await w.kid('lizzie')).sponsors.sort(), ['brian-robins-family-foundation', 'jimmy-helen-carlos'], 'unchanged when the write lands: one save, not two');
