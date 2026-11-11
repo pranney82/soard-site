@@ -98,7 +98,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const made = new Set(record.also.map((a) => a.costItemId).filter(Boolean));
   const partRows = (await rows(DB, 'SELECT job_id, item_id, job_name, group_name, line_name, cents, parts, words, words_key, read_by FROM kid_parts ORDER BY job_name, group_name, line_name', strict))
     .filter((r) => !made.has(r.item_id));
-  const lines = partRows.map((r) => ({ jobId: r.job_id, itemId: r.item_id, jobName: r.job_name, lineName: r.line_name, words: r.words || '', wordsKey: r.words_key || '', parts: parse(r.parts, []).map((p) => (r.read_by === 'whole' ? { ...p, whole: true } : p)) }));
+  const lines = partRows.map((r) => ({ jobId: r.job_id, itemId: r.item_id, jobName: r.job_name, groupName: r.group_name || '', cents: r.cents ?? null, lineName: r.line_name, words: r.words || '', wordsKey: r.words_key || '', parts: parse(r.parts, []).map((p) => (r.read_by === 'whole' ? { ...p, whole: true } : p)) }));
   const jobs = [...new Map(lines.map((l) => [l.jobId, { id: l.jobId, name: l.jobName }])).values()];
   // Kids with selection lines the reader couldn't split yet: their orders may belong on those lines
   const unread = [...new Set(partRows.filter((r) => String(r.read_by || '').startsWith('none')).map((r) => r.job_id))];
@@ -124,7 +124,12 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const lineOf = new Map(lines.map((l) => [`${l.jobId}|${l.itemId}`, l]));
   for (const l of lines) {
     const kid = kidOf.get(l.jobId);
-    if (templates.has(`${l.jobId}|${l.itemId}`)) { kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120) }); continue; }
+    if (templates.has(`${l.jobId}|${l.itemId}`)) {
+      // An allowance: a sum set aside for a kind of thing ("Decor: Books, wall art, shelves, decorative objects"), in a
+      // Selection & Allowance group. A labor line that's alike on every makeover ("Plumbing Final") is a template too, not one
+      if (/allowance/i.test(l.groupName)) kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120), cents: l.cents });
+      continue;
+    }
     const seen = new Map();
     l.parts.forEach((p) => {
       // The part's own key (model, link or name) keeps its record when the designer edits the line; two alike are told apart
@@ -149,14 +154,29 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
     const dk = `w:${decisionKey(orderKey, name)}`;
     return itemById(kid, whole.itemId, dk) || kid.items[kid.items.push({ id: `${whole.itemId}|${dk}`, itemId: whole.itemId, partKey: dk, part: name, name, line: whole.line, qty, cents, source: 'buy', order: null, receipts: [], allocated: true }) - 1];
   };
-  const alsoItem = (kid, key, name, { qty = 1, cents = null, order = null, donated = false, typed = false } = {}) => {
+  /**
+   * Bought for a kid on top of their selections: its own line on their budget, made by the site (./_kid-jt.js). Next to
+   * one of their allowances (allow: that line, which goes down by it) or in Also bought. A person's answer says which;
+   * else the site sorts it (./_kid-allow.js), and until then it waits (pending), so no line is made in the wrong place
+   */
+  const alsoItem = (kid, key, name, { qty = 1, cents = null, order = null, donated = false, typed = false, allow = null, pending = false } = {}) => {
     let it = itemById(kid, key, 'also');
     if (!it) {
       const made = record.also.find((a) => a.key === key && a.jobId === kid.jobId && !a.retiredAt);
-      it = { id: `${key}|also`, itemId: key, partKey: 'also', name, line: 'Also bought', qty, cents, source: donated ? 'donated' : 'buy', order, receipts: [], also: { key, typed, costItemId: made?.costItemId || null } };
+      it = { id: `${key}|also`, itemId: key, partKey: 'also', name, line: allow ? `${allow.line} allowance` : 'Also bought', qty, cents, source: donated ? 'donated' : 'buy', order, receipts: [],
+        also: { key, typed, costItemId: made?.costItemId || null, allowItemId: allow?.itemId || null, allowLine: allow?.line || null, rowAllow: made ? made.allowItemId || null : undefined, ...(pending ? { pending: true } : {}) } };
       kid.items.push(it);
     }
     return it;
+  };
+  /** Bought on top, not by a person's answer: on the allowance the site sorted it under, or (none) Also bought */
+  const sorted = (kid, key, name, opts) => {
+    if (!kid.allowances.length) return alsoItem(kid, key, name, opts);
+    const s = record.sorts.get(key);
+    const allow = s?.itemId ? kid.allowances.find((a) => a.itemId === s.itemId) : null;
+    // Not sorted yet, or sorted onto an allowance that's gone from the budget since: sorted (again) before any line is made
+    if (!s?.how || (s.itemId && !allow)) return alsoItem(kid, key, name, { ...opts, pending: true });
+    return alsoItem(kid, key, name, { ...opts, allow });
   };
 
   // Cancelled, refunded or sent back: the whole order (every item named) undoes it; anything less is for a person
@@ -189,12 +209,11 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
         const kid = d.kid && kidOf.get(d.kid);
         if (d.type === 'notKid' || d.type === 'cancelled' || !kid) continue;
         if (d.type === 'also') { put(kid, alsoItem(kid, alsoKey(g.key, it.name, kid.jobId), it.name, { qty, cents })); continue; }
-        const tl = lineOf.get(`${d.kid}|${d.itemId}`);
-        if (d.partKey === 'allow' && tl) {
-          // Bought on the kid's allowance line (decor): its own part there, so the allowance isn't spent twice
-          const dk = `allow:${decisionKey(g.key, it.name)}`;
-          const t = itemById(kid, d.itemId, dk) || kid.items[kid.items.push({ id: `${d.itemId}|${dk}`, itemId: d.itemId, partKey: dk, name: it.name, line: tl.lineName, qty, cents, source: 'buy', order: null, receipts: [], allowance: true }) - 1];
-          put(kid, t);
+        if (d.partKey === 'allow') {
+          // A person said: bought on that allowance. Its own line next to it; the allowance goes down by it
+          const allow = kid.allowances.find((a) => a.itemId === d.itemId);
+          if (allow) put(kid, alsoItem(kid, alsoKey(g.key, it.name, kid.jobId), it.name, { qty, cents, allow }));
+          else looks.push({ name: it.name, look: 'its allowance changed: which line now?' });
           continue;
         }
         let t = itemById(kid, d.itemId, d.partKey);
@@ -212,7 +231,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
       const x = byName.get(it.name);
       const kid = m.kid ? kidOf.get(m.kid) : null;
       if (!x || x.look || !kid) { looks.push({ name: it.name, look: x?.look || 'which kid?' }); continue; }
-      if (x.alsoBought) { put(kid, alsoItem(kid, alsoKey(g.key, it.name, kid.jobId), it.name, { qty, cents })); continue; }
+      if (x.alsoBought) { put(kid, sorted(kid, alsoKey(g.key, it.name, kid.jobId), it.name, { qty, cents })); continue; }
       const whole = kid.items.find((y) => y.itemId === x.itemId && y.whole);
       const target = whole ? onWhole(kid, whole, g.key, it.name, qty, cents)
         : kid.items.find((y) => y.itemId === x.itemId && y.part === x.part && !y.order) || kid.items.find((y) => y.itemId === x.itemId && !y.order);
@@ -246,7 +265,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   // What was typed in for a kid ("Something else")
   for (const a of record.also.filter((x) => x.typed)) {
     const kid = kidOf.get(a.jobId);
-    if (kid) alsoItem(kid, a.key, a.name, { cents: a.cents, donated: a.donated, typed: true, order: null });
+    if (kid) sorted(kid, a.key, a.name, { cents: a.cents, donated: a.donated, typed: true, order: null });
   }
   // Receipts onto their items; one whose part can't be found any more stays on its line, never dropped
   for (const r of record.receipts) {

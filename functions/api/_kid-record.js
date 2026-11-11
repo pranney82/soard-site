@@ -16,6 +16,10 @@
  *   kid_also       things bought for a kid on top of the selections that only a
  *                  person typed in ("Something else"), and the JobTread line made
  *                  for every Also bought thing (by its key, JobTread's globalId).
+ *   kid_allow_class  for a thing bought on top of a kid's selections, which of their allowances it's
+ *                  bought under (or none: Also bought), as sorted by the site (./_kid-allow.js)
+ *   kid_allowances   an allowance line's own amount before the site took its purchases off it, so the
+ *                  amount it writes is always the original less what's bought, never less twice
  *   kid_shelves    which kid is on which shelf. A kid gets the next free shelf
  *                  at their first check-in and keeps it until their makeover is
  *                  finished (./_kid-jt.js frees it), never when it's paused.
@@ -42,20 +46,31 @@ const SCHEMA = [
     claim_until INTEGER, retired_at TEXT, by_email TEXT, at TEXT NOT NULL)`,
   'CREATE TABLE IF NOT EXISTS kid_shelves (shelf TEXT PRIMARY KEY, job_id TEXT NOT NULL, at TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS kid_items_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
+  `CREATE TABLE IF NOT EXISTS kid_allow_class (
+    key TEXT PRIMARY KEY, job_id TEXT NOT NULL, item_id TEXT, how TEXT, tries INTEGER NOT NULL DEFAULT 0, at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS kid_allowances (
+    job_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity REAL, unit_cost REAL, unit_price REAL, spent_cents INTEGER NOT NULL DEFAULT 0,
+    written_cost REAL, written_price REAL, at TEXT, PRIMARY KEY (job_id, item_id))`,
 ];
 // Added Nov 10 2026 with checking out: an "out" names the check-in whose label was scanned. Nov 11: printed_at, when
 // the printer took a check-in's labels (a retry from the phone prints only what never reached it)
 const RECEIPT_COLUMNS = ['ref TEXT', 'box INTEGER', 'printed_at TEXT'];
+// Nov 11 2026: where a bought-on-top line sits (next to an allowance, or Also bought), and how many, for its cost
+const ALSO_COLUMNS = ['allow_item_id TEXT', 'qty INTEGER'];
 const _ready = new WeakSet();
 export async function ensureRecord(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
   const have = new Set(((await DB.prepare('PRAGMA table_info(kid_receipts)').all()).results || []).map((c) => c.name));
-  for (const c of RECEIPT_COLUMNS) {
-    if (have.has(c.split(' ')[0])) continue;
-    // Two requests at once can both see it missing: the second one's "duplicate column" is fine
-    try { await DB.prepare(`ALTER TABLE kid_receipts ADD COLUMN ${c}`).run(); } catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
-  }
+  // Two requests at once can both see a column missing: the second one's "duplicate column" is fine
+  const add = async (table, cols, have) => {
+    for (const c of cols) {
+      if (have.has(c.split(' ')[0])) continue;
+      try { await DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${c}`).run(); } catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
+    }
+  };
+  await add('kid_receipts', RECEIPT_COLUMNS, have);
+  await add('kid_also', ALSO_COLUMNS, new Set(((await DB.prepare('PRAGMA table_info(kid_also)').all()).results || []).map((c) => c.name)));
   // One live check-out per box: two phones confirming the same box at once can't both count it
   await DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS kid_receipts_out_box ON kid_receipts (ref, box) WHERE kind = 'out' AND undone_at IS NULL AND box IS NOT NULL").run();
   _ready.add(DB);
@@ -88,17 +103,20 @@ export async function writeState(DB, key, data) {
 /** Everything the page and the JobTread writer need from the record, in one read */
 export async function readRecord(DB) {
   await ensureRecord(DB);
-  const [receipts, decisions, also, shelves] = await Promise.all([
+  const [receipts, decisions, also, shelves, sorts] = await Promise.all([
     all(DB, 'SELECT * FROM kid_receipts ORDER BY at'),
     all(DB, 'SELECT * FROM kid_decisions'),
     all(DB, 'SELECT * FROM kid_also ORDER BY at'),
     all(DB, 'SELECT * FROM kid_shelves'),
+    all(DB, 'SELECT * FROM kid_allow_class'),
   ]);
   return {
     receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null, box: r.box || null })),
     decisions: new Map(decisions.map((d) => [d.key, { ...parse(d.decision, {}), by: d.by_email, at: d.at }])),
-    also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
+    also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, qty: a.qty || null, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, allowItemId: a.allow_item_id || null, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
     shelves: new Map(shelves.map((s) => [s.shelf, s.job_id])),
+    // Sorted onto an allowance (itemId) or not (null); none yet: not sorted
+    sorts: new Map(sorts.map((x) => [x.key, { itemId: x.item_id || null, how: x.how, tries: x.tries || 0 }])),
   };
 }
 

@@ -802,7 +802,8 @@ function decisionOf(kid, value) {
 /** Wrong kid or line: whose it really is (this kid to start with) and which of their lines, the allowance or Also bought */
 function wrongKidSheet(fromKid, it) {
   let kid = fromKid;
-  const here = (k) => (k === fromKid ? (it.also ? 'also' : `line:${it.id}`) : '');
+  // Where it is now: a line, the allowance it's bought on, or Also bought
+  const here = (k) => (k === fromKid ? (it.also ? (it.also.allowItemId ? `allow:${it.also.allowItemId}` : 'also') : `line:${it.id}`) : '');
   const draw = () => {
     openSheet(`${head('Where does it go?', { sub: esc(it.name), one: true })}
       <div class="kidpick">${state.kids.map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k === kid}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
@@ -822,7 +823,7 @@ function wrongKidSheet(fromKid, it) {
   draw();
 }
 
-/** Something else that came: for which kid, what, what it cost; it goes on their budget as Also bought */
+/** Something else that came: for which kid, what, what it cost; it goes on their budget, next to the allowance it's bought under (or Also bought) */
 function otherSheet() {
   if (!state.kids.length) return;
   let kidId = state.filter !== 'All' ? state.kids.find((k) => k.short === state.filter)?.jobId || state.kids[0].jobId : state.kids[0].jobId;

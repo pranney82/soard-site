@@ -18,10 +18,12 @@ import { onRequestPost } from '../functions/api/kid-items-admin.js';
 
 let env;
 const part = (name, extra = {}) => ({ name, brand: '', model: '', link: '', quantity: 1, cents: null, source: 'buy', key: `name:${name.toLowerCase()}`, ...extra });
-async function line(jobId, jobName, itemId, lineName, words, parts) {
-  await env.DB.prepare('INSERT INTO kid_parts (job_id, item_id, job_name, group_name, line_name, cents, hash, parts, read_by, read_at, words, words_key) VALUES (?, ?, ?, ?, ?, 100, ?, ?, ?, ?, ?, ?)')
-    .bind(jobId, itemId, jobName, 'G', lineName, `h${itemId}`, JSON.stringify(parts), 'ai', '2026-11-09', words, words.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()).run();
+async function line(jobId, jobName, itemId, lineName, words, parts, { group = 'G', cents = 100 } = {}) {
+  await env.DB.prepare('INSERT INTO kid_parts (job_id, item_id, job_name, group_name, line_name, cents, hash, parts, read_by, read_at, words, words_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(jobId, itemId, jobName, group, lineName, cents, `h${itemId}`, JSON.stringify(parts), 'ai', '2026-11-09', words, words.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()).run();
 }
+// An allowance: the same generic words on every makeover, in a Selection & Allowance group, with money set aside
+const ALLOWANCE = { group: 'Bedroom Makeover Selection & Allowance', cents: 500000 };
 async function order(id, store, at, read) {
   await env.DB.prepare("INSERT INTO order_mail (mailbox, id, at, store, kind, state, read) VALUES ('pat@soardcharity.com', ?, ?, ?, ?, 'read', ?)").bind(id, at, store, read.kind, JSON.stringify(read)).run();
 }
@@ -38,8 +40,8 @@ beforeEach(async () => {
     CREATE TABLE staff_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT);`);
   await line('j-rowan', 'Rowan Sample (2026)', 'r-shower', 'Shower System', 'Raincan Shower Head 52214-CZ, two valves', [part('Raincan Shower Head', { model: '52214-CZ' }), part('Shower Valve', { quantity: 2 })]);
   await line('j-rowan', 'Rowan Sample (2026)', 'r-lamp', 'Lighting', 'Cloud Pendant Light', [part('Cloud Pendant Light')]);
-  await line('j-rowan', 'Rowan Sample (2026)', 'r-decor', 'Decor', 'Books, wall art, shelves, decorative objects', [part('Books, wall art, shelves')]);
-  await line('j-ava', 'Ava Example (2026)', 'a-decor', 'Decor', 'Books, wall art, shelves, decorative objects', [part('Books, wall art, shelves')]);
+  await line('j-rowan', 'Rowan Sample (2026)', 'r-decor', 'Decor', 'Books, wall art, shelves, decorative objects', [part('Books, wall art, shelves')], ALLOWANCE);
+  await line('j-ava', 'Ava Example (2026)', 'a-decor', 'Decor', 'Books, wall art, shelves, decorative objects', [part('Books, wall art, shelves')], ALLOWANCE);
   await line('j-ava', 'Ava Example (2026)', 'a-rug', 'Rug', 'Round Rainbow Rug', [part('Round Rainbow Rug')]);
   await order('m1', 'Shop', '2026-10-30T15:00:00Z', { kind: 'order', orderNumber: 'A1', jobPo: 'ROWAN', items: [{ name: 'Raincan Shower Head 52214-CZ', quantity: 1, price: '$129.00' }, { name: 'Bean Bag Chair', quantity: 1, price: '$80.00' }] });
 });
@@ -117,7 +119,7 @@ test('Needs a look: a person’s answer places it (a line, the allowance, Also b
   assert.equal(v.needsLook.find((o) => o.orderNumber === 'B2'), undefined, 'answered, gone from the list');
   assert.equal(itemOf(v, 'Ava E.', 'Round Rainbow Rug').status, 'ordered');
   const print = itemOf(v, 'Ava E.', 'Framed Print');
-  assert.deepEqual([print.line, print.allowance, print.status], ['Decor', true, 'ordered'], 'on the decor allowance, its own part');
+  assert.deepEqual([print.line, print.also.allowItemId, print.also.pending, print.status], ['Decor allowance', 'a-decor', undefined, 'ordered'], 'on the decor allowance: its own line next to it, not sorted again');
   // Wrong kid: the bean bag was Ava's
   const bean = itemOf(v, 'Rowan S.', 'Bean Bag Chair');
   await decide(env.DB, { orderKey: bean.order.key, itemName: bean.orderedAs, decision: { type: 'also', kid: 'j-ava' } });
@@ -177,7 +179,9 @@ test('a person’s edit in JobTread stands: their status until the line moves, t
 
 /** A pretend JobTread: custom fields, cost groups and items, their field values */
 function fakeJobTread() {
-  const jt = { fields: [{ id: 'f-discount', name: '% Discount', type: 'number' }], items: new Map([['r-shower', { values: {} }], ['r-lamp', { values: {} }], ['a-rug', { values: {} }]]), groups: [], calls: [], n: 0 };
+  // The kids' Decor allowances: $5,000 each, in their Selection & Allowance groups
+  const allowance = (group) => ({ name: 'Decor', quantity: 1, unitCost: 5000, unitPrice: 5000, costGroupId: group, costCodeId: 'c-dec', costTypeId: 't-mat', values: {} });
+  const jt = { fields: [{ id: 'f-discount', name: '% Discount', type: 'number' }], items: new Map([['r-shower', { values: {} }], ['r-lamp', { values: {} }], ['a-rug', { values: {} }], ['r-decor', allowance('g-sel-r')], ['a-decor', allowance('g-sel-a')]]), groups: [], calls: [], n: 0 };
   jt.fetch = async (url, init) => {
     const q = JSON.parse(init.body).query;
     jt.calls.push(Object.keys(q).filter((k) => k !== '$')[0]);
@@ -187,16 +191,25 @@ function fakeJobTread() {
     if (q.organization?.costCodes) return ok({ organization: { costCodes: { nodes: [{ id: 'c-fur', name: 'Furnishings', number: '1200' }] } } });
     if (q.createCustomField) { const f = { id: `f-${++jt.n}`, ...q.createCustomField.$ }; jt.fields.push(f); return ok({ createCustomField: { createdCustomField: { id: f.id } } }); }
     if (q.job?.costItems) { const gid = q.job.costItems.$.where[2]; const hit = [...jt.items].find(([, v]) => v.globalId === gid); return ok({ job: { costItems: { nodes: hit ? [{ id: hit[0] }] : [] } } }); }
-    if (q.job?.costGroups) { const g = jt.groups.find((x) => x.jobId === q.job.$.id); return ok({ job: { costGroups: { nodes: g ? [{ id: g.id }] : [] } } }); }
+    if (q.job?.costGroups) { const name = q.job.costGroups.$.where?.and?.[0]?.[2]; const g = jt.groups.find((x) => x.jobId === q.job.$.id && (!name || x.name === name)); return ok({ job: { costGroups: { nodes: g ? [{ id: g.id }] : [] } } }); }
     if (q.createCostGroup) { const g = { id: `g-${++jt.n}`, ...q.createCostGroup.$ }; jt.groups.push(g); return ok({ createCostGroup: { createdCostGroup: { id: g.id } } }); }
     if (q.createCostItem) { const id = `ci-${++jt.n}`; jt.items.set(id, { ...q.createCostItem.$, values: { ...(q.createCostItem.$.customFieldValues || {}) } }); return ok({ createCostItem: { createdCostItem: { id } } }); }
     if (q.costItem) {
       const it = jt.items.get(q.costItem.$.id);
-      return ok({ costItem: it ? { id: q.costItem.$.id, customFieldValues: { nodes: Object.entries(it.values).filter(([, v]) => v !== null).map(([fid, value]) => ({ value, customField: { id: fid } })) } } : null });
+      return ok({ costItem: it ? { id: q.costItem.$.id, name: it.name, quantity: it.quantity, unitCost: it.unitCost, unitPrice: it.unitPrice, unitCostFormula: it.unitCostFormula ?? null, unitPriceFormula: null,
+        costGroup: { id: it.costGroupId }, costCode: { id: it.costCodeId }, costType: { id: it.costTypeId },
+        customFieldValues: { nodes: Object.entries(it.values).filter(([, v]) => v !== null).map(([fid, value]) => ({ value, customField: { id: fid } })) } } : null });
     }
     // JobTread refuses a selection on updateCostItem ("A non-null value is required at updateCostItem.costItem.$", Nov 10 2026)
     if (q.updateCostItem && Object.keys(q.updateCostItem).some((k) => k !== '$')) return new Response('A non-null value is required at "updateCostItem"."costItem"."$"', { status: 400 });
-    if (q.updateCostItem) { const it = jt.items.get(q.updateCostItem.$.id); Object.assign(it.values, q.updateCostItem.$.customFieldValues || {}); return ok({ updateCostItem: { costItem: { id: q.updateCostItem.$.id } } }); }
+    if (q.updateCostItem) {
+      const { id, customFieldValues, ...rest } = q.updateCostItem.$;
+      const it = jt.items.get(id);
+      if (!it) return new Response('That cost item doesn’t exist', { status: 400 });
+      Object.assign(it.values, customFieldValues || {});
+      Object.assign(it, rest);
+      return ok({ updateCostItem: { costItem: { id } } });
+    }
     if (q.deleteCostItem) { jt.items.delete(q.deleteCostItem.$.id); jt.deleted = [...(jt.deleted || []), q.deleteCostItem.$.id]; return ok({ deleteCostItem: {} }); }
     return new Response('not faked', { status: 400 });
   };
@@ -238,7 +251,8 @@ test('the rehearsal on the sandbox job passes against JobTread', async () => {
   const jt = fakeJobTread();
   const r = await rehearse(env, { fetchImpl: jt.fetch, now: '2026-11-09T20:00:00Z' });
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.deepEqual(r.steps.map((s) => s.name), ['fields', 'a line made once though asked twice', 'written', 'nothing new, nothing written', 'a hand edit kept', 'news after a hand edit', 'put back']);
+  assert.deepEqual(r.steps.map((s) => s.name), ['fields', 'a line made once though asked twice', 'written', 'nothing new, nothing written', 'a hand edit kept', 'news after a hand edit', 'put back',
+    'a line next to its allowance', 'the allowance down by it', 'moved to Also bought, the allowance back', 'the allowance put back']);
 });
 
 test('POST: check in, print, JobTread; an unknown action is refused', async () => {
@@ -907,4 +921,111 @@ test('round 4: a box back from the truck whose shelf is another kid’s now goes
   assert.deepEqual([res.results[0].shelf, res.results[0].moved], ['2', true]);
   assert.deepEqual(hub.sent, [1], 'box 2’s label, with its new shelf');
   delete env.PRINT_HUB;
+});
+
+// ─── Allowances (Nov 11 2026): bought on top of the selections, next to the allowance it's bought under ───
+
+/** A pretend Workers AI sorting things: each thing whose name matches `decor` goes on allowance 1, else none */
+function sortingAi(decor = /Print|Frame/) {
+  const ai = { asked: [] };
+  ai.run = async (model, input) => {
+    const user = input.messages[1].content;
+    ai.asked.push(user);
+    const things = user.split('Things:\n')[1].split('\n').filter(Boolean);
+    return { response: { things: things.map((t, i) => ({ n: i + 1, allowance: decor.test(t) ? 1 : 0 })) } };
+  };
+  return ai;
+}
+const rowOf = (jt, key) => [...jt.items.entries()].map(([id, v]) => ({ id, ...v })).find((i) => i.globalId === key);
+
+test('allowances: only a Selection & Allowance group’s template lines are allowances (not a labor line alike on every makeover)', async () => {
+  await line('j-rowan', 'Rowan Sample (2026)', 'r-plumb', 'Plumbing Final', 'Plumbing Final', [part('Plumbing Final')], { group: '19 Plumbing', cents: 130000 });
+  await line('j-ava', 'Ava Example (2026)', 'a-plumb', 'Plumbing Final', 'Plumbing Final', [part('Plumbing Final')], { group: '19 Plumbing', cents: 130000 });
+  const v = await view();
+  assert.deepEqual(kidOf(v, 'Rowan S.').allowances.map((a) => [a.line, a.cents]), [['Decor', 500000]]);
+});
+
+test('allowances: sorted onto the kid’s allowance, its line goes right after it (its codes, its words), and the allowance goes down by it', async () => {
+  env.JOBTREAD_GRANT_KEY = 'test-key';
+  const jt = fakeJobTread();
+  env.AI = sortingAi();
+  await order('m9', 'Target', '2026-11-03T15:00:00Z', { kind: 'order', orderNumber: 'T9', jobPo: 'ROWAN', items: [{ name: 'Framed Wall Print', quantity: 2, price: '$22.50' }] });
+  let v = await view();
+  assert.equal(itemOf(v, 'Rowan S.', 'Framed Wall Print').also.pending, true, 'not sorted yet: nothing is made');
+  const ids = await fieldIds(env, { fetchImpl: jt.fetch });
+  const run = await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.deepEqual(run.errors, []);
+  assert.match(env.AI.asked[0], /Allowances:\n1\. Decor: Books, wall art, shelves, decorative objects\n\nThings:\n1\. Bean Bag Chair, from Shop \(\$80\.00\)\n2\. Framed Wall Print, from Target \(\$22\.50\)/, 'one question for each kid’s things');
+  v = await view();
+  const print = itemOf(v, 'Rowan S.', 'Framed Wall Print');
+  assert.deepEqual([print.line, print.also.allowItemId, print.also.pending], ['Decor allowance', 'r-decor', undefined]);
+  const row = rowOf(jt, print.also.key);
+  assert.deepEqual([row.name, row.costGroupId, row.positionAfter, row.quantity, row.unitCost, row.costCodeId, row.costTypeId, row.values[ids.also]],
+    ['Decor: Framed Wall Print', 'g-sel-r', { type: 'costItem', id: 'r-decor' }, 2, 22.5, 'c-dec', 't-mat', false]);
+  assert.match(row.description, /on the Decor allowance \(Target, order T9\): the allowance went down by it/);
+  assert.deepEqual([jt.items.get('r-decor').unitCost, jt.items.get('r-decor').unitPrice], [4955, 4955], '$5,000 less 2 × $22.50');
+  // The bean bag chair (the other order) is none of Rowan's allowances: Also bought
+  const bean = rowOf(jt, itemOf(v, 'Rowan S.', 'Bean Bag Chair').also.key);
+  assert.deepEqual([bean.name, bean.costGroupId === jt.groups.find((g) => g.name === 'Also bought').id, bean.values[ids.also]], ['Bean Bag Chair', true, true]);
+  // Nothing new: nothing written, nothing asked again
+  jt.calls.length = 0;
+  const again = await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.deepEqual([again.made, again.kept || 0, again.allowances || 0, jt.calls.filter((c) => c === 'updateCostItem' || c === 'createCostItem').length, env.AI.asked.length], [0, 0, 0, 0, 1]);
+  delete env.AI;
+});
+
+test('allowances: a person moves it to Also bought and back (its line moves, never remade); a hand edit to the allowance stands; cancelled, its line comes off', async () => {
+  env.JOBTREAD_GRANT_KEY = 'test-key';
+  const jt = fakeJobTread();
+  env.AI = sortingAi();
+  await order('m9', 'Target', '2026-11-03T15:00:00Z', { kind: 'order', orderNumber: 'T9', jobPo: 'ROWAN', items: [{ name: 'Framed Wall Print', quantity: 2, price: '$22.50' }] });
+  await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  let print = itemOf(await view(), 'Rowan S.', 'Framed Wall Print');
+  const rowId = print.also.costItemId;
+  const alsoGroupId = () => jt.groups.find((g) => g.name === 'Also bought')?.id;
+  // A person: it's Also bought, not decor
+  await decide(env.DB, { orderKey: print.order.key, itemName: print.orderedAs, decision: { type: 'also', kid: 'j-rowan' } });
+  await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  print = itemOf(await view(), 'Rowan S.', 'Framed Wall Print');
+  assert.equal(print.also.costItemId, rowId, 'the same line, moved');
+  assert.deepEqual([jt.items.get(rowId).costGroupId, jt.items.get(rowId).name, jt.items.get('r-decor').unitCost], [alsoGroupId(), 'Framed Wall Print', 5000], 'in Also bought; the allowance back to $5,000');
+  // And back onto the allowance
+  await decide(env.DB, { orderKey: print.order.key, itemName: print.orderedAs, decision: { type: 'line', kid: 'j-rowan', itemId: 'r-decor', partKey: 'allow' } });
+  await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.deepEqual([jt.items.get(rowId).costGroupId, jt.items.get(rowId).name, jt.items.get('r-decor').unitCost], ['g-sel-r', 'Decor: Framed Wall Print', 4955]);
+  assert.equal([...jt.items.values()].filter((i) => /Framed Wall Print/.test(i.name || '')).length, 1, 'one line all along');
+  // Someone raises the allowance in JobTread to $6,000: what they set is what's left, and the next thing comes off that
+  Object.assign(jt.items.get('r-decor'), { unitCost: 6000, unitPrice: 6000 });
+  await order('m10', 'Target', '2026-11-04T15:00:00Z', { kind: 'order', orderNumber: 'T10', jobPo: 'ROWAN', items: [{ name: 'Picture Frame', quantity: 1, price: '$10.00' }] });
+  await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.equal(jt.items.get('r-decor').unitCost, 5990);
+  // The print's order cancelled: its line comes off, and the allowance is $45 more
+  await order('m11', 'Target', '2026-11-05T15:00:00Z', { kind: 'cancelled', orderNumber: 'T9', items: [{ name: 'Framed Wall Print' }] });
+  await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.ok(jt.deleted.includes(rowId));
+  assert.equal(jt.items.get('r-decor').unitCost, 6035);
+  delete env.AI;
+});
+
+test('allowances: unsorted after three tries is Also bought; an allowance set by a formula is left alone; an Also bought line made before is moved, not remade', async () => {
+  env.JOBTREAD_GRANT_KEY = 'test-key';
+  const jt = fakeJobTread();
+  // The AI answers nothing: asked again each run, Also bought after the third
+  env.AI = { asked: 0, run: async () => { env.AI.asked++; return { response: { things: [] } }; } };
+  let r = await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.equal(r.made, 0, 'the bean bag chair waits to be sorted');
+  await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  r = await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.equal(r.made, 1, 'after three tries, Also bought');
+  const bean = itemOf(await view(), 'Rowan S.', 'Bean Bag Chair');
+  assert.equal(jt.items.get(bean.also.costItemId).costGroupId, jt.groups.find((g) => g.name === 'Also bought').id);
+  // Sorted again later onto the decor allowance (say its sort is cleared): the same line moves next to it
+  await env.DB.prepare("UPDATE kid_allow_class SET item_id = 'r-decor', how = 'site' WHERE key = ?").bind(bean.also.key).run();
+  jt.items.get('r-decor').unitCostFormula = '5000';
+  jt.calls.length = 0;
+  r = await writeKids(env, { fetchImpl: jt.fetch, mode: 'on' });
+  assert.deepEqual([r.errors, jt.calls.filter((c) => c === 'createCostItem').length], [[], 0], 'moved, not remade');
+  assert.deepEqual([jt.items.get(bean.also.costItemId).costGroupId, jt.items.get(bean.also.costItemId).name], ['g-sel-r', 'Decor: Bean Bag Chair']);
+  assert.equal(jt.items.get('r-decor').unitCost, 5000, 'a formula sets it: left as it is');
+  delete env.AI;
 });
