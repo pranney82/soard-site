@@ -151,6 +151,11 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
     if (/allowance/i.test(l.groupName)) kid.allowances.push({ itemId: l.itemId, line: l.lineName, words: l.words.slice(0, 120), cents: l.cents, ...(templates.has(`${l.jobId}|${l.itemId}`) ? { template: true } : {}) });
     if (templates.has(`${l.jobId}|${l.itemId}`)) continue;
     const seen = new Map();
+    // A line with more than one thing to buy (a shower system: valve, trim, shower head, hand shower) is one set: each
+    // part says which of how many it is, in the designer's order, the same every time (Peter, Nov 11 2026: "how can we
+    // tie multiple items together like 1 of, for shower parts")
+    const buys = l.parts.filter((p) => (p.source === 'buy' || p.source === 'donated') && !p.whole).length;
+    let partNo = 0;
     l.parts.forEach((p) => {
       // The part's own key (model, link or name) keeps its record when the designer edits the line; two alike are told apart
       const base = p.key || `name:${lower(p.name)}`;
@@ -160,7 +165,8 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
       if (p.source === 'buy' || p.source === 'donated') {
         // "Lighting: Wayfair Louis Parisian Globe" on the Lighting line reads as the product alone
         const name = p.name.toLowerCase().startsWith(`${l.lineName.toLowerCase()}:`) ? p.name.slice(l.lineName.length + 1).trim() || p.name : p.name;
-        kid.items.push({ id: `${l.itemId}|${partKey}`, itemId: l.itemId, partKey, part: p.name, name, line: l.lineName, qty: Math.max(1, Math.round(p.quantity || 1)), cents: p.cents || null, source: p.source, order: null, receipts: [], ...(p.model ? { model: p.model } : {}), ...(p.whole ? { whole: true } : {}) });
+        const set = buys > 1 && !p.whole ? { n: ++partNo, of: buys } : null;
+        kid.items.push({ id: `${l.itemId}|${partKey}`, itemId: l.itemId, partKey, part: p.name, name, line: l.lineName, qty: Math.max(1, Math.round(p.quantity || 1)), cents: p.cents || null, source: p.source, order: null, receipts: [], ...(p.model ? { model: p.model } : {}), ...(p.whole ? { whole: true } : {}), ...(set ? { set } : {}) });
       } else kid.others++;
     });
   }

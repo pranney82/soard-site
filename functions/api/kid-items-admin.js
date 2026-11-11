@@ -80,7 +80,12 @@ export async function onRequestGet({ env, request }) {
 }
 
 /** One check-in's labels: one a box, the kid's name, the item, the shelf, a QR to it */
-const labelsFor = (view, receipt) => labelsOf(view.kids.find((k) => k.jobId === receipt.job_id)?.short, receipt);
+// A check-in's labels: its kid, and (a part of a set) which part it is
+const labelsFor = (view, receipt) => {
+  const kid = view.kids.find((k) => k.jobId === receipt.job_id);
+  const it = kid?.items.find((i) => (i.receipts || []).some((x) => x.id === receipt.id)) || kid?.items.find((i) => i.itemId === receipt.item_id && i.partKey === receipt.part_key);
+  return labelsOf(kid?.short, receipt, it?.set || null);
+};
 
 /**
  * Check-ins' labels to the printer (./_kid-print.js printReceipts: each printed once, in parts the hub takes, held

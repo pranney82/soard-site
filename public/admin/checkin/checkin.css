@@ -619,3 +619,6 @@ body[data-mode="out"] .sheet-head .tag-here { background: #111111; color: #FFFFF
 .card-counts b { color: var(--ink); font-weight: 750; font-variant-numeric: tabular-nums; }
 .when.delivered { color: var(--ok-fg); }
 .when.out { color: var(--warn-fg); }
+/* A set (a line's parts: a shower's valve, trim and head): which part a label is, and a load that leaves part of one */
+.label-line { font-size: 9px; font-weight: 600; color: #444; margin-top: 2px; }
+.look.still .still-set { display: block; color: var(--warn-fg); font-weight: 600; }

@@ -404,7 +404,7 @@ const atOffice = (it) => it.status !== 'house' && boxesLeft(it) > 0;
 const byWho = (r) => (r?.who ? ` (${r.who})` : '');
 
 function rowHtml(kid, it) {
-  const sub = [it.order?.store, it.line, it.qty > 1 && it.status !== 'partly' ? `${it.qty} of them` : null, it.order?.elsewhere && !isHere(it) ? 'Ships elsewhere' : null].filter(Boolean).join(' · ');
+  const sub = [it.order?.store, it.set ? `${it.line} · part ${it.set.n} of ${it.set.of}` : it.line, it.qty > 1 && it.status !== 'partly' ? `${it.qty} of them` : null, it.order?.elsewhere && !isHere(it) ? 'Ships elsewhere' : null].filter(Boolean).join(' · ');
   let side = '';
   // Where its order is by the store's emails (delivered, arriving, out for delivery), else how long since it was ordered
   const sh = it.status === 'ordered' ? state.shipments.find((x) => x.items.some((y) => y.id === it.id)) : null;
@@ -594,6 +594,15 @@ function steppers(limits, onChange = () => {}) {
 }
 const printWords = (boxes) => `Print ${boxes === 1 ? 'label' : `${boxes} labels`}`;
 
+/** The rest of a thing's set (the other parts of its line), as the page has them */
+const setOf = (it) => (it.set ? (kidOfItem(it.id)?.items || []).filter((x) => x.set && x.itemId === it.itemId) : []);
+const setWords = (it) => {
+  const parts = setOf(it);
+  if (parts.length < 2) return null;
+  const here = parts.filter((x) => isHere(x)).length;
+  const coming = parts.filter((x) => !isHere(x) && x.id !== it.id).map((x) => x.name);
+  return `Part ${it.set.n} of ${it.set.of} · ${here} of ${parts.length} here${coming.length ? ` · still to come: ${andList(coming)}` : ''}`;
+};
 function factsOf(it) {
   return [
     it.order?.store ? ['From', it.order.store] : null,
@@ -601,6 +610,7 @@ function factsOf(it) {
     it.order?.orderNumber ? ['Order', it.order.orderNumber] : null,
     it.orderedAs && it.orderedAs !== it.name ? ['Store calls it', it.orderedAs] : null,
     it.line && it.line !== 'Also bought' ? ['Line', it.line] : ['Line', 'Also bought, on top of the selections'],
+    setWords(it) ? ['Set', setWords(it)] : null,
     it.source === 'donated' ? ['Donated', 'Yes'] : null,
     it.qty > 1 ? ['How many', it.got ? `${it.got} of ${it.qty} here` : String(it.qty)] : null,
     it.order?.elsewhere ? ['Ships to', 'Not the Office'] : null,
@@ -778,6 +788,7 @@ async function printed(kid, it, { units = 1, boxes = 1, other = null, tap = newT
     return `<div class="label" style="animation-delay:${i * 160}ms;z-index:${i + 1};transform:translate(${off}px, ${off}px)${under >= shown ? ';visibility:hidden' : ''}">
       <div class="label-kid">${esc(kid.short.toUpperCase())}</div>
       <div class="label-item">${esc(it.name)}</div>
+      ${it.set ? `<div class="label-line">${esc(`${it.line} · Part ${it.set.n} of ${it.set.of}`)}</div>` : ''}
       <div class="label-mid"><span class="label-box">Box ${i + 1} of ${boxes}</span></div>
       <div class="label-shelf" data-label-shelf>${esc((shelfNow || 'Shelf').toUpperCase())}</div>
       <div class="label-foot"><span>In ${esc(dayOf())}<br>SOARD</span><canvas data-qr="${i + 1}" aria-label="QR code for box ${i + 1}"></canvas></div>
@@ -2027,6 +2038,21 @@ function addAll(kid) {
 }
 
 /** Under each kid in the review: what stays at the Office and where (it stands out), what isn't here yet (quieter) */
+/** A set (a line's parts) part of which is in this load: its other parts not in it and not at the house, by where they are */
+function setsHtml(kid) {
+  if (!kid) return '';
+  const inLoad = new Set([...load.values()].filter((e) => e.jobId === kid.jobId).map((e) => e.row));
+  const out = [];
+  for (const parts of groupBy(kid.items.filter((i) => i.set), (i) => i.itemId).values()) {
+    if (!parts.some((p) => inLoad.has(p.id))) continue;
+    const behind = parts.filter((p) => !inLoad.has(p.id) && p.status !== 'out' && p.status !== 'house');
+    const notHere = behind.filter((p) => !boxesLeft(p)).map((p) => p.name);
+    const onShelf = behind.filter((p) => boxesLeft(p) > 0).map((p) => p.name);
+    if (!notHere.length && !onShelf.length) continue;
+    out.push(`${parts[0].line}: ${[notHere.length ? `${andList(notHere)} ${notHere.length === 1 ? 'isn’t' : 'aren’t'} here yet` : null, onShelf.length ? `${andList(onShelf)} ${onShelf.length === 1 ? 'is' : 'are'} on the shelf, not in this load` : null].filter(Boolean).join('; ')}`);
+  }
+  return out.map((t) => `<span class="still-set">${esc(t)}</span>`).join('');
+}
 function stillHtml(kid) {
   if (!kid) return '';
   const rest = kidLoad(kid).load.flatMap(boxesHere).filter((b) => !load.has(boxKey(b.ref, b.box)));
@@ -2052,7 +2078,7 @@ function confirmLoad({ keep = false, said = '' } = {}) {
       return `<div class="pick" data-kidgroup="${esc(jobId)}">
         <div class="look kid-row">${kid ? face(kid, 32) : ''}<b>${esc(kid?.short || list[0].kid)}</b><span data-kidn>${boxWord(list.length)}</span></div>
         ${[...groupBy(list, (e) => e.row).values()].map((es) => `<div class="look load-line"><b>${esc(es[0].name)}</b><span class="chips-row">${es.sort((a, b) => a.box - b.box).map(chip).join('')}</span></div>`).join('')}
-        <div class="look still" data-still>${stillHtml(kid)}</div>
+        <div class="look still" data-still>${stillHtml(kid)}${setsHtml(kid)}</div>
       </div>`;
     }).join('')}
     <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="confirm">${said ? `Try again: ${confirmWords(n).toLowerCase()}` : confirmWords(n)}</button>
@@ -2093,7 +2119,7 @@ function repaintReview() {
     const mine = [...load.values()].filter((e) => e.jobId === g.dataset.kidgroup).length;
     g.querySelector('[data-kidn]').textContent = mine ? boxWord(mine) : 'Taken out';
     g.classList.toggle('dim', !mine);
-    g.querySelector('[data-still]').innerHTML = stillHtml(kidById(g.dataset.kidgroup));
+    g.querySelector('[data-still]').innerHTML = stillHtml(kidById(g.dataset.kidgroup)) + setsHtml(kidById(g.dataset.kidgroup));
   });
   if ($('confirm')) { $('confirm').textContent = n ? confirmWords(n) : 'Nothing in this load'; $('confirm').disabled = !n; }
 }

@@ -68,12 +68,13 @@ const QR_ROOM = 45 * QR_MAG;
 
 /**
  * One box's label → ZPL
- * { kid: 'Lizzie F.', item, line, box, boxes, shelf: 'Shelf 7', at, tap }
+ * { kid: 'Lizzie F.', item, line, set?: { n, of }, box, boxes, shelf: 'Shelf 7', at, tap }
  */
-export function itemLabel({ kid, item, line, box = 1, boxes = 1, shelf, at, tap }) {
+export function itemLabel({ kid, item, line, set = null, box = 1, boxes = 1, shelf, at, tap }) {
   const { name, size } = kidLine(kid);
   const itemLines = wrapText(item, 54, 3);
-  const lineName = wrapText(line, 36, 1)[0] || '';
+  // Its line, and which part of the set it is ("Shower System · Part 2 of 4"): the parts go to the house together
+  const lineName = wrapText(set ? `${line} · Part ${set.n} of ${set.of}` : line, 36, 1)[0] || '';
   let y = 50;
   const f = [];
   f.push(`^FO40,${y}^A0N,${size},${size}^FD${name}^FS`);
@@ -113,7 +114,7 @@ export function shelfLabel({ shelf, name }) {
 }
 
 /** Every label for one check-in: one a box */
-export function receiptLabels({ kid, item, line, boxes, shelf, at, tap }) {
+export function receiptLabels({ kid, item, line, set = null, boxes, shelf, at, tap }) {
   const n = Math.max(1, Math.min(20, boxes || 1));
-  return Array.from({ length: n }, (_, i) => itemLabel({ kid, item, line, box: i + 1, boxes: n, shelf, at, tap }));
+  return Array.from({ length: n }, (_, i) => itemLabel({ kid, item, line, set, box: i + 1, boxes: n, shelf, at, tap }));
 }

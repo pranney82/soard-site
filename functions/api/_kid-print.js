@@ -106,7 +106,7 @@ const PART = 40;
 export const PRINT_WAIT_MS = 2 * 60 * 60 * 1000;
 
 /** A check-in's labels, one a box (kid: the kid's short name) */
-export const labelsOf = (kid, r) => receiptLabels({ kid: kid || 'SOARD', item: r.name, line: r.line_name, boxes: r.boxes, shelf: r.shelf ? shelfName(r.shelf) : '', at: r.at, tap: r.id });
+export const labelsOf = (kid, r, set = null) => receiptLabels({ kid: kid || 'SOARD', item: r.name, line: r.line_name, set, boxes: r.boxes, shelf: r.shelf ? shelfName(r.shelf) : '', at: r.at, tap: r.id });
 
 /**
  * Check-ins' labels to the printer, each check-in printed once. Each is claimed first (./_kid-record.js claimPrint), so
@@ -153,8 +153,11 @@ export async function maybePrintWaiting(env, { now = Date.now() } = {}) {
       .bind(new Date(now - PRINT_WAIT_MS).toISOString()).all()).results || [];
     if (!rows.length || !(await printerStatus(env)).online) return null;
     const { checkinView } = await import('./_kid-checkin.js');
-    const short = new Map((await checkinView(env, { photos: false })).kids.map((k) => [k.jobId, k.short]));
-    return await printReceipts(env, rows, (r) => labelsOf(short.get(r.job_id), r));
+    const view = await checkinView(env, { photos: false });
+    const short = new Map(view.kids.map((k) => [k.jobId, k.short]));
+    // A part of a set says which part (as the labels printed at check-in do)
+    const setOf = new Map(view.kids.flatMap((k) => k.items.flatMap((i) => (i.receipts || []).map((x) => [x.id, i.set || null]))));
+    return await printReceipts(env, rows, (r) => labelsOf(short.get(r.job_id), r, setOf.get(r.id) || null));
   } catch (err) {
     console.error('[kid-print] waiting labels', err.message);
     return null;
