@@ -358,6 +358,22 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
     const kid = kidOf.get(a.jobId);
     if (kid) sorted(kid, a.key, a.name, { cents: a.cents, donated: a.donated, typed: true, order: null });
   }
+  // A thing bought on top, checked in under the name one email gave it, as its order names it now: the order (the
+  // record of what the check-in was for) and the one of its things the old name fits best (namedIn: none on a true tie)
+  const renamedIn = (kid, r) => {
+    // Its order: the one whose key, with the old name and this kid, makes the check-in's thing (alsoKey); else the
+    // record of the line made for it
+    const orders = [...new Set(kid.items.filter((x) => x.order?.key).map((x) => x.order.key))];
+    let key = orders.find((k) => alsoKey(k, r.name, kid.jobId) === r.itemId);
+    if (!key) {
+      const was = record.also.find((a) => a.key === r.itemId);
+      key = was?.orderNumber ? orders.find((k) => kid.items.some((x) => x.order?.key === k && String(x.order.orderNumber || '') === String(was.orderNumber) && (!was.store || lower(x.order.store) === lower(was.store)))) : null;
+    }
+    const ofOrder = key ? kid.items.filter((x) => x.order?.key === key) : [];
+    if (!ofOrder.length) return null;
+    const named = namedIn(ofOrder.map((x) => ({ name: x.orderedAs || x.name })), [r.name]);
+    return ofOrder.find((x) => named.has(x.orderedAs || x.name)) || null;
+  };
   // Receipts onto their items; one whose part can't be found any more stays on its line, never dropped
   for (const r of record.receipts) {
     const kid = kidOf.get(r.jobId);
@@ -366,7 +382,10 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
       // Checked in as Also bought, and since found on one of the kid's lines (their lines were read later): it follows
       || (r.partKey === 'also' && !record.also.some((a) => a.key === r.itemId && a.typed) ? kid.items.find((x) => lower(x.orderedAs) === lower(r.name)) : null)
       // Checked in on an allowance by the page before Nov 11 2026 (a part "allow:…" of the allowance line): the thing bought on it now
-      || (String(r.partKey).startsWith('allow:') ? kid.items.find((x) => x.also?.allowItemId === r.itemId && (lower(x.orderedAs) === lower(r.name) || lower(x.name) === lower(r.name))) : null);
+      || (String(r.partKey).startsWith('allow:') ? kid.items.find((x) => x.also?.allowItemId === r.itemId && (lower(x.orderedAs) === lower(r.name) || lower(x.name) === lower(r.name))) : null)
+      // Checked in as bought on top, and a later email of its order names it otherwise (the delivery said "…Drawer
+      // Graphite 22-7/8" x 16-7/8"", the confirmation "…Drawer Graphite"): the thing of that order it names, by its words
+      || (r.partKey === 'also' ? renamedIn(kid, r) : null);
     // Undone, and what it was for is on no list now (moved to another kid, another order): nothing to show
     if (!it && r.undoneAt) continue;
     if (!it) {

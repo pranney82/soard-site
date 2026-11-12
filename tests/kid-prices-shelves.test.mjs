@@ -212,3 +212,28 @@ test('Nov 11: something from an order bought on top and checked in, put on an al
   drawer = (await view()).kids.find((k) => k.jobId === 'j-nico').items.find((i) => /Elfa/.test(i.name));
   assert.deepEqual([drawer.also.allowItemId, drawer.line, drawer.status, drawer.receipts.length], ['n-decor', 'Decor/Accessories allowance', 'here', 1]);
 });
+
+test('Nov 12: a thing bought on top and checked in keeps its check-in when its order’s confirmation names it otherwise (the Elfa drawers)', async () => {
+  const long2 = 'Elfa 24" 2-Runner Mesh Hanging Drawer Graphite 22-7/8" x 16-7/8" x 7-1/4" h';
+  const long1 = 'Elfa 24" 1-Runner Mesh Hanging Drawer Graphite 22-7/8" x 16-7/8" x 3" h';
+  await mail('d1', 'The Container Store', daysAgo(2), { kind: 'delivered', orderNumber: '899100000003', items: [{ name: long2, quantity: 2 }, { name: long1, quantity: 1 }] });
+  await decide(env.DB, { orderKey: 'The Container Store|899100000003', itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-nico' } });
+  const nico = () => view().then((v) => v.kids.find((k) => k.jobId === 'j-nico'));
+  for (const [n, tap] of [[long2, 'tap-elfa-0002'], [long1, 'tap-elfa-0001']]) {
+    const it = (await nico()).items.find((i) => i.name === n);
+    await receive(env.DB, { tap, jobId: 'j-nico', itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: it.qty, boxes: 1 });
+  }
+  // The confirmation, read later, names them shorter (and lists the rest of the closet)
+  await mail('c1', 'The Container Store', daysAgo(10), { kind: 'order', orderNumber: '899100000003', items: [
+    { name: 'Elfa 24" 2-Runner Mesh Hanging Drawer Graphite', quantity: 2, cents: 2642 },
+    { name: 'Elfa 24" 1-Runner Mesh Hanging Drawer Graphite', quantity: 1, cents: 2276 },
+    { name: 'Elfa Wood Screws Pkg/10', quantity: 1, cents: 514 }] });
+  const k = await nico();
+  const st = Object.fromEntries(k.items.filter((i) => /Elfa/.test(i.name)).map((i) => [i.name, `${i.status}:${(i.receipts || []).map((x) => x.id).join(',')}`]));
+  assert.deepEqual(st, {
+    'Elfa 24" 2-Runner Mesh Hanging Drawer Graphite': 'here:tap-elfa-0002',
+    'Elfa 24" 1-Runner Mesh Hanging Drawer Graphite': 'here:tap-elfa-0001',
+    'Elfa Wood Screws Pkg/10': 'ordered:',
+  });
+  assert.equal(k.items.filter((i) => i.gone).length, 0, 'no check-in left on a line that changed');
+});
