@@ -145,14 +145,6 @@ PUBLIC_ROUTES.push('/api/slack-actions');
 // capped, rate limited and deduped inside the handler, always answered 204
 PUBLIC_ROUTES.push('/api/csp-report');
 
-// CompanyCam's webhook (home-visit photos for families in review): signed with
-// a token worked out from COMPANYCAM_TOKEN and checked inside the handler,
-// which refuses everything when the key isn't set; rate limited there too
-PUBLIC_ROUTES.push('/api/companycam-webhook');
-// One CompanyCam video streamed to JobTread, which fetches it by a short link
-// the site signs (from COMPANYCAM_TOKEN) for six hours; anything else is 404
-PUBLIC_GET_ROUTES.push('/api/companycam-file');
-
 // Twilio's delivery reports for staff alert texts: signed with
 // TWILIO_AUTH_TOKEN and checked inside the handler, which refuses everything
 // when the token isn't set; it only records delivered or why not

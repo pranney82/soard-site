@@ -15,7 +15,6 @@ import {
 } from '../functions/api/_score-scans.js';
 import { saveScorecard, scorecardsFor, importScores } from '../functions/api/_applicant-scores.js';
 import { ensureApplicantSchema } from '../functions/api/_applicants.js';
-import { ensureCompanyCamSchema } from '../functions/api/_companycam-sync.js';
 
 const V1 = keysOf(1);
 const V2 = keysOf(2);
@@ -27,7 +26,6 @@ let DB; let env; let files;
 beforeEach(async () => {
   DB = await createD1();
   await ensureApplicantSchema(DB);
-  await ensureCompanyCamSchema(DB);
   await ensureScanSchema(DB);
   const add = (id, name, year, status = 'Approved', job = null) => DB.prepare('INSERT INTO applicants (account_id, name, status, year, job_name, synced_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, name, status, year, job, '2026-10-01T00:00:00Z').run();

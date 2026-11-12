@@ -14,7 +14,6 @@ import {
   ensureScoreSchema, saveScorecard, clearScorecard, familyScores, scoreSummaries, capacities, setCapacity, importScores,
 } from '../functions/api/_applicant-scores.js';
 import { ensureApplicantSchema } from '../functions/api/_applicants.js';
-import { ensureCompanyCamSchema } from '../functions/api/_companycam-sync.js';
 
 const SHEET_KEYS = keysOf(1);
 /** [mobility, safety, medical, caregiver, longevity, severity, feasibility, structural, readiness, mission] → a 2026 scorecard */
@@ -99,7 +98,8 @@ beforeEach(async () => {
   DB = await createD1();
   await ensureApplicantSchema(DB);
   await ensureScoreSchema(DB);
-  await ensureCompanyCamSchema(DB);
+  // The photo sorter's table (./_photo-stages.js), which a photo taken on a family's job is read from
+  await DB.prepare("CREATE TABLE IF NOT EXISTS photo_stages (file_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, name TEXT, kind TEXT, taken TEXT, camera INTEGER, stage TEXT, why TEXT, reads INTEGER NOT NULL DEFAULT 0, decided_at TEXT, written_at TEXT)").run();
   const add = (id, name, year, status = 'Approved') => DB.prepare('INSERT INTO applicants (account_id, name, status, year, synced_at) VALUES (?, ?, ?, ?, ?)').bind(id, name, status, year, '2026-10-01T00:00:00Z').run();
   await add('acct0001', 'Jamie Example', '2026');
   await add('acct0002', 'Ari & Bo Sample', '2026');
@@ -110,8 +110,23 @@ beforeEach(async () => {
   await add('acct0008', 'TEST Family', '2027');
 });
 
-const photo = (id, account, origin) => DB.prepare(`INSERT INTO companycam_files (cc_id, kind, project_id, account_id, origin, state, created_at, updated_at)
-  VALUES (?, 'photo', 'proj1', ?, ?, 'copied', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')`).bind(id, account, origin).run();
+/** A history row as the Applicants sync keeps JobTread's events (./_applicants.js activityFromEvent) */
+const event = (id, account, at, kind, source, data) => DB.prepare('INSERT INTO applicant_activity (id, account_id, at, kind, source, data) VALUES (?, ?, ?, ?, ?, ?)')
+  .bind(id, account, at, kind, source, JSON.stringify(data)).run();
+const fileAdded = (id, account, at, source, type = 'image/jpeg') => event(id, account, at, 'file', source, { fileId: id, type });
+const applied = (id, account, at) => event(id, account, at, 'status', 'website', { from: null, to: 'Applied' });
+
+test('a home visit on the family’s own job counts: a photo or video taken there since they applied', async () => {
+  await DB.prepare("UPDATE applicants SET status = 'In Review', job_id = 'job9' WHERE account_id = 'acct0006'").run();
+  await applied('ap6', 'acct0006', '2026-10-05T03:30:00.000Z'); // Oct 4, 11:30 pm on SOARD's clock
+  const stage = (id, kind, taken, camera = 1) => DB.prepare('INSERT INTO photo_stages (file_id, job_id, kind, taken, camera) VALUES (?, ?, ?, ?, ?)').bind(id, 'job9', kind, taken, camera).run();
+  await stage('f1', 'photo', '2025-03-03 08:28:47');  // last year's makeover
+  await stage('f2', 'doc', '2026-10-06 09:00:00');
+  await stage('f3', 'photo', null, 0);                // no time in it
+  assert.equal((await familyScores(DB, 'acct0006')).visited, false);
+  await stage('f4', 'video', '2026-10-04 23:45:00');  // the same evening, after they applied
+  assert.equal((await familyScores(DB, 'acct0006')).visited, true);
+});
 
 test('each person scores on their own card, saved as they go; it counts once all 10 are in', async () => {
   const a = await saveScorecard(DB, 'acct0004', { evaluator: 'Linzi@SOARDcharity.com', name: 'Linzi', scores: { mobility: 4, safety: 3 } });
@@ -268,18 +283,22 @@ test('a family is ranked once everyone scoring its season has finished a card fo
   assert.equal(sums.get('acct0004').of, 2);
 });
 
-test('from 2027, Family readiness waits for the home visit: photos taken in CompanyCam, or a decision', async () => {
+test('from 2027, Family readiness waits for the home visit: photos from it in JobTread, or a decision', async () => {
   const linzi = 'linzi@soardcharity.com';
   const rest = Object.fromEntries(CRITERION_KEYS.filter(k => k !== 'readiness').map(k => [k, 4]));
   const a = await saveScorecard(DB, 'acct0007', { evaluator: linzi, scores: rest });
   assert.equal(a.card.done, 9);
   assert.equal((await familyScores(DB, 'acct0007')).visited, false);
   await assert.rejects(saveScorecard(DB, 'acct0007', { evaluator: linzi, scores: { readiness: 4 } }), { status: 409, message: /after the home visit/ });
-  // The family's application photos copied into CompanyCam aren't a visit
-  await photo('photo:1', 'acct0007', 'application');
+  // A photo from an earlier application (the family applied again since) isn't this visit
+  await fileAdded('ev1', 'acct0007', '2026-01-10T15:00:00.000Z', 'jobtread');
+  await applied('ev2', 'acct0007', '2026-10-05T14:00:00.000Z');
+  // Nor are the photos the family sent with the application (the website's), or a paper someone added in JobTread
+  await fileAdded('ev3', 'acct0007', '2026-10-05T14:00:01.000Z', 'website');
+  await fileAdded('ev4', 'acct0007', '2026-10-20T15:00:00.000Z', 'jobtread', 'application/pdf');
   assert.equal((await familyScores(DB, 'acct0007')).visited, false);
-  // A photo taken at the house is
-  await photo('photo:2', 'acct0007', 'companycam');
+  // A photo someone took for the family in JobTread is
+  await fileAdded('ev5', 'acct0007', '2026-10-21T15:00:00.000Z', 'jobtread');
   assert.equal((await familyScores(DB, 'acct0007')).visited, true);
   const b = await saveScorecard(DB, 'acct0007', { evaluator: linzi, scores: { readiness: 5 } });
   assert.equal(b.finished, true);

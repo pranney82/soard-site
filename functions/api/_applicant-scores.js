@@ -22,8 +22,8 @@
  * under the other two's). TEST families don't count toward who's scoring.
  *
  * From the 2027 rubric, Family readiness is scored after the home visit:
- * once the family has photos taken in CompanyCam (./_companycam-sync.js), or
- * a decision (Approved or Denied).
+ * once there are photos from the visit in JobTread (see homeVisited), or a
+ * decision (Approved or Denied).
  *
  * Scores live on the site only: JobTread has nowhere to keep ten scores per
  * evaluator, and the spreadsheet these came from wasn't in JobTread either.
@@ -86,12 +86,31 @@ function cardFromRow(r) {
 /** The family's season, status and name from the Applicants mirror (null if it isn't there) */
 const familyOf = (DB, accountId) => DB.prepare('SELECT name, status, year FROM applicants WHERE account_id = ?').bind(accountId).first().catch(() => null);
 
-/** Has the family had their home visit? A decision, or photos taken for them in CompanyCam */
+/** A moment's date on SOARD's clock (Eastern), as YYYY-MM-DD */
+const easternDay = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+
+/**
+ * Has the family had their home visit? A decision, or photos from the visit in JobTread, where the team takes them
+ * (Peter, Nov 12 2026: "we will take photos in JT directly"; CompanyCam, which this asked before, is gone):
+ *  - a photo or video a person added to the family in JobTread (JobTread's event log, as the Applicants history
+ *    keeps it: ./_applicants.js). What the family sent with their application is the website's, so it isn't a visit.
+ *  - or one taken on the family's own open job, by the time the photo sorter read from it (./_photo-stages.js).
+ * Either since the family's current application (the last time they were Applied), so a family applying again
+ * starts over: an earlier year's visit isn't this one.
+ */
 export async function homeVisited(DB, accountId, fam) {
   const f = fam === undefined ? await familyOf(DB, accountId) : fam;
   if (f?.status === 'Approved' || f?.status === 'Denied') return true;
-  const photo = await DB.prepare("SELECT 1 AS x FROM companycam_files WHERE account_id = ? AND origin = 'companycam' AND kind = 'photo' LIMIT 1").bind(accountId).first().catch(() => null);
-  return !!photo;
+  const since = (await DB.prepare("SELECT MAX(at) AS at FROM applicant_activity WHERE account_id = ? AND kind = 'status' AND json_extract(data, '$.to') = 'Applied'")
+    .bind(accountId).first().catch(() => null))?.at || '';
+  const added = await DB.prepare(`SELECT 1 AS x FROM applicant_activity WHERE account_id = ? AND kind = 'file' AND source = 'jobtread' AND at >= ?
+      AND (json_extract(data, '$.type') LIKE 'image/%' OR json_extract(data, '$.type') LIKE 'video/%') LIMIT 1`).bind(accountId, since).first().catch(() => null);
+  if (added) return true;
+  const job = (await DB.prepare('SELECT job_id FROM applicants WHERE account_id = ?').bind(accountId).first().catch(() => null))?.job_id;
+  if (!job) return false;
+  const taken = await DB.prepare("SELECT 1 AS x FROM photo_stages WHERE job_id = ? AND kind IN ('photo', 'video') AND camera = 1 AND taken >= ? LIMIT 1")
+    .bind(job, since ? easternDay(since) : '').first().catch(() => null);
+  return !!taken;
 }
 
 /**

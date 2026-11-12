@@ -760,11 +760,6 @@ const MAP = { t: 'Everything we send', children: [
           when: 'The morning after an event, its page turns into its recap (photos, then sponsors).',
           does: 'Which event page changed, with the link.',
           touches: ['Slack', 'D1'], where: 'functions/api/_event-recap.js', live: slackLive },
-        { t: 'CompanyCam photos', s: 'live', k: 'slack', by: 'auto', key: 'slack-companycam',
-          who: '#team-everyone.',
-          when: 'Home-visit photos reach JobTread for a family in review, a project is handed over to the job, or CompanyCam and JobTread disagree.',
-          does: 'Which family or job, how many photos, or what needs a hand.',
-          touches: ['Slack', 'CompanyCam', 'JobTread'], where: 'functions/api/_companycam-sync.js · _companycam-jobs.js', live: slackLive },
       ]},
     ]},
 

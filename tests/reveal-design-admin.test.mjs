@@ -19,14 +19,14 @@ const file = (id, name, type, tags, createdAt = '2026-07-01T16:00:00Z') => ({
   fileTags: { nodes: tags.map((name) => ({ name })) },
 });
 const FILES = [
-  file('PLANSET', 'Dylan 2026_Plan Set_09302026.pdf', 'application/pdf', ['.FinalPlans', '_Sponsor'], '2026-10-19T17:00:00Z'),
-  file('WORKING', 'Dylan working plans.pdf', 'application/pdf', ['.WorkingPlans'], '2026-09-01T17:00:00Z'),
-  file('BOARD', 'Therapy room board.png', 'image/png', ['Design Documents'], '2026-10-01T17:00:00Z'),
-  file('EST', 'Estimate 1140.pdf', 'application/pdf', ['.PricingQuotes', ':MEPs']),
-  file('B2', 'CompanyCam 2873182422', 'image/jpeg', ['.BeforePics'], '2026-07-01T16:25:00Z'),
-  file('B1', 'CompanyCam 2873111820', 'image/jpeg', ['.BeforePics'], '2026-07-01T16:24:00Z'),
-  file('PROG', 'CompanyCam 37', 'image/jpeg', ['Progress Photos']),
-  file('BPDF', 'before notes.pdf', 'application/pdf', ['.BeforePics']),
+  file('PLANSET', 'Dylan 2026_Plan Set_09302026.pdf', 'application/pdf', ['Plans'], '2026-10-19T17:00:00Z'),
+  file('WORKING', 'Dylan working plans.pdf', 'application/pdf', ['Plans'], '2026-09-01T17:00:00Z'),
+  file('BOARD', 'Therapy room board.png', 'image/png', ['Design'], '2026-10-01T17:00:00Z'),
+  file('EST', 'Estimate 1140.pdf', 'application/pdf', ['Costs']),
+  file('B2', 'CompanyCam 2873182422', 'image/jpeg', ['Before'], '2026-07-01T16:25:00Z'),
+  file('B1', 'CompanyCam 2873111820', 'image/jpeg', ['Before'], '2026-07-01T16:24:00Z'),
+  file('PROG', 'IMG_0037.JPG', 'image/jpeg', ['During']),
+  file('BPDF', 'before notes.pdf', 'application/pdf', ['Before']),
 ];
 
 /** A fake JobTread: jobs (for finding the kid's), one job's details, its files in two pages */
@@ -73,10 +73,10 @@ test('a kid’s job: drawings under a plans tag, before photos, the address and 
   assert.equal(body.job.id, DYLAN_JOB);
   // The job asked for is checked, not looked up among every job
   assert.ok(!calls.some((q) => q.organization?.jobs));
-  // Final plans first, then design documents, then working plans; quotes and progress photos left out
-  assert.deepEqual(body.drawings.map((d) => d.id), ['PLANSET', 'BOARD', 'WORKING']);
-  assert.deepEqual(body.drawings[0].tags, ['.FinalPlans', '_Sponsor']);
-  // Before photos in the order taken; a PDF tagged .BeforePics isn't a photo
+  // Plans first (the newest set first), then design boards; costs and photos from the build left out
+  assert.deepEqual(body.drawings.map((d) => d.id), ['PLANSET', 'WORKING', 'BOARD']);
+  assert.deepEqual(body.drawings[0].tags, ['Plans']);
+  // Before photos in the order taken; a PDF tagged Before isn't a photo
   assert.deepEqual(body.befores.map((b) => b.id), ['B1', 'B2']);
   assert.ok(body.befores[0].big.includes('size=2048'));
   assert.deepEqual(body.address, { street: '426 Mountain View Ln', city: 'Marietta', zip: '30064', family: 'Marchena' });

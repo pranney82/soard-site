@@ -55,7 +55,6 @@ import { FIELDS } from '../functions/api/_applicants.js';
 import { clearFormCache, getDraftForm, getLiveForm } from '../functions/api/_application-forms.js';
 import { axeScan, axeText } from './lib/axe.mjs';
 import { saveScorecard, familyScores, capacities } from '../functions/api/_applicant-scores.js';
-import { ensureCompanyCamSchema } from '../functions/api/_companycam-sync.js';
 import { CRITERION_KEYS } from '../public/admin/scoring-shared.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
@@ -1210,9 +1209,8 @@ console.log('Scores');
   const kenna = acct('Noah Pence');
   const isla = acct('Isla Example');
   // Clareece and Christian are scoring 2027. Both scored Owen, far apart on family readiness, and Eliza;
-  // Clareece scored Isla (her home visit photos are in CompanyCam); Christian is partway through Noah (approved earlier)
-  await ensureCompanyCamSchema(DB);
-  await DB.prepare("INSERT INTO companycam_files (cc_id, kind, project_id, account_id, origin, state, created_at, updated_at) VALUES ('photo:91', 'photo', 'p91', ?, 'companycam', 'copied', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')").bind(isla.id).run();
+  // Clareece scored Isla (her home visit photos were taken for her in JobTread); Christian is partway through Noah (approved earlier)
+  await DB.prepare("INSERT INTO applicant_activity (id, account_id, at, kind, by_name, source, title, data) VALUES ('ev-visit-91', ?, '2026-10-01T15:00:00.000Z', 'file', 'Linzi', 'jobtread', 'IMG_0091.JPG', ?)").bind(isla.id, JSON.stringify({ fileId: 'f91', type: 'image/jpeg' })).run();
   await saveScorecard(DB, owenA.id, { evaluator: 'clareece@soardcharity.com', scores: { ...all(5), readiness: 1 } }); // 46
   await saveScorecard(DB, owenA.id, { evaluator: 'christian@soardcharity.com', scores: { ...all(4), readiness: 5 } }); // 41
   await saveScorecard(DB, eliza.id, { evaluator: 'clareece@soardcharity.com', scores: all(3) }); // 30
@@ -1363,7 +1361,7 @@ console.log('Scores');
   ok(/9 of 10 scored/.test(await text(sp, '.apl-score-what')) && /Family readiness is scored after the home visit\. Your scorecard counts once it has a score/.test(await text(sp, '.apl-score-what')), 'the keys skip it: 9 of 10, and it says why the card isn’t done');
   await clickText(sp, '[data-crit="readiness"] .apl-crit-head', /Family readiness/);
   await sleep(150);
-  ok(/It opens once photos from the visit are in CompanyCam/.test(await text(sp, '[data-crit="readiness"]')) && !(await sp.$('[data-crit="readiness"] .apl-level')), 'opened, it says when it opens, with no scores to pick');
+  ok(/It opens once photos from the visit are added to the family in JobTread/.test(await text(sp, '[data-crit="readiness"]')) && !(await sp.$('[data-crit="readiness"] .apl-level')), 'opened, it says when it opens, with no scores to pick');
   await sp.keyboard.press('3');
   await sleep(400);
   const mateoCard = (await familyScores(DB, mateo.id)).cards.find(c => c.evaluator === 'linzi@soardcharity.com');

@@ -724,7 +724,7 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
   };
 
   const drawingsSec = () => {
-    if (!data.drawings.length) return html`<p class="rdi-empty">No plan sets or design boards on the job yet. JobTread files tagged .FinalPlans, .WorkingPlans, Design Documents or .BuildSpecDocs show here.</p>`;
+    if (!data.drawings.length) return html`<p class="rdi-empty">No plan sets or design boards on the job yet. JobTread files tagged Plans or Design show here.</p>`;
     return data.drawings.map((f) => {
       const st = files[f.id];
       return html`<div class="rdi-sec" key=${f.id}>
@@ -738,7 +738,7 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
   };
 
   const beforesSec = () => {
-    if (!data.befores.length) return html`<p class="rdi-empty">No before photos on the job yet. Photos tagged .BeforePics (CompanyCam’s home visit photos) show here.</p>`;
+    if (!data.befores.length) return html`<p class="rdi-empty">No before photos on the job yet. Photos tagged Before in JobTread show here.</p>`;
     return html`<ul class="rdi-grid rdi-grid--photos">
       ${data.befores.map((f) => {
         const there = had.has(`jt:${f.id}`);

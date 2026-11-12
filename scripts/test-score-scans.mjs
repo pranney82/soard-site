@@ -31,7 +31,6 @@ import * as api from '../functions/api/applicants-admin.js';
 import * as scansApi from '../functions/api/score-scans-admin.js';
 import { FIELDS } from '../functions/api/_applicants.js';
 import { scorecardsFor } from '../functions/api/_applicant-scores.js';
-import { ensureCompanyCamSchema } from '../functions/api/_companycam-sync.js';
 import { criteriaOf } from '../public/admin/scoring-shared.js';
 import { axeScan, axeText } from './lib/axe.mjs';
 
@@ -69,7 +68,6 @@ const DB = await createD1();
 await DB.exec(`CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)`);
 await DB.prepare("INSERT INTO site_config (key, data) VALUES ('settings', ?)").bind(JSON.stringify({ application: { open: true, year: '2027' } })).run();
 await DB.exec(`CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_email TEXT, action TEXT, entity_type TEXT, entity_slug TEXT, entity_name TEXT, changes TEXT, path TEXT, git_status TEXT, created_at TEXT)`);
-await ensureCompanyCamSchema(DB);
 await DB.exec('CREATE TABLE IF NOT EXISTS staff_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)');
 await DB.prepare('INSERT INTO staff_state (key, data, updated_at) VALUES (?, ?, ?)').bind('directory', JSON.stringify({ accounts: [
   { email: 'linzi@soardcharity.com', name: 'Linzi Lawsky', active: true },

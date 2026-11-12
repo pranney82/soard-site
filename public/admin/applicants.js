@@ -2857,7 +2857,7 @@ function ScorePane({ a, onScored, addToast }) {
             </button>
             ${isOpen && wait && html`<div class="apl-crit-body">
               <p class="apl-crit-ask">${c.ask}<span>${c.note}</span></p>
-              <p class="apl-card-sub apl-crit-later">It opens once photos from the visit are in CompanyCam, or once ${a.name} is approved or turned down.</p>
+              <p class="apl-card-sub apl-crit-later">It opens once photos from the visit are added to the family in JobTread, or once ${a.name} is approved or turned down.</p>
             </div>`}
             ${isOpen && !wait && html`<div class="apl-crit-body">
               <p class="apl-crit-ask">${c.ask}${c.note && html`<span>${c.note}</span>`}</p>

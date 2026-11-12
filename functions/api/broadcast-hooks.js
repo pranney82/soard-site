@@ -34,11 +34,9 @@ import { maybeRunPress } from './_press.js';
 import { maybeSlackPreview } from './_slack-preview.js';
 import { maybeRunEventRecaps } from './_event-recap.js';
 import { maybeRunNewsletterDrafts } from './_newsletter-drafts.js';
-import { maybeRunCompanyCam } from './_companycam-sync.js';
 import { maybeKeepTags } from './_file-tags.js';
 import { maybeSortPhotos } from './_photo-stages.js';
 import { maybeMoveTags } from './_tag-moves.js';
-import { maybeCheckJobs } from './_companycam-jobs.js';
 import { maybeCapSelfTest } from './_application-cap.js';
 import { maybeTrackEmails } from './_email-log.js';
 import { maybeRunSpend } from './_spend.js';
@@ -134,16 +132,12 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunEventRecaps(env));
     // Event Recap and Monthly Impact drafts in Kit, hourly (./_newsletter-drafts.js)
     context.waitUntil(maybeRunNewsletterDrafts(env));
-    // CompanyCam for families in review: their project, home-visit photos to JobTread, the hand-over to the job (see _companycam-sync.js)
-    context.waitUntil(maybeRunCompanyCam(env));
     // Hourly: JobTread's five file tags (Before, During, After, Design, Plans) kept, with exactly who sees each (see _file-tags.js)
     context.waitUntil(maybeKeepTags(env));
     // Every 2 minutes, one job: its photos sorted into Before, During and After by when each was taken (see _photo-stages.js)
     context.waitUntil(maybeSortPhotos(env, { deadline }));
     // Every 2 minutes: the next files on JobTread's old tags moved onto the new ones (see _tag-moves.js)
     context.waitUntil(maybeMoveTags(env, { deadline }));
-    // Every open job's CompanyCam photos against JobTread's copies, about hourly (see _companycam-jobs.js)
-    context.waitUntil(maybeCheckJobs(env));
     // Once per alert redesign: the new Slack cards, posted in one thread (see _slack-preview.js)
     context.waitUntil(maybeSlackPreview(env));
     // Once per CAP_SELF_TEST: the application limit's two notices for a sample season, marked as tests (see _application-cap.js)

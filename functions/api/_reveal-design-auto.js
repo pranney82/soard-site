@@ -8,7 +8,7 @@
  * 30 days, the site brings in what the kid's profile doesn't have yet, from
  * the kid's JobTread job, the way that button does (designSources in
  * ./reveal-design-admin.js, and the same picks):
- *   - before photos (.BeforePics): BEFORE_SUGGESTED of them, spread across the visit
+ *   - before photos (tagged Before): BEFORE_SUGGESTED of them, spread across the visit
  *   - the existing and proposed drawings: each plan set's pages sorted by
  *     their titles and drawn by pdf.js in Cloudflare's Browser Rendering, the
  *     family's address painted out wherever its words are and the title block

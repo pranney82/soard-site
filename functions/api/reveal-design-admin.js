@@ -3,9 +3,11 @@
  * ===========================================================================
  * What the kid editor's "Bring in from JobTread" can bring in for a kid's
  * reveal (public/admin/reveal-design-import.js): the drawings and design
- * boards on their JobTread job (files tagged .FinalPlans, Design Documents,
- * .WorkingPlans or .BuildSpecDocs, and any plan sheets JobTread split out of
- * a PDF in its Plans tab), and the before photos (.BeforePics). Also the
+ * boards on their JobTread job (files tagged Plans or Design, and any plan
+ * sheets JobTread split out of a PDF in its Plans tab), and the before photos
+ * (tagged Before). The tags are the site's own (./_file-tags.js); the old
+ * .FinalPlans, .BeforePics and the rest were emptied onto them and deleted on
+ * Nov 12, 2026 (./_tag-moves.js). Also the
  * job's street, city and zip and the family's name, so the editor can wipe
  * them off a drawing before it ever leaves the computer. Staff only: not in
  * _middleware's public list, never cached.
@@ -26,10 +28,10 @@ import { loadAllKids, loadAllProjects } from './_kid-status.js';
 import { fetchAllJobs, buildAdminView } from './reveals-admin.js';
 
 const MAX_FILE_PAGES = 20;
-// Tags, loosely (".FinalPlans", "Final Plans" and "final plans" are one). Earlier in the list = shown first.
-const DRAWING_TAGS = ['finalplans', 'designdocuments', 'workingplans', 'buildspecdocs'];
-const BEFORE_TAGS = ['beforepics'];
+// Tags, loosely ("Plans" and "plans" are one). Earlier in the list = shown first: the build set, then design boards
 const loose = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const DRAWING_TAGS = ['Plans', 'Design'].map(loose);
+const BEFORE_TAGS = ['Before'].map(loose);
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const JOB_ID = /^[A-Za-z0-9]{6,32}$/;
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -76,7 +78,7 @@ export function familyName(accountName, kidName) {
   return last || '';
 }
 
-/** Sort and sort out a job's files: drawings (PDFs and pictures) under a plans tag, before photos under .BeforePics */
+/** Sort and sort out a job's files: drawings (PDFs and pictures) tagged Plans or Design, before photos tagged Before */
 export function sortFiles(files, sheets = []) {
   const sheetFiles = new Set(sheets.map((s) => s.fileId));
   const drawings = [];
@@ -90,7 +92,7 @@ export function sortFiles(files, sheets = []) {
     if (Number.isFinite(rank) && (isPdf(f) || isImage(f))) drawings.push({ ...out, rank });
     else if (keys.some((k) => BEFORE_TAGS.includes(k)) && isImage(f)) befores.push({ ...out, big: f.big || null });
   }
-  // Drawings: final plans first, newest first within a tag. Before photos: in the order they were taken.
+  // Drawings: plans first, newest first within a tag (the newest set is the current one). Before photos: in the order they were taken.
   drawings.sort((a, b) => a.rank - b.rank || String(b.createdAt).localeCompare(String(a.createdAt)));
   befores.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || String(a.name).localeCompare(String(b.name)));
   return { drawings: drawings.map(({ rank, ...d }) => d), befores };

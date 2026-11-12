@@ -99,10 +99,10 @@ const LISTING = {
   success: true, kid: { slug: SLUG, name: 'Dylan' }, job: { id: JOB, name: 'Dylan Marchena (2026)' },
   address: { street: '426 Mountain View Ln', city: 'Marietta', zip: '30064', family: 'Marchena' },
   drawings: [
-    { id: 'PLANSET', name: 'Dylan 2026_Plan Set_09302026.pdf', type: 'application/pdf', url: cdn('planset.pdf'), thumb: null, tags: ['.FinalPlans', '_Sponsor'], createdAt: '2026-10-19T17:00:00Z', size: 1 },
-    { id: 'BOARD', name: 'Therapy room board.png', type: 'image/png', url: cdn('board.png'), thumb: cdn('board.png'), tags: ['Design Documents'], createdAt: '2026-10-01T17:00:00Z', size: 1 },
+    { id: 'PLANSET', name: 'Dylan 2026_Plan Set_09302026.pdf', type: 'application/pdf', url: cdn('planset.pdf'), thumb: null, tags: ['Plans'], createdAt: '2026-10-19T17:00:00Z', size: 1 },
+    { id: 'BOARD', name: 'Therapy room board.png', type: 'image/png', url: cdn('board.png'), thumb: cdn('board.png'), tags: ['Design'], createdAt: '2026-10-01T17:00:00Z', size: 1 },
   ],
-  befores: BEFORE_IDS.map((id, i) => ({ id, name: `CompanyCam 28731${i}`, type: 'image/png', url: cdn(`${id}.png`), thumb: cdn(`${id}.png`), big: cdn(`${id}.png`), tags: ['.BeforePics'], createdAt: `2026-07-01T16:2${i}:00Z`, size: 1 })),
+  befores: BEFORE_IDS.map((id, i) => ({ id, name: `CompanyCam 28731${i}`, type: 'image/png', url: cdn(`${id}.png`), thumb: cdn(`${id}.png`), big: cdn(`${id}.png`), tags: ['Before'], createdAt: `2026-07-01T16:2${i}:00Z`, size: 1 })),
   sheets: [{ fileId: 'PLANSET', page: 2, name: 'EXISTING FLOOR PLAN' }, { fileId: 'PLANSET', page: 3, name: 'PROPOSED FLOOR PLAN' }],
 };
 
@@ -576,7 +576,7 @@ async function setOf(pages) {
   return Buffer.from(await doc.save());
 }
 const listingWith = (drawings, extra = {}) => ({ ...LISTING, befores: [], sheets: [], ...extra, drawings });
-const drawingFile = (id, name, file, tags = ['.FinalPlans']) => ({ id, name, type: /\.pdf$/.test(name) ? 'application/pdf' : /\.hei[cf]$/i.test(name) ? 'image/heic' : 'image/png', url: cdn(file), thumb: null, tags, createdAt: '2026-10-19T17:00:00Z', size: 1 });
+const drawingFile = (id, name, file, tags = ['Plans']) => ({ id, name, type: /\.pdf$/.test(name) ? 'application/pdf' : /\.hei[cf]$/i.test(name) ? 'image/heic' : 'image/png', url: cdn(file), thumb: null, tags, createdAt: '2026-10-19T17:00:00Z', size: 1 });
 async function openImport(page, count) {
   await clickText(page, '#kd-sec-plans .kd-sec__actions .btn', 'Bring in from JobTread');
   await page.waitForSelector('.rdi', { timeout: 10000 });
@@ -615,7 +615,7 @@ async function addressCases(browser) {
 
   // (a) A picture of a drawing, with the address in a note mid-sheet: can't be searched by words, so it's looked over and covered
   {
-    const listing = listingWith([drawingFile('PNGD', 'Existing plan scan.png', 'pngd.png', ['Design Documents'])]);
+    const listing = listingWith([drawingFile('PNGD', 'Existing plan scan.png', 'pngd.png', ['Design'])]);
     const { page, api, errors } = await open(browser, { width: 1440, height: 900, mobile: false }, { 'pngd.png': R.mid }, { listing });
     await openDylan(page, false);
     await openImport(page, 1);
@@ -879,8 +879,8 @@ async function otherKids(browser) {
 
 async function heicAndYear(browser) {
   console.log('\nHEIC, and a job that isn’t found (1440)');
-  const listing = listingWith([drawingFile('HEICD', 'Board photo.HEIC', 'd.heic', ['Design Documents'])], {
-    befores: [{ id: 'HB', name: 'IMG_0001.HEIC', type: 'image/heic', url: cdn('b.heic'), thumb: null, big: null, tags: ['.BeforePics'], createdAt: '2026-07-01T16:00:00Z', size: 1 }],
+  const listing = listingWith([drawingFile('HEICD', 'Board photo.HEIC', 'd.heic', ['Design'])], {
+    befores: [{ id: 'HB', name: 'IMG_0001.HEIC', type: 'image/heic', url: cdn('b.heic'), thumb: null, big: null, tags: ['Before'], createdAt: '2026-07-01T16:00:00Z', size: 1 }],
   });
   const { page, api, errors } = await open(browser, { width: 1440, height: 900, mobile: false }, { 'd.heic': Buffer.from('....ftypheic....not really a photo'), 'b.heic': Buffer.from('....ftypheic....') }, { listing, kid: { year: 2024 } });
   await openDylan(page, false);
