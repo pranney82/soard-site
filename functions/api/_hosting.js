@@ -13,6 +13,8 @@
  *  - domains: each of SOARD's four domains as its registry's RDAP answers:
  *             who it's registered with, when it's paid through, its
  *             nameservers. Public data, no key; a good answer is kept 6 hours.
+ *  - keys:    how many keys are set in Cloudflare for the site, and the names
+ *             of any no code reads (READ_KEYS). Names only, never a value.
  *
  * Read when Site → Automations opens (automations-admin.js). Nothing here
  * writes anywhere.
@@ -29,6 +31,34 @@ const RDAP = {
   org: 'https://rdap.publicinterestregistry.org/rdap/domain/',
 };
 export const DOMAINS = ['sunshineonaranneyday.com', 'soardcharity.com', 'sunshineonaranneyday.org', 'sunnyandranney.com'];
+
+// Every key the site's code or build reads from Cloudflare (tests/hosting.test.mjs scans the code, so this can't fall behind).
+// A key set in Cloudflare and missing here is one nothing uses.
+export const READ_KEYS = new Set([
+  'ALERT_EMAILS', 'APPLY_IP_PEPPER', 'CALENDAR_LINK_SECRET',
+  'CF_ACCESS_API_TOKEN', 'CF_ACCESS_AUD', 'CF_ACCESS_ISS', 'CF_ACCESS_MCP_AUD', 'CF_ACCESS_TEAM_DOMAIN',
+  'CF_ACCOUNT_ID', 'CF_ANALYTICS_TOKEN', 'CF_API_TOKEN', 'CF_DEPLOY_HOOK', 'CF_IMAGES_TOKEN', 'CF_PAGES_DEPLOY_HOOK', 'CF_PAGES_TOKEN', 'CF_STREAM_TOKEN',
+  'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_D1_ID', 'D1_DATABASE_ID', 'DEPLOY_HOOK_URL',
+  'COMPANYCAM_CUSTOMER_STAGE', 'COMPANYCAM_TOKEN', 'FB_PAGE_ID', 'FB_PAGE_TOKEN',
+  'GITHUB_BRANCH', 'GITHUB_REPO', 'GITHUB_TOKEN', 'GOOGLE_CALENDAR_KEY', 'GOOGLE_MAPS_KEY',
+  'JOBTREAD_GRANT_KEY', 'JOBTREAD_QC_GRANT_KEY', 'JOBTREAD_WEBHOOK_SECRET', 'JOTFORM_API_KEY',
+  'KIT_API_KEY', 'KIT_EMAIL_TEMPLATE_ID', 'KIT_FORM_ID', 'LIVE_IP_PEPPER',
+  'MERCURY_API_TOKEN', 'MERCURY_RELAY_KEY', 'PLAID_CLIENT_ID', 'PLAID_ENV', 'PLAID_SECRET',
+  'QBO_CLIENT_ID', 'QBO_CLIENT_SECRET', 'QBO_ENV', 'RAMP_CLIENT_ID', 'RAMP_CLIENT_SECRET',
+  'RESEND_API_KEY', 'RESEND_WEBHOOK_SECRET', 'REVEAL_INVITE_ORGANIZERS', 'SITE_ORIGIN',
+  'SLACK_BOT_TOKEN', 'SLACK_SIGNING_SECRET', 'SLACK_WEBHOOK_URL', 'STREAM_WEBHOOK_SECRET',
+  'TURNSTILE_SECRET_KEY', 'TURNSTILE_SITE_KEY',
+  'TWILIO_ACCOUNT_SID', 'TWILIO_API_KEY_SECRET', 'TWILIO_API_KEY_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM', 'TWILIO_MESSAGING_SERVICE_SID',
+  'YOUTUBE_API_KEY', 'ZEFFY_API_KEY', 'ZEFFY_WEBHOOK_SECRET',
+]);
+// What Cloudflare itself may put in a build's environment
+const CF_SYSTEM = new Set(['CF_PAGES', 'CF_PAGES_BRANCH', 'CF_PAGES_COMMIT_SHA', 'CF_PAGES_URL']);
+
+/** The keys set for the site → { set, unused }: a count, and the names of any no code reads. Never a value */
+export function keysFacts(env) {
+  const set = Object.keys(env || {}).filter((k) => typeof env[k] === 'string' && /^[A-Z][A-Z0-9_]*$/.test(k) && !CF_SYSTEM.has(k));
+  return { set: set.length, unused: set.filter((k) => !READ_KEYS.has(k)).sort() };
+}
 
 const DOMAIN_TTL = 6 * 3600e3;
 const domainCache = new Map();
@@ -115,6 +145,7 @@ export async function hostingFacts(env, { fetchImpl = fetch, now = Date.now() } 
   const github = g.status === 'fulfilled' ? g.value : { error: g.reason?.message || 'GitHub didn’t answer' };
   if (!github.error && github.sha && results) github.build = buildOf(github.sha, results);
   return {
+    keys: keysFacts(env),
     pages: p.status === 'fulfilled' ? p.value.pages : { tracking: true, error: p.reason?.message || 'Cloudflare didn’t answer' },
     github,
     domains: Object.fromEntries(DOMAINS.map((n, i) => [n, d[i].status === 'fulfilled' ? d[i].value : { error: d[i].reason?.message || 'no answer' }])),

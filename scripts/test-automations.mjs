@@ -37,6 +37,7 @@ const FACTS = {
   bindings: { db: true, files: true, vendorFiles: true, ai: true, hub: true },
   // Shaped like production on November 12, 2026 (_hosting.js)
   hosting: {
+    keys: { set: 48, unused: ['CC_CLIENT_ID', 'CC_CLIENT_SECRET', 'CC_REFRESH_TOKEN', 'MEDUSA_ADMIN_KEY', 'MEDUSA_BACKEND_URL'] },
     pages: { tracking: true, live: { at: iso(40 * 60e3), endedAt: iso(38 * 60e3), commit: '819b81c0', by: 'push' }, active: null, failed: null },
     github: { sha: '819b81c0', at: iso(42 * 60e3), skip: false, build: 'live' },
     domains: {
@@ -520,7 +521,18 @@ try {
   ok(pagesText.includes('Live: built after a push to GitHub') && pagesText.includes('(819b81c0)') && pagesText.includes('Workers & Pages → soard-site'), 'the Pages entry says which build is live, how it started and where the project is');
   const repoText = await hostPanel(healthy, 'GitHub repository');
   ok(repoText.includes('built from main’s newest commit, 819b81c0') && repoText.includes('github.com/pranney82/soard-site') && repoText.includes('public'), 'the GitHub entry says the live site is main’s newest commit, where the code is and that it’s public');
+  const repoLinks = await healthy.page.$$eval('.am-panel .am-links a', (a) => a.map((x) => x.getAttribute('href')));
+  ok(repoLinks.join(' ') === 'https://github.com/pranney82/soard-site https://github.com/pranney82/soard-site/settings/access', `it opens the repository and who can change it (${repoLinks.join(' ')})`);
+  const keysText = await hostPanel(healthy, 'Keys in Cloudflare');
+  ok(keysText.includes('48 keys set. No code reads CC_CLIENT_ID, CC_CLIENT_SECRET, CC_REFRESH_TOKEN, MEDUSA_ADMIN_KEY and MEDUSA_BACKEND_URL, so they’re safe to delete.'), 'the keys entry counts the keys and names the ones nothing reads');
+  const keyLinks = await healthy.page.$$eval('.am-panel .am-links a', (a) => a.map((x) => [x.textContent.trim(), x.getAttribute('href'), x.target, x.rel]));
+  ok(keyLinks.length === 1 && keyLinks[0][1] === 'https://dash.cloudflare.com/?to=/:account/pages/view/soard-site' && keyLinks[0][2] === '_blank' && keyLinks[0][3].includes('noopener'), `it opens the project in Cloudflare, in a new tab (${JSON.stringify(keyLinks)})`);
+  const oldCc = await healthy.page.evaluate(() => [...document.querySelectorAll('.am-inv-branch li b')].map((e) => e.textContent).filter((x) => /Constant Contact|Leftovers/.test(x)));
+  ok(oldCc.length === 0, `the old Constant Contact entry is folded into it${oldCc.length ? ` (found ${oldCc.join(', ')})` : ''}`);
   const comText = await hostPanel(healthy, 'sunshineonaranneyday.com');
+  const comLinks = await healthy.page.$$eval('.am-panel .am-links a', (a) => a.map((x) => x.getAttribute('href')));
+  ok(comLinks.join(' ') === 'https://dash.cloudflare.com/?to=/:account/registrar/domains https://dash.cloudflare.com/?to=/:account/sunshineonaranneyday.com/dns/records', `a domain opens its registration and its own DNS records (${comLinks.join(' ')})`);
+  ok(comText.includes('news. is Kit’s') && comText.includes('Resend’s'), 'and says what its other names are for');
   ok(comText.includes('Paid through Mar 14, 2029. Registered and DNS at Cloudflare.'), 'a domain says when it’s paid through and where it’s registered');
   const saveText = await hostPanel(healthy, 'Save in the admin');
   ok(!/GitHub/.test(saveText.replace('aren’t copied to GitHub', '')) && saveText.includes('aren’t copied to GitHub'), 'saving in the admin no longer claims a GitHub backup, and says why');

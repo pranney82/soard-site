@@ -145,7 +145,20 @@ const dataxHook = (event, missing) => (f) => {
   const found = Object.values(jt.webhooks).some((h) => /^(datax\.to|winyourdata\.com)\//.test(h.where || '') && (h.events || []).includes(event));
   return found ? { why: 'Registered in JobTread.' } : OFF(missing);
 };
-// Hosting (_hosting.js): Cloudflare's builds, main on GitHub, the domains' registrations
+// Hosting (_hosting.js): Cloudflare's builds, main on GitHub, the domains' registrations, the keys.
+// Links use Cloudflare's own ?to=/:account/… form, which opens the signed-in person's account (no account id in the code)
+const CF = (path) => `https://dash.cloudflare.com/?to=/:account${path}`;
+const GH = 'https://github.com/pranney82/soard-site';
+const DNS = (zone) => ({ label: 'DNS records', href: CF(`/${zone}/dns/records`) });
+const REGISTRAR = { label: 'Domain registration', href: CF('/registrar/domains') };
+const PROJECT = { label: 'Open soard-site', href: CF('/pages/view/soard-site') };
+const keysLive = (f) => {
+  const k = f.hosting?.keys;
+  if (!k) return null;
+  if (!k.unused.length) return ON(`${plural(k.set, 'key')} set, and the code reads every one.`);
+  const names = k.unused.length > 1 ? `${k.unused.slice(0, -1).join(', ')} and ${k.unused.at(-1)}` : k.unused[0];
+  return ON(`${plural(k.set, 'key')} set. No code reads ${names}, so ${k.unused.length > 1 ? 'they’re' : 'it’s'} safe to delete.`);
+};
 const shaOf = (b) => (b?.commit ? ` (${b.commit})` : '');
 const DEPLOYS = 'Cloudflare → Workers & Pages → soard-site → Deployments';
 const pagesLive = (f) => {
@@ -993,35 +1006,41 @@ const MAP = { t: 'SOARD', children: [
         { t: 'SOARD’s Cloudflare account', s: 'live', k: 'link',
           does: 'Everything the website runs on: the site itself (Pages), the live hub Worker, the D1 database, both R2 file buckets, Images, Stream, Workers AI and its AI Gateway, Browser Rendering (the real browser the press monitor and reveal designs borrow), Access (the admin’s sign-in), Email Routing, and the registration and DNS of all four domains.',
           touches: ['Cloudflare'], where: 'dash.cloudflare.com → SOARD’s account (owned by Peter’s soardcharity.com login)',
-          info: 'Also in the account and not the website’s: the Sunny & Ranney store’s site (sunnyandranney-site), its database (sunnyandranney-db) and its Workers (sales-tax, shop-redirect, terminal-token, hours-sync), and a Worker named deploy-coordinator that no website code uses. They aren’t on this map. The domains are on Cloudflare’s free plan; Stream is a monthly subscription (see its entry).' },
+          info: 'Who can sign in to it is under Manage account → Members. Also in the account and not the website’s: the Sunny & Ranney store’s site (sunnyandranney-site), its database (sunnyandranney-db) and its Workers (sales-tax, shop-redirect, terminal-token, hours-sync), and a Worker named deploy-coordinator that no website code uses. They aren’t on this map. The domains are on Cloudflare’s free plan; Stream is a monthly subscription (see its entry).',
+          links: [{ label: 'Members', href: CF('/members') }, { label: 'Billing', href: CF('/billing') }] },
         { t: 'The website on Cloudflare Pages', s: 'live', k: 'link',
           does: 'Serves sunshineonaranneyday.com: every public page, the admin at /admin/ and the site’s API under /api/. Each build runs npm run build on GitHub’s main branch, which pulls all the content from D1 first. A build that fails leaves the last good one live.',
           touches: ['Cloudflare Pages', 'GitHub', 'D1'], where: 'Cloudflare → Workers & Pages → soard-site (also at soard-site.pages.dev)',
-          info: 'The site’s keys are in soard-site → Settings → Variables and secrets; this map only ever sees whether a key is set, never what it is. Every other branch pushed to GitHub gets its own preview address on soard-site.pages.dev. The live hub that keeps the heartbeat and reveal day running is a separate Worker, soard-live-hub, deployed from workers/live-hub.',
-          live: (f) => pagesLive(f) },
+          info: 'Every other branch pushed to GitHub gets its own preview address on soard-site.pages.dev, which only SOARD can open and which can’t reach the database. The live hub that keeps the heartbeat and reveal day running is a separate Worker, soard-live-hub, deployed from workers/live-hub.',
+          links: [PROJECT], live: (f) => pagesLive(f) },
+        { t: 'Keys in Cloudflare', s: 'live', k: 'link',
+          does: 'The keys the site uses to reach other services (Kit, JobTread, Mercury, Slack, Zeffy and the rest) are kept in Cloudflare, never in the code. This map only ever sees a key’s name, never what it is.',
+          touches: ['Cloudflare Pages'], where: 'soard-site → Settings → Variables and secrets (Production)',
+          info: 'A key no code reads is safe to delete there. A new key goes in the same place, as a Secret, and takes effect on the next Publish.',
+          links: [PROJECT], live: (f) => keysLive(f) },
       ]},
       { t: 'Storage', children: [
         { t: 'D1 database', s: 'live', k: 'link',
           does: 'All content, settings, broadcast state, reminder sign-ups, invite records and the audit log.',
-          touches: ['D1'], where: 'soard-db (binding DB) · Cloudflare → Storage & databases → D1',
+          touches: ['D1'], where: 'soard-db (binding DB) · Cloudflare → Storage & databases → D1', links: [{ label: 'Open D1', href: CF('/workers/d1') }],
           info: 'Every build reads it, and the admin is the only way content changes. Its Time Travel (soard-db → Time Travel in Cloudflare) can put the whole database back the way it was at an earlier minute, if a bad change ever needs undoing all at once.',
           live: (f) => (!f.bindings ? null : f.bindings.db ? ON() : ATTN('The DB binding is missing.')) },
         { t: 'Cloudflare Images', s: 'live', k: 'link',
           does: 'Every photo and logo on the site. Staff upload, list and delete from the admin.',
-          touches: ['Cloudflare Images'], where: 'functions/api/upload-image.js · list-images.js · delete-image.js',
+          touches: ['Cloudflare Images'], where: 'functions/api/upload-image.js · list-images.js · delete-image.js', links: [{ label: 'Open Images', href: CF('/images') }],
           live: needsKey('images', 'CF_IMAGES_TOKEN is missing, so uploads fail.') },
         { t: 'Cloudflare Stream', s: 'live', k: 'link',
           does: 'Reveal videos and live inputs. Staff upload straight from the admin.',
-          touches: ['Cloudflare Stream'], where: 'functions/api/upload-video.js · stream-videos.js',
+          touches: ['Cloudflare Stream'], where: 'functions/api/upload-video.js · stream-videos.js', links: [{ label: 'Open Stream', href: CF('/stream') }],
           info: 'The Stream subscription has lapsed twice before. If uploads fail with a 403, check Billing before chasing tokens.',
           live: (f) => (!env(f) ? null : !f.env.stream ? ATTN('CF_STREAM_TOKEN is missing.') : f.health?.streamOk === false ? ATTN('The last health check couldn’t reach Stream. Check Billing → Subscriptions first.') : ON()) },
         { t: 'Files bucket (R2)', s: 'live', k: 'link',
           does: 'Financial PDFs and other uploads, served at /files/ and files.sunshineonaranneyday.com.',
-          touches: ['Cloudflare R2'], where: 'soard-files (binding FILES)',
+          touches: ['Cloudflare R2'], where: 'soard-files (binding FILES)', links: [{ label: 'Open R2', href: CF('/r2/overview') }],
           live: (f) => (!f.bindings ? null : f.bindings.files ? ON() : ATTN('The FILES binding is missing.')) },
         { t: 'Vendor papers bucket (R2)', s: 'live', k: 'link',
           does: 'Vendors’ W-9s and certificates of insurance. It has no public address: staff open a file through the admin, which checks their sign-in first.',
-          touches: ['Cloudflare R2'], where: 'soard-vendor-docs (binding VENDOR_FILES) · functions/api/_vendor-files.js',
+          touches: ['Cloudflare R2'], where: 'soard-vendor-docs (binding VENDOR_FILES) · functions/api/_vendor-files.js', links: [{ label: 'Open R2', href: CF('/r2/overview') }],
           info: 'Kept apart from the files bucket on purpose: anyone with a link can open a file in soard-files.',
           live: (f) => (!f.bindings || !('vendorFiles' in f.bindings) ? null : f.bindings.vendorFiles ? ON() : ATTN('The VENDOR_FILES binding is missing, so vendor papers can’t be saved or opened.')) },
       ]},
@@ -1029,26 +1048,30 @@ const MAP = { t: 'SOARD', children: [
         { t: 'GitHub repository', s: 'live', k: 'link',
           does: 'The website’s code: the pages, the admin, the API and the live hub. Cloudflare watches its main branch, and every push there builds and publishes the site.',
           touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/pranney82/soard-site (branch main)',
-          info: 'The repository is public: anyone can read the code, so keys and families’, donors’ and staff’s details never go in it. Keys live in Cloudflare and content lives in D1, so the code alone can’t bring back the site’s words or photos. Cloudflare still lists it under its first name, pranney82/soard, which GitHub sends on to soard-site.',
-          live: (f) => codeLive(f) },
+          info: 'The repository is public: anyone can read the code, so keys and families’, donors’ and staff’s details never go in it. Keys live in Cloudflare and content lives in D1, so the code alone can’t bring back the site’s words or photos. Who can change the code is under the repository’s Settings → Collaborators. Cloudflare still lists it under its first name, pranney82/soard, which GitHub sends on to soard-site.',
+          links: [{ label: 'Open on GitHub', href: GH }, { label: 'Collaborators', href: `${GH}/settings/access` }], live: (f) => codeLive(f) },
       ]},
       { t: 'Domains', children: [
         { t: 'sunshineonaranneyday.com', s: 'live', k: 'link',
-          does: 'The website’s address, SOARD’s since 2012. www.sunshineonaranneyday.com, sunshineonaranneyday.org and soardcharity.com all forward here. files. serves the files bucket and mercury-relay. points at SOARD’s Mercury relay. Kit and Resend send SOARD’s email from it, and Cloudflare Email Routing passes on mail sent to its addresses.',
+          does: 'The website’s address, SOARD’s since 2012. www.sunshineonaranneyday.com, sunshineonaranneyday.org and soardcharity.com all forward here. Its other names: files. is the files bucket, mercury-relay. is SOARD’s Mercury relay, news. is Kit’s (the newsletter’s pages and sending), and send., comms. and links. are Resend’s (the site’s own email and its link tracking). Cloudflare Email Routing passes on mail sent to its addresses.',
           touches: ['Cloudflare Registrar', 'Cloudflare DNS'], where: 'Cloudflare → Domain Registration → Manage domains · sunshineonaranneyday.com → DNS → Records',
-          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.', live: (f) => domainLive(f, 'sunshineonaranneyday.com') },
+          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.',
+          links: [REGISTRAR, DNS('sunshineonaranneyday.com')], live: (f) => domainLive(f, 'sunshineonaranneyday.com') },
         { t: 'soardcharity.com', s: 'live', k: 'link',
           does: 'Staff email: every soardcharity.com address is a Google Workspace account (Gmail, Drive, Calendar), and the admin’s sign-in follows those accounts. Its web address forwards to sunshineonaranneyday.com.',
           touches: ['Cloudflare Registrar', 'Cloudflare DNS', 'Google Workspace'], where: 'Cloudflare → Domain Registration → Manage domains · soardcharity.com → DNS → Records · its forward: soardcharity.com → Rules → Redirect Rules',
-          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.', live: (f) => domainLive(f, 'soardcharity.com') },
+          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.',
+          links: [REGISTRAR, DNS('soardcharity.com')], live: (f) => domainLive(f, 'soardcharity.com') },
         { t: 'sunshineonaranneyday.org', s: 'live', k: 'link',
           does: 'Forwards to sunshineonaranneyday.com, and keeps the .org out of anyone else’s hands. Moved to Cloudflare on Aug 26, 2026.',
           touches: ['Cloudflare Registrar', 'Cloudflare DNS'], where: 'Cloudflare → Domain Registration → Manage domains · sunshineonaranneyday.org → Rules → Redirect Rules',
-          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.', live: (f) => domainLive(f, 'sunshineonaranneyday.org') },
+          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.',
+          links: [REGISTRAR, DNS('sunshineonaranneyday.org')], live: (f) => domainLive(f, 'sunshineonaranneyday.org') },
         { t: 'sunnyandranney.com', s: 'live', k: 'link',
           does: 'The Sunny & Ranney store’s address and its staff email (Google Workspace). The store’s site is its own Pages project, sunnyandranney-site, and shop.sunnyandranney.com forwards to it.',
           touches: ['Cloudflare Registrar', 'Cloudflare DNS', 'Google Workspace'], where: 'Cloudflare → Domain Registration → Manage domains · sunnyandranney.com → DNS → Records',
-          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.', live: (f) => domainLive(f, 'sunnyandranney.com') },
+          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.',
+          links: [REGISTRAR, DNS('sunnyandranney.com')], live: (f) => domainLive(f, 'sunnyandranney.com') },
       ]},
     ]},
 
@@ -1439,13 +1462,6 @@ const MAP = { t: 'SOARD', children: [
           when: 'Any admin save and any automatic action.',
           does: 'Records who or what changed what, viewable under Site → Audit Log.',
           touches: ['D1'], where: 'functions/api/audit-log.js' },
-      ]},
-      { t: 'Leftovers', children: [
-        { t: 'Constant Contact keys', s: 'off', k: 'link',
-          does: 'Old CC_ keys stored in Cloudflare. No code uses them.',
-          touches: ['Constant Contact'], where: 'Cloudflare Pages → Variables',
-          note: 'Still stored in Cloudflare. Safe to delete once nobody needs Constant Contact.',
-          live: (f) => (!env(f) ? null : f.env.constantContact ? OFF('Still stored in Cloudflare. Safe to delete once nobody needs Constant Contact.') : OFF('Removed from Cloudflare.')) },
       ]},
     ]},
 
@@ -1961,6 +1977,7 @@ function Entry(sel, { pickService, Dot }) {
       ${sel.does && html`<div><dt>What it does</dt><dd>${sel.does}</dd></div>`}
       ${sel.touches?.length > 0 && html`<div><dt>Touches</dt><dd class="am-tags">${sel.touches.map((t) => html`<button type="button" key=${t} title=${`Show everything that depends on ${t}`} onClick=${() => pickService(t)}>${t}</button>`)}</dd></div>`}
       ${sel.where && html`<div><dt>Where it lives</dt><dd class="am-mono">${sel.where}</dd></div>`}
+      ${sel.links?.length > 0 && html`<div><dt>Open</dt><dd class="am-links" style="display: flex; flex-wrap: wrap; gap: 0.4rem;">${sel.links.map((l) => html`<a key=${l.href} class="btn btn-ghost btn-sm" href=${l.href} target="_blank" rel="noopener noreferrer">${l.label} ↗</a>`)}</dd></div>`}
       ${sel.info && html`<div><dt>Good to know</dt><dd>${sel.info}</dd></div>`}
     </dl>`;
 }

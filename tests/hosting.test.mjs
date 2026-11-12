@@ -6,7 +6,9 @@
  */
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { hostingFacts, pagesFrom, buildOf, rdapFacts, clearHostingCache, DOMAINS } from '../functions/api/_hosting.js';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { hostingFacts, pagesFrom, buildOf, rdapFacts, clearHostingCache, keysFacts, READ_KEYS, DOMAINS } from '../functions/api/_hosting.js';
 
 beforeEach(() => clearHostingCache());
 
@@ -127,4 +129,48 @@ test('domains are read once every 6 hours, and a registry that stops answering k
   assert.equal(rdapCalls(down), 4);
   assert.equal(h.domains['sunshineonaranneyday.com'].expires, '2029-03-14T15:05:09Z');
   assert.equal(h.domains['sunshineonaranneyday.com'].stale, true);
+});
+
+test('keys: a count, and the names nothing reads; never a value, never a binding', () => {
+  const k = keysFacts({ KIT_API_KEY: 'kit-SECRET', CC_CLIENT_ID: 'cc-SECRET', MEDUSA_ADMIN_KEY: 'm-SECRET', CF_PAGES_URL: 'https://x', DB: {}, FILES: {}, lowercase: 'x' });
+  assert.deepEqual(k, { set: 3, unused: ['CC_CLIENT_ID', 'MEDUSA_ADMIN_KEY'] });
+  assert.ok(!JSON.stringify(k).includes('SECRET'));
+  assert.deepEqual(keysFacts({}), { set: 0, unused: [] });
+});
+
+// Bindings (not keys), and names only a computer or Cloudflare's build sets, never a key in Cloudflare
+const BINDINGS = new Set(['AI', 'ASSETS', 'BROWSER', 'DB', 'FILES', 'VENDOR_FILES', 'APPLICANT_FILES', 'BOARD_FILES', 'LIVE_HUB', 'PRINT_HUB']);
+const NOT_KEYS = new Set(['POPUP_AUDIT_STRICT', 'BOOK_FIXTURE', 'SOARD_OG_SPEC_DIR', 'NODE_ENV', 'SITE', 'R2_PUBLIC_URL', 'CF_PAGES', 'CF_PAGES_COMMIT_SHA']);
+// These only check whether a key is set, for this map (a key only they read is one nothing uses)
+const PRESENCE_ONLY = new Set(['functions/api/automations-admin.js', 'functions/api/_hosting.js']);
+
+function walk(dir, out = []) {
+  for (const n of readdirSync(dir)) {
+    const p = join(dir, n);
+    if (statSync(p).isDirectory()) walk(p, out); else out.push(p);
+  }
+  return out;
+}
+const names = (text, re) => [...text.matchAll(re)].map((m) => m[1]);
+const destructured = (text, from) => [...text.matchAll(new RegExp(String.raw`(?:const|let)\s*\{([^}]+)\}\s*=\s*${from}`, 'g'))]
+  .flatMap((m) => m[1].split(',').map((x) => x.split(':')[0].split('=')[0].trim())).filter((x) => /^[A-Z][A-Z0-9_]+$/.test(x));
+
+test('every key the code reads is on the list, so a key nothing reads is really unused', () => {
+  const read = new Map();
+  const note = (n, f) => { if (!read.has(n)) read.set(n, f); };
+  for (const f of walk('functions').filter((x) => x.endsWith('.js') && !PRESENCE_ONLY.has(x))) {
+    const t = readFileSync(f, 'utf8');
+    for (const n of [...names(t, /\benv\??\.([A-Z][A-Z0-9_]+)\b/g), ...names(t, /\benv\[\s*['"]([A-Z][A-Z0-9_]+)['"]\s*\]/g), ...destructured(t, String.raw`(?:context\.|ctx\.|c\.)?env\b`)]) note(n, f);
+  }
+  const build = [...walk('scripts').filter((x) => /\.(m?js)$/.test(x) && !/(^|\/)test-/.test(x)), ...walk('src').filter((x) => /\.(ts|astro|mjs|js)$/.test(x))];
+  for (const f of build) {
+    const t = readFileSync(f, 'utf8');
+    for (const n of [...names(t, /(?:process\.env|import\.meta\.env)\.([A-Z][A-Z0-9_]+)/g), ...destructured(t, String.raw`process\.env\b`)]) note(n, f);
+  }
+  assert.ok(read.size > 40, `found the keys the code reads (${read.size})`);
+  const missing = [...read].filter(([n]) => !READ_KEYS.has(n) && !BINDINGS.has(n) && !NOT_KEYS.has(n)).map(([n, f]) => `${n} (${f})`);
+  assert.deepEqual(missing, [], 'add these to READ_KEYS in functions/api/_hosting.js');
+  // And nothing on the list that no code reads any more
+  const stale = [...READ_KEYS].filter((n) => !read.has(n));
+  assert.deepEqual(stale, [], 'take these off READ_KEYS: no code reads them');
 });
