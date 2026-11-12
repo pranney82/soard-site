@@ -200,7 +200,7 @@ try {
     'Invite email drafted in Kit', 'Project emails drafted in Kit', 'Newsletter emails drafted in Kit', 'Who an email written in Kit goes to', 'Signed copies and receipts', 'Remind by email', 'AI spending watch',
     'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Donors join the newsletter', 'Kid and project status follow JobTread', 'Text delivery reports',
     'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert', 'The packet email',
-    'Receipts both ways', 'Receipts from inboxes', 'Trade partners', 'Vendor and sponsor logos on kid pages', 'Insurance audits', 'The next four meetings', 'Action item reminders'];
+    'Receipts from inboxes', 'Trade partners', 'Vendor and sponsor logos on kid pages', 'Insurance audits', 'The next four meetings', 'Action item reminders'];
   ok(await panelTitle(page) === 'If Resend stops working' && sameSet(resendTitles, RESEND), `"Depends on" lists everything that uses Resend (${resendTitles.length})${setDiff(resendTitles, RESEND)}`);
   await page.screenshot({ path: join(OUT, 'desktop-depends.png'), fullPage: false });
 
@@ -359,7 +359,7 @@ try {
     webhook: true, lastEventAt: null, webhookError: null, lastRunAt: iso(60e3), lastCatchUpAt: null, catchUpError: 'JobTread returned 413: Request Entity Too Large',
     billsError: null, writeError: null, lastRebuildAt: iso(5 * 60e3), agentUsedAt: null, unsorted: 0, caps: false,
     billPay: { at: iso(60e3), error: null, last: { paid: 0, recorded: 0 }, mode: 'off', approvers: 0, waiting: 0, startsOn: null },
-    receipts: { toAp: { sent: 0 }, toMercury: { uploaded: 0 } }, odd: 0, closeouts: { at: iso(60e3), error: null, historyLeft: 0, closed: 15 },
+    receipts: { toMercury: { uploaded: 0 } }, odd: 0, closeouts: { at: iso(60e3), error: null, historyLeft: 0, closed: 15 },
     finance: { at: iso(60e3), backfill: { read: 1, doneAt: iso(3600e3) }, forecast: null, mercuryEmpty: true, cashLow: false, balancesError: null },
     vendors: { at: iso(60e3), error: null, autoW9: false, autoCoi: false },
   };

@@ -1,19 +1,20 @@
 /**
- * Staff inboxes, swept: receipts to the receipt inbox, family emails onto JobTread
+ * Staff inboxes, swept: receipts onto their card charges, family emails onto JobTread
  * ===========================================================================
  * Everyone at SOARD buys things and writes to families from their own inbox.
  * Every few minutes the site reads each active soardcharity.com mailbox's new
  * mail (Gmail read-only, the access in _mailbox.js) and sorts it:
  *
- *   - A receipt, paid order or bill for something bought → emailed to the
- *     receipt inbox (Job Costs settings, ap@ by default, which forwards to the
- *     DataX Receipt Processor) with its files, the way Mercury's receipt photos
- *     go (_spend-receipts.js). Workers AI reads it first, so shipping and
- *     delivery notices, ads, carts, refunds, statements and gifts to SOARD
- *     stay out (a receipt in a SOARD inbox is SOARD's: Peter, Nov 8 2026, "there
- *     are no personal expenses in the business domains"). So do emails the receipt inbox already has
- *     (on the email, or anywhere in its conversation), mail between staff and
- *     the money tools' own notices.
+ *   - A receipt, paid order or bill for something bought: Workers AI reads it
+ *     first, so shipping and delivery notices, ads, carts, refunds, statements
+ *     and gifts to SOARD stay out (a receipt in a SOARD inbox is SOARD's: Peter,
+ *     Nov 8 2026, "there are no personal expenses in the business domains"). So
+ *     do emails the receipt inbox already has (on the email, or anywhere in its
+ *     conversation), mail between staff and the money tools' own notices. One
+ *     for a SOARD card charge (Mercury's or Ramp's) goes onto that charge; any
+ *     other is noted ('kept') and sent nowhere. The site never emails the
+ *     receipt inbox (ap@): Ramp's bill inbox reads it and turned every receipt
+ *     and invoice the site sent there into a bill (Nov 12 2026).
  *   - Anything sent to the receipt inbox (ap@): a photo texted from a phone,
  *     a receipt passed on, a store's or a vendor's own email. The ap@ group
  *     copies it to whichever SOARD inbox it delivers to, which the sweep reads
@@ -49,8 +50,7 @@
  *   5. Undo: every comment it makes is recorded (posted_ids).
  *
  * Each email is handled once, even when it's in several inboxes (Message-ID).
- * Receipts start from the day this was turned on: older ones were forwarded by
- * hand and their bills exist. For its first day it only watches: what it would
+ * Receipts start from the day this was turned on. For its first day it only watches: what it would
  * have done shows in Automations, and is then done.
  */
 
@@ -59,7 +59,7 @@ import { accessToken, GMAIL_READ_SCOPE, GMAIL_MODIFY_SCOPE } from './_google-cal
 import { mailboxes, orgDomains, gmail, header, textOf, htmlText, filesOf, partsOf, bytesOf } from './_mailbox.js';
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { postAccountComment } from './_applicant-comms.js';
-import { EMAIL_FROM, REPLY_TO, emailConfigured, slackIssue, SITE_ORIGIN } from './_broadcast-notify.js';
+import { EMAIL_FROM, emailConfigured, slackIssue, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
@@ -86,14 +86,12 @@ const MAX_TRIES = 3;
 const RETRY_MS = 10 * 60 * 1000;
 const MAX_FILES = 6;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_SEND_BYTES = 30 * 1024 * 1024; // Resend takes 40 MB an email, after base64
 const SIGNATURE_BYTES = 40 * 1024;  // an inline picture smaller than this is a logo, not a photo
 const Q_MAX = 1200;
 const AT_ONCE = 6;
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const AI_TIMEOUT_MS = 8000;
 const LIST_HEADERS = ['From', 'To', 'Cc', 'Delivered-To', 'Reply-To', 'X-Original-From', 'X-Original-Sender', 'Subject', 'Message-ID', 'References', 'In-Reply-To', 'Auto-Submitted', 'List-Id', 'List-Unsubscribe', 'Precedence'];
-const SENT_TAG = 'receipt-from-inbox';
 
 // The money tools' and JobTread's own mail: already where it belongs
 const OWN_TOOLS = /@([\w-]+\.)*(ramp\.com|mercury\.com|jobtread\.com|zeffy\.com|intuit\.com|quickbooks\.com|plaid\.com|companycam\.com)$/i;
@@ -160,7 +158,7 @@ const named = (s) => [...String(s || '').matchAll(/(?:"([^"]*)"|([^,<>"]*?))\s*<
 // A person's name to compare by: first and last word ("Holly K. Ranney" → "holly ranney")
 const nameKey = (name) => { const w = String(name || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean); return w.length > 1 ? `${w[0]} ${w[w.length - 1]}` : ''; };
 const firstName = (name, email) => String(name || '').trim().split(/\s+/)[0] || String(email).split('@')[0];
-// The site's own email (its forwards to the receipt inbox come back through the ap@ group)
+// The site's own email (what it sent the receipt inbox before Nov 12 2026 came back through the ap@ group)
 const SITE_DOMAIN = addresses(EMAIL_FROM)[0]?.split('@')[1] || '';
 const isSiteMail = (e) => Boolean(SITE_DOMAIN) && normEmail(e).split('@')[1] === SITE_DOMAIN;
 
@@ -558,46 +556,14 @@ async function handleReceipt(env, ctx, row, msg) {
   const chargeKey = charge?.charge || null;
   const looking = charge?.state === 'looking';
   const what = `${v.vendor || 'a vendor'}${v.total ? ` ${v.total}` : ''}`;
-  // A SOARD card charge's receipt: the charge puts it on itself (lookForCardReceipts), looking at this email first, now
+  // A SOARD card charge's receipt (Mercury's or Ramp's): the charge puts it on itself (lookForCardReceipts), looking at
+  // this email first, now. That is all a paid card purchase needs.
   if (looking) await env.DB.prepare("UPDATE card_receipts SET hints = json_insert(COALESCE(hints, '[]'), '$[#]', ?), next_look = ? WHERE charge = ?").bind(`${row.mailbox}:${row.id}`, new Date(ctx.now).toISOString(), chargeKey).run();
-  // Mercury sends a makeover's receipt on to the receipt inbox itself
-  if (charge?.card === 'mercury') return { state: 'card', detail: `${what}: ${looking ? 'for' : 'already on'} ${chargeWords(charge)}`, chargeId: chargeKey, onCard: !looking };
-  // Ramp sends nothing on, so a Ramp charge's receipt still goes to the receipt inbox: once a charge
-  const first = chargeKey ? await env.DB.prepare("SELECT subject FROM mail_sweep WHERE charge_id = ? AND state IN ('sent', 'would', 'working') AND NOT (mailbox = ? AND id = ?) LIMIT 1").bind(chargeKey, row.mailbox, row.id).first() : null;
-  if (first) return { state: 'duplicate', detail: `the same card charge as “${first.subject}”, already sent`, chargeId: chargeKey, onCard: Boolean(charge) && !looking };
-  if (ctx.watching) return { state: 'would', detail: `would send ${what} to ${inbox}`, chargeId: chargeKey };
-  if (!emailConfigured(env)) throw new Error('RESEND_API_KEY isn’t set, so receipts can’t be sent on');
-
-  const attachments = [];
-  let total = 0;
-  for (const f of files) {
-    if ((total += f.size) > MAX_SEND_BYTES) break;
-    attachments.push({ filename: f.name, content: toBase64(await fileBytes(ctx.token, msg, f, ctx.fetchImpl)) });
-  }
-  // A receipt that's only the email itself: the email goes along as a file too
-  const html = partsOf(msg.payload).find((p) => p.mimeType === 'text/html' && !p.filename && p.body?.data);
-  if (!attachments.length && html) attachments.push({ filename: 'receipt.html', content: toBase64(bytesOf(html.body.data)) });
-  const day = v.date || new Date(sentAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-  const body = [
-    `A ${v.type === 'bill' ? 'bill' : 'receipt'} found in ${ctx.ownerName}’s email (${row.mailbox}).`,
-    `Vendor: ${v.vendor || 'not named'}`, `Amount: ${v.total || 'not found'}`, `Date: ${day}`,
-    `Original email from ${from}, ${when(sentAt)}: “${subject}”`,
-    ...(charge ? [`Card charge: ${charge.vendor || 'a vendor'} $${(charge.cents / 100).toFixed(2)} on ${firstName(ctx.ownerName, row.mailbox)}’s ${charge.card === 'ramp' ? 'Ramp' : 'Mercury'} card`] : []),
-    '', text.slice(0, 8000),
-  ].join('\n');
-  const sendSubject = `${v.type === 'bill' ? 'Bill' : 'Receipt'}: ${what} on ${day} (from ${firstName(ctx.ownerName, row.mailbox)}’s email)`.slice(0, 200);
-  const tags = [{ name: 'kind', value: SENT_TAG }];
-  const res = await ctx.fetchImpl('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: EMAIL_FROM, to: [inbox], reply_to: REPLY_TO, subject: sendSubject, text: body, attachments, tags }),
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 120)}`);
-  // Resend's reports on it (delivered, or turned away and why) land in the email log, which Automations reads
-  const sentId = (await res.json().catch(() => null))?.id;
-  if (sentId) await logSent(env, [{ id: sentId, to: inbox, subject: sendSubject }], { tags, now: ctx.now });
-  return { state: 'sent', detail: `sent ${what} to ${inbox}${attachments.length ? ` with ${attachments.length === 1 ? 'its file' : `${attachments.length} files`}` : ''}${charge ? `, for ${chargeWords(charge)}` : ''}`, chargeId: chargeKey, onCard: Boolean(charge) && !looking };
+  if (charge) return { state: 'card', detail: `${what}: ${looking ? 'for' : 'already on'} ${chargeWords(charge)}`, chargeId: chargeKey, onCard: !looking };
+  // On no SOARD card: noted here and sent nowhere. The site never emails the receipt inbox: Ramp's bill inbox reads it and
+  // made a bill of every receipt and invoice the site sent there (Nov 12 2026), many already paid. Ramp gets bills only
+  // from what vendors send it themselves until the move to Mercury.
+  return { state: 'kept', detail: `${v.type === 'bill' ? 'a bill' : 'a receipt'} from ${what}, on no SOARD card: noted, sent nowhere` };
 }
 
 async function handleFamily(env, ctx, row, msg) {
@@ -693,7 +659,7 @@ async function handle(env, ctx, row) {
   if (!claim.meta?.changes) return;
   try {
     // (an email to ap@ in two inboxes that get the group: the other copy settled it, or is waiting for its charge)
-    const handled = row.kind === 'ap' ? "('card', 'waiting', 'working')" : "('sent', 'posted', 'would', 'working')";
+    const handled = row.kind === 'ap' ? "('card', 'waiting', 'working')" : "('sent', 'posted', 'would', 'kept', 'working')";
     const twin = row.msgid ? await env.DB.prepare(`SELECT mailbox FROM mail_sweep WHERE msgid = ? AND kind = ? AND state IN ${handled} AND NOT (mailbox = ? AND id = ?) LIMIT 1`).bind(row.msgid, row.kind, row.mailbox, row.id).first() : null;
     if (twin) return await finish(env.DB, row, { state: 'duplicate', detail: `the same email as in ${twin.mailbox.split('@')[0]}’s inbox` }, ctx.now);
     const box = await ctx.open(row.mailbox);
@@ -1479,7 +1445,7 @@ async function sweep(env, st, { fetchImpl, now, print }) {
     const reminders = await settleReminders(env, ctx, st, { skip: (m) => Boolean(st.boxes[m]?.noMail), until: started + CARD_MS + 5000 });
     if (reminders) errors.push(reminders);
   }
-  if (ctx.notes.ramp) errors.push(`Ramp’s card charges can’t be read, so Ramp receipts go to the receipt inbox only: ${ctx.notes.ramp}`);
+  if (ctx.notes.ramp) errors.push(`Ramp’s card charges can’t be read, so receipts for Ramp cards stay in the email, off their charges: ${ctx.notes.ramp}`);
   if (ctx.notes.cards) errors.push(ctx.notes.cards);
   if (ctx.notes.lists) errors.push(ctx.notes.lists);
   const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
@@ -1518,7 +1484,7 @@ export async function mailSweepStatus(env, { now = Date.now() } = {}) {
   const rows = (await env.DB.prepare('SELECT kind, state, COUNT(*) AS n FROM mail_sweep WHERE updated_at >= ? GROUP BY kind, state').bind(since).all()).results || [];
   const counts = { receipt: {}, family: {} };
   for (const r of rows) counts[r.kind] = { ...counts[r.kind], [r.state]: r.n };
-  const recent = ((await env.DB.prepare("SELECT kind, state, detail, mailbox, updated_at FROM mail_sweep WHERE state IN ('sent', 'posted', 'would', 'failed', 'held') ORDER BY updated_at DESC LIMIT 12").all()).results || [])
+  const recent = ((await env.DB.prepare("SELECT kind, state, detail, mailbox, updated_at FROM mail_sweep WHERE state IN ('kept', 'posted', 'would', 'failed', 'held') ORDER BY updated_at DESC LIMIT 12").all()).results || [])
     .map((r) => ({ kind: r.kind, state: r.state, detail: r.detail, inbox: String(r.mailbox).split('@')[0], at: r.updated_at }));
   const queued = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
   // The card charges: receipts put on this week, still looking, none found in a week
@@ -1527,14 +1493,7 @@ export async function mailSweepStatus(env, { now = Date.now() } = {}) {
   const lists = await env.DB.prepare('SELECT week, COUNT(*) AS people, MAX(sent_at) AS at FROM receipt_lists GROUP BY week ORDER BY week DESC LIMIT 1').first();
   // Mercury's "needs a receipt" emails: the inboxes with the filter, and the week's by where they ended up
   const reminders = await reminderStatus(env.DB, st, since);
-  // Did the receipt inbox take the last one? (Resend's report, through the email log)
-  let lastSent = null;
-  try {
-    const r = await env.DB.prepare('SELECT to_addr, status, status_at, detail FROM email_log WHERE type = ? ORDER BY sent_at DESC LIMIT 1').bind(SENT_TAG).first();
-    if (r) lastSent = { to: r.to_addr, status: r.status, at: r.status_at, detail: r.detail || null };
-  } catch { /* nothing sent yet */ }
   return {
-    lastSent,
     key: Boolean(env.GOOGLE_CALENDAR_KEY), ai: Boolean(env.AI?.run), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY),
     ...Object.fromEntries(['startedAt', 'watchUntil', 'lastSweptAt'].map((k) => [k, st[k] ? new Date(st[k]).toISOString() : null])), error: st.error || null,
     inboxes: Object.values(st.boxes || {}).filter((b) => !b.noMail).length, backfillDone: Boolean(st.backfillDone), queued: queued?.n || 0, counts, recent, cards, lists: lists || null, reminders,

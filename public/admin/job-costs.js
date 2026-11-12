@@ -434,7 +434,7 @@ function Charges({ data, act, busy }) {
     </div>
     <section class="card" style="padding: 0;">
       <div class="sec-head"><h3>${labels.find(([k]) => k === show)[1]} <span class="count">${rows.length}</span></h3><span class="sec-head__hint">${rows.length ? `${usdCents(total)} · last 90 days` : ''}</span>
-        ${show === 'receipt' && html`<p class="sec-head__desc">A photo of the receipt in Mercury’s app is enough: the site sends it to ${data.config.receiptInbox} for the Receipt Processor. Or forward the receipt there. The JobTread bill clears it from this list.</p>`}
+        ${show === 'receipt' && html`<p class="sec-head__desc">Makeover charges with no JobTread bill yet. Add the receipt photo in Mercury’s app so it’s on the charge. The JobTread bill clears it from this list.</p>`}
         ${show === 'odd' && html`<p class="sec-head__desc">Worth a second look. Each was posted once in the Finance channel. Say it’s fine and it won’t come up again.</p>`}
         ${show === 'sort' && html`<p class="sec-head__desc">Charges the site couldn’t place: the cardholder is on more than one job, or isn’t on any. Pick once with “Always for…” and that vendor sorts itself next time.</p>`}</div>
       ${show === 'odd' ? odd.map((o) => html`<div class="jc-charge" key=${o.key}>
@@ -521,7 +521,7 @@ function Setup({ data, act, busy }) {
           </select></label>`)}
       </div>
       <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>Receipt inbox</h3>
-        <p class="sec-head__desc">Where receipt photos from Mercury’s app are sent for the Receipt Processor. It forwards to DataX from there.</p></div>
+        <p class="sec-head__desc">The address people send receipts to (a photo texted from a phone, a receipt passed on). The email sweep reads what arrives there and puts each receipt on its card charge. The site never emails it: Ramp’s bill inbox reads it too.</p></div>
       <div class="jc-body"><label class="jc-field"><span>Email</span><input class="form-input" type="email" value=${inbox} onInput=${(e) => setInbox(e.target.value)} style="max-width: 24rem;" /></label></div>
       <div class="jc-body" style="border-top: 1px solid var(--color-border);">
         <div class="jc-row"><button class="btn btn-primary" disabled=${!dirty || !!busy} onClick=${() => act({ action: 'setup', accountBuckets: acc, cardBuckets: cards, categories: cats, receiptInbox: inbox }, 'Saved. The last 30 days are sorted again in the next 2 minutes.')}>${busy === 'setup' ? 'Saving…' : 'Save'}</button>

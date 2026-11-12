@@ -594,8 +594,8 @@ export async function maybeRunSpend(env, { now = Date.now() } = {}) {
     if (mercuryConfigured(env)) report.notes = await writeNotes(env, { now }).catch((e) => ({ error: e.message }));
     // Approved bills paid from Mercury; Mercury's payments recorded on their JobTread bills
     report.billPay = await maybeRunBillPay(env, { now });
-    // Receipt photos from Mercury's app → ap@; bills' receipts → Mercury
-    report.receipts = await maybeRunReceipts(env, { jobs: await cachedJobs(env).catch(() => []), now }).catch((e) => ({ error: e.message }));
+    // Bills' receipts → their Mercury card charges
+    report.receipts = await maybeRunReceipts(env, { now }).catch((e) => ({ error: e.message }));
 
     if (now - Date.parse(cfg.lastRebuildAt || 0) > REBUILD_EVERY_MS) {
       await writeConfig(env.DB, { lastRebuildAt: new Date(now).toISOString() });

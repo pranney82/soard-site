@@ -15,7 +15,7 @@ import {
 } from '../functions/api/_bill-pay.js';
 import { closeoutOf, codeHistory, suggestBudget, addBudgetLines } from '../functions/api/_job-closeout.js';
 import { findOdd, refundTarget, checkOdd } from '../functions/api/_spend-odd.js';
-import { forwardMercuryReceipts, receiptSubject } from '../functions/api/_spend-receipts.js';
+import { maybeRunReceipts } from '../functions/api/_spend-receipts.js';
 import { RAMP_CODE_ID } from '../functions/api/_jobtread-bills.js';
 import { releaseVendorHolds } from '../functions/api/_bill-pay.js';
 import { TRADES } from '../functions/api/_vendors.js';
@@ -400,16 +400,12 @@ test('a refund goes back on the job its charge was on', async () => {
   assert.equal(refund.jobHow, 'refund');
 });
 
-test('a receipt photo in Mercury’s app goes to the receipt inbox', async () => {
+test('a receipt photo in Mercury’s app stays on its charge: nothing is emailed to ap@ (Ramp’s bill inbox reads it)', async () => {
   const t = { id: 'c9', kind: 'creditCardTransaction', status: 'sent', amount: -88.5, counterpartyName: 'LOWES #9', createdAt: iso(NOW - DAY), attachments: [{ fileName: 'r.jpg', url: 'https://files.example/r.jpg', attachmentType: 'receipt' }] };
   world.txns.c9 = t;
   await keepTransaction(env, t, { jobs: [{ id: 'J1', name: 'Max', status: 'Build', staff: [] }], cards: new Map(), now: NOW });
-  const r = await forwardMercuryReceipts(env, { jobs: [{ id: 'J1', name: 'Max' }], now: NOW });
-  assert.equal(r.sent, 1);
-  assert.equal(world.emails[0].to[0], 'ap@soardcharity.com');
-  assert.equal(world.emails[0].subject, receiptSubject({ id: 'c9', vendor: 'LOWES #9', cents: 8850, createdAt: t.createdAt }, 'Max'));
-  assert.equal(world.emails[0].attachments[0].content, 'AQID');
-  // Once
-  await forwardMercuryReceipts(env, { jobs: [], now: NOW });
-  assert.equal(world.emails.length, 1);
+  const before = world.emails.length;
+  const r = await maybeRunReceipts(env, { now: NOW });
+  assert.deepEqual(Object.keys(r), ['toMercury'], 'the heartbeat part only puts bills’ files on charges');
+  assert.equal(world.emails.length, before, 'no email at all');
 });

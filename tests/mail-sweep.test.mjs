@@ -426,8 +426,8 @@ test('the first day only watches: what it would do is listed, nothing is sent or
   assert.equal(of('upload').length, 0);
   assert.ok(of('gmail').every((c) => c.method === 'GET'), 'Gmail is only read');
 
-  assert.equal((await byId(m.r1.id))[0].state, 'would');
-  assert.match((await byId(m.r1.id))[0].detail, /would send Wayfair \$899\.00 to ap@soardcharity\.com/);
+  assert.equal((await byId(m.r1.id))[0].state, 'kept', 'a receipt on no SOARD card is only noted, watching or not');
+  assert.equal((await byId(m.r1.id))[0].detail, 'a receipt from Wayfair $899.00, on no SOARD card: noted, sent nowhere');
   assert.equal((await byId(m.r3.id))[0].detail, 'already at the receipt inbox');
   assert.match((await byId(m.r4.id))[0].detail, /^not a receipt: a quote/);
   assert.equal((await byId(m.r5.id))[0].detail, 'its conversation already went to the receipt inbox');
@@ -441,23 +441,17 @@ test('the first day only watches: what it would do is listed, nothing is sent or
   const s = await mailSweepStatus(env, { now: T0 + WATCH_MS });
   assert.equal(s.backfillDone, true);
   assert.equal(s.inboxes, 2);
-  assert.ok(s.counts.receipt.would >= 1 && s.counts.family.would >= 2);
+  assert.ok(s.counts.receipt.kept >= 1 && s.counts.family.would >= 2);
   assert.ok(s.recent.every((r) => !('subject' in r)), 'Automations shows names, not subjects');
 });
 
-test('after the watch: receipts go to the receipt inbox, family emails become hidden comments, replies under the first', async () => {
+test('after the watch: a receipt on no SOARD card is emailed nowhere (never ap@, which Ramp’s bill inbox reads), family emails become hidden comments, replies under the first', async () => {
   const m = seed();
   await maybeSweepMail(env, { now: T0, force: true });
   calls.length = 0;
   await maybeSweepMail(env, { now: T0 + WATCH_MS + MIN, force: true });
 
-  const sent = of('resend');
-  assert.equal(sent.length, 1);
-  assert.deepEqual(sent[0].body.to, ['ap@soardcharity.com']);
-  assert.equal(sent[0].body.subject, 'Receipt: Wayfair $899.00 on 2026-11-02 (from Pat’s email)');
-  assert.deepEqual(sent[0].body.attachments.map((a) => a.filename), ['order-123.pdf'], 'the receipt’s file, not the signature logo');
-  assert.equal(Buffer.from(sent[0].body.attachments[0].content, 'base64').toString(), '%PDF receipt');
-  assert.match(sent[0].body.text, /found in Pat Lee’s email \(pat@soardcharity\.com\)[\s\S]*Bunk bed \$899\.00/);
+  assert.equal(of('resend').length, 0, 'no email at all');
 
   const comments = of('comment');
   assert.equal(comments.length, 2, 'the same email in two inboxes is posted once');
@@ -475,11 +469,10 @@ test('after the watch: receipts go to the receipt inbox, family emails become hi
   assert.match(reply.input.message, /Got them, thank you!$/, 'the quoted history is cut');
   assert.equal(of('upload')[0].input.type, 'image/jpeg');
 
-  assert.equal((await byId(m.r1.id))[0].state, 'sent');
-  const logged = await env.DB.prepare('SELECT type, to_addr, status FROM email_log').all();
-  assert.deepEqual(logged.results, [{ type: 'receipt-from-inbox', to_addr: 'ap@soardcharity.com', status: 'sent' }], 'Resend’s reports on it can land');
-  await env.DB.prepare("UPDATE email_log SET status = 'bounced', detail = 'The group only takes mail from members', status_at = ?").bind(new Date(T0 + WATCH_MS + 2 * MIN).toISOString()).run();
-  assert.deepEqual((await mailSweepStatus(env, { now: T0 + WATCH_MS })).lastSent, { to: 'ap@soardcharity.com', status: 'bounced', at: new Date(T0 + WATCH_MS + 2 * MIN).toISOString(), detail: 'The group only takes mail from members' });
+  assert.equal((await byId(m.r1.id))[0].state, 'kept');
+  const status = await mailSweepStatus(env, { now: T0 + WATCH_MS });
+  assert.equal('lastSent' in status, false);
+  assert.ok(status.recent.some((r) => r.kind === 'receipt' && r.state === 'kept'), 'Automations lists what was noted');
   assert.equal((await byId(m.f1.id))[0].state, 'posted');
   assert.equal((await byId(m.f2.id))[0].state, 'posted');
 
@@ -511,23 +504,18 @@ test('an email queued under older rules is sorted again before anything is done 
   assert.ok(!of('comment').some((c) => /Can’t wait/.test(c.input.message)));
 });
 
-test('new mail after the start is picked up; a failed send is tried again later', async () => {
+test('new mail after the start is picked up, and a receipt on no SOARD card is never emailed', async () => {
   seed();
   await maybeSweepMail(env, { now: T0, force: true });
   await maybeSweepMail(env, { now: T0 + WATCH_MS + MIN, force: true });
   const later = T0 + WATCH_MS + 2 * MIN;
   const r = mail({ box: SAM, at: later, from: 'Fabric <orders@fabric.example>', to: SAM, subject: 'Your receipt from Fabric', text: 'Curtains $45.10' });
   aiVerdicts['Your receipt from Fabric'] = { type: 'receipt', vendor: 'Fabric', total: '$45.10', date: '', personal: false, reason: 'receipt' };
-  resendOk = false;
   calls.length = 0;
   await maybeSweepMail(env, { now: later + MIN, force: true });
-  assert.equal((await byId(r.id))[0].state, 'failed');
-  resendOk = true;
-  await maybeSweepMail(env, { now: later + 2 * MIN, force: true });
-  assert.equal((await byId(r.id))[0].state, 'failed', 'not retried straight away');
+  assert.deepEqual((await byId(r.id)).map((x) => [x.state, x.detail]), [['kept', 'a receipt from Fabric $45.10, on no SOARD card: noted, sent nowhere']]);
   await maybeSweepMail(env, { now: later + 15 * MIN, force: true });
-  assert.equal((await byId(r.id))[0].state, 'sent');
-  assert.equal(of('resend').filter((c) => /Fabric/.test(c.body.subject)).length, 2);
+  assert.equal(of('resend').length, 0);
 });
 
 test('a draft isn’t an email yet: one being written isn’t picked up, one already waiting is passed over, and the sent copy goes on', async () => {
@@ -583,7 +571,7 @@ test('a cap reached: a receipt and a family email wait with no try spent, the ju
   env.AI.run = answers;
   aiVerdicts['Thanks for your order #77'] = { type: 'receipt', vendor: 'Studio', total: '$44.00', date: '', personal: false, reason: 'an order' };
   await maybeSweepMail(env, { now: at + 25 * MIN, force: true });
-  assert.equal((await byId(receipt.id))[0].state, 'sent', 'read after all, and sent on');
+  assert.equal((await byId(receipt.id))[0].state, 'kept', 'read after all, and noted');
   assert.equal((await byId(family.id))[0].state, 'posted');
   assert.equal(of('comment').length, 1);
 });
@@ -718,7 +706,7 @@ test('a store’s email through a SOARD group (orders@) is the store’s: a rece
   assert.deepEqual(of('mercury').map((c) => c.file), ['Amazon.com receipt 2026-11-03.pdf'], 'named for the store, not the group');
 });
 
-test('a Ramp card charge gets its receipt in Ramp, its receipt still goes to the receipt inbox once, and every receipt is SOARD’s', async () => {
+test('a Ramp card charge gets its receipt in Ramp and nowhere else, and every receipt is SOARD’s', async () => {
   Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
   await maybeSweepMail(env, { now: T0, force: true });
   const at = T0 + WATCH_MS + MIN;
@@ -740,14 +728,12 @@ test('a Ramp card charge gets its receipt in Ramp, its receipt still goes to the
   assert.equal(st.error, null);
   assert.ok(of('ramp-token').every((c) => c.scope === 'transactions:read receipts:write users:read'));
   assert.deepEqual(of('ramp-receipt').map((c) => [c.transaction, c.user, c.key, c.file]), [['tx1', 'u-pat', `ramp:tx1:${order.id}:0`, 'Etsy receipt 2026-11-03.pdf']], 'once, and never on a charge that has a receipt');
-  const sent = of('resend');
-  assert.deepEqual(sent.map((x) => x.body.subject.split(' on ')[0]), ['Receipt: PrintShop $48.36', 'Receipt: Lumber Co $22.99', 'Receipt: Stream $15.49'], 'a Ramp charge’s receipt once; one on no card as before');
-  assert.match(sent[0].body.text, /Card charge: Etsy \$48\.36 on Pat’s Ramp card/);
-  assert.equal((await byId(again.id))[0].state, 'duplicate');
+  assert.equal(of('resend').length, 0, 'nothing emailed: Ramp’s bill inbox would make a bill of a paid receipt');
+  assert.deepEqual(await Promise.all([order, again, lumber].map(async (m) => (await byId(m.id))[0].state)), ['card', 'card', 'card'], 'each Ramp purchase’s email stays with its charge');
   assert.equal((await cardRow('ramp:tx1')).state, 'attached');
   assert.equal((await cardRow('ramp:tx2')).state, 'had');
   assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST' && c.path.endsWith('/modify')).map((c) => c.path), [order, again, lumber].map((m) => `/messages/${m.id}/modify`), 'the card charges’ emails leave the inbox; the plan on no card stays');
-  assert.equal((await byId(plan.id))[0].state, 'sent');
+  assert.equal((await byId(plan.id))[0].state, 'kept');
 });
 
 test('the first run catches up on the last 90 days of card charges once; after that it reads a week', async () => {
@@ -874,7 +860,7 @@ test('Email the receipt: sent to themselves with the photo, it goes on that char
   assert.notEqual((await byId(spoof.id))[0]?.kind, 'tagged', 'only SOARD’s own people can send a charge its receipt');
 });
 
-test('Ramp refusing the card scopes: its receipts go to the receipt inbox as before, and Automations says why', async () => {
+test('Ramp refusing the card scopes: its receipts stay in the email, nothing is sent anywhere, and Automations says why', async () => {
   Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
   refuseScopes.add('transactions:read receipts:write users:read');
   await maybeSweepMail(env, { now: T0, force: true });
@@ -883,9 +869,9 @@ test('Ramp refusing the card scopes: its receipts go to the receipt inbox as bef
   aiVerdicts['Your Etsy Purchase from PrintShop'] = { type: 'receipt', vendor: 'PrintShop', total: '$48.36', reason: 'an order' };
   calls.length = 0;
   const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
-  assert.equal(of('resend').length, 1);
-  assert.equal((await byId(m.id))[0].state, 'sent');
-  assert.match(st.error, /Ramp’s card charges can’t be read, so Ramp receipts go to the receipt inbox only: Ramp refused the keys \(400\)\. .*transactions:read, receipts:write, users:read/);
+  assert.equal(of('resend').length, 0);
+  assert.equal((await byId(m.id))[0].state, 'kept');
+  assert.match(st.error, /Ramp’s card charges can’t be read, so receipts for Ramp cards stay in the email, off their charges: Ramp refused the keys \(400\)\. .*transactions:read, receipts:write, users:read/);
 });
 
 test('every account in SOARD’s Google is SOARD’s, on any of its domains: all its mail is read, and its people are staff', async () => {
@@ -904,8 +890,12 @@ test('every account in SOARD’s Google is SOARD’s, on any of its domains: all
   aiVerdicts['Your receipt from Lumber Co'] = { type: 'receipt', vendor: 'Lumber Co', total: '$22.99', reason: 'paid' };
   calls.length = 0;
   await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
-  for (const m of [store, soard, nikki]) assert.equal((await byId(m.id))[0].state, 'sent');
-  assert.deepEqual(of('resend').map((c) => c.body.subject.split(' on ')[0]), ['Receipt: Perigold $480.00', 'Receipt: Walmart $83.76', 'Receipt: Lumber Co $22.99'], 'the store account’s own mail too, and a store-only account’s');
+  assert.deepEqual(await Promise.all([store, soard, nikki].map(async (m) => (await byId(m.id))[0].detail)), [
+    'a receipt from Perigold $480.00, on no SOARD card: noted, sent nowhere',
+    'a receipt from Walmart $83.76, on no SOARD card: noted, sent nowhere',
+    'a receipt from Lumber Co $22.99, on no SOARD card: noted, sent nowhere',
+  ], 'the store account’s own mail too, and a store-only account’s');
+  assert.equal(of('resend').length, 0);
   assert.equal((await byId(coworker.id)).length, 0, 'a store coworker writing to staff is staff mail');
 });
 

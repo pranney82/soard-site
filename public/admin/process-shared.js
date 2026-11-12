@@ -304,9 +304,9 @@ export const MONEY = {
       { t: 'A charge that looks wrong is flagged: twice in a day, far over the usual, a new monthly charge', autos: ['Odd charges'] },
     ]},
     { t: 'Receipts', policy: ['Credit Cards'], items: [
-      { t: 'A receipt in anyone’s inbox goes to the receipt inbox without being forwarded', autos: ['Receipts from inboxes'] },
+      { t: 'A receipt in anyone’s inbox goes onto its card charge without being forwarded', autos: ['Receipts from inboxes'] },
       { t: 'Each receipt becomes a paid JobTread bill, one line per cost code', autos: ['Receipts → JobTread bills'] },
-      { t: 'Receipts are matched between Mercury and JobTread both ways', autos: ['Receipts both ways'] },
+      { t: 'A JobTread bill’s receipt goes onto its Mercury card charge', autos: ['Bill receipts onto Mercury charges'] },
       { t: 'Charges still without a receipt after 2 days are listed each weekday morning', autos: ['Budget alerts'] },
     ]},
     { t: 'Vendor papers', policy: ['IRS Form 1099'], items: [
@@ -406,7 +406,7 @@ export const LINE_RULES = [
 export const STEP_RULES = [
   { re: /^demo day\b/i, autos: ['Invite engine', 'CompanyCam photos on every job'] },
   { re: /^mobilization\b/i, makeover: ['Monetary sponsor ↔ JobTread'], autos: ['Vendor and sponsor logos on kid pages', 'Vendors on their JobTread jobs', 'W-9s and insurance'] },
-  { re: /\bin progress\b|\bunderway\b/i, autos: ['Charges onto jobs, live', 'Budget alerts', 'Bill approvals and pay', 'Receipts both ways', 'Odd charges', 'CompanyCam photos on every job'] },
+  { re: /\bin progress\b|\bunderway\b/i, autos: ['Charges onto jobs, live', 'Budget alerts', 'Bill approvals and pay', 'Bill receipts onto Mercury charges', 'Odd charges', 'CompanyCam photos on every job'] },
   { re: /^reveal day\b/i, autos: ['Go / no-go', 'Phone stream (Larix)', 'Automatic start & stop', 'Simulcast to Facebook', 'Simulcast to YouTube', '/live/ page follows the kid', 'Live hub', 'Family messages, AI screened', 'Give panel (Zeffy)', '“We’re live” email (Kit)', 'Reminder emails', 'Browser push reminders', 'Reveal reminder signup', 'Feed monitor', 'Reveal-day health check', 'Alert emails', 'Kid and project status follow JobTread'] },
   { re: /^post[- ]?construction\b/i, autos: ['Replay goes up', 'Instagram Reel', 'Facebook replay rescue', 'Jump to the reveal', 'Close-outs'] },
 ];
@@ -489,7 +489,7 @@ export const MONEY_RULES = [
   { re: /\blooks wrong\b|\bunusual charges\b/i, autos: ['Odd charges'] },
   { re: /\breceipt inbox\b/i, autos: ['Receipts from inboxes'] },
   { re: /\bpaid jobtread bill\b/i, autos: ['Receipts → JobTread bills'] },
-  { re: /\bmatched between mercury and jobtread\b/i, autos: ['Receipts both ways'] },
+  { re: /\bmatched between mercury and jobtread\b/i, autos: ['Bill receipts onto Mercury charges'] },
   { re: /\bwithout a receipt\b/i, autos: ['Budget alerts'] },
   { re: /\bw-9 and insurance\b/i, autos: ['W-9s and insurance', 'Vendors on their JobTread jobs'] },
   { re: /\bpapers are current\b/i, autos: ['W-9s and insurance'] },
