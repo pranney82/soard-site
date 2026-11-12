@@ -5508,6 +5508,7 @@ function ServiceAreaCard({ s, go }) {
           <button class="btn btn-ghost" disabled=${busy || !addr.trim()} onClick=${test}>${busy ? 'Checking…' : 'Check'}</button>
         </div>
         ${res && html`<p class=${res.error ? 'afe-bad' : 'afe-sum'} aria-live="polite">${res.error || `${res.text}${res.area?.county ? ` (${res.area.county} County)` : ''}${res.area?.band === 'far' ? (beyond === 'stop' ? '. The form would stop this family.' : '. The form tells this family, and they can still apply.') : ''}`}</p>`}
+        ${res && !res.error && res.area && html`<p class="afe-hint">${res.area.source ? `Found by ${({ esri: 'Esri', census: 'the Census', openstreetmap: 'OpenStreetMap' })[res.area.source] || res.area.source}${res.area.accuracy ? ` (${res.area.accuracy})` : ''}.` : 'No address lookup has this house.'}${res.area.esriSaid ? ` ${res.area.esriSaid}.` : ''}</p>`}
         <span class="afe-hint">Uses what's on screen here, saved or not, the same way the form does.</span>
       </div>
 

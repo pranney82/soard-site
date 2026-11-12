@@ -126,7 +126,7 @@ async function tellPeter(env, stage, n, now) {
  */
 export function esriLocator(env, fetchImpl = fetch) {
   if (!esriOn(env)) return null;
-  return async (oneLine) => {
+  return async (oneLine, notes = {}) => {
     const q = String(oneLine || '').trim().slice(0, 300);
     if (!q) return null;
     if (!(await spendEsri(env))) throw new Error('This month’s Esri lookups are used');
@@ -137,8 +137,11 @@ export function esriLocator(env, fetchImpl = fetch) {
         outFields: 'Addr_type,StAddr,Subregion,Score', f: 'json',
       }).toString();
       const r = await fetchImpl(u.href, { headers: { 'X-Esri-Authorization': `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(6000) });
-      if (!r.ok) throw new Error(`Esri returned ${r.status}`);
-      return r.json();
+      const body = await r.text();
+      let j = null;
+      try { j = JSON.parse(body); } catch { /* not JSON */ }
+      if (!r.ok && !j?.error) throw new Error(`Esri returned ${r.status}${body ? `: ${body.replace(/\s+/g, ' ').slice(0, 160)}` : ''}`);
+      return j || {};
     };
     let j = await ask(await esriToken(env, fetchImpl));
     // A pass Esri no longer takes (498 invalid, 499 missing): a new one, once
@@ -146,15 +149,16 @@ export function esriLocator(env, fetchImpl = fetch) {
       await dropToken(env);
       j = await ask(await esriToken(env, fetchImpl, { fresh: true }));
     }
-    if (j?.error) throw new Error(`Esri: ${j.error.message || j.error.code}`);
+    if (j?.error) throw new Error(`Esri: ${[j.error.message || j.error.code, ...(Array.isArray(j.error.details) ? j.error.details : [])].filter(Boolean).join(' ')}`);
     const c = (j?.candidates || [])[0];
     const at = c?.attributes || {};
     const lat = Number(c?.location?.y);
     const lng = Number(c?.location?.x);
-    if (!c || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (!c || !Number.isFinite(lat) || !Number.isFinite(lng)) { notes.esri = 'Esri found nothing for this address'; return null; }
     // Only the house typed: its own point, or its place along its own street, at the same number
-    if (!HOUSE_TYPES.has(at.Addr_type) || Number(at.Score ?? c.score) < MIN_SCORE) return null;
-    if (!sameHouse(q.split(',')[0], at.StAddr || String(c.address || '').split(',')[0])) return null;
+    const found = `${at.Addr_type || 'a place'}${at.StAddr || c.address ? ` (${at.StAddr || c.address})` : ''}`;
+    if (!HOUSE_TYPES.has(at.Addr_type) || Number(at.Score ?? c.score) < MIN_SCORE) { notes.esri = `Esri found only ${found}`; return null; }
+    if (!sameHouse(q.split(',')[0], at.StAddr || String(c.address || '').split(',')[0])) { notes.esri = `Esri found another house: ${found}`; return null; }
     return {
       lat, lng,
       county: String(at.Subregion || '').replace(/\s+County$/i, '').trim() || null,

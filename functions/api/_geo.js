@@ -31,21 +31,26 @@ const UA = 'SunshineOnARanneyDay-application/1.0 (sunshineonaranneyday.com)';
 /**
  * { lat, lng, county, matched, source } for a one-line address, or null when no one asked has that house.
  * `esri` is ./_esri.js's lookup (null without credentials). Throws only when no one could be asked (the
- * check is tried again later), never because a house wasn't found.
+ * check is tried again later), never because a house wasn't found. `notes.esri` says why Esri didn't
+ * give the answer when it was asked and didn't (for staff: Admin → Settings → Try an address).
  */
-export async function geocode(address, fetchImpl = fetch, { esri = null } = {}) {
+export async function geocode(address, fetchImpl = fetch, { esri = null, notes = {} } = {}) {
   const q = String(address || '').trim();
   if (!q) return null;
   let failed = null;
   let answered = false; // Esri or the Census said they don't have it (OpenStreetMap's maps are too patchy for its "no" to count)
-  const asks = [[esri, true], [(x) => censusGeocode(x, fetchImpl), true], [(x) => osmGeocode(x, fetchImpl), false]];
-  for (const [ask, full] of asks) {
+  const asks = [[esri, true, 'esri'], [(x) => censusGeocode(x, fetchImpl), true], [(x) => osmGeocode(x, fetchImpl), false]];
+  for (const [ask, full, name] of asks) {
     if (!ask) continue;
     try {
-      const g = await ask(q);
+      const g = await ask(q, notes);
       if (g) return g;
       if (full) answered = true;
-    } catch (e) { failed ||= e; }
+      if (name === 'esri' && !notes.esri) notes.esri = 'Esri doesn’t have this exact house';
+    } catch (e) {
+      failed ||= e;
+      if (name === 'esri') notes.esri = e.message;
+    }
   }
   if (!answered && failed) throw failed;
   return null;
@@ -123,19 +128,21 @@ export function checkableAddress(a) {
 /**
  * The full check for an address against the area ({ polygon, nearMiles } or just the corners):
  * { status: 'inside' | 'outside' | 'unknown', band: 'inside' | 'near' | 'far' | 'unknown',
- *   miles?, edgeMiles?, nearMiles?, lat?, lng?, county?, matched?, source?, accuracy?, reason?, error? }
+ *   miles?, edgeMiles?, nearMiles?, lat?, lng?, county?, matched?, source?, accuracy?, reason?, error?, esriSaid? }
  * reason is 'no-match' (no one asked has the house) or 'error' (no one could be asked); either way the
  * family answers for themselves. `esri`: ./_esri.js's esriLocator(env), when the caller has it.
  */
 export async function checkServiceArea(address, area, fetchImpl = fetch, { esri = null } = {}) {
   const rules = Array.isArray(area) ? { polygon: cleanCorners(area), nearMiles: NEAR_MILES } : areaRules(area);
+  const notes = {};
+  const esriSaid = () => (notes.esri ? { esriSaid: notes.esri } : {});
   try {
-    const g = await geocode(address, fetchImpl, { esri });
-    if (!g) return { status: 'unknown', band: 'unknown', reason: 'no-match', error: 'The address lookup couldn’t find this house.', ...(esri ? { withEsri: true } : {}) };
+    const g = await geocode(address, fetchImpl, { esri, notes });
+    if (!g) return { status: 'unknown', band: 'unknown', reason: 'no-match', error: 'The address lookup couldn’t find this house.', ...(esri ? { withEsri: true } : {}), ...esriSaid() };
     const p = placeHome(g.lat, g.lng, rules);
-    return { status: p.band === 'inside' ? 'inside' : p.band === 'unknown' ? 'unknown' : 'outside', band: p.band, miles: p.miles, edgeMiles: p.edgeMiles, nearMiles: rules.nearMiles, ...g };
+    return { status: p.band === 'inside' ? 'inside' : p.band === 'unknown' ? 'unknown' : 'outside', band: p.band, miles: p.miles, edgeMiles: p.edgeMiles, nearMiles: rules.nearMiles, ...g, ...esriSaid() };
   } catch (e) {
-    return { status: 'unknown', band: 'unknown', reason: 'error', error: e.message };
+    return { status: 'unknown', band: 'unknown', reason: 'error', error: e.message, ...esriSaid() };
   }
 }
 

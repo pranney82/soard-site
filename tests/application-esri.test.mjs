@@ -151,6 +151,7 @@ test('Esri with only the street, another number or a number past the street’s 
     esri = point(-84.5, 33.9, { ...attrs, Subregion: 'Cobb County', Match_addr: 'x' });
     const out = await checkServiceArea('205 Lawrence St NE, Marietta, GA 30060', f.serviceArea, fetch, { esri: esriLocator(env) });
     assert.equal(out.source, 'census', `${attrs.Addr_type} ${attrs.StAddr}: fell to the Census`);
+    assert.match(out.esriSaid, /^Esri found (only|another house)/, `${attrs.Addr_type}: why, for staff`);
     assert.equal(out.band, 'inside');
   }
   esri = point(-84.54, 33.95, { Addr_type: 'StreetAddress', StAddr: '205 Lawrence St NE', Subregion: 'Cobb County', Match_addr: '205 Lawrence St NE, Marietta, Georgia, 30060' });
@@ -166,6 +167,8 @@ test('Esri down or turning SOARD away: the Census and OpenStreetMap carry on; al
   esri = { error: { code: 403, message: 'User does not have permissions to store geocoding results.' } };
   const b = await checkServiceArea('205 Lawrence St NE, Marietta, GA 30060', f.serviceArea, fetch, { esri: esriLocator(env) });
   assert.equal(b.source, 'census', 'no pay-as-you-go yet: the Census, not a failure');
+  assert.match(b.esriSaid, /permissions to store geocoding results/, 'and staff are told why Esri didn’t answer');
+  assert.match(a.esriSaid, /Esri returned 503/);
   w.world.censusDown = true;
   esri = 503;
   const c = await checkServiceArea('205 Lawrence St NE, Marietta, GA 30060', f.serviceArea, fetch, { esri: esriLocator(env) });
