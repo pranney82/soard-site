@@ -77,7 +77,42 @@ export function orderKind(subject, snippet = '') {
   // Some stores put it only in the preview: "Your package was delivered!" under a subject of the item's name
   const p = String(snippet || '').slice(0, 160);
   for (const [kind, re] of KINDS) if (kind !== 'order' && re.test(p)) return kind;
+  // An order confirmation whose subject says only thanks ("Thanks from The Container Store!"): its preview names the
+  // order by its number ("your order 899120272624"). An ad's "order 2 or more" has no number that long
+  if (ORDER_NUMBER_SAID.test(p)) return 'order';
   return null;
+}
+const ORDER_NUMBER_SAID = /\border\s*(?:#|no\.?|number:?)?\s*#?\s*[A-Z]{0,4}-?\d{6,}/i;
+
+/**
+ * An order email's total, in cents: what was paid for it all ("Order Total $502.10", Walmart's "Includes all fees,
+ * taxes and discounts $83.76") → cents | null. Its subtotal is never taken for it
+ */
+export function orderTotalCents(...texts) {
+  const RULES = [
+    /\b(?:order total|grand total|total amount|amount charged|total charged|total paid|payment total)\b[^$\d]{0,40}\$\s?([\d,]+\.\d{2})/i,
+    /\bincludes all fees,? taxes(?: and discounts)?[^$\d]{0,20}\$\s?([\d,]+\.\d{2})/i,
+    /(?<!sub)(?<!sub-)(?<!sub )\btotal\b:?[^$\d\n]{0,20}\$\s?([\d,]+\.\d{2})/i,
+  ];
+  for (const re of RULES) {
+    for (const t of texts) {
+      const m = re.exec(String(t || ''));
+      if (m) return centsOf(m[1]);
+    }
+  }
+  return null;
+}
+
+/**
+ * A one-thing order whose email gives only what was paid in all (Walmart's): that is the thing's price (each, when
+ * several of it came), tax and fees in. A read with its price, or with more than one thing, is left as it is
+ */
+export function withOneTotal(read, ...texts) {
+  if (read?.kind !== 'order' || (read.items || []).length !== 1 || read.items[0].cents) return read;
+  const total = orderTotalCents(...texts);
+  if (!total) return read;
+  const it = read.items[0];
+  return { ...read, items: [{ ...it, cents: Math.round(total / Math.max(1, it.quantity || 1)), fromTotal: true }] };
 }
 
 // ─── Links and tracking ─────────────────────────────────────────────

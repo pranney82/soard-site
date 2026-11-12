@@ -31,7 +31,7 @@ import { normEmail, founderEmails, peopleRows } from './_board-roles.js';
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
 import { mailboxes, orgDomains, gmail, header, partsOf, bytesOf, htmlText } from './_mailbox.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
-import { readOrderEmail, orderKind, withAi, withAltText, ORDER_SCHEMA, ORDER_PROMPT, storeOf } from './_order-read.js';
+import { readOrderEmail, orderKind, withOneTotal, withAi, withAltText, ORDER_SCHEMA, ORDER_PROMPT, storeOf } from './_order-read.js';
 
 const STAFF_DOMAIN = 'soardcharity.com';
 // orders@ is a Google group, the address on stores' accounts: a group has no inbox of its own, so its mail is read where
@@ -69,7 +69,12 @@ const RETRIAGE_A_RUN = 40;
 const AT_ONCE = 6;
 const HEADERS = ['From', 'X-Original-From', 'X-Original-Sender', 'Reply-To', 'To', 'Cc', 'Delivered-To', 'Subject', 'Message-ID', 'List-Id'];
 // Order words in the subject: Gmail does the first sort, so a run lists only what could be an order email
-export const ORDER_Q = 'subject:(order OR orders OR ordered OR shipped OR shipping OR shipment OR delivered OR delivery OR arriving OR arrived OR "on its way" OR "on the way" OR package OR pickup OR "picked up" OR cancelled OR canceled OR cancellation OR refund OR return OR tracking OR purchase OR delayed OR backordered)';
+export const ORDER_Q = 'subject:(order OR orders OR ordered OR shipped OR shipping OR shipment OR delivered OR delivery OR arriving OR arrived OR "on its way" OR "on the way" OR package OR pickup OR "picked up" OR cancelled OR canceled OR cancellation OR refund OR return OR tracking OR purchase OR delayed OR backordered OR thanks OR "thank you" OR receipt OR confirmation OR confirmed)';
+// The search for order mail widened (2: subjects that only thank, "Thanks from The Container Store!", Nov 12 2026): every
+// inbox walks its 60 days again with it, passing over what it knows
+export const QUERY_V = 2;
+// One-thing orders whose email gives only its total (Walmart's): read again for that price, once (PRICE_V)
+export const PRICE_V = 2;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS order_mail (
@@ -336,12 +341,14 @@ async function readOne(env, ctx, row) {
         // order number or items would take the kid's line back to Not ordered in JobTread
         const tracking = [...(before.tracking || [])];
         for (const t of read.tracking || []) if (!tracking.some((x) => x.number === t.number)) tracking.push(t);
-        return settle(env, ctx, row, 'read', { ...before, tracking, v: READER_V }, summary({ ...before, tracking }));
+        const kept = withOneTotal({ ...before, tracking }, text, html ? htmlText(html) : '');
+        return settle(env, ctx, row, 'read', { ...kept, v: READER_V }, summary(kept));
       }
       if (ai?.kind === 'not_order') return settle(env, ctx, row, 'skipped', null, 'not an order email, by its words');
       read = withAi(read, ai);
       if (!ai) read.aiMissed = true;
     }
+    read = withOneTotal(read, text, html ? htmlText(html) : '');
     read.v = READER_V;
     return settle(env, ctx, row, 'read', read, summary(read));
   } catch (err) {
@@ -402,6 +409,16 @@ async function sweep(env, st, { fetchImpl, now }) {
     st.readerV = READER_V;
   }
   st.boxes ||= {};
+  // The search widened: every inbox walks its 60 days again with it (what's known already isn't looked at twice)
+  if ((st.queryV || 1) < QUERY_V) {
+    for (const bs of Object.values(st.boxes)) Object.assign(bs, { backfilled: null, backfillPage: null, pageQ: null, page: null, pageMax: null });
+    st.queryV = QUERY_V;
+  }
+  // One-thing orders read before their total was taken for their price: read again, once, in place
+  if ((st.priceV || 1) < PRICE_V) {
+    await env.DB.prepare("UPDATE order_mail SET tries = 0, read = json_set(read, '$.v', ?) WHERE state = 'read' AND json_extract(read, '$.kind') = 'order' AND json_array_length(json_extract(read, '$.items')) = 1 AND json_extract(read, '$.items[0].cents') IS NULL").bind(READER_V - 1).run();
+    st.priceV = PRICE_V;
+  }
   // Inboxes in turn, a few a run, starting where the last run stopped
   const at = (st.nextBox || 0) % boxes.length;
   const turn = [...boxes.slice(at), ...boxes.slice(0, at)].slice(0, BOXES_A_RUN);

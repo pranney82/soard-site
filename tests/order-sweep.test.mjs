@@ -478,3 +478,40 @@ test('Nov 12 review: Automations says when Agent Gracie can’t be kept on order
   await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ lastSweptAt: now, inboxes: 3, ordersFeed: { ok: true, at: now } })).run();
   assert.equal(entry.live({ kidItems: { orders: { ...(await orderSweepStatus(env, { now })), key: true } } }).s, 'live');
 });
+
+test('Nov 12: an order confirmation whose subject only thanks (The Container Store’s) is found, by a second walk of the 60 days, and read', async () => {
+  const { ORDER_Q } = await import('../functions/api/_order-sweep.js');
+  assert.match(ORDER_Q, /thanks OR "thank you" OR receipt OR confirmation/);
+  await run(T0);
+  // An email the old search never brought in (its subject has none of the old words), from before the inbox's cursor
+  const cs = mail({ box: PAT, at: T0 - 10 * DAY, from: 'The Container Store <contain@containerstore.com>', subject: 'Thanks from The Container Store!', text: 'Pat Lee, your order 899100000001 from your recent purchase. 2 Elfa Mesh Drawer $26.42 $52.85' });
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st, queryV: 1 })).run();
+  aiAnswers['Thanks from The Container Store!'] = { kind: 'order', orderNumber: '899100000001', items: [{ name: 'Elfa Mesh Drawer', quantity: 2, price: '$26.42' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
+  for (let i = 1; i <= 6; i++) await run(T0 + i * 4 * MIN);
+  const r = (await rows()).find((x) => x.id === cs.id);
+  assert.deepEqual([r?.state, r?.kind], ['read', 'order']);
+  assert.equal(JSON.parse(r.read).items[0].cents, 2642);
+  const after = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  assert.equal(after.queryV, 2);
+  assert.ok(after.boxes[PAT].backfilled, 'the walk ends');
+});
+
+test('Nov 12: a one-thing order whose email gives only its total (Walmart’s) takes that total for its price, and one read before is read again for it, once', async () => {
+  const w = mail({ box: PAT, at: T0 - DAY, from: 'Walmart <help@walmart.com>', subject: 'Pat, thanks for your order', text: 'Order number: 2000155-00000001 Bathroom Storage Cart with 4 Wheels Includes all fees, taxes and discounts $83.76' });
+  aiAnswers['Pat, thanks for your order'] = { kind: 'order', orderNumber: '2000155-00000001', items: [{ name: 'Bathroom Storage Cart with 4 Wheels', quantity: 1, price: '' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
+  await run(T0);
+  let r = (await rows()).find((x) => x.id === w.id);
+  assert.equal(JSON.parse(r.read).items[0].cents, 8376);
+  // As read before this: no price; the once-over reads it again
+  await env.DB.prepare("UPDATE order_mail SET read = json_set(json_set(read, '$.items[0].cents', NULL), '$.items[0].fromTotal', NULL) WHERE id = ?").bind(w.id).run();
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st, priceV: 1 })).run();
+  await run(T0 + 4 * MIN);
+  r = (await rows()).find((x) => x.id === w.id);
+  assert.deepEqual([r.state, JSON.parse(r.read).items[0].cents], ['read', 8376]);
+  // A thing with its own price is never changed by the total
+  const { withOneTotal } = await import('../functions/api/_order-read.js');
+  assert.equal(withOneTotal({ kind: 'order', items: [{ name: 'Lamp', quantity: 1, cents: 4500 }] }, 'Order Total $49.17').items[0].cents, 4500);
+  assert.equal(withOneTotal({ kind: 'order', items: [{ name: 'A' }, { name: 'B' }] }, 'Order Total $49.17').items[0].cents, undefined);
+});
