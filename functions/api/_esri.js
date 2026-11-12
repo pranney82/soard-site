@@ -25,6 +25,8 @@ const TOKEN_URL = 'https://www.arcgis.com/sharing/rest/oauth2/token';
 const GEOCODE_URL = 'https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates';
 export const ESRI_MONTHLY = 1000; // stored lookups a month: about $4 at most
 const TWO_WEEKS_MINUTES = 20160;
+// The credential takes requests from the website only (its Referrer URLs): every request says it's from there
+const refererOf = (env) => `${String(env?.SITE_ORIGIN || 'https://sunshineonaranneyday.com').replace(/\/+$/, '')}/`;
 // The house itself (its point, or its unit), or its place along its own street from the street's numbers
 const HOUSE_TYPES = new Set(['PointAddress', 'Subaddress', 'StreetAddress']);
 const MIN_SCORE = 80;
@@ -56,7 +58,7 @@ async function esriToken(env, fetchImpl, { fresh = false, now = Date.now() } = {
   }
   const res = await fetchImpl(TOKEN_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', Referer: refererOf(env) },
     body: new URLSearchParams({ client_id: id, client_secret: String(env.ESRI_CLIENT_SECRET), grant_type: 'client_credentials', expiration: String(TWO_WEEKS_MINUTES), f: 'json' }),
     signal: AbortSignal.timeout(6000),
   });
@@ -136,7 +138,7 @@ export function esriLocator(env, fetchImpl = fetch) {
         SingleLine: q, countryCode: 'USA', forStorage: 'true', maxLocations: '1',
         outFields: 'Addr_type,StAddr,Subregion,Score', f: 'json',
       }).toString();
-      const r = await fetchImpl(u.href, { headers: { 'X-Esri-Authorization': `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(6000) });
+      const r = await fetchImpl(u.href, { headers: { 'X-Esri-Authorization': `Bearer ${token}`, Accept: 'application/json', Referer: refererOf(env) }, signal: AbortSignal.timeout(6000) });
       const body = await r.text();
       let j = null;
       try { j = JSON.parse(body); } catch { /* not JSON */ }

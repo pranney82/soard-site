@@ -61,7 +61,7 @@ beforeEach(async () => {
       return json({ access_token: `pass-${tokenNo}`, expires_in: 1209600 });
     }
     if (u.host === 'geocode-api.arcgis.com') {
-      asks.push({ kind: 'geocode', url: u.href, auth: new Headers(init.headers).get('X-Esri-Authorization'), q: u.searchParams });
+      asks.push({ kind: 'geocode', url: u.href, auth: new Headers(init.headers).get('X-Esri-Authorization'), referer: new Headers(init.headers).get('Referer'), q: u.searchParams });
       return typeof esri === 'number' ? new Response('down', { status: esri }) : json(typeof esri === 'function' ? esri(u, init) : esri);
     }
     if (u.host === 'api.resend.com') { const b = JSON.parse(init.body); emails.push(...b); return json(b.map((_, i) => ({ id: `em_${i}` }))); }
@@ -136,6 +136,7 @@ test('what Esri is asked: one stored result, the pass in a header, the address a
   assert.equal(g.q.get('countryCode'), 'USA');
   assert.equal(g.q.get('SingleLine'), '420 Copper Ridge Dr, Loganville, GA 30052');
   assert.equal(g.auth, 'Bearer pass-1');
+  assert.equal(g.referer, 'https://sunshineonaranneyday.com/', 'the credential takes requests from the website only (its Referrer URLs)');
   assert.ok(!g.url.includes('pass-1') && !g.url.includes('not-a-real-secret'), 'no pass or secret in a URL');
 });
 
