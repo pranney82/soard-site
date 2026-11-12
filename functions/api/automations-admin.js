@@ -62,6 +62,7 @@ import { backfillFacts } from './_jotform-backfill.js';
 import { advisoryFacts } from './_advisory-applications.js';
 import { eventRecapState } from './_event-recap.js';
 import { orgCheckFacts } from './_org-facts.js';
+import { esriFacts } from './_esri.js';
 import { aiWatchFacts } from './_ai-watch.js';
 import { companycamFacts } from './_companycam-sync.js';
 import { jobsFacts } from './_companycam-jobs.js';
@@ -522,6 +523,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     quo: await settle(() => quoFacts(DB, now)),
     zillow: await settle(() => zillowFacts(env.JOBTREAD_GRANT_KEY, fetchImpl, now)),
     permits: await settle(() => permitFacts(DB)),
+    // Esri, which finds where each applicant's home is: when it last answered and last refused (its words), and the month's count (_esri.js)
+    esri: await settle(() => esriFacts(env)),
     eventRecap: await settle(() => eventRecapFacts(DB)),
     // SOARD's facts checked against the IRS's list, its W-9 and its Board Manual: times and what doesn't match (_org-facts.js)
     orgFacts: await settle(() => orgCheckFacts(DB)),

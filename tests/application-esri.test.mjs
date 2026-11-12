@@ -18,7 +18,8 @@ import {
   photoKey, TEST_JPEG, testAnswers, placedArea,
 } from '../functions/api/_applications.js';
 import { saveFormRules, formFor, clearFormCache } from '../functions/api/_application-forms.js';
-import { esriLocator, resetEsri, spendEsri, ESRI_MONTHLY } from '../functions/api/_esri.js';
+import { esriLocator, resetEsri, spendEsri, esriFacts, ESRI_MONTHLY } from '../functions/api/_esri.js';
+import { entries, applyFacts } from '../public/admin/automations.js';
 import { checkServiceArea, sameHouse } from '../functions/api/_geo.js';
 import { ALERT_EMAILS } from '../functions/api/_applications.js';
 
@@ -183,6 +184,42 @@ test('Esri down or turning SOARD away: the Census and OpenStreetMap carry on; al
   assert.equal(d.source, 'census', 'credentials Esri won’t take: the Census');
 });
 
+test('Esri refusing shows on Site → Automations in its own words, until it answers again', async () => {
+  const f = await form();
+  const entry = entries.find((n) => n.t === 'Service-area check');
+  const LAWRENCE = '205 Lawrence St NE, Marietta, GA 30060';
+  assert.deepEqual(await esriFacts({ ...env, ESRI_CLIENT_SECRET: '' }), { on: false });
+  applyFacts({ env: {}, esri: { on: false } });
+  assert.equal(entry.es, 'attn', 'no keys: only the Census finds homes');
+  assert.match(entry.probe.why, /ESRI_CLIENT_ID and ESRI_CLIENT_SECRET/);
+  // This morning's failure: every pass "Invalid Token", every home quietly to the Census
+  esri = { error: { code: 498, message: 'Invalid Token' } };
+  assert.equal((await checkServiceArea(LAWRENCE, f.serviceArea, fetch, { esri: esriLocator(env) })).source, 'census');
+  let facts = await esriFacts(env);
+  assert.equal(facts.okAt, null);
+  assert.ok(facts.errAt);
+  assert.match(facts.err, /Invalid Token/);
+  assert.equal(facts.used, 0, 'a refusal isn’t billed, so it isn’t counted');
+  applyFacts({ env: {}, esri: facts });
+  assert.equal(entry.es, 'attn');
+  assert.match(entry.probe.why, /Esri refused its last lookup .*“Esri: Invalid Token”.*the Census finds homes/);
+  await new Promise((r) => setTimeout(r, 5));
+  esri = point(-84.55, 33.95, { Addr_type: 'PointAddress', StAddr: '205 Lawrence St NE', Subregion: 'Cobb County', Match_addr: '205 Lawrence St NE, Marietta, Georgia, 30060' });
+  assert.equal((await checkServiceArea(LAWRENCE, f.serviceArea, fetch, { esri: esriLocator(env) })).source, 'esri');
+  facts = await esriFacts(env);
+  assert.ok(Date.parse(facts.okAt) > Date.parse(facts.errAt));
+  applyFacts({ env: {}, esri: facts });
+  assert.equal(entry.es, 'live', 'answering again: back to working');
+  assert.match(entry.probe.why, new RegExp(`Esri last answered .*\\. 1 of ${ESRI_MONTHLY} lookups used this month\\.`));
+  assert.equal(entry.probe.last, facts.okAt);
+  // "Not that house" is Esri answering, not refusing
+  await new Promise((r) => setTimeout(r, 5));
+  esri = { candidates: [] };
+  await checkServiceArea(LAWRENCE, f.serviceArea, fetch, { esri: esriLocator(env) });
+  applyFacts({ env: {}, esri: await esriFacts(env) });
+  assert.equal(entry.es, 'live');
+});
+
 test('the two-week pass: kept and reused, renewed by itself when Esri stops taking it', async () => {
   const f = await form();
   await checkServiceArea('420 Copper Ridge Dr, Loganville, GA 30052', f.serviceArea, fetch, { esri: esriLocator(env) });
@@ -217,8 +254,11 @@ test('the monthly limit: past it the Census finds homes; Peter hears at 80% and 
   assert.deepEqual(emails[0].to, ALERT_EMAILS);
   assert.match(emails[0].subject, /Esri home lookups: 80%/);
   assert.doesNotMatch(emails[0].subject + emails[0].text, /—/, 'no em dashes');
-  await env.DB.prepare('UPDATE esri_usage SET n = ?').bind(ESRI_MONTHLY).run();
+  // The month's last lookup: Esri answers, and Peter hears they're all used
+  await env.DB.prepare('UPDATE esri_usage SET n = ?').bind(ESRI_MONTHLY - 1).run();
   esri = point(-84.5, 33.9, { Addr_type: 'PointAddress', StAddr: '205 Lawrence St NE', Subregion: 'Cobb County', Match_addr: 'x' });
+  assert.equal((await checkServiceArea('205 Lawrence St NE, Marietta, GA 30060', f.serviceArea, fetch, { esri: esriLocator(env) })).source, 'esri');
+  assert.equal(emails.length, 2);
   const before = asks.filter(a => a.kind === 'geocode').length;
   const out = await checkServiceArea('205 Lawrence St NE, Marietta, GA 30060', f.serviceArea, fetch, { esri: esriLocator(env) });
   assert.equal(out.source, 'census');

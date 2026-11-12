@@ -17,7 +17,7 @@ const phoneHref = `tel:+1${phone.replace(/\D/g, '')}`;
   <section class="section">
     <div class="container container--narrow legal-page">
 
-      <p class="legal-updated">Last Updated: October 21, 2026</p>
+      <p class="legal-updated">Last Updated: November 12, 2026</p>
 
       <nav class="legal-toc" aria-label="Table of contents">
         <ol>
@@ -79,7 +79,7 @@ const phoneHref = `tel:+1${phone.replace(/\D/g, '')}`;
       <ul>
         <li><strong>Payment processors:</strong> Zeffy, our donation platform, to securely process transactions.</li>
         <li><strong>Service providers:</strong> Email platforms, hosting services (Cloudflare), and analytics tools that help us operate the Site.</li>
-        <li><strong>Address lookups on the application:</strong> As you type the home address on a makeover application, our server sends that address (and nothing else about you) to the U.S. Census Bureau's address service to find it on the map and check it against our service area, and the street part to OpenStreetMap's Photon search to suggest matching addresses. Neither service is told who you are.</li>
+        <li><strong>Address lookups on the application:</strong> As you type a home address on one of our applications, our server sends what you type (and nothing else about you) to Google Maps to suggest matching addresses, or to OpenStreetMap's Photon search when Google isn't available. Once the address is filled in, our server sends it to Google's address check, which compares it with the U.S. Postal Service's delivery addresses, and to Esri (ArcGIS) to find that home on the map and check it against our service area, with the U.S. Census Bureau's and OpenStreetMap's address services as backups. None of these services is told who you are.</li>
         <li><strong>Legal requirements:</strong> When required by law, court order, or governmental authority.</li>
         <li><strong>With your consent:</strong> For example, sharing a family's story with their explicit written permission.</li>
       </ul>

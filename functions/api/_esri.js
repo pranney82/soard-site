@@ -42,6 +42,8 @@ async function tables(DB) {
   await DB.batch([
     DB.prepare('CREATE TABLE IF NOT EXISTS esri_pass (id TEXT PRIMARY KEY, token TEXT NOT NULL, exp INTEGER NOT NULL)'),
     DB.prepare('CREATE TABLE IF NOT EXISTS esri_usage (month TEXT PRIMARY KEY, n INTEGER NOT NULL DEFAULT 0)'),
+    // When Esri last answered and last refused (with its words), for Site → Automations
+    DB.prepare('CREATE TABLE IF NOT EXISTS esri_health (id TEXT PRIMARY KEY, ok_at INTEGER, err_at INTEGER, err TEXT)'),
   ]);
   ready.add(DB);
 }
@@ -81,15 +83,22 @@ async function dropToken(env) {
 // ── The monthly limit ───────────────────────────────────────────────────
 
 const monthOf = (d) => d.toISOString().slice(0, 7);
-/** One more lookup this month if it's inside the limit (Peter hears at 80% and when it runs out) */
+/**
+ * Count one lookup Esri answered (it bills those only, so a refusal is never counted). Peter hears
+ * at 80% and when the month's last one is used.
+ */
 export async function spendEsri(env, now = new Date()) {
   if (!env?.DB) return true;
   await tables(env.DB);
   const row = await env.DB.prepare('INSERT INTO esri_usage (month, n) VALUES (?, 1) ON CONFLICT(month) DO UPDATE SET n = n + 1 RETURNING n').bind(monthOf(now)).first();
   const n = Number(row?.n || 0);
   if (n === Math.ceil(ESRI_MONTHLY * 0.8)) await tellPeter(env, 'near', n, now);
-  else if (n === ESRI_MONTHLY + 1) await tellPeter(env, 'out', ESRI_MONTHLY, now);
+  else if (n === ESRI_MONTHLY) await tellPeter(env, 'out', ESRI_MONTHLY, now);
   return n <= ESRI_MONTHLY;
+}
+/** Room for another lookup this month */
+async function roomLeft(env, now = new Date()) {
+  return !env?.DB || (await usedEsri(env.DB, now)) < ESRI_MONTHLY;
 }
 /** This month's lookups so far */
 export async function usedEsri(DB, now = new Date()) {
@@ -131,44 +140,84 @@ export function esriLocator(env, fetchImpl = fetch) {
   return async (oneLine, notes = {}) => {
     const q = String(oneLine || '').trim().slice(0, 300);
     if (!q) return null;
-    if (!(await spendEsri(env))) throw new Error('This month’s Esri lookups are used');
-    const ask = async (token) => {
-      const u = new URL(GEOCODE_URL);
-      u.search = new URLSearchParams({
-        SingleLine: q, countryCode: 'USA', forStorage: 'true', maxLocations: '1',
-        outFields: 'Addr_type,StAddr,Subregion,Score', f: 'json',
-      }).toString();
-      const r = await fetchImpl(u.href, { headers: { 'X-Esri-Authorization': `Bearer ${token}`, Accept: 'application/json', Referer: refererOf(env) }, signal: AbortSignal.timeout(6000) });
-      const body = await r.text();
-      let j = null;
-      try { j = JSON.parse(body); } catch { /* not JSON */ }
-      if (!r.ok && !j?.error) throw new Error(`Esri returned ${r.status}${body ? `: ${body.replace(/\s+/g, ' ').slice(0, 160)}` : ''}`);
-      return j || {};
-    };
-    let j = await ask(await esriToken(env, fetchImpl));
-    // A pass Esri no longer takes (498 invalid, 499 missing): a new one, once
-    if ([498, 499].includes(Number(j?.error?.code))) {
-      await dropToken(env);
-      j = await ask(await esriToken(env, fetchImpl, { fresh: true }));
+    // Every answer and every refusal is noted, so a refusing Esri shows on Site → Automations
+    // instead of every home quietly falling back to the Census
+    try {
+      const out = await lookUp(env, fetchImpl, q, notes);
+      await noteHealth(env, null);
+      return out;
+    } catch (e) {
+      await noteHealth(env, e?.message || String(e));
+      throw e;
     }
-    if (j?.error) throw new Error(`Esri: ${[j.error.message || j.error.code, ...(Array.isArray(j.error.details) ? j.error.details : [])].filter(Boolean).join(' ')}`);
-    const c = (j?.candidates || [])[0];
-    const at = c?.attributes || {};
-    const lat = Number(c?.location?.y);
-    const lng = Number(c?.location?.x);
-    if (!c || !Number.isFinite(lat) || !Number.isFinite(lng)) { notes.esri = 'Esri found nothing for this address'; return null; }
-    // Only the house typed: its own point, or its place along its own street, at the same number
-    const found = `${at.Addr_type || 'a place'}${at.StAddr || c.address ? ` (${at.StAddr || c.address})` : ''}`;
-    if (!HOUSE_TYPES.has(at.Addr_type) || Number(at.Score ?? c.score) < MIN_SCORE) { notes.esri = `Esri found only ${found}`; return null; }
-    if (!sameHouse(q.split(',')[0], at.StAddr || String(c.address || '').split(',')[0])) { notes.esri = `Esri found another house: ${found}`; return null; }
-    return {
-      lat, lng,
-      county: String(at.Subregion || '').replace(/\s+County$/i, '').trim() || null,
-      matched: String(c.address || '').toUpperCase() || null,
-      source: 'esri',
-      accuracy: at.Addr_type,
-    };
   };
+}
+
+/** One lookup of the house typed (see esriLocator) */
+async function lookUp(env, fetchImpl, q, notes) {
+  if (!(await roomLeft(env))) throw new Error('This month’s Esri lookups are used');
+  const ask = async (token) => {
+    const u = new URL(GEOCODE_URL);
+    u.search = new URLSearchParams({
+      SingleLine: q, countryCode: 'USA', forStorage: 'true', maxLocations: '1',
+      outFields: 'Addr_type,StAddr,Subregion,Score', f: 'json',
+    }).toString();
+    const r = await fetchImpl(u.href, { headers: { 'X-Esri-Authorization': `Bearer ${token}`, Accept: 'application/json', Referer: refererOf(env) }, signal: AbortSignal.timeout(6000) });
+    const body = await r.text();
+    let j = null;
+    try { j = JSON.parse(body); } catch { /* not JSON */ }
+    if (!r.ok && !j?.error) throw new Error(`Esri returned ${r.status}${body ? `: ${body.replace(/\s+/g, ' ').slice(0, 160)}` : ''}`);
+    return j || {};
+  };
+  let j = await ask(await esriToken(env, fetchImpl));
+  // A pass Esri no longer takes (498 invalid, 499 missing): a new one, once
+  if ([498, 499].includes(Number(j?.error?.code))) {
+    await dropToken(env);
+    j = await ask(await esriToken(env, fetchImpl, { fresh: true }));
+  }
+  if (j?.error) throw new Error(`Esri: ${[j.error.message || j.error.code, ...(Array.isArray(j.error.details) ? j.error.details : [])].filter(Boolean).join(' ')}`);
+  await spendEsri(env); // answered, so billed: counted
+  const c = (j?.candidates || [])[0];
+  const at = c?.attributes || {};
+  const lat = Number(c?.location?.y);
+  const lng = Number(c?.location?.x);
+  if (!c || !Number.isFinite(lat) || !Number.isFinite(lng)) { notes.esri = 'Esri found nothing for this address'; return null; }
+  // Only the house typed: its own point, or its place along its own street, at the same number
+  const found = `${at.Addr_type || 'a place'}${at.StAddr || c.address ? ` (${at.StAddr || c.address})` : ''}`;
+  if (!HOUSE_TYPES.has(at.Addr_type) || Number(at.Score ?? c.score) < MIN_SCORE) { notes.esri = `Esri found only ${found}`; return null; }
+  if (!sameHouse(q.split(',')[0], at.StAddr || String(c.address || '').split(',')[0])) { notes.esri = `Esri found another house: ${found}`; return null; }
+  return {
+    lat, lng,
+    county: String(at.Subregion || '').replace(/\s+County$/i, '').trim() || null,
+    matched: String(c.address || '').toUpperCase() || null,
+    source: 'esri',
+    accuracy: at.Addr_type,
+  };
+}
+
+/** Note Esri's last answer (err null) or refusal; a failed note never stops the lookup */
+async function noteHealth(env, err, now = Date.now()) {
+  if (!env?.DB) return;
+  try {
+    await tables(env.DB);
+    await (err
+      ? env.DB.prepare("INSERT INTO esri_health (id, err_at, err) VALUES ('last', ?, ?) ON CONFLICT(id) DO UPDATE SET err_at = excluded.err_at, err = excluded.err").bind(now, String(err).slice(0, 240))
+      : env.DB.prepare("INSERT INTO esri_health (id, ok_at) VALUES ('last', ?) ON CONFLICT(id) DO UPDATE SET ok_at = excluded.ok_at").bind(now)
+    ).run();
+  } catch { /* the family's answer matters more than the note */ }
+}
+
+/**
+ * For Site → Automations: { on } without the keys, else { on, okAt, errAt, err, used, cap }: when Esri
+ * last answered and last refused (ISO times, with its words), and this month's lookups against the limit
+ */
+export async function esriFacts(env, now = new Date()) {
+  if (!esriOn(env)) return { on: false };
+  if (!env.DB) return { on: true };
+  await tables(env.DB);
+  const h = await env.DB.prepare("SELECT ok_at, err_at, err FROM esri_health WHERE id = 'last'").first();
+  const iso = (t) => (Number(t) > 0 ? new Date(Number(t)).toISOString() : null);
+  return { on: true, okAt: iso(h?.ok_at), errAt: iso(h?.err_at), err: h?.err || null, used: await usedEsri(env.DB, now), cap: ESRI_MONTHLY };
 }
 
 /** Forget this worker's pass (tests) */
