@@ -49,7 +49,7 @@ test('the live build, its commit and how it started', () => {
   assert.equal(p.failed, null);
   const failed = pagesFrom([deploy('d3', 'cccccccc', 2, 'build', 'failure'), deploy('d1', 'aaaaaaaa', 60, 'deploy', 'success', 'deploy_hook')]);
   assert.equal(failed.failed.commit, 'cccccccc');
-  assert.deepEqual(failed.live, { at: T(60), endedAt: T(58), commit: 'aaaaaaaa', by: 'publish' });
+  assert.deepEqual(failed.live, { at: T(60), endedAt: T(58), commit: 'aaaaaaaa', by: 'hook' });
 });
 
 test('what became of main’s newest commit', () => {

@@ -1,0 +1,43 @@
+# Every push to main asks Cloudflare Pages to build and publish the site.
+#
+# Cloudflare's own GitHub link can't follow a repository to a new owner: since
+# the site's code moved to SOARD's organization (github.com/sunshineonaranneyday,
+# Nov 12 2026), Cloudflare no longer hears about pushes by itself. This calls the
+# project's deploy hook instead, the same kind of address the admin's Publish
+# button uses. A build always takes main as it is when the build starts.
+#
+# The hook lives in this repository's secrets as CF_DEPLOY_HOOK (Cloudflare →
+# soard-site → Settings → Builds → Deploy hooks). Until it's there, this run
+# only warns, so a push never shows a failure for it.
+# A commit whose message says [skip ci] isn't built, as before.
+
+name: Build the site on Cloudflare
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask Cloudflare to build main
+        env:
+          HOOK: ${{ secrets.CF_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::CF_DEPLOY_HOOK isn't set in this repository's secrets, so Cloudflare wasn't asked to build. Start a build in Cloudflare by hand."
+            exit 0
+          fi
+          for try in 1 2 3; do
+            if curl -fsS -X POST "$HOOK" -o /dev/null; then
+              echo "Cloudflare is building main."
+              exit 0
+            fi
+            sleep $((try * 10))
+          done
+          echo "::error::Cloudflare didn't take the build request. Start a build in Cloudflare by hand."
+          exit 1
