@@ -98,7 +98,7 @@ async function mock(page) {
     if (url.pathname === '/api/broadcast') return json({ state, reminders: { enabled: true, email: true, sms: false, push: false, pushKey: null }, messages: { enabled: true }, timezone: 'America/New_York', hub: true });
     if (url.pathname === '/api/live-messages' && req.method() === 'GET') return json({ ok: true, open: state.phase === 'live', enabled: true, broadcastId: state.id, messages: MESSAGES });
     if (url.pathname === '/api/live-messages') return json({ ok: true, status: 'shown', message: { id: `p${Date.now()}`, name: 'Bo', body: 'Congratulations!', at: new Date().toISOString() } });
-    if (url.pathname === '/api/live-replay' && url.searchParams.has('vtt')) return req.respond({ status: 200, contentType: 'text/vtt', body: VTT });
+    if (url.pathname === '/api/live-replay' && url.searchParams.has('vtt')) return req.respond({ status: 200, contentType: 'text/vtt', body: feed.vtt || VTT });
     if (url.pathname === '/api/live-replay') return json({ ok: true, uid: 'rep1', revealAt: feed.revealAt, captions: true });
     if (url.pathname === '/api/reveal-design') return json(feed.design);
     if (url.hostname === 'www.zeffy.com') return req.respond({ status: 200, contentType: 'text/html', body: '<!doctype html><body style="font:16px sans-serif;padding:24px">Zeffy donation form stub</body>' });
@@ -552,6 +552,36 @@ try {
   g = await probe(page);
   ok(g.picture.h < tall && g.stage.b <= g.vh, `laptop, typing, window made shorter: the video follows it (${tall} → ${g.picture.h} tall, stage to ${g.stage.b} of ${g.vh})`);
   await page.evaluate(() => document.activeElement.blur());
+
+  // Older iPhones (iOS 15, Safari before 16.4) drop a whole rule over a selector they can't read (:fullscreen) and have
+  // no container queries: the live page's layouts use neither, so they draw the same there
+  console.log('\n▶ older Safari');
+  const unreadable = await page.evaluate(() => {
+    const out = [];
+    const walk = (rules) => { for (const r of rules) { if (r.selectorText && /:fullscreen/.test(r.selectorText)) out.push(r.selectorText.slice(0, 80)); if (r.cssRules && !(r instanceof CSSContainerRule && /\bbar\b/.test(r.conditionText || ''))) { if (r instanceof CSSContainerRule) out.push(`@container ${r.conditionText}`); walk(r.cssRules); } } };
+    for (const sh of document.styleSheets) { try { walk(sh.cssRules); } catch { /* another origin */ } }
+    return out.filter((t) => /stage|hds|give|ldv|ldz|hero|live/.test(t));
+  });
+  ok(unreadable.length === 0, `no layout rule older Safari would drop (${unreadable.slice(0, 3).join(' | ') || 'none'})`);
+
+  // A long caption is shown a page at a time: the line stays two lines tall, so nothing under it moves
+  console.log('\n▶ a long caption');
+  state = STATES.replay; feed.shape = 'portrait';
+  feed.vtt = 'WEBVTT\n\n00:00:00.000 --> 00:00:07.900\nOkay everybody, on the count of three, open your eyes and take a look at your brand new room, we have been working on it for weeks and weeks\n';
+  await page.setViewport({ width: 390, height: 664, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await open(page);
+  await page.waitForFunction(() => !document.querySelector('[data-s="jump"]')?.hidden, { timeout: 15000 }).catch(() => {});
+  await sleep(600);
+  if (!(await page.evaluate(() => document.querySelector('[data-s="cc-toggle"]').getAttribute('aria-pressed') === 'true'))) { await page.click('[data-s="cc-toggle"]'); await sleep(700); }
+  const capAt = async (t) => {
+    await page.evaluate((t) => { const v = document.querySelector('video'); v.pause(); v.currentTime = t; }, t);
+    await sleep(500);
+    return page.evaluate(() => { const c = document.querySelector('[data-s="cc"]').getBoundingClientRect(); const x = document.querySelector('[data-s="cc-text"]'); const j = document.querySelector('[data-s="jump"]').getBoundingClientRect(); return { h: Math.round(c.height), lines: Math.round(x.getBoundingClientRect().height / parseFloat(getComputedStyle(x).lineHeight)), text: x.textContent, jumpB: Math.round(j.bottom), vh: innerHeight }; });
+  };
+  const c1 = await capAt(0.5); const c2 = await capAt(7.5);
+  ok(c1.lines <= 2 && c2.lines <= 2 && c1.h === c2.h && c1.text !== c2.text && c2.jumpB <= c2.vh, `two lines at a time, the line one height (${c1.h}, ${c2.h}), Jump on the screen (${c2.jumpB} of ${c2.vh}): "${c1.text.slice(0, 30)}…" then "…${c2.text.slice(-30)}"`);
+  feed.vtt = null;
+  await page.click('[data-s="cc-toggle"]'); await sleep(300);
 
   console.log('\n▶ leave the page and come back');
   state = STATES.live; feed.shape = 'portrait';

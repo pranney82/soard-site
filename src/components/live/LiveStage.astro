@@ -171,7 +171,7 @@ const ICON = {
   /* A landscape picture fills the width: what goes with it sits under everything */
   .stage[data-party][data-orientation='landscape'] { grid-template-areas: '. screen . . .' 'cc cc cc cc cc' 'bar bar bar bar bar' 'jump jump jump jump jump' 'beside beside beside beside beside'; }
   .stage[data-party] .stage__screen { grid-area: screen; }
-  .stage[data-party] .stage__beside { grid-area: beside; position: relative; min-width: 0; container: beside / inline-size; }
+  .stage[data-party] .stage__beside { grid-area: beside; position: relative; min-width: 0; }
   .stage[data-party] .stage__cc { grid-area: cc; }
   .stage[data-party] .stage__bar { grid-area: bar; container: bar / inline-size; }
   .stage[data-party] .stage__jump { grid-area: jump; }
@@ -213,9 +213,10 @@ const ICON = {
   .stage__tap:focus-visible .stage__tap-icon { outline: 3px solid #fff; outline-offset: 3px; }
 
   /* ── Captions line (replay) ── */
+  /* Always two lines tall (a longer cue is shown a page at a time, live-stage.ts), so nothing under it ever moves */
   .stage__cc {
-    margin: var(--gap) 0 0; min-height: 3.4em; display: grid; place-items: center; text-align: center;
-    padding: 6px 14px; border-radius: 14px; background: var(--c-dark-deep); color: #fff; font-size: 15px; line-height: 1.4;
+    margin: var(--gap) 0 0; height: calc(2 * 1.4em + 12px); overflow: hidden; display: grid; place-items: center; text-align: center;
+    padding: 6px 14px; border-radius: 14px; background: var(--c-dark-deep); color: #fff; font-size: 15px; line-height: 1.4; overflow-wrap: anywhere;
   }
   .stage__cc[hidden] { display: none; }
 
@@ -363,7 +364,10 @@ const ICON = {
   .stage__jump:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
 
   /* ── Full screen: the whole stage, so captions and the bar stay off the picture ── */
-  .stage[data-party]:fullscreen {
+  /* (data-fullscreen, set by live-stage.ts while the stage is full screen, rather than :fullscreen: Safari before 16.4 can't
+     read :fullscreen, and drops a whole rule over it, :not(:fullscreen) included, which took the sideways layouts with
+     it on older iPhones) */
+  .stage[data-party][data-fullscreen] {
     --fh: calc(100vh - 32px); --stage-max: calc(100vw - 32px); --beside: 0px; --beside-gap: 0px;
     width: 100vw; height: 100vh; padding: 16px; margin: 0; background: var(--c-dark-deep);
     align-content: center; justify-content: center;
@@ -371,8 +375,8 @@ const ICON = {
     grid-template-columns: min(calc(100vw - 32px), max(var(--pic), var(--controls-min, 0px)));
     grid-template-areas: 'screen' 'cc' 'bar' 'jump';
   }
-  .stage[data-party]:fullscreen .stage__screen { width: min(100%, var(--pic)); justify-self: center; }
-  .stage[data-party]:fullscreen .stage__beside { display: none; }
+  .stage[data-party][data-fullscreen] .stage__screen { width: min(100%, var(--pic)); justify-self: center; }
+  .stage[data-party][data-fullscreen] .stage__beside { display: none; }
 
   /* ── A phone held sideways: the picture as tall as the screen allows (the page gives the frame the screen's height,
      less the menu and the kid's name), and everything else beside it; under it, the controls would leave a picture a
@@ -381,7 +385,7 @@ const ICON = {
      replay's the most); a wide picture gives way to them. Full screen is full screen ── */
   /* (PHONE, DESK and SIDE: word for word as in src/utils/live-media.ts) */
   @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 1023px) and (pointer: coarse) {
-    .stage[data-party][data-orientation]:not(:fullscreen) {
+    .stage[data-party][data-orientation]:not([data-fullscreen]) {
       --pic: calc(var(--fh, 640px) * var(--ar));
       --side-min: max(var(--controls-min, 0px), 280px);
       width: 100%;
@@ -389,22 +393,22 @@ const ICON = {
     }
     /* A portrait picture is narrow enough never to give way: it's always the screen's full height, so the design beside
        it is exactly that tall too (--fh), even when the controls beside them are taller */
-    .stage[data-party][data-orientation='portrait']:not(:fullscreen) {
+    .stage[data-party][data-orientation='portrait']:not([data-fullscreen]) {
       grid-template-columns: var(--pic) var(--beside-gap, 0px) var(--beside, 0px) 16px minmax(0, 1fr);
       grid-template-rows: auto auto auto minmax(0, 1fr);
       grid-template-areas: 'screen . beside . cc' 'screen . beside . bar' 'screen . beside . jump' 'screen . beside . .';
     }
-    .stage[data-party][data-orientation='portrait']:not(:fullscreen) .stage__beside { height: var(--fh); }
+    .stage[data-party][data-orientation='portrait']:not([data-fullscreen]) .stage__beside { height: var(--fh); }
     /* The first control beside the picture starts level with its top */
-    .stage[data-party][data-orientation]:not(:fullscreen) .stage__cc:not([hidden]), .stage[data-party][data-orientation]:not(:fullscreen) .stage__cc[hidden] + .stage__bar,
-    .stage[data-party][data-fit='side']:fullscreen .stage__cc:not([hidden]), .stage[data-party][data-fit='side']:fullscreen .stage__cc[hidden] + .stage__bar { margin-top: 0; }
+    .stage[data-party][data-orientation]:not([data-fullscreen]) .stage__cc:not([hidden]), .stage[data-party][data-orientation]:not([data-fullscreen]) .stage__cc[hidden] + .stage__bar,
+    .stage[data-party][data-fit='side'][data-fullscreen] .stage__cc:not([hidden]), .stage[data-party][data-fit='side'][data-fullscreen] .stage__cc[hidden] + .stage__bar { margin-top: 0; }
     /* The corner player a size smaller on a screen this short */
     .stage[data-party][data-orientation] .stage__picture.is-docked { --mini-h: min(210px, 50svh); }
     /* "Starting soon" needs less room than a replay's controls: the starting-soon screen gets it */
-    .stage[data-party][data-orientation][data-mode='starting']:not(:fullscreen) { --side-min: 250px; }
+    .stage[data-party][data-orientation][data-mode='starting']:not([data-fullscreen]) { --side-min: 250px; }
     /* The controls stack from the top, the design under them; what's left of the picture's height stays below. Beside
        a wide picture they take a little less room than elsewhere, so the picture keeps the screen's height */
-    .stage[data-party][data-orientation='landscape']:not(:fullscreen) {
+    .stage[data-party][data-orientation='landscape']:not([data-fullscreen]) {
       --side-min: max(min(var(--controls-min, 0px), 260px), 250px);
       grid-template-columns: minmax(0, var(--pic)) 16px minmax(var(--side-min), 1fr);
       grid-template-rows: auto auto auto minmax(0, 1fr);
@@ -414,17 +418,17 @@ const ICON = {
        and design all down the side. Either the captions go under the picture (here) or the design takes a column of
        its own (LiveDesignRail), whichever leaves the picture bigger on this screen (data-fit, below). Under the
        picture, the captions leave it the height the controls and the design take beside it, at least */
-    .stage[data-party][data-orientation='landscape'][data-fit='under']:not(:fullscreen) {
+    .stage[data-party][data-orientation='landscape'][data-fit='under']:not([data-fullscreen]) {
       --right: calc(var(--bar) + var(--beside-row, 0px));
       --pic: calc((max(var(--fh, 640px), var(--right)) - 3.4em - var(--gap)) * var(--ar));
       grid-template-areas: 'screen . bar' 'screen . jump' 'screen . beside' 'cc . beside';
     }
-    .stage[data-party][data-orientation='landscape'][data-fit='under'][data-jump]:not(:fullscreen) { --right: calc(var(--bar) + var(--gap) + 46px + var(--beside-row, 0px)); }
-    .stage[data-party][data-orientation='landscape'][data-fit='under']:not(:fullscreen) .stage__cc:not([hidden]) { margin-top: var(--gap); }
-    .stage[data-party][data-orientation='landscape'][data-fit='under']:not(:fullscreen) .stage__bar { margin-top: 0; }
+    .stage[data-party][data-orientation='landscape'][data-fit='under'][data-jump]:not([data-fullscreen]) { --right: calc(var(--bar) + var(--gap) + 46px + var(--beside-row, 0px)); }
+    .stage[data-party][data-orientation='landscape'][data-fit='under']:not([data-fullscreen]) .stage__cc:not([hidden]) { margin-top: var(--gap); }
+    .stage[data-party][data-orientation='landscape'][data-fit='under']:not([data-fullscreen]) .stage__bar { margin-top: 0; }
     /* Full screen held sideways: the controls beside the picture at the screen's full height, when that leaves it
        bigger than under it (always, for a portrait picture; a wide one only on a long enough screen: data-fit, below) */
-    .stage[data-party][data-fit='side']:fullscreen {
+    .stage[data-party][data-fit='side'][data-fullscreen] {
       --pic: calc(var(--fh) * var(--ar));
       --side-min: max(var(--controls-min, 0px), 280px);
       grid-template-columns: minmax(0, var(--pic)) 16px minmax(var(--side-min), 1fr);
@@ -432,7 +436,7 @@ const ICON = {
       grid-template-areas: 'screen . cc' 'screen . bar' 'screen . jump' 'screen . .';
       align-items: start;
     }
-    .stage[data-party][data-fit='side'][data-orientation='landscape']:fullscreen { --side-min: max(min(var(--controls-min, 0px), 260px), 250px); }
+    .stage[data-party][data-fit='side'][data-orientation='landscape'][data-fullscreen] { --side-min: max(min(var(--controls-min, 0px), 260px), 250px); }
   }
   /* (data-fit: there's more than one way to lay the stage out on a phone held sideways, and which leaves the picture
      biggest turns on the screen's exact width and height, which no one shape rule tells apart, so live-stage.ts tries

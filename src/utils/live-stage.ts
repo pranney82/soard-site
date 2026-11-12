@@ -340,11 +340,48 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     if (at) at.textContent = formatTime(revealAt!);
     $('jump')?.setAttribute('aria-label', `${text}, at ${formatTime(revealAt!)}`);
   }
+  // The captions line is two lines tall, always. A cue too long for that is shown a page at a time, each for its
+  // share of the cue's time (by its share of the words), so the line never grows: a long cue used to take four lines,
+  // push Jump off the screen and move the controls whenever the length changed
+  const pageCache = new Map<string, string[]>();
+  function pagesOf(text: string, el: HTMLElement): string[] {
+    const key = `${$('cc')?.clientWidth ?? 0}|${text}`;
+    const hit = pageCache.get(key);
+    if (hit) return hit;
+    const two = (parseFloat(getComputedStyle(el).lineHeight) || 21) * 2 + 1;
+    const fits = (words: string[]) => { el.textContent = words.join(' '); return el.getBoundingClientRect().height <= two; };
+    const words = text.split(/\s+/).filter(Boolean);
+    const pages: string[] = [];
+    if (fits(words)) pages.push(words.join(' '));
+    else {
+      let page: string[] = [];
+      for (const w of words) {
+        if (page.length && !fits([...page, w])) { pages.push(page.join(' ')); page = []; }
+        page.push(w);
+      }
+      if (page.length) pages.push(page.join(' '));
+    }
+    if (pageCache.size > 300) pageCache.clear();
+    pageCache.set(key, pages);
+    return pages;
+  }
   function paintCaption(t: number) {
     if (!root.hasAttribute('data-cc') || !cues) return;
     const cue = cues.find((c) => t >= c.start && t <= c.end + 0.25);
     const el = $('cc-text');
-    if (el && el.textContent !== (cue?.text || '')) el.textContent = cue?.text || '';
+    if (!el) return;
+    let text = cue?.text || '';
+    if (cue && text) {
+      const pages = pagesOf(text, el);
+      text = pages[pages.length - 1];
+      if (pages.length > 1) {
+        const total = pages.reduce((n, p) => n + p.length, 0);
+        const at = ((Math.min(t, cue.end) - cue.start) / Math.max(0.001, cue.end - cue.start)) * total;
+        let upTo = 0;
+        for (const p of pages) { upTo += p.length; if (at < upTo) { text = p; break; } }
+      }
+    }
+    if (el.textContent !== text) el.textContent = text;
   }
 
   // ── Replay: the reveal moment and captions ──────────────────────
@@ -552,7 +589,8 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     }, { threshold: [0, DOCK_AT, 1] });
     io.observe(screen);
   }
-  const onFullscreen = () => { updateDock(); refit(); };
+  // (data-fullscreen: what LiveStage's full-screen layout keys on, in place of :fullscreen, which older Safari can't read)
+  const onFullscreen = () => { flag('data-fullscreen', document.fullscreenElement === root); updateDock(); refit(); };
   document.addEventListener('fullscreenchange', onFullscreen);
 
   // ── Which way round, on a phone held sideways ──
