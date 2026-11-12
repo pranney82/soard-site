@@ -603,6 +603,12 @@ const MAP = { t: 'SOARD', children: [
           touches: ['Gmail', 'JobTread', 'D1'], where: 'functions/api/_mail-sweep.js (broadcast-hooks.js; reads with _mailbox.js)',
           info: 'Never on an account: staff’s own email (an account where staff is the customer contact, by their Google name or address, gets none, and staff’s personal addresses count on no account), TEST accounts, outside mass emails (more than 10 people) and mailings to more than three families. Calendar replies and JobTread’s own emails are left out too. A new account (under 3 days) with more than 10 emails at once waits until it’s 3 days old, and Slack says so. An address on two families’ accounts (a caseworker) points at neither. The same email in two inboxes is added once. Every comment it makes is recorded, so a mistake can be removed.',
           live: sweepLive('family') },
+        { t: 'CompanyCam for families in review', s: 'off', k: 'event',
+          when: 'Would run when a family moves to In Review (the home visit). Off since Oct 21, 2026: the home visit happens at the job, where JobTread’s own CompanyCam sync (and the check below) has it.',
+          does: 'Makes one CompanyCam project for the family at their home, with their contact, a “Vetting” label and their application photos of the space, copies every home-visit photo to the family in JobTread (Files → Home visit, .BeforePics), and links the job to that project when it’s made.',
+          touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-sync.js (broadcast-hooks.js) · companycam-webhook.js · _companycam.js; the job’s link in _applicant-approved.js',
+          info: 'Built and proven end to end on Oct 21, 2026, then switched off by Peter. COMPANYCAM_CUSTOMER_STAGE set to on in Cloudflare turns it back on. Its webhook, the CompanyCam key and the copies already made stay; the check below uses them.',
+          live: (f) => (!env(f) ? null : f.env.companycamCustomerStage ? ON('On: families in review get a CompanyCam project.') : OFF('Off: the home visit happens at the job. COMPANYCAM_CUSTOMER_STAGE on in Cloudflare turns it back on.')) },
         { t: 'JobTread file tags', s: 'live', k: 'schedule',
           when: 'Every hour, on the heartbeat.',
           does: 'Keeps JobTread’s five file tags, Before, During and After (photos and videos by when they were taken), Design and Plans, each seen by exactly who it should be: partners, trades, design partners and photographers on the job see the photos; partners and design partners the design; partners, trades and design partners the plans. Never families, the board or anyone outside a job. A role added to a tag by hand comes off, and families come off the old .BeforePics. Nobody is notified.',
@@ -649,6 +655,36 @@ const MAP = { t: 'SOARD', children: [
             if (!m.files) return ATTN('It hasn’t looked at a file yet. It rides on the heartbeat, so check the Heartbeat entry.');
             const to = Object.entries(m.to || {}).filter(([k]) => k !== 'none').map(([k, n]) => `${n} to ${k}`).join(', ');
             return ON(`${plural(m.files, 'file')} looked at (${to || 'none placed yet'}; ${plural(m.unplaced || 0, 'file')} nothing places)${m.write ? `; ${m.written || 0} moved` : ', moving nothing yet'}.`, m.lastAt);
+          } },
+        { t: 'CompanyCam photos on every job', s: 'live', k: 'schedule',
+          when: 'Every open job (not TEST) about once an hour, a couple a minute on the heartbeat. A new photo in a job’s project moves that job to the front (CompanyCam’s webhook).',
+          does: 'Copies to each job any CompanyCam photo or video it doesn’t have, under JobTread’s own name (“CompanyCam 123…”). A job’s photos come from the project it’s linked to, the project its own earlier photos came from, and a project at the same address under the family’s name. A photo in the project JobTread is still linked to waits an hour, so JobTread’s own sync goes first. It never relinks a job: relinking makes JobTread copy every photo again. Second copies JobTread makes are removed. Slack hears once a pass what was copied and removed.',
+          touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-jobs.js (broadcast-hooks.js) · _companycam.js · companycam-webhook.js',
+          info: 'CompanyCam was cancelled on Nov 12, 2026 (JobTread’s own link to it was disconnected the same day), and the team may still add photos there for a few weeks, so this keeps copying them until CompanyCam closes. Closed jobs are checked too, weekly and after the open ones, and the CompanyCam projects no job draws from (a family in review, a staff or community project) are listed here for a person to place. By Oct 21, 2026 JobTread’s own integration had dropped the link on 16 of 21 open jobs, some families’ photos sat in a second project, and staff were uploading phone photos by hand. A relink tested on Axel’s job brought all 33 photos in a second time, so that’s where duplicates come from. A photo on a job twice keeps its oldest copy; later copies made by JobTread or the site are removed (never a person’s upload, never one with comments, at most 50 a run). Videos too since Nov 11, 2026, days before CompanyCam closes: each one whole, as one MP4 file that JobTread fetches itself from where CompanyCam keeps them (JobTread’s own link already brings videos to the jobs it’s still linked to, under the same name). A project or photo deleted in CompanyCam stays out, and a copy someone deletes from a job in JobTread is never put back: the team deletes on purpose. Comments staff wrote on a photo in CompanyCam (build notes, measurements) go onto its copy as the file’s description, only where that’s empty.',
+          live: (f) => {
+            if (!env(f)) return null;
+            if (!f.env.companycam) return OFF('Off until COMPANYCAM_TOKEN is in Cloudflare.');
+            const c = f.companycamJobs;
+            if (!c || c.error || !c.on) return null;
+            if (!c.lastChecked) return ATTN('It hasn’t run yet. It rides on the heartbeat, so check the Heartbeat entry.');
+            if (stale(c.lastChecked, 3 * HOUR)) return ATTN(`Hasn’t checked a job since ${stamp(c.lastChecked)}. It rides on the heartbeat.`, c.lastChecked);
+            const a = c.audit;
+            if (!a) return ON('Going through the open jobs for the first time.', c.lastChecked);
+            if (a.errors?.length) return ATTN(`${plural(a.errors.length, 'job')} couldn’t be checked: ${a.errors[0].job} (${a.errors[0].detail}).`, c.lastChecked);
+            if (a.videoErrors?.length) return ATTN(`${plural(a.videoErrors.length, 'job')} had a video JobTread didn’t take: ${a.videoErrors[0].job} (${a.videoErrors[0].detail}). It’s tried again every 10 minutes.`, c.lastChecked);
+            if (a.noteErrors?.length) return ATTN(`${plural(a.noteErrors.length, 'job')} couldn’t have CompanyCam’s comments looked up: ${a.noteErrors[0].job} (${a.noteErrors[0].detail}).`, c.lastChecked);
+            const videos = (a.videosMissing ? ` ${plural(a.videosMissing, 'video')} still to copy.` : a.videos ? ` Every video in JobTread (${a.videos}).` : '')
+              + (a.notesWritten ? ` ${plural(a.notesWritten, 'CompanyCam note')} written onto ${a.notesWritten === 1 ? 'its photo' : 'their photos'}.` : '')
+              + (a.leftOut ? ` ${plural(a.leftOut, 'copy', 'copies')} deleted in JobTread left out.` : '');
+            const doubles = a.doubleCopies ? ` ${plural(a.doubleCopies, 'second copy', 'second copies')} counted${c.dedupe ? '' : ', not removed yet'}.` : '';
+            // Until CompanyCam closes: closed jobs too, and the projects no job draws from
+            const ca = c.closedAudit;
+            const closedNote = !c.closedToo ? '' : !ca ? ' Closed jobs: first pass under way.' : ` Closed jobs: ${ca.missing ? `${plural(ca.missing, 'photo')} still to copy` : 'every photo in JobTread'}${ca.videosMissing ? `, ${plural(ca.videosMissing, 'video')} still to copy` : ''}.`;
+            const pl = c.placed;
+            const placedNote = !pl ? '' : pl.errors ? ` ${plural(pl.errors, 'project')} given a home couldn’t be copied yet.` : pl.missing || pl.videosMissing ? ` ${[pl.missing && plural(pl.missing, 'photo'), pl.videosMissing && plural(pl.videosMissing, 'video')].filter(Boolean).join(' and ')} still going to the homes Peter gave ${plural(pl.projects, 'project')}.` : '';
+            const o = c.orphans;
+            if (o?.projects) return ATTN(`${plural(o.projects, 'CompanyCam project')} with ${plural(o.photos, 'photo')} ${o.projects === 1 ? 'isn’t' : 'aren’t'} on any JobTread job, biggest “${o.list?.[0]?.name || '?'}”. They need a home before CompanyCam closes.${closedNote}${placedNote}`, c.lastChecked);
+            return ON(`${plural(a.withPhotos, 'open job')} with CompanyCam photos${a.missing ? `, ${plural(a.missing, 'photo')} still to copy` : ', every photo in JobTread'}.${videos}${doubles}${closedNote}${placedNote}`, c.lastChecked);
           } },
       ]},
       { t: 'The process', children: [

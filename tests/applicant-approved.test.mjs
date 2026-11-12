@@ -18,6 +18,7 @@ import {
 import { FIELD_STATUS as JOB_STATUS, linkJobs, syncKidStatuses } from '../functions/api/_kid-status.js';
 import { matchKid } from '../functions/api/_reveals.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
+import { ensureCompanyCamSchema } from '../functions/api/_companycam-sync.js';
 
 const STATUS = '22P46wDp3NLd';
 const YEAR = '22P52xmCz3cx';
@@ -54,6 +55,7 @@ function withJobs(inner) {
         if (state.deny.has($.grantKey)) return new Response('{"errors":["You can’t do that in this organization"]}', { status: 400 });
         if (state.fail > 0) { state.fail--; return new Response('busy', { status: 500 }); }
         if (input.name.length > 30) return new Response('name too long', { status: 400 });
+        if (input.companycamId === 'linked-elsewhere') return new Response('This CompanyCam project is already linked to Another Job. If you want to link it to this job, unlink it there first.', { status: 400 });
         const owner = Object.values(w.world.accounts).find(a => a.locations.some(l => l.id === input.locationId));
         if (!owner) return new Response('no such location', { status: 400 });
         const job = { id: `job${String(++seq).padStart(8, '0')}`, name: input.name, closedOn: null, fields: input.customFieldValues };
@@ -581,12 +583,28 @@ test('the new job’s cover is the child’s photo from their application, not a
   assert.equal(jt.state.coverCalls.length, 1, 'set once');
 });
 
-test('the job is made with no CompanyCam link: CompanyCam is gone, photos are taken in JobTread', async () => {
+test('a family with a home-visit CompanyCam project gets their job made with it; one without, without', async () => {
+  await ensureCompanyCamSchema(env.DB);
   const a = family('Quinn Avery', 'In Review');
+  const b = family('Rowan Blake', 'In Review');
+  await env.DB.prepare("INSERT INTO companycam_projects (account_id, project_id, stage, created_at, updated_at) VALUES (?, '9001', 'customer', ?, ?)").bind(a.id, iso(T0), iso(T0)).run();
+  await change(a, 'Approved', T0);
+  await change(b, 'Approved', T0);
+  await sweep(...minutes(30, 40));
+  const byName = Object.fromEntries(jt.state.jobCalls.map(c => [c.input.name, c.input]));
+  assert.equal(byName['Quinn Avery (2027)'].companycamId, '9001', 'so CompanyCam doesn’t start a second project');
+  assert.equal('companycamId' in byName['Rowan Blake (2027)'], false);
+});
+
+test('JobTread refusing the CompanyCam link (it’s another job’s) still makes the family’s job, without it', async () => {
+  await ensureCompanyCamSchema(env.DB);
+  const a = family('Sky Lane', 'In Review');
+  await env.DB.prepare("INSERT INTO companycam_projects (account_id, project_id, stage, created_at, updated_at) VALUES (?, 'linked-elsewhere', 'customer', ?, ?)").bind(a.id, iso(T0), iso(T0)).run();
   await change(a, 'Approved', T0);
   await sweep(...minutes(30, 40));
   assert.equal(a.jobs.length, 1, 'the job is made');
-  assert.ok(jt.state.jobCalls.every(c => !('companycamId' in c.input)));
+  const calls = jt.state.jobCalls.map(c => c.input.companycamId ?? null);
+  assert.equal(calls.at(-1), null, 'the last try went without the link');
 });
 
 test('no application photo (a family added by hand): the job is made without a cover', async () => {

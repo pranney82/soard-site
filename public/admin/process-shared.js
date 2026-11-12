@@ -386,7 +386,7 @@ export const LINE_RULES = [
     makeover: ['Makeover application'], community: ['Community project application'],
     autos: ['Service-area check', 'Application → JobTread', 'Family confirmation', 'Staff heads-up', 'Application sweep'] },
   { re: /\bteam review\b|\breviewed internally\b/i, autos: ['Admin → Applicants', 'JobTread → Applicants sync', 'Status → family message', 'Family emails → JobTread'] },
-  { re: /\bdigital documentation\b|\bscans\b/i, autos: ['Photos sorted into Before, During and After'] },
+  { re: /\bdigital documentation\b|\bscans\b/i, autos: ['CompanyCam for families in review'] },
   { re: /\bchooses who moves forward\b/i, makeover: ['Makeover scoring'] },
   { re: /\b(jt|jobtread)\b.*\bmessage\b/i, autos: ['Status → family message', 'Status change summary'] },
   { re: /\b(jt|jobtread) job\b/i, autos: ['Approved → job and its page', 'Kid photo as the job’s cover'] },
@@ -404,9 +404,9 @@ export const LINE_RULES = [
 
 /** A step of a Doc as a whole (by its name) → what runs through it that no one line does */
 export const STEP_RULES = [
-  { re: /^demo day\b/i, autos: ['Invite engine', 'Photos sorted into Before, During and After'] },
+  { re: /^demo day\b/i, autos: ['Invite engine', 'CompanyCam photos on every job'] },
   { re: /^mobilization\b/i, makeover: ['Monetary sponsor ↔ JobTread'], autos: ['Vendor and sponsor logos on kid pages', 'Vendors on their JobTread jobs', 'W-9s and insurance'] },
-  { re: /\bin progress\b|\bunderway\b/i, autos: ['Charges onto jobs, live', 'Budget alerts', 'Bill approvals and pay', 'Receipts both ways', 'Odd charges', 'Photos sorted into Before, During and After'] },
+  { re: /\bin progress\b|\bunderway\b/i, autos: ['Charges onto jobs, live', 'Budget alerts', 'Bill approvals and pay', 'Receipts both ways', 'Odd charges', 'CompanyCam photos on every job'] },
   { re: /^reveal day\b/i, autos: ['Go / no-go', 'Phone stream (Larix)', 'Automatic start & stop', 'Simulcast to Facebook', 'Simulcast to YouTube', '/live/ page follows the kid', 'Live hub', 'Family messages, AI screened', 'Give panel (Zeffy)', '“We’re live” email (Kit)', 'Reminder emails', 'Browser push reminders', 'Reveal reminder signup', 'Feed monitor', 'Reveal-day health check', 'Alert emails', 'Kid and project status follow JobTread'] },
   { re: /^post[- ]?construction\b/i, autos: ['Replay goes up', 'Instagram Reel', 'Facebook replay rescue', 'Jump to the reveal', 'Close-outs'] },
 ];

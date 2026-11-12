@@ -427,6 +427,38 @@ try {
   ok(ap.errors.length === 0, `no console errors${ap.errors.length ? ': ' + ap.errors.slice(0, 3).join(' | ') : ''}`);
   await ap.page.close();
 
+  console.log('Desktop, CompanyCam');
+  ok(await statusOf((await open(browser, base, { width: 1440, height: 1000 })).page, 'CompanyCam for families in review') === 'Off', 'families in review: off unless switched on');
+  const audit = { at: iso(30 * 60e3), copy: true, dedupe: false, jobs: 21, linked: 6, withPhotos: 19, missing: 0, doubleCopies: 33, byHand: 176, copied: 98, removed: 0, missingBy: [], doublesBy: [], twoProjects: [], noProject: [], errors: [] };
+  const ccFacts = { ...FACTS, env: { ...FACTS.env, companycam: true }, companycamJobs: { on: true, copy: true, dedupe: false, audit, lastChecked: iso(5 * 60e3), jobs: 21 } };
+  const cc = await open(browser, base, { width: 1440, height: 1000 }, { facts: ccFacts });
+  await cc.page.type('#am-search', 'companycam');
+  await pause(500);
+  await clickNode(cc.page, 'CompanyCam photos on every job');
+  await pause(300);
+  ok(await panelTitle(cc.page) === 'CompanyCam photos on every job', 'search finds the job check');
+  const ccPanel = await cc.page.$eval('.am-panel', (e) => e.textContent);
+  ok(ccPanel.includes('19 open jobs with CompanyCam photos, every photo in JobTread. 33 second copies counted, not removed yet.'), 'it says what it found');
+  await cc.page.screenshot({ path: join(OUT, 'desktop-companycam.png'), fullPage: false });
+  ok(cc.errors.length === 0, `no console errors${cc.errors.length ? ': ' + cc.errors.slice(0, 3).join(' | ') : ''}`);
+  await cc.page.close();
+  const broken = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycamJobs: { ...ccFacts.companycamJobs, audit: { ...audit, errors: [{ job: 'Ava Stone (2026)', detail: 'JobTread returned 500' }] } } } });
+  ok(await statusOf(broken.page, 'CompanyCam photos on every job') === 'Needs attention', 'a job it couldn’t check needs attention');
+  await broken.page.close();
+  // Until CompanyCam closes: closed jobs, and projects on no job need a person
+  const closedAudit = { ...audit, jobs: 40, withPhotos: 31, missing: 12 };
+  const orphans = { at: iso(30 * 60e3), projects: 3, photos: 57, list: [{ id: '900', name: 'Rosa Lane 2026', street: '8 Review Way', photos: 40, archived: false }] };
+  const placed = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycamJobs: { ...ccFacts.companycamJobs, closedToo: true, closedAudit, orphans } } });
+  ok(await statusOf(placed.page, 'CompanyCam photos on every job') === 'Needs attention', 'CompanyCam projects on no job need a person');
+  await placed.page.type('#am-search', 'companycam');
+  await pause(500);
+  await clickNode(placed.page, 'CompanyCam photos on every job');
+  await pause(300);
+  const placedPanel = await placed.page.$eval('.am-panel', (e) => e.textContent);
+  ok(placedPanel.includes('3 CompanyCam projects with 57 photos aren’t on any JobTread job, biggest “Rosa Lane 2026”.'), 'it names the biggest one');
+  ok(placedPanel.includes('Closed jobs: 12 photos still to copy.'), 'and says where the closed jobs are');
+  await placed.page.close();
+
   console.log('Desktop, AI spending watch');
   const entry = 'AI spending watch';
   const watched = { token: true, at: iso(20 * 60e3), error: null, open: [], sites: [

@@ -60,6 +60,8 @@ import { advisoryFacts } from './_advisory-applications.js';
 import { eventRecapState } from './_event-recap.js';
 import { orgCheckFacts } from './_org-facts.js';
 import { aiWatchFacts } from './_ai-watch.js';
+import { companycamFacts } from './_companycam-sync.js';
+import { jobsFacts } from './_companycam-jobs.js';
 import { tagsFacts } from './_file-tags.js';
 import { stagesFacts } from './_photo-stages.js';
 import { movesFacts } from './_tag-moves.js';
@@ -118,6 +120,8 @@ export function envFacts(env) {
     jobtreadWebhookSecret: has(env.JOBTREAD_WEBHOOK_SECRET),
     zeffyApi: has(env.ZEFFY_API_KEY),
     slackBot: has(env.SLACK_BOT_TOKEN),
+    companycam: has(env.COMPANYCAM_TOKEN),
+    companycamCustomerStage: String(env.COMPANYCAM_CUSTOMER_STAGE || '').trim().toLowerCase() === 'on',
     mercury: has(env.MERCURY_API_TOKEN),
     ramp: has(env.RAMP_CLIENT_ID) && has(env.RAMP_CLIENT_SECRET),
   };
@@ -519,6 +523,9 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     jotform: await settle(() => backfillFacts(DB)),
     advisory: await settle(() => advisoryFacts(DB)),
     demoInvites: await settle(() => demoFacts(DB)),
+    // Counts, times and on/off only: no names, ids or photos
+    companycam: await settle(() => companycamFacts(env)),
+    companycamJobs: await settle(() => jobsFacts(env)),
     // Tag names and role names only (_file-tags.js)
     fileTags: await settle(() => tagsFacts(DB)),
     // Counts and job names only (_photo-stages.js)
