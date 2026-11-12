@@ -515,3 +515,28 @@ test('Nov 12: a one-thing order whose email gives only its total (Walmart’s) t
   assert.equal(withOneTotal({ kind: 'order', items: [{ name: 'Lamp', quantity: 1, cents: 4500 }] }, 'Order Total $49.17').items[0].cents, 4500);
   assert.equal(withOneTotal({ kind: 'order', items: [{ name: 'A' }, { name: 'B' }] }, 'Order Total $49.17').items[0].cents, undefined);
 });
+
+test('Nov 12: a confirmation listing how many, name, SKU and price (The Container Store’s) is read by rule; one the AI missed is read again later', async () => {
+  const { skuTable } = await import('../functions/api/_order-read.js');
+  const text = 'Order #899100000002\nItems\nItem Price\nTotal\n2 \nElfa 24" 2-Runner Mesh Hanging Drawer Graphite\nSKU#: 10079901\n$26.42\n$52.85\n$35.24\n1 \nElfa 2\' Spacer\nSKU#: 10051907\nFREE\nFREE\n1 \nElfa 24" 1-Runner Mesh Hanging Drawer Graphite\nSKU#: 10079900\n$22.76\n$22.76\n$30.34\nPayment Summary';
+  assert.deepEqual(skuTable(text).map((i) => [i.name.slice(0, 22), i.quantity, i.cents]), [['Elfa 24" 2-Runner Mesh', 2, 2642], ['Elfa 2\' Spacer', 1, null], ['Elfa 24" 1-Runner Mesh', 1, 2276]]);
+  assert.deepEqual(skuTable('1\nSomething\nSKU: 1234\n$5.00'), [], 'one alone is no table');
+  // The AI doesn't answer (too slow): read, with no things, and read again later
+  const cs = mail({ box: PAT, at: T0 - DAY, from: 'The Container Store <contain@containerstore.com>', subject: 'Thanks from The Container Store!', text: `Pat Lee, your order 899100000002 from your recent purchase.\n${text}` });
+  const realRun = env.AI.run;
+  env.AI.run = async () => { throw new Error('timeout'); };
+  // (as an email read before this rule: the AI was its only reader)
+  const { readOrderEmail } = await import('../functions/api/_order-read.js');
+  assert.equal(readOrderEmail({ subject: 'Thanks from The Container Store!', from: 'The Container Store <contain@containerstore.com>', snippet: 'your order 899100000002', text }).source, 'table');
+  await run(T0);
+  let r = (await rows()).find((x) => x.id === cs.id);
+  assert.equal(JSON.parse(r.read).items.length, 3, 'read by rule: no AI needed');
+  // One the AI missed before this rule: read again ten minutes later
+  await env.DB.prepare("UPDATE order_mail SET read = json_set(json_set(read, '$.items', json('[]')), '$.aiMissed', json('true')), updated_at = ? WHERE id = ?").bind(new Date(T0).toISOString(), cs.id).run();
+  env.AI.run = realRun;
+  await run(T0 + 2 * MIN);
+  assert.equal(JSON.parse((await rows()).find((x) => x.id === cs.id).read).items.length, 0, 'not before its wait');
+  await run(T0 + 15 * MIN);
+  r = (await rows()).find((x) => x.id === cs.id);
+  assert.deepEqual([JSON.parse(r.read).items.length, JSON.parse(r.read).aiMissed], [3, undefined]);
+});

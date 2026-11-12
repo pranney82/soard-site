@@ -373,7 +373,10 @@ export function readOrderEmail({ subject = '', from = '', snippet = '', text = '
   const words = [text, html ? htmlTextLite(html) : ''].filter(Boolean).join('\n');
   const markup = markupRead(html);
   const amazon = store === 'Amazon' ? amazonRead(words) : null;
-  const items = markup?.items?.length ? markup.items : amazon?.items?.length ? amazon.items : [];
+  // A confirmation listing each thing as how many, its name, its SKU and its price (The Container Store's): read by rule,
+  // so a long order needs no AI (the AI can't list 16 things in the time it has)
+  const table = !markup?.items?.length && !amazon?.items?.length && kind === 'order' ? skuTable(text || (html ? htmlTextLite(html) : '')) : [];
+  const items = markup?.items?.length ? markup.items : amazon?.items?.length ? amazon.items : table;
   const tracking = [...(markup?.tracking || [])];
   for (const tr of trackingIn(words, links)) if (!tracking.some((x) => x.number === tr.number)) tracking.push(tr);
   const read = {
@@ -384,10 +387,29 @@ export function readOrderEmail({ subject = '', from = '', snippet = '', text = '
     shipTo: markup?.shipTo || shipToIn(words),
     jobPo: jobPoIn(words),
     productIds: productIdsIn(links, words),
-    source: markup?.items?.length ? 'markup' : amazon?.items?.length ? 'amazon' : 'rules',
+    source: markup?.items?.length ? 'markup' : amazon?.items?.length ? 'amazon' : table.length ? 'table' : 'rules',
   };
   read.needsAi = !carrier && !read.items.length && ['order', 'shipped', 'out', 'delivered', 'pickup', 'cancelled', 'delayed'].includes(kind);
   return read;
+}
+
+/**
+ * An order's things laid out a line each as: how many, its name, its SKU ("SKU#: 10079901", "Item #", "Model #"), then
+ * its price ("$26.42", or FREE) → [{ name, sku, quantity, cents }]. Two or more such, or none: one alone could be a
+ * coincidence of lines
+ */
+export function skuTable(text) {
+  const lines = String(text || '').split(/\n/).map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const out = [];
+  for (let i = 0; i + 3 < lines.length; i++) {
+    const qty = /^(\d{1,3})$/.exec(lines[i]);
+    const sku = /^(?:SKU|Item|Model|Article)\s*(?:#|No\.?|Number)?\s*:?\s*#?\s*([A-Z0-9-]{4,})$/i.exec(lines[i + 2]);
+    const price = /^(?:\$\s?([\d,]+\.\d{2})|FREE)$/i.exec(lines[i + 3]);
+    if (!qty || !sku || !price || !/[a-z]/i.test(lines[i + 1]) || lines[i + 1].length > 200) continue;
+    out.push({ name: lines[i + 1], sku: sku[1], quantity: Number(qty[1]) || 1, cents: price[1] ? centsOf(price[1]) : null });
+    i += 3;
+  }
+  return out.length >= 2 ? out : [];
 }
 
 /** The AI's items and anything else it read, under what the rules already had → the final read */

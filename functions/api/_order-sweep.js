@@ -452,7 +452,10 @@ async function sweep(env, st, { fetchImpl, now }) {
       .bind(MAX_TRIES, retryBefore).first()
       // Nothing new: one read before the rules got better, read again (it keeps its old read meanwhile)
       || await env.DB.prepare("SELECT * FROM order_mail WHERE state = 'read' AND COALESCE(json_extract(read, '$.v'), 1) < ? AND COALESCE(tries, 0) < ? ORDER BY at LIMIT 1")
-        .bind(READER_V, MAX_TRIES).first();
+        .bind(READER_V, MAX_TRIES).first()
+      // One the AI didn't answer for (busy, or slow on a long order): read again a while later, three times at most
+      || await env.DB.prepare("SELECT * FROM order_mail WHERE state = 'read' AND json_extract(read, '$.aiMissed') AND COALESCE(tries, 0) < ? AND updated_at < ? ORDER BY at LIMIT 1")
+        .bind(MAX_TRIES, retryBefore).first();
     if (!row) break;
     await readOne(env, ctx, row);
     reads++;
