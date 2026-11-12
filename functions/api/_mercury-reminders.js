@@ -96,8 +96,9 @@ async function makeFilters(env, ctx, r, skip) {
       throw err;
     }
     try {
-      // One already there (made by hand, or before) isn't made twice
-      const same = ((await gmail(token, '/settings/filters', ctx.fetchImpl)).filter || []).find(isOurFilter);
+      // One already there (made by hand, or before) isn't made twice. Gmail answers an account with no filters at all
+      // with an empty body, not JSON (Agent Gracie's inbox, Nov 12 2026), which reads as nothing there
+      const same = ((await gmail(token, '/settings/filters', ctx.fetchImpl))?.filter || []).find(isOurFilter);
       if (same) { r.filters[mailbox] = same.id || 'there'; continue; }
       const res = await ctx.fetchImpl(`${GMAIL_API}/settings/filters`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

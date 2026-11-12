@@ -151,7 +151,8 @@ beforeEach(async () => {
       // Each inbox's own Gmail filters
       if (path === '/settings/filters') {
         const have = gmailFilters.get(box) || [];
-        if ((init.method || 'GET') === 'GET') return Response.json(have.length ? { filter: have } : {});
+        // An account with no filters at all gets an empty answer, not JSON (Agent Gracie's inbox, live Nov 12 2026)
+        if ((init.method || 'GET') === 'GET') return have.length ? Response.json({ filter: have }) : new Response('', { status: 200 });
         const f = { id: `flt-${box.split('@')[0]}-${have.length + 1}`, ...JSON.parse(init.body) };
         calls.push({ kind: 'filter', box, filter: f });
         gmailFilters.set(box, [...have, f]);
