@@ -67,6 +67,8 @@ const kidOrdersLive = (f) => {
   if (!o.lastSweptAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
   if (stale(o.lastSweptAt, HOUR)) return ATTN(`Hasn’t looked since ${stamp(o.lastSweptAt)}. Check the Heartbeat entry.`, o.lastSweptAt);
   if (o.error) return ATTN(o.error, o.lastSweptAt);
+  // orders@ (the address on stores' accounts) reaches the site through Agent Gracie: Google refusing to keep her a member
+  if (o.ordersFeed && !o.ordersFeed.ok) return ATTN(`Agent Gracie can’t be kept on orders@soardcharity.com, so store emails sent there may not be read: ${o.ordersFeed.error || 'Google refused'}.`, o.lastSweptAt);
   const read = o.states?.read || 0;
   const top = (o.stores || []).slice(0, 4).map((x) => `${x.store} ${x.emails}${x.itemsPct === null ? '' : ` (items on ${x.itemsPct}%${x.deliveredEmailPct === null ? '' : `, a delivered email for ${x.deliveredEmailPct}% of what shipped`})`}`).join(', ');
   return ON(`${plural(read, 'order email')} read${o.backfilling ? ', still bringing in the last 60 days' : ''}${top ? `. ${top}` : ''}.`, o.lastSweptAt);

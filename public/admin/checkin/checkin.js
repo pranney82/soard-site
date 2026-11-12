@@ -393,7 +393,7 @@ function toast(text) {
 }
 
 function apply(view) {
-  Object.assign(state, { kids: view.kids || [], everyKid: view.everyKid || [], unprinted: view.unprinted || [], needsLook: view.needsLook || [], shelves: view.shelves || [], shipments: view.shipments || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
+  Object.assign(state, { kids: view.kids || [], everyKid: view.everyKid || [], unprinted: view.unprinted || [], movedLabels: view.movedLabels || {}, needsLook: view.needsLook || [], shelves: view.shelves || [], shipments: view.shipments || [], practice: view.practice !== false, since: view.since || null, printer: view.printer || state.printer });
   overlayQueue();
   pruneLoad();
   $('mode').hidden = !state.practice || readQueue().length > 0;
@@ -678,6 +678,28 @@ function bindPrices(kid, list) {
 }
 
 /**
+ * A box Wrong kid took back from a kid, by its old label (scanned or opened by its QR): whose it is now and its check-in
+ * there, as the site works it out from the lists now (it may have moved again, or come back) → false if it isn't one
+ */
+function movedLabel(tap, box) {
+  const m = state.movedLabels?.[tap];
+  if (!m) return false;
+  const keep = Boolean(sheetEl());
+  const k = m.kid ? anyKid(m.kid) : null;
+  const it = k?.items.find((i) => i.id === m.item);
+  if (!k || !it) { toast('This box isn’t on any kid’s list now.'); return true; }
+  // Back with the kid it was first checked in for: its own sheet there
+  if (k.jobId === m.from) { itemSheet(k, it, { keep }); return true; }
+  openSheet(`${head(kidTitle(k), { kid: true, sub: esc(`Was checked in for ${anyKid(m.from)?.short || 'another kid'}`) })}
+    <p class="item-name">${esc(it.name)}</p>
+    <p class="why-line">${esc(`This box is ${k.short}’s now.`)}</p>
+    <div class="sheet-foot"><button class="btn btn-primary btn-big" type="button" id="checkthere" data-focus>${esc(isHere(it) ? `See it on ${k.short}’s list` : `Check it in for ${k.short}`)}</button>
+      <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button></div></div>`, { keep });
+  $('checkthere').onclick = () => itemSheet(k, it, { keep: true });
+  return true;
+}
+
+/**
  * One check-in, by its label (SOARD's own, scanned or opened by its QR; or a box found already checked in): when it
  * came and by whom, where it is (a tap moves it), Print this label again. The same box is never checked in a second
  * time; what of the thing hasn't come yet is checked in from its own sheet
@@ -693,22 +715,18 @@ function labelSheet(kid, it, tap, box = null, { keep = false } = {}) {
   const loadedSome = !out && p && p.boxes.size ? `${p.boxes.size} of ${p.total} boxes loaded` : null;
   // What of the thing hasn't come yet (or, this check-in undone, all of it): checked in from its own sheet. Undone
   // because its order went to another kid (Wrong kid): that kid's waiting thing, never this kid's line again
-  const toKid = r.undone && r.movedTo ? anyKid(r.movedTo.kid) : null;
-  const movedTo = toKid ? { k: toKid, ship: state.shipments.find((x) => x.key === r.movedTo.order && !x.unplaced) } : null;
-  const more = !isHere(it) && !movedTo;
+  const more = !isHere(it);
   openSheet(`${head(kidTitle(kid), { kid: true, sub: esc([box && of > 1 ? `Box ${box} of ${of}` : of > 1 ? `${of} boxes` : null, `Checked in ${dayOf(r.at)}${byWho(r)}`].filter(Boolean).join(' · ')) })}
     <p class="item-name">${esc(it.name)}</p>
     ${r.undone ? '<p class="why-line">This check-in was undone.</p>' : out ? '<div class="shelf-callout static"><span class="who">Loaded</span><b>At the house</b></div>'
       : `<button class="shelf-callout" type="button" data-move="${esc(tap)}" aria-label="Move it to another shelf"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><span class="sc-shelf"><b>${esc(shelfName(r.shelf) || 'Shelf')}</b>${ICON.chev}</span></button>`}
     ${loadedSome ? `<p class="why-line">${esc(loadedSome)}</p>` : ''}
-    ${movedTo ? `<p class="why-line">${esc(`This box is ${movedTo.k.short}’s now.`)}</p>` : ''}
-    <div class="sheet-foot">${r.undone ? (movedTo ? (movedTo.ship ? `<button class="btn btn-primary btn-big" type="button" id="checkthere" data-focus>${esc(`Check it in for ${movedTo.k.short}`)}</button>` : '') : more ? '<button class="btn btn-primary btn-big" type="button" id="checkmore" data-focus>Check it in</button>' : '') : `<button class="btn btn-primary btn-big" type="button" id="labelagain" data-focus>Print ${box || of === 1 ? 'this label' : 'its labels'} again</button>`}
+    <div class="sheet-foot">${r.undone ? (more ? '<button class="btn btn-primary btn-big" type="button" id="checkmore" data-focus>Check it in</button>' : '') : `<button class="btn btn-primary btn-big" type="button" id="labelagain" data-focus>Print ${box || of === 1 ? 'this label' : 'its labels'} again</button>`}
       <div class="btn-row"><button class="btn btn-text" type="button" data-close="1">Done</button>${more && !r.undone ? `<button class="btn btn-text" type="button" id="checkmore">${it.got ? 'Check in the rest of it' : 'Check it in'}</button>` : ''}</div></div>`, { keep });
   bindMoves(kid);
   if ($('labelagain')) $('labelagain').onclick = async () => { try { toast(printSaid((await send('reprint', { tap, ...(box ? { box } : {}) })).print).text); } catch (err) { toast(err.message); } };
   if ($('checkmore')) $('checkmore').onclick = () => itemSheet(kid, it, { keep: true });
   // That kid's check-in of the order (what of it is still to check in)
-  if ($('checkthere')) $('checkthere').onclick = () => (movedTo.ship ? shipmentSheet(movedTo.ship.key, { keep: true }) : close());
 }
 
 /** Something already here: when it came, where it is, Print again, Undo, another shelf */
@@ -772,9 +790,12 @@ function bindBudget(kid, it) {
     try {
       const itemId = sel.value.startsWith('allow:') ? sel.value.slice(6) : null;
       // From an order: a person's answer for that thing, as Wrong kid or line gives (it stands over the site's sorting)
-      if (it.order?.key && !it.also.typed) await sendOrKeep('decide', { orderKey: it.order.key, from: kid.jobId, items: [{ itemName: it.orderedAs || it.name, decision: itemId ? { type: 'line', kid: kid.jobId, itemId, partKey: 'allow' } : { type: 'also', kid: kid.jobId } }] });
-      else await send('allow', { key: it.also.key, jobId: kid.jobId, itemId });
-      toast('Its line moves on the budget in a minute');
+      const r = it.order?.key && !it.also.typed
+        ? await sendOrKeep('decide', { orderKey: it.order.key, from: kid.jobId, items: [{ itemName: it.orderedAs || it.name, decision: itemId ? { type: 'line', kid: kid.jobId, itemId, partKey: 'allow' } : { type: 'also', kid: kid.jobId } }] })
+        : { out: await send('allow', { key: it.also.key, jobId: kid.jobId, itemId }) };
+      // Said as it is: kept on this phone, or saved (its line deleted by hand in JobTread stays off the budget)
+      toast(r.queued ? 'Kept on this phone. It goes when the connection is back.'
+        : it.also.offByHand ? 'Saved. Its line was deleted in JobTread, so it stays off the budget.' : 'Its line moves on the budget in a minute');
     } catch (err) {
       toast(`Not saved: ${clean(err.message)}`);
     } finally {
@@ -788,6 +809,7 @@ function printSaid(p) {
   if (!p) return { ok: false, text: 'Saved. The labels print when it’s sent.' };
   if (p.printed) return p.error ? { ok: false, text: `${p.printed} printed, the rest didn’t: ${p.error}` } : { ok: true, text: p.printed === 1 ? 'Printed' : `${p.printed} printed` };
   if (p.nothing) return { ok: true, text: 'Every label has printed' };
+  if (p.none) return { ok: true, text: 'Its boxes are all on the truck: no labels to print' };
   if (!p.setUp) return { ok: false, text: 'The printer isn’t set up yet. The labels wait for it.' };
   if (p.problems?.length) return { ok: false, text: `Printer: ${p.problems.join(', ')}` };
   if (p.queued) return { ok: false, text: 'The printer is off. The labels wait for it.' };
@@ -955,7 +977,7 @@ function shelfPicker(kid, tap, then) {
       const p = r.queued ? null : printSaid(r.out?.print);
       toast(r.queued ? `On ${shelfName(b.dataset.shelf)}. It goes when the connection is back`
         : !r.out?.moved ? `It’s on ${shelfName(b.dataset.shelf)} already`
-          : `On ${shelfName(b.dataset.shelf)}${p?.ok ? '. New labels printing' : `. ${p?.text || ''}`}`);
+          : `On ${shelfName(b.dataset.shelf)}${r.out?.print?.none ? '' : p?.ok ? '. New labels printing' : `. ${p?.text || ''}`}`);
       await close();
       render();
       then?.();
@@ -1288,6 +1310,7 @@ async function ownLabel(dataUrl) {
 }
 /** SOARD's own label, scanned: its check-in (where it is, Print again), never checked in a second time */
 function openOwn({ r, b }) {
+  if (movedLabel(r, b)) return;
   for (const k of state.kids) {
     const it = k.items.find((i) => (i.receipts || []).some((x) => x.id === r));
     if (it) { labelSheet(k, it, r, b, { keep: Boolean(sheetEl()) }); return; }
@@ -1532,6 +1555,7 @@ function openFromLink() {
   if (!r && !shelf) return;
   history.replaceState(null, '', location.pathname);
   if (shelf) { shelfSheet(shelf); return; }
+  if (movedLabel(r, box)) return;
   for (const k of state.kids) {
     const it = k.items.find((i) => (i.receipts || []).some((x) => x.id === r));
     // Loading out: that box onto the truck. Checking in: that check-in, never the same box checked in again

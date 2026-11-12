@@ -31,7 +31,7 @@ import { receive, undoMany, moveShelf, decide, decisionKey, answeredAt, setPrice
 import { writeKidNow, kidJtStatus } from './_kid-jt.js';
 import { shelfLabel } from './_kid-labels.js';
 import { keepSort } from './_kid-allow.js';
-import { printLabels, printReceipts, labelsOf, printerStatus, printerSetup, PRINTER_URL, PRINTER_USER } from './_kid-print.js';
+import { printLabels, printReceipts, labelsOf, loadedBoxes, officeLabels, printerStatus, printerSetup, PRINTER_URL, PRINTER_USER } from './_kid-print.js';
 import { verifyJwt } from './_middleware.js';
 
 const headers = { 'Cache-Control': 'no-store' };
@@ -93,7 +93,9 @@ const labelsFor = (view, receipt) => {
  * work when its caller leaves, and waitUntil keeps it, so a check-in saved always gets its labels
  */
 function printFor(context, receipts, view, opts = {}) {
-  const run = printReceipts(context.env, receipts, opts.labels || ((r) => labelsFor(view, r)), opts);
+  // Its boxes still at the Office: a box on the truck keeps the label it has
+  const loaded = loadedBoxes(view);
+  const run = printReceipts(context.env, receipts, (r) => officeLabels(labelsFor(view, r), loaded.get(r.id)), opts);
   context.waitUntil?.(run.catch(() => {}));
   return run;
 }
@@ -303,17 +305,8 @@ export async function onRequestPost(context) {
     }
     if (print) out.print = await printFor(context, [print], view, { again: Boolean(q.get('reprint')) });
     if (printBox) out.print = await printLabels(env, labelsFor(view, printBox.r).slice(printBox.box - 1, printBox.box));
-    // A moved check-in's labels again, for its boxes still at the Office (one on the truck keeps its label)
-    if (reprint.length) {
-      const loaded = new Map();
-      for (const r of reprint) {
-        const outs = (await env.DB.prepare("SELECT box FROM kid_receipts WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(r.id).all()).results || [];
-        loaded.set(r.id, outs.some((o) => !o.box) ? 'all' : new Set(outs.map((o) => Number(o.box))));
-      }
-      out.print = await printFor(context, reprint.filter((r) => loaded.get(r.id) !== 'all'), view, {
-        labels: (r) => labelsFor(view, r).filter((_, n) => !(loaded.get(r.id) instanceof Set && loaded.get(r.id).has(n + 1))),
-      });
-    }
+    // A moved check-in's labels again (for its boxes still at the Office, as every print is)
+    if (reprint.length) out.print = await printFor(context, reprint, view);
     // JobTread now, for the kid it changed: the answer says whether it's there
     if (jobId) out.jt = await writeKidNow(env, jobId);
     return Response.json({ success: true, ...out, view: { ...(out.jt === 'written' ? await checkinView(env) : view), printer: await printerStatus(env) } }, { headers });

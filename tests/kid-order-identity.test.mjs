@@ -257,7 +257,8 @@ test('who ordered it counts orders, not things, and “ATTN:” before a name is
 test('groupKey is the key a lone email always had (answers saved by it still find it)', () => {
   assert.equal(groupKey({ id: 'x1', store: 'Shop', read: { orderNumber: null, items: [] } }), 'Shop|email:x1');
   assert.ok(alsoKey('Shop|1', 'Lamp', 'j-ava').startsWith('soard-also-'));
-  assert.ok(later(1) > daysAgo(0));
+  // (a minute on: the two clocks are read a moment apart)
+  assert.ok(later(60e3) > daysAgo(0));
 });
 
 // ─── Review of f5ee1a0b (Nov 11 2026): what was answered or made before stays as it was ───
@@ -508,4 +509,26 @@ test('Nov 11 review 3: box 2 of a shipment whose email could be either of two or
   ({ view: v, reads, keyOf } = await checkinData(env, { photos: false }));
   const box2 = findBox(v, reads, { ...blank, trackingNumbers: ['612399990001'] }, { keyOf });
   assert.deepEqual([box2.short, box2.items.length, box2.alsoIn?.name], ['Ava E.', 1, 'Felt Star Garland']);
+});
+
+test('Nov 12 review: a Wrong kid box’s old label follows its order as it is now: to the other kid, and back again', async () => {
+  await mail('o1', 'Hollow Home', daysAgo(3), { kind: 'order', orderNumber: 'HH-71009', items: [{ name: 'Woven Floor Pouf', cents: 5200 }], tracking: [] });
+  const key = 'Hollow Home|HH-71009';
+  await post('decide', { orderKey: key, things: ['Woven Floor Pouf'], at: minsAgo(9), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }] });
+  let pouf = (await view()).kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.name === 'Woven Floor Pouf');
+  await receive(env.DB, { tap: 'tap-pouf-7001', jobId: 'j-ava', itemId: pouf.itemId, partKey: pouf.partKey, name: pouf.name, line: pouf.line, units: 1, boxes: 1 });
+  await post('decide', { orderKey: key, from: 'j-ava', undo: ['tap-pouf-7001'], things: ['Woven Floor Pouf'], at: minsAgo(6), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-rowan' } }] });
+  let v = await view();
+  const rowanPouf = v.kids.find((k) => k.jobId === 'j-rowan').items.find((i) => i.name === 'Woven Floor Pouf');
+  assert.deepEqual(v.movedLabels['tap-pouf-7001'], { name: 'Woven Floor Pouf', from: 'j-ava', kid: 'j-rowan', item: rowanPouf.id });
+  // Rowan checks it in, then it goes back to Ava: both old labels lead to Ava's
+  await receive(env.DB, { tap: 'tap-pouf-7002', jobId: 'j-rowan', itemId: rowanPouf.itemId, partKey: rowanPouf.partKey, name: rowanPouf.name, line: rowanPouf.line, units: 1, boxes: 1 });
+  await post('decide', { orderKey: key, from: 'j-rowan', undo: ['tap-pouf-7002'], things: ['Woven Floor Pouf'], at: minsAgo(3), items: [{ itemName: WHOLE_ORDER, decision: { type: 'kid', kid: 'j-ava' } }] });
+  v = await view();
+  pouf = v.kids.find((k) => k.jobId === 'j-ava').items.find((i) => i.name === 'Woven Floor Pouf');
+  assert.deepEqual([v.movedLabels['tap-pouf-7001'].kid, v.movedLabels['tap-pouf-7001'].item], ['j-ava', pouf.id]);
+  assert.deepEqual([v.movedLabels['tap-pouf-7002'].from, v.movedLabels['tap-pouf-7002'].kid], ['j-rowan', 'j-ava']);
+  // On nobody's list (the order is "Not a kid's"): no kid
+  await post('decide', { orderKey: key, things: ['Woven Floor Pouf'], at: minsAgo(1), items: [{ itemName: WHOLE_ORDER, decision: { type: 'notKid' } }] });
+  assert.equal((await view()).movedLabels['tap-pouf-7001'].kid, undefined);
 });

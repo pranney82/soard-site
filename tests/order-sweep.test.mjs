@@ -362,9 +362,11 @@ test('Nov 11 review 2: the look again counts each email’s and each inbox’s f
   failMsgs.add(bad.id);
   refuseBoxes.add(SAM);
   aiAnswers['Arrived: Your Bathroom Storage Cart...'] = { kind: 'delivered', orderNumber: '2000155-53264812', items: [{ name: 'Bathroom Storage Cart', quantity: 1, price: '' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
-  for (let i = 1; i <= 3; i++) await run(T0 + i * 4 * MIN);
+  // (each run signs in afresh, as the live site does once its hour-long sign-in ends)
+  for (let i = 1; i <= 3; i++) { clearTokenCache(); await run(T0 + i * 4 * MIN); }
   let byId = new Map((await rows()).map((r) => [r.id, r]));
   assert.deepEqual([byId.get(bad.id).detail, byId.get(cart.id).detail], [null, null], 'still trying both');
+  assert.equal(byId.get(fine.id).state, 'skipped', 'Pat’s next one waits behind the one failing, in Pat’s turn only');
   // Sam's sign-in is back; the bad one fails on
   refuseBoxes.clear();
   for (let i = 4; i <= 9; i++) await run(T0 + i * 4 * MIN);
@@ -422,4 +424,57 @@ test('Nov 11 review 3: a staff inbox whose sign-in Google refuses keeps its emai
   await run(T0 + 40 * MIN);
   r = (await rows()).find((x) => x.id === cart.id);
   assert.deepEqual([r.state, r.kind], ['read', 'delivered']);
+});
+
+test('Nov 12 review: one staff inbox Google won’t open holds only its own emails; the other inboxes’ are looked at again', async () => {
+  const held = mail({ box: SAM, at: T0 - 3 * DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Desk Lamp...', text: 'Your package arrived.' });
+  const a = mail({ box: PAT, at: T0 - 2 * DAY, from: 'Walmart <help@walmart.com>', subject: 'Arrived: Your Bathroom Storage Cart...', text: 'Your package arrived.' });
+  await run(T0);
+  const st0 = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  for (const m of [held, a]) await env.DB.prepare("UPDATE order_mail SET state = 'skipped', kind = NULL, store = NULL, read = NULL, detail = NULL WHERE id = ?").bind(m.id).run();
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ ...st0, triageV: 1, retriageAfter: ['', ''] })).run();
+  aiAnswers['Arrived: Your Bathroom Storage Cart...'] = { kind: 'delivered', orderNumber: '2000155-53264812', items: [{ name: 'Bathroom Storage Cart', quantity: 1, price: '' }], trackingNumbers: [], expected: '', shipTo: 'office', jobPo: '' };
+  refuseBoxes.add(SAM);
+  for (let i = 1; i <= 3; i++) { clearTokenCache(); await run(T0 + i * 4 * MIN); }
+  const byId = new Map((await rows()).map((r) => [r.id, r]));
+  assert.deepEqual([byId.get(a.id).state, byId.get(a.id).kind], ['read', 'delivered'], 'Pat’s, though Sam’s is earlier');
+  assert.deepEqual([byId.get(held.id).state, byId.get(held.id).detail], ['skipped', null], 'Sam’s waits');
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  assert.deepEqual([st.triageV, st.retriageAfter[PAT]], [1, 'done']);
+});
+
+test('Nov 12 review: the orders@ check never loses the sweep’s work, and Google not answering ends it after 20 seconds', async () => {
+  const realTimeout = globalThis.setTimeout;
+  // The members API never answers; time runs fast
+  const fetchBefore = globalThis.fetch;
+  globalThis.fetch = async function (input, init) {
+    if (String(input).startsWith('https://admin.googleapis.com/')) return new Promise(() => {});
+    return fetchBefore.call(this, input, init);
+  };
+  globalThis.setTimeout = (fn, ms, ...rest) => realTimeout(fn, ms >= 15000 ? 5 : ms, ...rest);
+  try {
+    await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: ACCOUNTS, subject: PAT })).run();
+    mail({ box: PAT, at: T0 - DAY, from: 'Amazon.com <shipment-tracking@amazon.com>', subject: 'Shipped: "Oak Step Stool"', text: amazonText });
+    await run(T0);
+  } finally { globalThis.setTimeout = realTimeout; globalThis.fetch = fetchBefore; }
+  const st = JSON.parse((await env.DB.prepare("SELECT data FROM order_sweep_state WHERE key = 'sweep'").first()).data);
+  assert.ok(st.lastSweptAt, 'the sweep’s work kept');
+  assert.deepEqual([st.ordersFeed?.ok, /20 seconds/.test(st.ordersFeed?.error || '')], [false, true]);
+  assert.equal((await rows()).filter((r) => r.state === 'read').length, 1);
+});
+
+test('Nov 12 review: Automations says when Agent Gracie can’t be kept on orders@', async () => {
+  const { entries } = await import('../public/admin/automations.js');
+  const { orderSweepStatus } = await import('../functions/api/_order-sweep.js');
+  await orderSweepStatus(env);
+  const now = Date.now();
+  await env.DB.prepare("INSERT OR REPLACE INTO order_sweep_state (key, data, updated_at) VALUES ('sweep', ?, ?)")
+    .bind(JSON.stringify({ lastSweptAt: now, error: null, inboxes: 3, ordersFeed: { ok: false, at: now, error: 'Google: Not Authorized to access this resource/api' } }), new Date(now).toISOString()).run();
+  const entry = entries.find((e) => e.t === 'Order emails read');
+  const said = entry.live({ kidItems: { orders: { ...(await orderSweepStatus(env, { now })), key: true } } });
+  assert.equal(said.s, 'attn');
+  assert.match(said.why, /orders@soardcharity\.com.*Not Authorized/);
+  // Kept: the entry reads as before
+  await env.DB.prepare("UPDATE order_sweep_state SET data = ? WHERE key = 'sweep'").bind(JSON.stringify({ lastSweptAt: now, inboxes: 3, ordersFeed: { ok: true, at: now } })).run();
+  assert.equal(entry.live({ kidItems: { orders: { ...(await orderSweepStatus(env, { now })), key: true } } }).s, 'live');
 });

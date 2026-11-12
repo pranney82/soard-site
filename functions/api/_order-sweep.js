@@ -42,6 +42,7 @@ export const ORDERS_INBOX = 'automation@soardcharity.com';
 const GROUP_MEMBER_SCOPE = 'https://www.googleapis.com/auth/admin.directory.group.member';
 const FEED_EVERY_MS = 24 * 60 * 60 * 1000;
 const FEED_RETRY_MS = 60 * 60 * 1000;
+const FEED_WAIT_MS = 20000;
 const EVERY_MS = 3 * 60 * 1000;
 const BUSY_MS = 60 * 1000;
 const LIST_MS = 6 * 1000;        // listing inboxes stops starting new ones here
@@ -152,64 +153,71 @@ async function queue(DB, mailbox, msg, t, source, now) {
 
 /**
  * The emails the first look let go by (state skipped, no reason kept) whose subject the rules now call order mail:
- * looked at again (their headers), and queued when they are. Done in turns; once none are left, st.triageV is current
+ * looked at again (their headers), and queued when they are. Done in turns, each inbox in its own (st.retriageAfter:
+ * { inbox: [at, id] of the last looked at | 'done' }), so one inbox that can't be opened holds only its own emails.
+ * Once every inbox is done, st.triageV is current
  */
 export async function retriage(env, ctx, st, budget, boxes = null) {
-  const [at0, id0] = st.retriageAfter || ['', ''];
-  const rows = (await env.DB.prepare("SELECT mailbox, id, at, subject FROM order_mail WHERE state = 'skipped' AND detail IS NULL AND (at > ? OR (at = ? AND id > ?)) ORDER BY at, id LIMIT 400")
-    .bind(at0, at0, id0).all()).results || [];
-  const cands = rows.filter((r) => orderKind(r.subject || ''));
-  const take = cands.slice(0, Math.min(RETRIAGE_A_RUN, Math.max(0, budget.meta)));
-  // No header budget left this run: the same ones next run
-  if (cands.length && !take.length) return;
+  // An older run's single place in line (or none): every inbox from its start (what was queued since isn't skipped)
+  const after = st.retriageAfter && !Array.isArray(st.retriageAfter) && typeof st.retriageAfter === 'object' ? st.retriageAfter : {};
+  st.retriageAfter = after;
   const meta = HEADERS.map((x) => `&metadataHeaders=${x}`).join('');
   // One that can't be looked at again is let go with that said, and the rest go on: gone from Gmail (deleted), or in an
   // inbox no longer among the staff's (a removed account). A staff inbox that can't be opened (its sign-in refused while
-  // Google's settings change) holds its emails until it opens: the look stops just before them, to go on next run.
-  // Google failing on one email (a 500) five runs, counted for that email alone, lets it go
+  // Google's settings change) holds its own emails until it opens; the other inboxes go on. Google failing on one
+  // email (a 500) stops its inbox's turn; five runs failing, counted for that email alone, lets it go
   const letGo = (r, why) => env.DB.prepare("UPDATE order_mail SET detail = ?, updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'").bind(why, iso(ctx.now), r.mailbox, r.id).run();
   const fails = (st.retriageFails && typeof st.retriageFails === 'object') ? st.retriageFails : (st.retriageFails = {});
-  const tokens = new Map();
-  let done = 0;
-  for (const r of take) {
-    if (!tokens.has(r.mailbox)) {
-      try { tokens.set(r.mailbox, await ctx.open(r.mailbox)); } catch (err) {
-        if (boxes && !boxes.includes(r.mailbox)) tokens.set(r.mailbox, null);
-        else break;
-      }
-    }
-    const token = tokens.get(r.mailbox);
-    if (!token) { await letGo(r, 'looked at again: its inbox can’t be opened'); done++; continue; }
-    budget.meta -= 1;
-    const k = `${r.mailbox}|${r.id}`;
-    let msg;
-    try { msg = await gmail(token, `/messages/${r.id}?format=metadata${meta}`, ctx.fetchImpl); } catch (err) {
-      if (err.status === 404) { await letGo(r, 'looked at again: gone from Gmail'); delete fails[k]; done++; continue; }
-      if ((fails[k] = (fails[k] || 0) + 1) < 5) break;
-      await letGo(r, `looked at again: ${String(err.message).slice(0, 80)}`);
-      delete fails[k];
-      done++;
+  const inboxes = ((await env.DB.prepare("SELECT DISTINCT mailbox FROM order_mail WHERE state = 'skipped' AND detail IS NULL").all()).results || []).map((r) => r.mailbox);
+  let left = Math.min(RETRIAGE_A_RUN, Math.max(0, budget.meta));
+  let allDone = true;
+  for (const mailbox of inboxes) {
+    if (after[mailbox] === 'done') continue;
+    const [at0, id0] = Array.isArray(after[mailbox]) ? after[mailbox] : ['', ''];
+    const rows = (await env.DB.prepare("SELECT mailbox, id, at, subject FROM order_mail WHERE mailbox = ? AND state = 'skipped' AND detail IS NULL AND (at > ? OR (at = ? AND id > ?)) ORDER BY at, id LIMIT 400")
+      .bind(mailbox, at0, at0, id0).all()).results || [];
+    const cands = rows.filter((r) => orderKind(r.subject || ''));
+    // Where this inbox's turn ends when all of the page is looked at: the page's end, or done
+    const pageEnd = rows.length === 400 ? [rows[rows.length - 1].at, rows[rows.length - 1].id] : 'done';
+    if (!cands.length) { after[mailbox] = pageEnd; if (pageEnd !== 'done') allDone = false; continue; }
+    allDone = false;
+    if (left <= 0) continue;
+    let token = null;
+    try { token = await ctx.open(mailbox); } catch {
+      // A staff inbox that can't be opened: its emails wait. One no longer among the staff's: let go
+      if (!boxes || boxes.includes(mailbox)) continue;
+      for (const r of cands) await letGo(r, 'looked at again: its inbox can’t be opened');
+      after[mailbox] = pageEnd;
       continue;
     }
-    delete fails[k];
-    done++;
-    const t = orderTriage(msg, ctx);
-    // Still not a store's order mail: left as it was (better rules some day may take it)
-    if (!t) continue;
-    const h = msg.payload?.headers;
-    await env.DB.prepare("UPDATE order_mail SET state = 'queued', kind = ?, store = ?, msgid = ?, source = 'again', updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'")
-      .bind(t.kind, t.store, header(h, 'Message-ID') || null, iso(ctx.now), r.mailbox, r.id).run();
+    let last = null, stopped = false;
+    for (const r of cands) {
+      if (left <= 0) { stopped = true; break; }
+      left -= 1;
+      budget.meta -= 1;
+      const k = `${r.mailbox}|${r.id}`;
+      let msg;
+      try { msg = await gmail(token, `/messages/${r.id}?format=metadata${meta}`, ctx.fetchImpl); } catch (err) {
+        if (err.status === 404) { await letGo(r, 'looked at again: gone from Gmail'); delete fails[k]; last = r; continue; }
+        if ((fails[k] = (fails[k] || 0) + 1) < 5) { stopped = true; break; }
+        await letGo(r, `looked at again: ${String(err.message).slice(0, 80)}`);
+        delete fails[k];
+        last = r;
+        continue;
+      }
+      delete fails[k];
+      last = r;
+      const t = orderTriage(msg, ctx);
+      // Still not a store's order mail: left as it was (better rules some day may take it)
+      if (!t) continue;
+      const h = msg.payload?.headers;
+      await env.DB.prepare("UPDATE order_mail SET state = 'queued', kind = ?, store = ?, msgid = ?, source = 'again', updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'skipped'")
+        .bind(t.kind, t.store, header(h, 'Message-ID') || null, iso(ctx.now), r.mailbox, r.id).run();
+    }
+    // This inbox's next turn starts after the last one looked at; all of its page looked at: the page's end
+    if (stopped) { if (last) after[mailbox] = [last.at, last.id]; } else after[mailbox] = pageEnd;
   }
-  // Stopped part way (an inbox to wait for, Google failing for a moment): next run starts at the first not done
-  if (done < take.length) {
-    if (done) st.retriageAfter = [take[done - 1].at, take[done - 1].id];
-    return;
-  }
-  // Where the next run starts: after the last one looked at, or (none of these left) after this page; none at all: done
-  const lastOf = (r) => [r.at, r.id];
-  if (take.length < cands.length) st.retriageAfter = lastOf(take[take.length - 1]);
-  else if (rows.length === 400) st.retriageAfter = lastOf(rows[rows.length - 1]);
-  else Object.assign(st, { triageV: TRIAGE_V, retriageAfter: null });
+  if (allDone) Object.assign(st, { triageV: TRIAGE_V, retriageAfter: null });
 }
 
 /** One inbox: its new order mail since the last look, or the next page of its 60 days → emails queued */
@@ -453,9 +461,15 @@ export async function maybeSweepOrders(env, { fetchImpl = fetch, now = Date.now(
     Object.assign(st, { lastRunAt: now, runningUntil: now + 45000 });
     await writeState(env.DB, st);
     st = await sweep(env, st, { fetchImpl, now });
-    const feed = st.ordersFeed || {};
-    if (now - (feed.at || 0) > (feed.ok ? FEED_EVERY_MS : FEED_RETRY_MS)) st.ordersFeed = await keepOrdersFeed(env, { fetchImpl, now }).catch((err) => ({ ok: false, at: now, error: err.message }));
+    // The sweep's work kept first: the orders@ check after it (Google slow to answer) can't lose it
     await writeState(env.DB, st);
+    const feed = st.ordersFeed || {};
+    if (now - (feed.at || 0) > (feed.ok ? FEED_EVERY_MS : FEED_RETRY_MS)) {
+      let timer;
+      const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error('Google didn’t answer in 20 seconds')), FEED_WAIT_MS); });
+      st.ordersFeed = await Promise.race([keepOrdersFeed(env, { fetchImpl, now }), late]).catch((err) => ({ ok: false, at: now, error: err.message })).finally(() => clearTimeout(timer));
+      await writeState(env.DB, st);
+    }
     return st;
   } catch (err) {
     console.error('[order-sweep]', err.message);
@@ -473,7 +487,7 @@ export async function keepOrdersFeed(env, { fetchImpl = fetch, now = Date.now() 
   const at = now;
   const api = `https://admin.googleapis.com/admin/directory/v1/groups/${encodeURIComponent(ORDERS_GROUP)}/members`;
   const call = async (token, method, url, body) => {
-    const res = await fetchImpl(url, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const res = await fetchImpl(url, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(15000) });
     const data = await res.json().catch(() => null);
     return { status: res.status, ok: res.ok, data };
   };

@@ -108,6 +108,18 @@ export const PRINT_WAIT_MS = 2 * 60 * 60 * 1000;
 /** A check-in's labels, one a box (kid: the kid's short name) */
 export const labelsOf = (kid, r, set = null) => receiptLabels({ kid: kid || 'SOARD', item: r.name, line: r.line_name, set, boxes: r.boxes, shelf: r.shelf ? shelfName(r.shelf) : '', at: r.at, tap: r.id });
 
+/** Each check-in's boxes on the truck, from a view (its load-out receipts): Map(check-in id → 'all' | Set of box numbers) */
+export function loadedBoxes(view) {
+  const m = new Map();
+  for (const k of view?.kids || []) for (const i of k.items || []) for (const x of i.receipts || []) {
+    if (x.kind !== 'out' || x.undone || !x.ref || m.get(x.ref) === 'all') continue;
+    m.set(x.ref, x.box ? new Set([...(m.get(x.ref) || []), Number(x.box)]) : 'all');
+  }
+  return m;
+}
+/** A check-in's labels for its boxes still at the Office: a box on the truck keeps the label it has */
+export const officeLabels = (labels, loaded) => (loaded === 'all' ? [] : loaded ? labels.filter((_, n) => !loaded.has(n + 1)) : labels);
+
 /**
  * Check-ins' labels to the printer, each check-in printed once. Each is claimed first (./_kid-record.js claimPrint), so
  * a retry overlapping the first try prints nothing twice; a claim whose labels the printer didn't take is let go. They
@@ -117,15 +129,23 @@ export const labelsOf = (kid, r, set = null) => receiptLabels({ kid: kid || 'SOA
  * labelsFor(receipt) → its labels. → { printed, queued (waiting for the printer), online, setUp, problems, error? }
  */
 export async function printReceipts(env, receipts, labelsFor, { again = false, now = new Date().toISOString() } = {}) {
+  const labelsOfR = new Map(receipts.map((r) => [r.id, labelsFor(r)]));
+  const some = receipts.filter((r) => labelsOfR.get(r.id).length);
+  // Nothing to print (every box of them on the truck): said so, and the printer isn't asked
+  if (!some.length) {
+    if (!again && receipts.length) await claimPrint(env.DB, receipts.map((r) => r.id), now);
+    return { printed: 0, none: true, online: true, setUp: Boolean(hub(env)), problems: [] };
+  }
   if (!hub(env)) return { printed: 0, online: false, setUp: false, problems: [] };
   const status = await printerStatus(env);
-  if (!status.online) return { printed: 0, queued: receipts.reduce((t, r) => t + labelsFor(r).length, 0), online: false, setUp: status.setUp, problems: status.problems };
+  if (!status.online) return { printed: 0, queued: some.reduce((t, r) => t + labelsOfR.get(r.id).length, 0), online: false, setUp: status.setUp, problems: status.problems };
   const ids = new Set(again ? receipts.map((r) => r.id) : await claimPrint(env.DB, receipts.map((r) => r.id), now));
-  const mine = receipts.filter((r) => ids.has(r.id));
+  const mine = some.filter((r) => ids.has(r.id));
   const parts = [];
   for (const r of mine) {
     const last = parts[parts.length - 1];
-    if (last && last.labels.length + labelsFor(r).length <= PART) { last.receipts.push(r); last.labels.push(...labelsFor(r)); } else parts.push({ receipts: [r], labels: [...labelsFor(r)] });
+    const ls = labelsOfR.get(r.id);
+    if (last && last.labels.length + ls.length <= PART) { last.receipts.push(r); last.labels.push(...ls); } else parts.push({ receipts: [r], labels: [...ls] });
   }
   let printed = 0, queued = 0, problems = status.problems, error = null;
   for (let i = 0; i < parts.length; i++) {
@@ -157,7 +177,9 @@ export async function maybePrintWaiting(env, { now = Date.now() } = {}) {
     const short = new Map(view.kids.map((k) => [k.jobId, k.short]));
     // A part of a set says which part (as the labels printed at check-in do)
     const setOf = new Map(view.kids.flatMap((k) => k.items.flatMap((i) => (i.receipts || []).map((x) => [x.id, i.set || null]))));
-    return await printReceipts(env, rows, (r) => labelsOf(short.get(r.job_id), r, setOf.get(r.id) || null));
+    // Only its boxes still at the Office (a check-in moved after some boxes were loaded)
+    const loaded = loadedBoxes(view);
+    return await printReceipts(env, rows, (r) => officeLabels(labelsOf(short.get(r.job_id), r, setOf.get(r.id) || null), loaded.get(r.id)));
   } catch (err) {
     console.error('[kid-print] waiting labels', err.message);
     return null;

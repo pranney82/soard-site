@@ -88,7 +88,7 @@ function settle(it, whoOf = () => null) {
   else if (it.got >= it.qty || it.house) it.status = 'here';
   else if (it.got > 0) it.status = 'partly';
   else it.status = it.order ? 'ordered' : 'not';
-  it.receipts = it.receipts.map(({ id, kind, units, boxes, shelf, at, undoneAt, by, ref, box, track, movedTo }) => ({ id, kind, units, boxes, shelf, at, who: whoOf(by), ...(ref ? { ref } : {}), ...(box ? { box } : {}), ...(track ? { track } : {}), ...(undoneAt && movedTo ? { movedTo } : {}), undone: Boolean(undoneAt) }));
+  it.receipts = it.receipts.map(({ id, kind, units, boxes, shelf, at, undoneAt, by, ref, box, track }) => ({ id, kind, units, boxes, shelf, at, who: whoOf(by), ...(ref ? { ref } : {}), ...(box ? { box } : {}), ...(track ? { track } : {}), undone: Boolean(undoneAt) }));
   return it;
 }
 const OPEN = new Set(['not', 'ordered']);
@@ -391,6 +391,19 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
     const here = kids.flatMap((k) => k.items.filter((i) => (i.status === 'here' || i.status === 'partly') && (i.shelves || [i.shelf]).includes(s)).map(() => k.jobId));
     return { shelf: s, name: shelfName(s), kid: kid?.jobId || (s === FLOOR ? null : record.shelves.get(s) || null), things: here.length };
   });
+  // Boxes Wrong kid took back from a kid (their check-in undone, its order given to another kid): where each one's thing
+  // is now, from the lists as they are, never from where it went then (it may have moved again, or come back). Its old
+  // label opens that: { [check-in id]: { name, from, kid?, item? } } (no kid: on nobody's list now)
+  const movedLabels = {};
+  for (const r of record.receipts) {
+    if (!r.undoneAt || !r.movedTo?.order) continue;
+    const ofOrder = kids.flatMap((k) => k.items.filter((i) => i.order?.key === r.movedTo.order).map((i) => ({ kid: k.jobId, item: i.id, name: i.orderedAs || i.name, also: i.name })));
+    const same = ofOrder.filter((x) => lower(x.name) === lower(r.name) || lower(x.also) === lower(r.name));
+    const fits = same.length ? same : (() => { const n = namedIn(ofOrder, [r.name]); return ofOrder.filter((x) => n.has(x.name)); })();
+    // Alike things on two kids' lists (the same thing ordered for both): the one that isn't the first kid's
+    const now = fits.find((x) => x.kid !== r.jobId) || fits[0] || (ofOrder.length === 1 ? ofOrder[0] : null);
+    movedLabels[r.id] = { name: r.name, from: r.jobId, ...(now ? { kid: now.kid, item: now.item } : {}) };
+  }
   // Labels that never printed (the printer was off or not set up), for boxes still at the Office: none is lost, all
   // print with one tap once it's ready (the heartbeat prints the last two hours' by itself)
   const atOfficeIds = new Map();
@@ -400,7 +413,7 @@ export async function checkinData(env, { photos = true, strict = false } = {}) {
   // Every open makeover's kid, for "whose is it?": a kid whose budget has only allowances yet is who an allowance buy is for
   const everyKid = kids.map(({ jobId, name, short, photo, shelf, shelves: s, allowances }) => ({ jobId, name, short, photo, shelf, shelves: s, allowances }))
     .sort((a, b) => String(a.short).localeCompare(String(b.short)));
-  const view = { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), everyKid, unprinted, open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, all.filter((r) => SHIP_KINDS.has(r.read.kind) && !keyOf.maybe?.(r)), unplaced, keyOf) };
+  const view = { practice: !live.on, since, kids: kids.filter((k) => k.items.length || k.shelves.length), everyKid, unprinted, movedLabels, open: jobs.map((j) => j.id), unread, needsLook, orders, shelves, shipments: shipmentsOf(kids, all.filter((r) => SHIP_KINDS.has(r.read.kind) && !keyOf.maybe?.(r)), unplaced, keyOf) };
   // Who ordered, as the page says it ("Clareece")
   const nameOf = (email) => firstOf.get(String(email || '').toLowerCase()) || String(email || '').split('@')[0] || null;
   return { view, reads: all, keyOf, nameOf };
