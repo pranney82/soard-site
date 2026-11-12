@@ -5,20 +5,23 @@
  * tag (.BeforePics, Progress Photos, the ":" construction tags, _Sponsor,
  * .BuildSpecDocs, .WorkingPlans, .FinalPlans, Design Documents,
  * .PricingQuotes, _MakeoverFamily) gets its new tag and loses the old ones:
- *   - a photo or video: Before, During or After by when it was taken against
- *     its job's Demo and Reveal dates (the sorter's pick when it has one),
- *     else what its old tag means (.BeforePics Before; Progress Photos and the
- *     ":" tags During);
+ *   - a photo or video: Before, During or After by when it was taken (or
+ *     recorded) against its job's Demo and Reveal dates (the sorter's pick
+ *     when it has one); else, a picture named like a design, plan or cost
+ *     (a design board saved as a PNG) goes there; else what its old tag means
+ *     (.BeforePics Before; Progress Photos and the ":" tags During; the plan
+ *     and design tags Plans or Design);
  *   - anything else: Costs, Design or Plans by ./_tag-rules.js (a private paper
- *     never gets one, and comes off a sharing tag);
- *   - _MakeoverFamily stays on family papers only.
- * A file nothing places keeps its old tags and is listed. A daily log's file is
- * left as it is (it's shared with whoever the log is). An old tag no file
- * carries any more is deleted. In Kind, COI and W-9 stay.
+ *     never gets one);
+ *   - every old tag comes off; _MakeoverFamily stays on family papers only.
+ * A file nothing places is left on no tag (staff only) and listed. A daily
+ * log's file moves like any other (outside roles don't see daily logs, so its
+ * old tag was all that showed it). A photo whose time couldn't be read and that
+ * nothing else places waits for the next pass rather than losing its tag. An
+ * old tag no file carries any more is deleted. In Kind, COI and W-9 stay.
  *
- * WRITE is off (Nov 11 2026): every planned move is recorded (D1 tag_moves)
- * and counted on Site → Automations, and nothing is written until the picks
- * are checked. 25 files a turn, every 2 minutes, on the heartbeat.
+ * WRITE on Nov 11 2026 (Peter: "tomorrow?"), after the trial's 631 moves were
+ * checked. 25 files a turn, every 2 minutes, on the heartbeat.
  */
 
 import { SOARD_ORG_ID } from './_reveals.js';
@@ -27,11 +30,11 @@ import { tagIds } from './_file-tags.js';
 import { fetchTaken, jobDates, stageOf } from './_photo-stages.js';
 import { docPick, oldStage, moveFor, isRetiring, isPrivateName } from './_tag-rules.js';
 
-export const WRITE = false; // Nov 11 2026: moves recorded, nothing written, until they're checked
+export const WRITE = true; // Nov 11 2026: the trial's moves checked; writing (Peter: "tomorrow?")
 const TURN_MS = 2 * 60 * 1000;
 const TAGS_EVERY_MS = 60 * 60 * 1000;
 const PAGE = 25;
-const READS_PER_TURN = 20;
+const READS_PER_TURN = PAGE + 5;
 const iso = (t) => new Date(t).toISOString();
 
 const SCHEMA = [
@@ -69,16 +72,20 @@ async function tagPage(key, tagId, page, fetchImpl) {
   return { files: conn.nodes || [], next: conn.nextPage || null };
 }
 
-/** Decide one file's move. ctx: { key, fetchImpl, now, reads: { left }, dates: Map(job id → dates), staged: Map(file id → stage) } */
+/**
+ * Decide one file's move.
+ * ctx: { key, fetchImpl, now, reads: { left }, dates: Map(job id → dates), staged: Map(file id → stage), taken: Map(file id → time read before) }
+ * → { kind, pick, move, oldNames, taken, wait } (wait: couldn't be read and nothing else places it; tried next pass)
+ */
 export async function decide(f, ctx) {
   const type = String(f.type || '').toLowerCase();
   const kind = type.startsWith('image/') ? 'photo' : type.startsWith('video/') ? 'video' : 'doc';
   const tags = f.fileTags?.nodes || [];
   const oldNames = tags.filter((t) => isRetiring(t.name)).map((t) => t.name);
-  if (f.dailyLog?.id) return { kind, pick: { tag: null, why: 'a daily log’s file (left as it is)' }, move: { add: null, remove: [] }, oldNames, taken: null };
-  let pick;
+  let pick = null;
   let taken = null;
-  if (kind === 'doc') {
+  let unread = false;
+  if (kind === 'doc' || f.document?.id) {
     pick = docPick({ name: f.name, createdBy: f.createdByUser?.name, documentType: f.document?.type }, oldNames);
     // A file on a document is seen with the document: only Costs (staff only) goes on it
     if (f.document?.id && pick.tag && pick.tag !== 'Costs') pick = { tag: null, why: 'on a document' };
@@ -87,27 +94,34 @@ export async function decide(f, ctx) {
   } else {
     const staged = ctx.staged.get(f.id);
     if (staged) pick = { tag: staged, why: 'the sorter’s pick' };
-    else if (kind === 'photo' && f.job?.id && f.url && ctx.reads.left > 0) {
-      ctx.reads.left -= 1;
-      try {
-        const r = await fetchTaken(f.url, ctx.fetchImpl);
-        taken = r?.taken || null;
-        if (taken) {
-          if (!ctx.dates.has(f.job.id)) ctx.dates.set(f.job.id, await jobDates(ctx.key, f.job.id, ctx.fetchImpl).catch(() => null));
-          const d = ctx.dates.get(f.job.id);
-          const s = d ? stageOf(taken, { ...d, community: false }, ctx.now) : { stage: null };
-          if (s.stage) pick = { tag: s.stage, why: s.why };
-        }
-      } catch { /* the old tag's meaning, below */ }
+    else if (f.job?.id) {
+      taken = ctx.taken?.get(f.id) || null;
+      if (!taken && f.url) {
+        if (ctx.reads.left > 0) {
+          ctx.reads.left -= 1;
+          try { taken = (await fetchTaken(f.url, ctx.fetchImpl))?.taken || null; } catch { unread = true; }
+        } else unread = true;
+      }
+      if (taken) {
+        if (!ctx.dates.has(f.job.id)) ctx.dates.set(f.job.id, await jobDates(ctx.key, f.job.id, ctx.fetchImpl).catch(() => null));
+        const d = ctx.dates.get(f.job.id);
+        const s = d ? stageOf(taken, { ...d, community: false }, ctx.now) : { stage: null };
+        if (s.stage) pick = { tag: s.stage, why: s.why };
+      }
     }
-    pick ||= oldStage(oldNames);
+    // Undated: a design board or a layout saved as a picture by its name, then the old tag's meaning (a stage, or Design/Plans)
+    if (!pick) { const byName = docPick({ name: f.name }); if (byName.tag) pick = byName; }
+    if (!pick) { const st = oldStage(oldNames); if (st.tag) pick = st; }
+    if (!pick) { const byOld = docPick({ name: f.name }, oldNames); if (byOld.tag) pick = byOld; }
+    if (!pick && unread) return { kind, pick: { tag: null, why: 'couldn’t be read yet' }, move: { add: null, remove: [] }, oldNames, taken, wait: true };
+    pick ||= { tag: null, why: kind === 'video' ? 'no time recorded, and nothing else places it' : 'no time taken, and nothing else places it' };
   }
   const move = moveFor({ name: f.name, kind, tags }, pick);
   return { kind, pick, move, oldNames, taken };
 }
 
 /** The heartbeat's call: every 2 minutes, the next 25 files on an old tag. Never throws. */
-export async function maybeMoveTags(env, { fetchImpl = fetch, now = Date.now(), write = WRITE } = {}) {
+export async function maybeMoveTags(env, { fetchImpl = fetch, now = Date.now(), write = WRITE, deadline = Infinity } = {}) {
   const { DB } = env;
   const key = env.JOBTREAD_GRANT_KEY;
   if (!DB || !key) return null;
@@ -127,20 +141,29 @@ export async function maybeMoveTags(env, { fetchImpl = fetch, now = Date.now(), 
     const tag = st.tags[st.tag % st.tags.length];
     const { files, next: nextPage } = await tagPage(key, tag.id, st.page, fetchImpl);
     const ids = await tagIds(DB);
-    // The sorter's picks for these files, when it made one
+    // The sorter's picks for these files, when it made one, and the times read on an earlier pass
     const staged = new Map();
+    const taken = new Map();
     if (files.length) {
+      const marks = files.map(() => '?').join(',');
+      const fileIds = files.map((f) => f.id);
       try {
-        const { results } = await DB.prepare(`SELECT file_id, stage FROM photo_stages WHERE stage IS NOT NULL AND kind != 'doc' AND file_id IN (${files.map(() => '?').join(',')})`).bind(...files.map((f) => f.id)).all();
+        const { results } = await DB.prepare(`SELECT file_id, stage FROM photo_stages WHERE stage IS NOT NULL AND kind != 'doc' AND file_id IN (${marks})`).bind(...fileIds).all();
         for (const r of results || []) staged.set(r.file_id, r.stage);
       } catch { /* the sorter hasn't made its table yet: every photo is read here */ }
+      const { results } = await DB.prepare(`SELECT file_id, taken FROM tag_moves WHERE taken IS NOT NULL AND file_id IN (${marks})`).bind(...fileIds).all();
+      for (const r of results || []) taken.set(r.file_id, r.taken);
     }
-    const ctx = { key, fetchImpl, now, reads: { left: READS_PER_TURN }, dates: new Map(), staged };
+    const ctx = { key, fetchImpl, now, reads: { left: READS_PER_TURN }, dates: new Map(), staged, taken };
     const save = DB.prepare(`INSERT INTO tag_moves (file_id, name, kind, old, add_tag, remove, why, taken, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(file_id) DO UPDATE SET name = excluded.name, kind = excluded.kind, old = excluded.old, add_tag = excluded.add_tag, remove = excluded.remove,
         why = excluded.why, taken = COALESCE(excluded.taken, tag_moves.taken), decided_at = excluded.decided_at`);
     let written = 0;
+    let failed = 0;
+    let outOfTime = false;
     for (const f of files) {
+      // Out of time: the rest of this page next turn (the page isn't advanced)
+      if (Date.now() > deadline) { outOfTime = true; break; }
       const d = await decide(f, ctx);
       await save.bind(f.id, f.name || '', d.kind, JSON.stringify(d.oldNames), d.move.add, JSON.stringify(d.move.remove), d.pick.why, d.taken ?? null, iso(now)).run();
       if (write && (d.move.add || d.move.remove.length)) {
@@ -148,13 +171,20 @@ export async function maybeMoveTags(env, { fetchImpl = fetch, now = Date.now(), 
         const keep = have.filter((id) => !d.move.remove.includes(id));
         const addId = d.move.add ? ids.get(d.move.add) : null;
         const fileTagIds = [...new Set([...keep, ...(addId ? [addId] : [])])].slice(0, 10);
-        await pave(key, { updateFile: { $: { id: f.id, fileTagIds } } }, fetchImpl);
-        await DB.prepare('UPDATE tag_moves SET written_at = ? WHERE file_id = ?').bind(iso(now), f.id).run();
-        written += 1;
+        try {
+          await pave(key, { updateFile: { $: { id: f.id, fileTagIds } } }, fetchImpl);
+          await DB.prepare('UPDATE tag_moves SET written_at = ? WHERE file_id = ?').bind(iso(now), f.id).run();
+          written += 1;
+        } catch (e) {
+          // One file JobTread won't take doesn't stop the rest: it's still on its old tag, so the next pass tries it again
+          failed += 1;
+          await putState(DB, 'error', { at: iso(now), error: `${f.name || f.id}: ${String(e?.message || e).slice(0, 250)}` }, now).catch(() => null);
+        }
       }
     }
-    // Next page, next tag; after the last tag a new pass (and, writing, old tags now empty are deleted)
-    if (nextPage && files.length) st.page = nextPage;
+    // Next page, next tag; after the last tag a new pass (and, writing, old tags now empty are deleted).
+    // Writing takes files off this tag, so its page is read again until nothing on it moves.
+    if (outOfTime || (write && written)) { /* this page again */ } else if (nextPage && files.length) st.page = nextPage;
     else {
       st.page = null;
       st.tag += 1;
@@ -171,7 +201,7 @@ export async function maybeMoveTags(env, { fetchImpl = fetch, now = Date.now(), 
       }
     }
     await putState(DB, 'cursor', st, now);
-    return { tag: tag.name, files: files.length, written };
+    return { tag: tag.name, files: files.length, written, failed };
   } catch (e) {
     await putState(DB, 'error', { at: iso(now), error: String(e?.message || e).slice(0, 300) }, now).catch(() => null);
     return null;
@@ -188,7 +218,8 @@ export async function movesFacts(DB) {
   const cursor = await getState(DB, 'cursor');
   return {
     write: WRITE, files: rows.length, to, written: rows.filter((r) => r.written_at).length,
-    unplaced: rows.filter((r) => !r.add_tag && r.remove === '[]').length,
+    // Nothing places it (staff only now), or it waits to be read: not the private papers, which are meant to have no tag
+    unplaced: rows.filter((r) => !r.add_tag && !/private paper/.test(r.why || '')).length,
     passes: cursor?.passes || 0, tags: (cursor?.tags || []).map((t) => t.name), error: await getState(DB, 'error'),
     lastAt: (await DB.prepare("SELECT updated_at FROM tag_moves_state WHERE key = 'cursor'").first('updated_at')) || null,
   };

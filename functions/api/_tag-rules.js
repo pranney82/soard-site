@@ -10,13 +10,16 @@
  *      or a bid request, and files named like a quote, estimate, bill,
  *      invoice or receipt.
  *   3. Design: layouts, presentations, inspiration, 3Ds, renderings,
- *      elevations, mood boards.
+ *      elevations, mood and design boards, selections, design consults, the
+ *      kid's résumé (what the designer designs from).
  *   4. Plans: plan sets, construction sets, specs, templates (not a letter
- *      template).
+ *      template), RENDR scans, measurements, .plan files.
  *   5. An old tag's own meaning, when the file's name says nothing:
  *      .FinalPlans and .BuildSpecDocs → Plans; .WorkingPlans and Design
  *      Documents → Design; .PricingQuotes → Costs.
- * A file nothing places gets no tag (staff only) and is listed.
+ * A file nothing places gets no tag (staff only) and is listed. Pictures that
+ * aren't camera photos (a design board, a layout saved as a PNG) go by these
+ * rules too.
  *
  * The old tags retire once their files have moved (Peter, Nov 11 2026: "can
  * you migrate these over too?"). In Kind, COI and W-9 stay. _MakeoverFamily
@@ -36,8 +39,8 @@ export const PRIVATE = /\b(letters?|consents?|summary|summaries|agreements?|scop
 /** A family paper: stays on _MakeoverFamily (families see their papers) */
 export const FAMILY_PAPER = /\b(letters?|consents?|summary|agreements?|scope|application|release|medical|waiver|contract|signed|invite|invitation|welcome)\b/;
 const COSTS = /\b(quotes?|quotation|estimates?|bills?|invoices?|receipts?|pricing|price ?sheet|po)\b/;
-const DESIGN = /\b(layouts?|presentation|inspiration|3d|renders?|renderings?|elevations?|mood ?boards?|design boards?)\b/;
-const PLANS = /\b(plans?|plan set|construction set|specs?|spec sheet|specifications?|templates?)\b/;
+const DESIGN = /\b(layouts?|presentations?|inspo|inspiration|3d|renders?|renderings?|elevations?|mood ?boards?|design|selections?|consults?|consultation|resumes?)\b|\br[eé]sum[eé]s?(?![a-z])/;
+const PLANS = /\b(plans?|plan set|construction set|specs?|spec sheet|specifications?|templates?|rendr|measurements?)\b/;
 
 /** What an old tag's files go to when nothing else places them, and whether its photos count as Before or During */
 export const OLD_MEANING = {
@@ -66,7 +69,7 @@ export function docPick(file, oldTags = []) {
   if (['vendorBill', 'vendorOrder', 'bidRequest'].includes(file.documentType)) return { tag: 'Costs', why: 'on a bill, order or bid request' };
   if (COSTS.test(w)) return { tag: 'Costs', why: 'named like a quote, bill or receipt' };
   if (DESIGN.test(w)) return { tag: 'Design', why: 'named like a design' };
-  if (PLANS.test(w)) return { tag: 'Plans', why: 'named like plans' };
+  if (PLANS.test(w) || /\.plan$/i.test(String(file.name || '').trim())) return { tag: 'Plans', why: 'named like plans' };
   for (const t of oldTags) { const m = meaningOf(t); if (m?.docs) return { tag: m.docs, why: `was on ${t}` }; }
   return { tag: null, why: 'nothing places it' };
 }
@@ -79,6 +82,9 @@ export function oldStage(oldTags = []) {
 
 /**
  * The move for one file: which of its tags come off and which goes on.
+ * Every old tag comes off, so the old tags empty and retire: a file nothing
+ * places is left on no tag (staff only) and listed. Only _MakeoverFamily can
+ * stay, on a family's paper (or a document nothing places: it may be theirs).
  * file: { name, kind: 'photo' | 'video' | 'doc', tags: [{ id, name }] }; pick: { tag, why } (tag name or null)
  * → { add: tag name | null, remove: [tag ids], keepFamily }
  */
@@ -91,7 +97,7 @@ export function moveFor(file, pick) {
   // Off the family's tag: a photo or video that isn't a paper, and anything placed in Design, Plans or Costs.
   // A document nothing places keeps the family's access (it may be theirs), and is listed.
   const offFamily = !familyPaper && (file.kind !== 'doc' || ['Design', 'Plans', 'Costs'].includes(pick.tag));
-  const remove = retiring.filter((t) => (isFamily(t) ? offFamily : !!pick.tag || PRIVATE.test(w))).map((t) => t.id);
+  const remove = retiring.filter((t) => !isFamily(t) || offFamily).map((t) => t.id);
   return { add: pick.tag || null, remove, keepFamily: !offFamily };
 }
 

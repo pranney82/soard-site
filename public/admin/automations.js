@@ -625,10 +625,10 @@ const MAP = { t: 'SOARD', children: [
             return ON(`${(t.kept || []).length} tags kept with their audiences${did ? ` (this run: ${did})` : ''}.`, l.at);
           } },
         { t: 'Photos sorted into Before, During and After', s: 'live', k: 'schedule',
-          when: 'Every 2 minutes, one open job at a time, on the heartbeat; each job again about every few hours.',
-          does: 'Reads when each camera photo on a job was taken (the time the camera wrote into the file) and puts it on Before (before the Demo date), During (from the Demo date until reveal day) or After (reveal day on). A job with no Demo date yet: Before while it’s still before the build (On Site, Awaiting Funding, Design, Finalization, Approval). Never a screenshot, render or scan, a daily log’s or a document’s photo, or one already on one of the three.',
+          when: 'Every 2 minutes, one open job at a time, on the heartbeat (at most 40 tags written a turn, the same job again for the rest); each job again about every hour.',
+          does: 'Reads when each camera photo on a job was taken (the time the camera wrote into the file), and each video when it was recorded, and puts it on Before (before the Demo date), During (from the Demo date until reveal day) or After (reveal day on). A job still before the build (On Site, Awaiting Funding, Design, Finalization, Approval) is all Before, whatever dates it carries. A finished job with no Reveal date gets no stage after its Demo date, and one with no Demo date is listed. A picture that isn’t a camera photo goes by its name: a design or mood board to Design, a plan or RENDR scan to Plans. Documents get Costs, Design or Plans by name. Never a daily log’s or a document’s photo, a picture of a private paper, or a file already on one of the new tags.',
           touches: ['JobTread', 'D1'], where: 'functions/api/_photo-stages.js (broadcast-hooks.js)',
-          info: 'Started Nov 11, 2026 writing nothing: every pick is recorded and counted here, and it starts tagging once the picks are checked. Community projects go by dates only.',
+          info: 'Ran from Nov 11, 2026 writing nothing; writing the same evening, once its picks on 3,400 files were checked against the jobs’ dates. Community projects go by dates while they sit at On Site.',
           live: (f) => {
             if (!env(f)) return null;
             const p = f.photoStages;
@@ -642,9 +642,9 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Old JobTread tags moved onto the new ones', s: 'live', k: 'schedule',
           when: 'Every 2 minutes, the next 25 files on an old tag, on the heartbeat, round and round until they’re empty.',
-          does: 'Moves every file on JobTread’s old tags (.BeforePics, Progress Photos, the “:” construction tags, _Sponsor, .BuildSpecDocs, .WorkingPlans, .FinalPlans, Design Documents, .PricingQuotes) onto the new ones: photos and videos to Before, During or After by when they were taken (or what their old tag meant), plans to Plans, designs to Design, quotes and receipts to Costs. A private paper never gets a sharing tag and comes off one. _MakeoverFamily keeps only family papers. An old tag left empty is deleted; In Kind, COI and W-9 stay.',
+          does: 'Moves every file on JobTread’s old tags (.BeforePics, Progress Photos, the “:” construction tags, _Sponsor, .BuildSpecDocs, .WorkingPlans, .FinalPlans, Design Documents, .PricingQuotes) onto the new ones: photos and videos to Before, During or After by when they were taken (else a design board to Design, else what their old tag meant), plans to Plans, designs to Design, quotes and receipts to Costs. Every old tag comes off; a file nothing places is left on no tag (staff only) and counted here. A private paper never gets a sharing tag. _MakeoverFamily keeps only family papers. An old tag left empty is deleted; In Kind, COI and W-9 stay.',
           touches: ['JobTread', 'D1'], where: 'functions/api/_tag-moves.js · _tag-rules.js (broadcast-hooks.js)',
-          info: 'Peter, Nov 11, 2026: “can you migrate these over too?” Started writing nothing: every planned move is recorded and counted here, and it writes once the picks are checked. A daily log’s file is left as it is.',
+          info: 'Peter, Nov 11, 2026: “can you migrate these over too?” Ran writing nothing until its 631 planned moves were checked, then writing the same evening (Peter: “tomorrow?”). A daily log’s file moves like any other. A photo whose time couldn’t be read, and that nothing else places, keeps its old tag until the next pass.',
           live: (f) => {
             if (!env(f)) return null;
             const m = f.tagMoves;

@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { stageOf, readTaken, sortJob, maybeSortPhotos, stagesFacts } from '../functions/api/_photo-stages.js';
+import { stageOf, readTaken, fetchTaken, sortJob, maybeSortPhotos, stagesFacts, eastern } from '../functions/api/_photo-stages.js';
 import { tiff, jpeg, heic } from './lib/exif-fixtures.mjs';
 
 const T = Date.parse('2026-11-11T22:00:00Z');
@@ -22,6 +22,16 @@ test('the rule: before the Demo date, from it until reveal day, reveal day on', 
   // Community projects: dates only
   assert.equal(stageOf('2026-03-21 10:00:00', job({ demo: null, community: true, status: 'On Site' })).stage, 'After');
   assert.equal(stageOf('2026-03-01 10:00:00', job({ demo: null, community: true, status: 'On Site' })).stage, null);
+  // Still before the build: Before, whatever dates the job still carries (Axel at Design, Reveal Oct 7)
+  assert.deepEqual(stageOf('2026-11-12 10:00:00', job({ demo: '2026-09-23', reveal: '2026-10-07', status: 'Design' })), { stage: 'Before', why: 'the build hasn’t started (Status Design)' });
+  assert.equal(stageOf('2026-11-12 10:00:00', job({ status: 'Awaiting Funding' })).stage, 'Before');
+  // A community project sits at On Site throughout: dates there; past it, as any job
+  assert.equal(stageOf('2026-03-05 10:00:00', job({ community: true, status: 'On Site' })).stage, 'During');
+  assert.equal(stageOf('2026-06-20 10:00:00', job({ demo: null, reveal: null, community: true, status: 'Design' })).stage, 'Before');
+  // A finished job with no Reveal date: a year of photos after the build isn't During (Sunshine Office)
+  assert.deepEqual(stageOf('2026-01-10 10:00:00', job({ demo: '2025-05-05', reveal: null, status: 'Closed Done' })), { stage: null, why: 'missing its Reveal date' });
+  assert.equal(stageOf('2025-04-10 10:00:00', job({ demo: '2025-05-05', reveal: null, status: 'Closed Done' })).stage, 'Before');
+  assert.equal(stageOf('2026-11-09 10:00:00', job({ demo: '2026-11-06', reveal: null, status: 'Build' })).stage, 'During', 'still building: During');
   // Bad clocks and no time
   assert.equal(stageOf('2009-01-01 00:00:00', job(), T).why, 'camera clock off');
   assert.equal(stageOf(null, job()).why, 'no time taken');
@@ -76,7 +86,7 @@ test('a job’s photos are sorted, writing nothing; daily-log photos, screenshot
     photo('p6', '2026:03:22 10:00:00', { tags: [{ id: 'tB', name: 'Before' }] }),
     { id: 'v1', name: 'IMG_9.MOV', type: 'video/quicktime', bytes: new Uint8Array(16) },
   ] });
-  const r = await sortJob(e, { id: 'j1', name: 'Ava Stone (2026)' }, { fetchImpl: w.fetchImpl, now: T });
+  const r = await sortJob(e, { id: 'j1', name: 'Ava Stone (2026)' }, { fetchImpl: w.fetchImpl, now: T, write: false });
   const got = await rows(e.DB);
   assert.deepEqual(got.p1, ['Before', 'before the Demo date']);
   assert.deepEqual(got.p2, ['During', 'from the Demo date, before reveal day']);
@@ -84,13 +94,13 @@ test('a job’s photos are sorted, writing nothing; daily-log photos, screenshot
   assert.equal(got.p4, undefined, 'a daily log’s photo is never looked at');
   assert.deepEqual(got.p5, [null, 'not a camera photo']);
   assert.deepEqual(got.p6, ['Before', 'already tagged'], 'a person’s pick stands');
-  assert.deepEqual(got.v1, [null, 'a video (no time read yet)']);
+  assert.deepEqual(got.v1, [null, 'no time recorded'], 'a video with no movie header time');
   assert.deepEqual(r.picks, { Before: 2, During: 1, After: 1, docs: 0, none: 2 });
   assert.deepEqual(w.writes, [], 'nothing written while WRITE is off');
   assert.ok(w.ranges.every((h) => h === 'bytes=0-262143'), 'only the first 256 KB of each');
   // Read once: the next turn reads no file again
   const n = w.ranges.length;
-  await sortJob(e, { id: 'j1', name: 'Ava Stone (2026)' }, { fetchImpl: w.fetchImpl, now: T + 1000 });
+  await sortJob(e, { id: 'j1', name: 'Ava Stone (2026)' }, { fetchImpl: w.fetchImpl, now: T + 1000, write: false });
   assert.equal(w.ranges.length, n);
 });
 
@@ -102,7 +112,7 @@ test('when writing is on, a pick goes onto the file beside its other tags, and a
   assert.deepEqual(w.writes, [{ id: 'p1', fileTagIds: ['tx', 'tD'] }]);
   const n = w.ranges.length;
   const w2 = world({ files, dates: { demo: '2026-03-10', reveal: '2026-03-20', status: 'Building' } });
-  await sortJob(e, { id: 'j1' }, { fetchImpl: w2.fetchImpl, now: T + 1000 });
+  await sortJob(e, { id: 'j1' }, { fetchImpl: w2.fetchImpl, now: T + 1000, write: false });
   assert.deepEqual((await rows(e.DB)).p1, ['Before', 'before the Demo date'], 'the Demo date moved later: Before now');
   assert.equal(w2.ranges.length, 0, 'the time taken is remembered');
   assert.ok(n > 0);
@@ -115,7 +125,7 @@ test('on the heartbeat: one job a turn, every 2 minutes; TEST jobs skipped; coun
   assert.equal(r.job.name, 'Ava Stone (2026)');
   assert.equal(await maybeSortPhotos(e, { fetchImpl: w.fetchImpl, now: T + 60 * 1000 }), null, 'not again within 2 minutes');
   const facts = await stagesFacts(e.DB);
-  assert.deepEqual([facts.jobs, facts.picks.Before, facts.picks.After, facts.write, facts.written], [1, 1, 1, false, 0]);
+  assert.deepEqual([facts.jobs, facts.picks.Before, facts.picks.After, facts.write, facts.written], [1, 1, 1, true, 2]);
 });
 
 test('no Demo date yet: Before while still before the build, else listed as missing its Demo date', async () => {
@@ -155,4 +165,84 @@ test('a photo named like a paper (a signed layout, a consent) gets no Before, Du
   await sortJob(e, { id: 'j1' }, { fetchImpl: w.fetchImpl, now: T, write: true });
   assert.deepEqual((await rows(e.DB)).s1, [null, 'a picture of a private paper']);
   assert.deepEqual(w.writes, []);
+});
+
+// A phone's video: ftyp, then the frames (mdat), then the movie header (moov → mvhd, seconds since 1904, UTC)
+function movie(utc, { frames = 400000, brand = 'qt  ' } = {}) {
+  const box = (type, body) => { const b = new Uint8Array(8 + body.length); new DataView(b.buffer).setUint32(0, b.length); b.set([...type].map((c) => c.charCodeAt(0)), 4); b.set(body, 8); return b; };
+  const ftyp = box('ftyp', new Uint8Array([...brand].map((c) => c.charCodeAt(0)).concat([0, 0, 0, 0])));
+  const mvhdBody = new Uint8Array(100);
+  new DataView(mvhdBody.buffer).setUint32(4, Math.round((Date.parse(utc) - Date.UTC(1904, 0, 1)) / 1000));
+  const moov = box('moov', box('mvhd', mvhdBody));
+  const mdat = box('mdat', new Uint8Array(frames));
+  const out = new Uint8Array(ftyp.length + mdat.length + moov.length);
+  out.set(ftyp, 0); out.set(mdat, ftyp.length); out.set(moov, ftyp.length + mdat.length);
+  return out;
+}
+// A file link that answers Range as a real one does
+const ranged = (bytes, seen = []) => async (_url, init = {}) => {
+  const m = /bytes=(\d+)-(\d+)/.exec(init.headers?.Range || '');
+  seen.push(init.headers?.Range);
+  if (!m) return new Response(bytes, { status: 200 });
+  const a = Number(m[1]);
+  if (a >= bytes.length) return new Response('', { status: 416 });
+  return new Response(bytes.slice(a, Math.min(bytes.length, Number(m[2]) + 1)), { status: 206 });
+};
+
+test('a video’s recording time is read from its movie header, after its frames, in Eastern time', async () => {
+  assert.equal(eastern(Date.parse('2026-03-05T19:22:10Z')), '2026-03-05 14:22:10');
+  assert.equal(eastern(Date.parse('2026-07-05T19:22:10Z')), '2026-07-05 15:22:10', 'summer time');
+  const seen = [];
+  const r = await fetchTaken('https://cdn.example.com/v', ranged(movie('2026-03-06T02:30:00Z'), seen));
+  assert.equal(r.taken, '2026-03-05 21:30:00', 'the evening of the 5th in Atlanta');
+  assert.equal(seen.length, 2, 'the first 256 KB, then the movie header where it sits');
+  // A HEIC is a picture, not a movie; a reply that ignores Range isn't misread
+  const heicLike = movie('2026-03-06T02:30:00Z', { brand: 'heic' });
+  assert.equal(await fetchTaken('https://cdn.example.com/h', ranged(heicLike)), null);
+  const whole = movie('2026-03-06T02:30:00Z');
+  assert.equal(await fetchTaken('https://cdn.example.com/v', async () => new Response(whole, { status: 200 })), null);
+  // Moov first (a web video): read from the first bytes alone
+  const fast = movie('2026-03-21T15:00:00Z', { frames: 10 });
+  assert.equal(readTaken(fast.buffer).taken, '2026-03-21 11:00:00');
+});
+
+test('on a job, a video sorts by its recording time; a design board saved as a picture goes to Design', async () => {
+  const e = await env();
+  for (const [n, id] of [['Costs', 'tC'], ['Design', 'tG'], ['Plans', 'tP']]) await e.DB.prepare('INSERT INTO file_tags VALUES (?, ?, ?)').bind(n, id, 'x').run();
+  const v = movie('2026-03-21T15:00:00Z', { frames: 10 });
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 0, 0, 0, 0]);
+  const w = world({ files: [
+    { id: 'v1', name: 'IMG_9.MOV', type: 'video/quicktime', bytes: v },
+    { id: 'g1', name: 'Harper’s Design Board.png', type: 'image/png', bytes: png },
+    { id: 'g2', name: 'Leland Mood Board.png', type: 'image/png', bytes: png, tags: [{ id: 'tG', name: 'Design' }] },
+  ] });
+  await sortJob(e, { id: 'j1' }, { fetchImpl: w.fetchImpl, now: T, write: true });
+  const got = await rows(e.DB);
+  assert.deepEqual(got.v1, ['After', 'on or after reveal day']);
+  assert.deepEqual(got.g1, ['Design', 'named like a design']);
+  assert.deepEqual(got.g2, ['Design', 'already tagged']);
+  assert.deepEqual(w.writes.map((x) => [x.id, x.fileTagIds]).sort(), [['g1', ['tG']], ['v1', ['tA']]]);
+});
+
+test('writing: at most 40 a turn, the same job again next turn for the rest; a write JobTread refuses doesn’t hold up the job', async () => {
+  const e = await env();
+  const files = Array.from({ length: 46 }, (_, i) => photo(`p${i}`, '2026:03:05 10:00:00'));
+  const w = world({ files });
+  const real = w.fetchImpl;
+  w.fetchImpl = async (url, init = {}) => {
+    const q = init.body ? JSON.parse(init.body).query : null;
+    if (q?.updateFile?.$.id === 'p3') return new Response('{"errors":["nope"]}', { status: 400 });
+    // As JobTread: a written tag is on the file from then on
+    if (q?.updateFile) files.find((f) => f.id === q.updateFile.$.id).tags = q.updateFile.$.fileTagIds.map((id) => ({ id, name: id }));
+    return real(url, init);
+  };
+  // Read in the trial (30 a turn), as live: every photo's time is already known when writing starts
+  await sortJob(e, { id: 'j1' }, { fetchImpl: w.fetchImpl, now: T, write: false });
+  await sortJob(e, { id: 'j1' }, { fetchImpl: w.fetchImpl, now: T + 1000, write: false });
+  const first = await sortJob(e, { id: 'j1' }, { fetchImpl: w.fetchImpl, now: T + 2000, write: true });
+  assert.deepEqual([first.read, first.wrote, first.failed], [0, 40, 1]);
+  assert.ok(first.left > 0, 'the job stays up for the rest');
+  const second = await sortJob(e, { id: 'j1' }, { fetchImpl: w.fetchImpl, now: T + 3000, write: true });
+  assert.deepEqual([second.wrote, second.failed], [7, 1], 'the other 6, and the refused one tried again');
+  assert.equal(new Set(w.writes.map((x) => x.id)).size, 45, 'every photo but the refused one');
 });
