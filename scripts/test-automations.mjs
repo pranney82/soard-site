@@ -520,9 +520,9 @@ try {
   const pagesText = await hostPanel(healthy, 'The website on Cloudflare Pages');
   ok(pagesText.includes('Live: built after a push to GitHub') && pagesText.includes('(819b81c0)') && pagesText.includes('Workers & Pages → soard-site'), 'the Pages entry says which build is live, how it started and where the project is');
   const repoText = await hostPanel(healthy, 'GitHub repository');
-  ok(repoText.includes('built from main’s newest commit, 819b81c0') && repoText.includes('github.com/pranney82/soard-site') && repoText.includes('public'), 'the GitHub entry says the live site is main’s newest commit, where the code is and that it’s public');
+  ok(repoText.includes('built from main’s newest commit, 819b81c0') && repoText.includes('github.com/sunshineonaranneyday/soard-site') && repoText.includes('public'), 'the GitHub entry says the live site is main’s newest commit, where the code is and that it’s public');
   const repoLinks = await healthy.page.$$eval('.am-panel .am-links a', (a) => a.map((x) => x.getAttribute('href')));
-  ok(repoLinks.join(' ') === 'https://github.com/pranney82/soard-site https://github.com/pranney82/soard-site/settings/access', `it opens the repository and who can change it (${repoLinks.join(' ')})`);
+  ok(repoLinks.join(' ') === 'https://github.com/sunshineonaranneyday/soard-site https://github.com/orgs/sunshineonaranneyday/people', `it opens the repository and the organization’s people (${repoLinks.join(' ')})`);
   const keysText = await hostPanel(healthy, 'Keys in Cloudflare');
   ok(keysText.includes('48 keys set. No code reads CC_CLIENT_ID, CC_CLIENT_SECRET, CC_REFRESH_TOKEN, MEDUSA_ADMIN_KEY and MEDUSA_BACKEND_URL, so they’re safe to delete.'), 'the keys entry counts the keys and names the ones nothing reads');
   const keyLinks = await healthy.page.$$eval('.am-panel .am-links a', (a) => a.map((x) => [x.textContent.trim(), x.getAttribute('href'), x.target, x.rel]));

@@ -174,3 +174,21 @@ test('every key the code reads is on the list, so a key nothing reads is really 
   const stale = [...READ_KEYS].filter((n) => !read.has(n));
   assert.deepEqual(stale, [], 'take these off READ_KEYS: no code reads them');
 });
+
+test('a GitHub key that can’t see the repo (made before the move to the organization) falls back to reading it without the key', async () => {
+  const seen = [];
+  const fetchImpl = fakeFetch();
+  const wrapped = async (url, init = {}) => {
+    if (new URL(url).hostname === 'api.github.com') {
+      seen.push(init.headers?.Authorization || null);
+      if (init.headers?.Authorization) return new Response('{"message":"Not Found"}', { status: 404 });
+    }
+    return fetchImpl(url, init);
+  };
+  const r = await hostingFacts(ENV, { fetchImpl: wrapped });
+  assert.equal(r.github.sha, 'bbbbbbbb');
+  assert.deepEqual(seen, ['Bearer GH-TOKEN-SECRET', null]);
+  // Any other failure isn't retried without the key
+  const down = await hostingFacts(ENV, { fetchImpl: fakeFetch({ github: () => new Response('', { status: 500 }) }) });
+  assert.match(down.github.error, /500/);
+});

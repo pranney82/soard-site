@@ -3,7 +3,7 @@
  *
  * Required env vars:
  *   GITHUB_TOKEN — fine-grained PAT with "Contents: Read and write" permission
- *   GITHUB_REPO  — "owner/repo" (e.g. "pranney82/soard-site")
+ *   GITHUB_REPO  — "owner/repo" (e.g. "sunshineonaranneyday/soard-site")
  *
  * Optional:
  *   GITHUB_BRANCH — branch to commit to (default: "main")

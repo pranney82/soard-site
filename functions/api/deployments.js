@@ -9,7 +9,7 @@
  *   CF_PAGES_TOKEN (optional — API token with Pages:Read permission)
  */
 
-const REPO = 'pranney82/soard-site';
+const REPO = 'sunshineonaranneyday/soard-site';
 const CF_PROJECT = 'soard-site';
 
 export async function onRequestGet(context) {
@@ -66,10 +66,13 @@ export async function onRequestGet(context) {
       'User-Agent': 'SOARD-Admin',
     };
 
-    const ghRes = await fetch(
-      `https://api.github.com/repos/${REPO}/commits?sha=main&per_page=25`,
-      { headers: ghHeaders }
-    );
+    const ghUrl = `https://api.github.com/repos/${REPO}/commits?sha=main&per_page=25`;
+    let ghRes = await fetch(ghUrl, { headers: ghHeaders });
+    // The repo is public: a key that can't see it (one made before the move to SOARD's organization) still reads it without the key
+    if ([401, 403, 404].includes(ghRes.status)) {
+      const { Authorization, ...open } = ghHeaders;
+      ghRes = await fetch(ghUrl, { headers: open });
+    }
 
     let commits = [];
     if (ghRes.ok) {

@@ -24552,7 +24552,7 @@ ${sections || '<p>No one yet.</p>'}
                   <span class="ph-row__title" title=${d.commitMessage || ''}>${d.commitMessage || 'A site update'}</span>
                   <span class="ph-row__sub">
                     ${[d.author, d.createdOn ? timeAgo(d.createdOn) : null, took(d.startedOn, d.endedOn) ? `took ${took(d.startedOn, d.endedOn)}` : null].filter(Boolean).join(' · ')}
-                    ${sha ? html` · <a class="link ph-sha" href=${d.commitUrl || `https://github.com/pranney82/soard-site/commit/${d.commitHash}`} target="_blank" rel="noopener" title="The change on GitHub">${sha}</a>` : null}
+                    ${sha ? html` · <a class="link ph-sha" href=${d.commitUrl || `https://github.com/sunshineonaranneyday/soard-site/commit/${d.commitHash}`} target="_blank" rel="noopener" title="The change on GitHub">${sha}</a>` : null}
                     ${d.url && d.status === 'success' ? html` · <a class="link" href=${d.url} target="_blank" rel="noopener">Preview</a>` : null}
                   </span>
                 </span>
@@ -24892,7 +24892,7 @@ ${sections || '<p>No one yet.</p>'}
           { type: 'page', label: 'Audit log (who changed what)', meta: 'History', id: 'history', section: 'Pages' },
           { type: 'page', label: 'Publish history', meta: 'History', id: 'history', subTab: 'publishes', section: 'Pages' },
           { type: 'link', label: 'View site', meta: 'sunshineonaranneyday.com', href: '/', section: 'Links' },
-          { type: 'link', label: 'GitHub repository', meta: 'The site’s code', href: 'https://github.com/pranney82/soard', section: 'Links' },
+          { type: 'link', label: 'GitHub repository', meta: 'The site’s code', href: 'https://github.com/sunshineonaranneyday/soard-site', section: 'Links' },
         ];
         const actions = [
           { type: 'action', label: 'Add New Partner', id: 'partners-hub', slug: '', section: 'Actions' },

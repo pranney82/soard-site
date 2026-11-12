@@ -146,7 +146,7 @@ const dataxHook = (event, missing) => (f) => {
 // Hosting (_hosting.js): Cloudflare's builds, main on GitHub, the domains' registrations, the keys.
 // Links use Cloudflare's own ?to=/:account/… form, which opens the signed-in person's account (no account id in the code)
 const CF = (path) => `https://dash.cloudflare.com/?to=/:account${path}`;
-const GH = 'https://github.com/pranney82/soard-site';
+const GH = 'https://github.com/sunshineonaranneyday/soard-site';
 const DNS = (zone) => ({ label: 'DNS records', href: CF(`/${zone}/dns/records`) });
 const REGISTRAR = { label: 'Domain registration', href: CF('/registrar/domains') };
 const PROJECT = { label: 'Open soard-site', href: CF('/pages/view/soard-site') };
@@ -1045,9 +1045,9 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Code', children: [
         { t: 'GitHub repository', s: 'live', k: 'link',
           does: 'The website’s code: the pages, the admin, the API and the live hub. Cloudflare watches its main branch, and every push there builds and publishes the site.',
-          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/pranney82/soard-site (branch main)',
-          info: 'The repository is public: anyone can read the code, so keys and families’, donors’ and staff’s details never go in it. Keys live in Cloudflare and content lives in D1, so the code alone can’t bring back the site’s words or photos. Who can change the code is under the repository’s Settings → Collaborators. Cloudflare still lists it under its first name, pranney82/soard, which GitHub sends on to soard-site.',
-          links: [{ label: 'Open on GitHub', href: GH }, { label: 'Collaborators', href: `${GH}/settings/access` }], live: (f) => codeLive(f) },
+          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/sunshineonaranneyday/soard-site (branch main)',
+          info: 'The repository is public: anyone can read the code, so keys and families’, donors’ and staff’s details never go in it. Keys live in Cloudflare and content lives in D1, so the code alone can’t bring back the site’s words or photos. It belongs to SOARD’s GitHub organization, Sunshine on a Ranney Day, beside the Sunny & Ranney store’s code; who can change it is under the organization’s People. Cloudflare may still show its old address, pranney82/soard, and GitHub sends that on to the new one.',
+          links: [{ label: 'Open on GitHub', href: GH }, { label: 'People', href: 'https://github.com/orgs/sunshineonaranneyday/people' }], live: (f) => codeLive(f) },
       ]},
       { t: 'Domains', children: [
         { t: 'sunshineonaranneyday.com', s: 'live', k: 'link',
@@ -1356,7 +1356,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Code push builds', s: 'live', k: 'build',
           when: 'A push to main on GitHub.',
           does: 'Cloudflare Pages builds and publishes the site.',
-          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/pranney82/soard-site',
+          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/sunshineonaranneyday/soard-site',
           live: (f) => codeLive(f) },
         { t: 'Build pulls content', s: 'live', k: 'build',
           when: 'Every build, before the site is generated.',

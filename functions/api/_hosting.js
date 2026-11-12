@@ -7,7 +7,7 @@
  *             soard-site), through CF_PAGES_TOKEN (Pages: Read), summed up the
  *             way Publish does (pending-changes.js): the live build, one still
  *             running, the newest one failing. Commits by short sha only.
- *  - github:  the newest commit on main in github.com/pranney82/soard-site, and
+ *  - github:  the newest commit on main in github.com/sunshineonaranneyday/soard-site, and
  *             what Cloudflare did with it (live, building, failed or no build).
  *             Sha and time only, never the message.
  *  - domains: each of SOARD's four domains as its registry's RDAP answers:
@@ -23,7 +23,7 @@
 import { summarizeDeploys } from './pending-changes.js';
 
 export const PAGES_PROJECT = 'soard-site';
-export const REPO = 'pranney82/soard-site';
+export const REPO = 'sunshineonaranneyday/soard-site';
 
 // The registry's RDAP server for each domain's TLD (rdap.org's redirects fail from Workers often enough to skip it)
 const RDAP = {
@@ -136,7 +136,16 @@ export async function hostingFacts(env, { fetchImpl = fetch, now = Date.now() } 
   const githubRead = (async () => {
     const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'soard-admin' };
     if (env.GITHUB_TOKEN) headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
-    const c = await getJson(fetchImpl, `https://api.github.com/repos/${REPO}/commits/main`, headers);
+    const url = `https://api.github.com/repos/${REPO}/commits/main`;
+    let c;
+    try {
+      c = await getJson(fetchImpl, url, headers);
+    } catch (e) {
+      // The repo is public: a key that can't see it (one made before the move to SOARD's organization) still reads it without the key
+      if (!headers.Authorization || !/HTTP (401|403|404)/.test(e.message)) throw e;
+      const { Authorization, ...open } = headers;
+      c = await getJson(fetchImpl, url, open);
+    }
     const message = String(c.commit?.message || '');
     return { sha: short(c.sha), at: c.commit?.committer?.date || c.commit?.author?.date || null, skip: /\[(skip ci|ci skip|skip actions|actions skip)\]/i.test(message) };
   })();
