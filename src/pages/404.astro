@@ -52,6 +52,7 @@ import { CF_BASE as CF } from '../utils/cf-image';
 </BaseLayout>
 
 <script>
+  import { onPageLoad } from '../utils/page-load';
   const lines = [
     "Gracie flew off\u00a0course!",
     "Oink! Wrong\u00a0turn!",
@@ -83,7 +84,7 @@ import { CF_BASE as CF } from '../utils/cf-image';
     });
   }
 
-  document.addEventListener('astro:page-load', init);
+  onPageLoad(init);
   init();
 </script>
 

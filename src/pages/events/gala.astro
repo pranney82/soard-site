@@ -3613,6 +3613,7 @@ const hero = {
 </style>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   function initGala() {
     // Only the gala before the event: the recap has its own scripts, and this
     // listener stays registered on every page after a visit
@@ -3778,5 +3779,5 @@ const hero = {
     /* FAQ accordion behavior is handled by the <faq-accordion> custom element */
   }
 
-  document.addEventListener('astro:page-load', initGala);
+  onPageLoad(initGala);
 </script>

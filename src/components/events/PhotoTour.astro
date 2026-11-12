@@ -112,6 +112,7 @@ const total = shown.reduce((n, g) => n + g.photos.length, 0);
 
 <script>
   import { cfRaw, cfSrcset } from '../../utils/cf-image';
+  import { onPageLoad } from '../../utils/page-load';
 
   type Photo = { id: string; alt: string; group: string; title: string; index: number; size: number; thumb: HTMLButtonElement };
 
@@ -272,7 +273,7 @@ const total = shown.reduce((n, g) => n + g.photos.length, 0);
     single?.addEventListener('pointercancel', () => { x0 = null; });
   }
 
-  document.addEventListener('astro:page-load', wire);
+  onPageLoad(wire);
   document.addEventListener('astro:before-swap', () => { if (dialog?.open) dialog.close(); lockScroll(false); });
 </script>
 

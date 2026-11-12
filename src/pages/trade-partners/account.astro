@@ -33,7 +33,8 @@ import { signInHtml } from '../../components/trade-partners/signin';
 <script is:inline>if(!window.__tpGate){window.__tpGate=1;addEventListener('popstate',function(e){var f=window.__tpPop;if(f&&f(e))e.stopImmediatePropagation()},true)}</script>
 <script>
   import { start } from '../../components/trade-partners/account';
-  document.addEventListener('astro:page-load', () => {
+  import { onPageLoad } from '../../utils/page-load';
+  onPageLoad(() => {
     const el = document.getElementById('tpa');
     if (el && !el.dataset.started) { el.dataset.started = '1'; start(el); }
   });

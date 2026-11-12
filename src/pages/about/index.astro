@@ -1634,6 +1634,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
 </style>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   function initTimeline() {
     const timeline = document.getElementById('timeline');
     if (!timeline) return;
@@ -1843,7 +1844,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     return nav?.type === 'back_forward';
   }
 
-  document.addEventListener('astro:page-load', initTimeline);
+  onPageLoad(initTimeline);
 </script>
 
 

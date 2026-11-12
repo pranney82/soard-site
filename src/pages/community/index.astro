@@ -357,6 +357,7 @@ const hero = {
 
 <!-- ══════ View Transitions: card ↔ hero morph ══════ -->
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   function initCommunityTransitions() {
     const grid = document.querySelector('.projects-grid');
     if (!grid) return;
@@ -400,7 +401,7 @@ const hero = {
     if (name) name.style.viewTransitionName = 'community-name';
   }
 
-  document.addEventListener('astro:page-load', initCommunityTransitions);
+  onPageLoad(initCommunityTransitions);
   document.addEventListener('astro:before-swap', setupCommunityBackTransition);
 </script>
 

@@ -10,13 +10,17 @@ const isDev = process.argv.includes('dev');
 const devLiveMock = isDev ? (await import(`./scripts/dev-live-mock.js?t=${Date.now()}`)).default : null;
 
 // The browser scripts every public page loads share code: Astro's page router
-// and prefetch (four files, one of them 27 bytes) and the site's live, reveal,
+// and prefetch (four files, one of them 27 bytes), the site's onPageLoad that
+// every page script sets itself up through, and the site's live, reveal,
 // sign-up and image helpers (five files). Split by module, a page fetched ~20
-// script files, each found only after the one importing it arrived. Two files
-// instead, with the same code, so no page loads anything it didn't before.
+// script files, each found only after the one importing it arrived. One file
+// instead, with the same code: the page router's script (the first on every
+// page) imports it, so it's asked for as soon as that tiny script is in, not
+// after a later script needing the helpers arrived (Nov 11 2026, a kid page
+// over slow 4G: the helpers asked for at 1.09 s, in at 2.06 s). Every public
+// page loads all of it already (the footer and the live card use the helpers).
 const SHARED_CHUNKS = [
-  ['astro-client', /[\\/]node_modules[\\/]astro[\\/]dist[\\/]/],
-  ['site-helpers', /[\\/]src[\\/]utils[\\/](cf-image|live-client|live-banner|reveals-client|signup-check)\.ts$/],
+  ['shared', /[\\/]node_modules[\\/]astro[\\/]dist[\\/]|[\\/]src[\\/]utils[\\/](page-load|cf-image|live-client|live-banner|reveals-client|signup-check)\.ts$/],
 ];
 function sharedScriptChunks() {
   return {

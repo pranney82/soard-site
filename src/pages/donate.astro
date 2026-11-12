@@ -442,6 +442,7 @@ const hero = {
 </BaseLayout>
 
 <script>
+  import { onPageLoad } from '../utils/page-load';
   /* Per-visit: the sticky-bar observer is let go on astro:before-swap, so observers never stack across client-side
      navigations. The gift pop-up is <ZeffyPopup /> (src/components/ui/ZeffyPopup.astro) */
   let _stickyObs: IntersectionObserver | null = null;
@@ -451,7 +452,7 @@ const hero = {
     _stickyObs = null;
   }
 
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     const stickyBar = document.getElementById('sticky-cta');
     const hero = document.querySelector('.hero');
     if (!stickyBar && !document.querySelector('.freq-btn')) return;

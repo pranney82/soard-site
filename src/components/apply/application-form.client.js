@@ -39,6 +39,7 @@ import { renderPages, t as word, imageHtml, mapWords, esc } from './application-
 import { areaMapHtml, declutter } from './area-map.js';
 import { signupCheck, postPlainly } from '../../utils/signup-check';
 import { mailFix } from './mail-fix.js';
+import { onPageLoad } from '../../utils/page-load';
 
 const API = '/api/apply';
 const STORE_KEY = 'soard-application-draft';
@@ -88,7 +89,7 @@ async function api(body) {
 }
 
 // The site uses Astro's ClientRouter: run on every visit to the page, not just the first load
-document.addEventListener('astro:page-load', () => {
+onPageLoad(() => {
   const root = document.querySelector('[data-application]');
   if (root && !root.dataset.ready) boot(root);
 });

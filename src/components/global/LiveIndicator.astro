@@ -150,6 +150,7 @@
   import { getLiveClient, type LiveState } from '../../utils/live-client';
   import { readReveals } from '../../utils/reveals-client';
   import { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, remindersUsable, browserCanPush, MAIN_CONTROLS, PICTURES, type Box, type NextReveal } from '../../utils/live-banner';
+  import { onPageLoad } from '../../utils/page-load';
 
   const DISMISS_KEY = 'soard-live-dismissed';
   const REVEALS_WAIT_MS = 2500; // a slow schedule holds the banner back this long at most
@@ -395,7 +396,7 @@
     if (reveals !== null && currentStage()) readSchedule();
     render();
   }, 60_000);
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     // It stays mounted across pages, so the click that got here can leave focus on it
     const active = document.activeElement as HTMLElement | null;
     if (active?.closest('#live-indicator')) active.blur();

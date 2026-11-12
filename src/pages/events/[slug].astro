@@ -629,6 +629,7 @@ const eventJsonLd = recap?.jsonLd ?? {
 </style>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   /* Video facade — load the player iframe only on click */
   function initEventVideo() {
     const facade = document.querySelector<HTMLButtonElement>('.ev-video__facade');
@@ -653,5 +654,5 @@ const eventJsonLd = recap?.jsonLd ?? {
     });
   }
 
-  document.addEventListener('astro:page-load', initEventVideo);
+  onPageLoad(initEventVideo);
 </script>

@@ -441,6 +441,7 @@ const hero = {
 
 <!-- ══════ CLIENT-SIDE FILTER ══════ -->
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   function initPartnerFilters() {
     const tabs = document.querySelectorAll<HTMLButtonElement>('.filter-tab');
     const cards = document.querySelectorAll<HTMLElement>('.ap-card');
@@ -608,7 +609,7 @@ const hero = {
     }
   }
 
-  document.addEventListener('astro:page-load', initPartnerFilters);
+  onPageLoad(initPartnerFilters);
 </script>
 
 <style>

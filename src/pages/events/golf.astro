@@ -2465,6 +2465,7 @@ const hero = {
 </style>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   // Smooth scroll for anchor links (reveal handled globally by ScrollReveal)
   let _ac: AbortController | null = null;
 
@@ -2671,7 +2672,7 @@ const hero = {
     }, { signal, passive: true });
   }
 
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     // Only the tournament page before the event: these listeners stay
     // registered on every page after a visit, and the recap has its own
     if (!document.querySelector('[data-golf-page]')) return;

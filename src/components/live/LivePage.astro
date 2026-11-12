@@ -434,6 +434,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { readUpcoming, loadSignup, inviteData, inviteLinks, scheduleOnPage, type UpcomingReveal } from '../../utils/reveals-client';
   import { heroRowsHtml, rowsSignature, afterLine } from '../../utils/upcoming-rows';
   import { plannedText, betweenText, ctasThatApply, ctaPicks, remindParts, remindWords } from '../../utils/live-hero-text';
+  import { onPageLoad } from '../../utils/page-load';
 
   /** The starting-soon screen fills the frame for the last hour: it carries the room's design for people waiting (the crew may start streaming up to 30 minutes early, per the runbook) */
   const SLATE_LEAD_MS = 60 * 60 * 1000;
@@ -446,14 +447,14 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   /**
    * The site navigates client-side (Astro ClientRouter), which runs this
    * module once per visit to the site, not once per visit to the page. So
-   * the page sets itself up on every astro:page-load that lands on it, and
+   * the page sets itself up on every page that lands on it (onPageLoad), and
    * stops its video, timers and listeners when it is swapped out; otherwise
    * coming back to it (the Back button) would show a dead page.
    */
   let teardown: (() => void) | null = null;
   let firstPage = true; // the page the document loaded with (a reload or Back to it) rather than one the router swapped in
   document.addEventListener('astro:before-swap', () => { teardown?.(); teardown = null; });
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     teardown?.();
     teardown = null;
     const hero = document.getElementById('live-hero') as HTMLElement | null;

@@ -97,6 +97,7 @@ const newsDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en
 const photos = kid.photos || [];
 // ── CF Image helpers ──────────────────────
 import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE, cfId } from '../../utils/cf-image';
+import { LIGHTBOX_WIDTH, LIGHTBOX_WIDTHS } from '../../utils/lightbox-photo';
 import lqipManifest from '../../data/lqip-kids.json';
 import dimsManifest from '../../data/dimensions-kids.json';
 import { sentences } from '../../utils/sentences';
@@ -558,8 +559,8 @@ const planOrientation = (() => {
               <button
                 class="masonry__item"
                 data-index={galleryPhotos.length + i}
-                data-src={planUrl(plan, 1600)}
-                data-srcset={planSrcset(plan, [800, 1200, 1600, 2400])}
+                data-src={planUrl(plan, LIGHTBOX_WIDTH)}
+                data-srcset={planSrcset(plan, LIGHTBOX_WIDTHS)}
                 data-alt={plan.label || `Plan ${i + 1}`}
                 data-caption={plan.label || ''}
                 data-plan="true"
@@ -707,9 +708,6 @@ const planOrientation = (() => {
                 <button
                   class="masonry__item gallery__cell gallery__cell--hero"
                   data-index={i}
-                  data-src={cfUrl(photo.url, 'w=1600,q=85')}
-                  data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
-                  data-alt={altText}
                   aria-label={`View photo ${i + 1} of ${galleryPhotos.length}`}
                   type="button"
                   style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${i}${focusCss(photo)}`}
@@ -742,9 +740,6 @@ const planOrientation = (() => {
                 <button
                   class="masonry__item gallery__cell"
                   data-index={globalIndex}
-                  data-src={cfUrl(photo.url, 'w=1600,q=85')}
-                  data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
-                  data-alt={altText}
                   aria-label={`View photo ${globalIndex + 1} of ${galleryPhotos.length}`}
                   type="button"
                   style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${globalIndex}${focusCss(photo)}`}
@@ -781,9 +776,6 @@ const planOrientation = (() => {
                   <button
                     class="masonry__item gallery__cell"
                     data-index={globalIndex}
-                    data-src={cfUrl(photo.url, 'w=1600,q=85')}
-                    data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
-                    data-alt={altText}
                     aria-label={`View photo ${globalIndex + 1} of ${galleryPhotos.length}`}
                     type="button"
                     style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${globalIndex}${focusCss(photo)}`}
@@ -971,6 +963,8 @@ const planOrientation = (() => {
 
 {/* ═══ Client-side JS ═══ */}
 <script>
+  import { onPageLoad } from '../../utils/page-load';
+  import { lightboxPhoto } from '../../utils/lightbox-photo';
   let _kidObserver: IntersectionObserver | null = null;
   let _staggerObserver: IntersectionObserver | null = null;
   let _chapterObserver: IntersectionObserver | null = null;
@@ -1543,6 +1537,13 @@ const planOrientation = (() => {
 
       const cache = new Map<number, { img: HTMLImageElement; decoded: boolean; promise: Promise<HTMLImageElement> }>();
 
+      /** What the lightbox shows for an item: a gallery photo, larger, from its own picture; a plan names its own crop */
+      function fullSize(item: HTMLElement): { src: string; srcset: string; alt: string } {
+        if (item.dataset.src) return { src: item.dataset.src, srcset: item.dataset.srcset || '', alt: item.dataset.alt || '' };
+        const thumb = item.querySelector('img');
+        return { ...lightboxPhoto(thumb?.getAttribute('src') || ''), alt: thumb?.alt || '' };
+      }
+
       function ensureCached(index: number): { img: HTMLImageElement; decoded: boolean; promise: Promise<HTMLImageElement> } {
         // Refresh list in case overflow was expanded
         galleryItems = sortByDataIndex(document.querySelectorAll<HTMLButtonElement>('.masonry__item'));
@@ -1552,10 +1553,11 @@ const planOrientation = (() => {
           const dummy = new Image();
           return { img: dummy, decoded: false, promise: Promise.resolve(dummy) };
         }
+        const full = fullSize(item);
         const img = new Image();
-        img.srcset = item.dataset.srcset || '';
+        img.srcset = full.srcset;
         img.sizes = '90vw';
-        img.src = item.dataset.src || '';
+        img.src = full.src;
         const entry = {
           img,
           decoded: false,
@@ -1642,7 +1644,7 @@ const planOrientation = (() => {
         if (!item) return;
         currentIndex = index;
         const gen = ++navGeneration;
-        const alt = item.dataset.alt || '';
+        const alt = fullSize(item).alt;
 
         slideFrame(direction);
 
@@ -2292,7 +2294,7 @@ const planOrientation = (() => {
 
   } // end initKidPage
 
-  document.addEventListener('astro:page-load', initKidPage);
+  onPageLoad(initKidPage);
   document.addEventListener('astro:before-swap', cleanupKidPage);
 </script>
 
@@ -2307,6 +2309,7 @@ const planOrientation = (() => {
      (functions/_kid-reveal.js, data-reveal-shown on the hero), so nothing
      moves; this fills it in only when it couldn't. */
   import { loadUpcoming, revealShortDate, revealWhen, windowShort, inviteData, possessive, shownZone } from '../../utils/reveals-client';
+  import { onPageLoad } from '../../utils/page-load';
 
   const CALENDAR_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>';
 
@@ -2367,7 +2370,7 @@ const planOrientation = (() => {
     }
   }
 
-  document.addEventListener('astro:page-load', showRevealDay);
+  onPageLoad(showRevealDay);
 </script>
 
 <style>

@@ -138,6 +138,7 @@ const hero = {
 
 <script>
   import { requirementLines, startLang, keepLang, type Lang } from '../../components/trade-partners/words';
+  import { onPageLoad } from '../../utils/page-load';
 
   const ES: Record<string, string> = {
     eyebrow: 'Socios comerciales',
@@ -292,7 +293,7 @@ const hero = {
     document.head.append(s);
   }
 
-  document.addEventListener('astro:page-load', setup);
+  onPageLoad(setup);
 </script>
 
 <style>

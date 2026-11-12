@@ -830,6 +830,7 @@ const hero = {
 
 <script>
   import { navigate } from 'astro:transitions/client';
+  import { onPageLoad } from '../utils/page-load';
 
   let _tocCleanup: (() => void) | null = null;
 
@@ -1083,6 +1084,6 @@ const hero = {
 
   }
 
-  document.addEventListener('astro:page-load', initBranding);
+  onPageLoad(initBranding);
   document.addEventListener('astro:before-swap', cleanupBranding);
 </script>

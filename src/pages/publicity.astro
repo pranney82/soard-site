@@ -377,7 +377,8 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
 </PageLayout>
 
 <script>
-  document.addEventListener('astro:page-load', () => {
+  import { onPageLoad } from '../utils/page-load';
+  onPageLoad(() => {
     /* ── YouTube facade ── */
     let warmed = false;
     function warm() {

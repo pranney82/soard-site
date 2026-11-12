@@ -30,8 +30,10 @@ const trustBadges = getTrustBadges(site);
 <footer class="site-footer">
 
   {/* ─── 1. NEWSLETTER BAND ─────────────────── */}
+  {/* Whole when it shows (global.css): the words and the form are centred on each other, so a form still arriving
+      would move up as its last line came in */}
   <div class="footer-newsletter">
-    <div class="footer-container footer-newsletter-inner">
+    <div class="footer-container footer-newsletter-inner" data-whole>
       <div class="footer-newsletter-text">
         <h2><span class="highlight">Brighten your inbox</span> with a little Sunshine.</h2>
         <p>Room reveals, impact stories, and upcoming events, delivered monthly.</p>
@@ -65,6 +67,7 @@ const trustBadges = getTrustBadges(site);
         <div class="newsletter-check" data-signup-check></div>
         <p class="newsletter-note" id="newsletter-note" role="status" aria-live="polite">No spam, ever. Unsubscribe anytime.</p>
       </form>
+      <span data-whole-end hidden></span>
     </div>
   </div>
 
@@ -228,8 +231,9 @@ const trustBadges = getTrustBadges(site);
   </div>
   <script>
     import { signupCheck, postPlainly } from '../../utils/signup-check';
+    import { onPageLoad } from '../../utils/page-load';
 
-    document.addEventListener('astro:page-load', () => {
+    onPageLoad(() => {
       const form = document.getElementById('newsletter-form') as HTMLFormElement | null;
       if (!form) return;
       const note = document.getElementById('newsletter-note');

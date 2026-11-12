@@ -1390,7 +1390,8 @@ const hero = {
 </style>
 
 <script>
-  /* Sticky section-nav — runs per astro:page-load so it survives client-side
+  import { onPageLoad } from '../utils/page-load';
+  /* Sticky section-nav — runs for each page (onPageLoad) so it survives client-side
      navigation (as a module-scope script it only ran on the first hard load),
      with an AbortController + observer cleanup on astro:before-swap so window
      listeners never accumulate (mirrors about/index.astro's timeline pattern). */
@@ -1529,6 +1530,6 @@ const hero = {
     }
   }
 
-  document.addEventListener('astro:page-load', initWtgNav);
+  onPageLoad(initWtgNav);
   document.addEventListener('astro:before-swap', cleanupWtgNav);
 </script>

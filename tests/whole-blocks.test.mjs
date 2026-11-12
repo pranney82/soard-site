@@ -62,7 +62,6 @@ test('the other first-screen blocks whose pieces lay each other out are whole to
     'src/components/ui/MediaLogos.astro': /<div class="ml" data-theme=\{theme\} data-whole>/, // a centred row of logos
     'src/components/events/EventRecap.astro': /<section class="rh" aria-labelledby="rh-title" data-whole>/,
     'src/pages/kids/[slug].astro': /<section class="hero" id="chapter-meet"[^>]*\sdata-whole>/, // words centred beside the photo
-    'src/pages/kids/index.astro': /<section class="kids-hero"[^>]*\sdata-whole>/,
     'src/pages/about/index.astro': /<section class="founders" id="our-story"[^>]*\sdata-whole>/,
     'src/pages/about/financials.astro': /<section class="hero" data-whole>/,
     'src/pages/about/leadership.astro': /<div class="founders-row" data-whole>[\s\S]*<div class="ribbon-inner" data-whole>|<div class="ribbon-inner" data-whole>[\s\S]*<div class="founders-row" data-whole>/,
@@ -73,6 +72,8 @@ test('the other first-screen blocks whose pieces lay each other out are whole to
     'src/pages/branding.astro': /<section class="brand-hero" data-whole>/,
     'src/pages/profile-update.astro': /<section class="pu-hero" data-whole>/,
     'src/pages/404.astro': /<section class="lost" data-whole>/,
+    'src/components/global/Footer.astro': /<div class="footer-container footer-newsletter-inner" data-whole>/, // the newsletter words centred beside its form
+    'src/pages/kids/index.astro': /<section class="kids-hero"[^>]*\sdata-whole>[\s\S]*<div class="kid-card__frame"[^>]*\sdata-whole>/, // and each card: its badge grows leftward as its words arrive
   };
   for (const [f, re] of Object.entries(blocks)) assert.match(readFileSync(f, 'utf8'), re, `${f}: its first-screen block is data-whole`);
 });

@@ -326,7 +326,9 @@ const hero = {
             data-status={kid.data.status || 'completed'}
             data-sort={typeof kid.data.sortOrder === 'number' ? String(kid.data.sortOrder) : ''}
           >
-            <div class="kid-card__frame" style={kid.data.heroImage && lqip[cfId(kid.data.heroImage)] ? `background-image:url(${lqip[cfId(kid.data.heroImage)]})` : undefined}>
+            {/* Whole when it shows (global.css): the badge sits in the corner and grows leftward as its words arrive, so a
+                card painted while still arriving would have its badge widen under the reader */}
+            <div class="kid-card__frame" style={kid.data.heroImage && lqip[cfId(kid.data.heroImage)] ? `background-image:url(${lqip[cfId(kid.data.heroImage)]})` : undefined} data-whole>
               {kid.data.heroImage ? (
                 <picture>
                   <source
@@ -376,6 +378,7 @@ const hero = {
                   <span class="kid-card__room">{sortRoomTypes(kid.data.roomTypes || [])[0]}</span>
                 )}
               </div>
+              <span data-whole-end hidden></span>
             </div>
           </a>
         ))}
@@ -441,6 +444,7 @@ const hero = {
 
 <!-- ══════ FILTERING + INTERACTIONS ══════ -->
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   let _kidsObserver: IntersectionObserver | null = null;
   let _kidsAbortController: AbortController | null = null;
 
@@ -1449,7 +1453,7 @@ const hero = {
 
   } // end initKidsIndex
 
-  document.addEventListener('astro:page-load', initKidsIndex);
+  onPageLoad(initKidsIndex);
   document.addEventListener('astro:before-swap', cleanupKidsIndex);
 </script>
 
@@ -1459,6 +1463,7 @@ const hero = {
      month, never a day) or "Reveal Nov 25" (confirmed), on the cards already
      there and on any the page adds later (the rest load as you scroll). */
   import { loadUpcoming, revealShortDate, windowShort, type UpcomingReveal } from '../../utils/reveals-client';
+  import { onPageLoad } from '../../utils/page-load';
 
   const CALENDAR = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>';
   const badgeText = (r: UpcomingReveal) => r.confirmed
@@ -1491,12 +1496,13 @@ const hero = {
     observer.observe(grid, { childList: true });
   }
 
-  document.addEventListener('astro:page-load', showRevealTiming);
+  onPageLoad(showRevealTiming);
   document.addEventListener('astro:before-swap', () => { observer?.disconnect(); observer = null; });
 </script>
 
 <!-- Cursor glow: warm light follows mouse across card frames -->
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   function initCursorGlow() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     if (!window.matchMedia('(hover: hover)').matches) return;
@@ -1518,11 +1524,12 @@ const hero = {
     }, { passive: true });
   }
 
-  document.addEventListener('astro:page-load', initCursorGlow);
+  onPageLoad(initCursorGlow);
 </script>
 
 <!-- View Transitions: card ↔ hero morph (forward + back) -->
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   function initKidTransitions() {
     const grid = document.getElementById('kids-grid');
     if (!grid) return;
@@ -1570,7 +1577,7 @@ const hero = {
     if (name) name.style.viewTransitionName = 'kid-name';
   }
 
-  document.addEventListener('astro:page-load', initKidTransitions);
+  onPageLoad(initKidTransitions);
   document.addEventListener('astro:before-swap', setupBackTransition);
 </script>
 

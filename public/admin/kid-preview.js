@@ -366,9 +366,7 @@ export function patchKidPage(doc, win, model) {
       const b = proto.cloneNode(true);
       const altText = photo.alt || `${name}'s room transformation photo ${i + 1}`;
       b.dataset.index = String(i);
-      b.dataset.src = cfRaw(photo.url, 'w=1600,q=85');
-      b.dataset.srcset = cfSrcset(photo.url, [800, 1200, 1600, 2400]);
-      b.dataset.alt = altText;
+      // The lightbox makes the full-size copy from the cell's own picture (src/utils/lightbox-photo.ts)
       b.setAttribute('aria-label', `View photo ${i + 1} of ${n}`);
       b.setAttribute('style', `--lqip: ${lqipVar(photo.url)}; --stagger: ${i}${focusCss(photo)}`);
       const im = b.querySelector('img');

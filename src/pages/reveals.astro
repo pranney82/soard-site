@@ -508,6 +508,7 @@ const hero = {
    */
   import { readUpcoming, loadSignup, revealWhen } from '../utils/reveals-client';
   import { cfRaw, cfSrcset } from '../utils/cf-image';
+  import { onPageLoad } from '../utils/page-load';
 
   function initRevealsHero() {
     const frame = document.querySelector<HTMLElement>('[data-rh]');
@@ -555,5 +556,5 @@ const hero = {
       frame.dataset.mode = 'next';
     });
   }
-  document.addEventListener('astro:page-load', initRevealsHero);
+  onPageLoad(initRevealsHero);
 </script>

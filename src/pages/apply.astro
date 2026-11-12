@@ -517,8 +517,9 @@ const hero = {
      a Spanish browser, or for someone who used the form in Spanish). -->
 <script>
   import { signupCheck, postPlainly } from '../utils/signup-check';
+  import { onPageLoad } from '../utils/page-load';
 
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     const form = document.getElementById('notify-form') as HTMLFormElement | null;
     if (!form) return;
     const note = document.getElementById('notify-note');

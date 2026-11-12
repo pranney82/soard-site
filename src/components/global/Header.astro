@@ -283,8 +283,17 @@ function isGroupActive(group: NavGroup) {
   </div>
 </div>
 
+{/* The phone menu works the moment it's on screen: this runs as the page is read in, not when the header's script file
+    has downloaded (on a slow phone that came 1 to 2 s after the page could be read, and the button did nothing till
+    then). Once per tab: the button and the panel are kept across in-site moves (transition:persist); the page's main
+    and footer are looked up when used. Open: the page behind stays put (html.menu-open, body pinned at its scroll),
+    is inert, and focus goes into the menu and loops there; Escape, the button again, or a wide screen closes it; a
+    link closes it at once, with no scroll back, for the page it leads to. */}
+<script is:inline>(function(){if(window.__mnav)return;window.__mnav=1;var d=document,h=d.documentElement,open=!1,y=0;function q(i){return d.getElementById(i)}function set(on,instant){var b=q('mobile-toggle'),p=q('mobile-panel');if(!b||!p)return;open=on;if(on){y=scrollY;p.style.transition='';h.style.setProperty('--menu-top',Math.max(0,(parseFloat(getComputedStyle(h).getPropertyValue('--apply-bar-h'))||0)-y)+'px');h.classList.add('menu-open');d.body.style.top='-'+y+'px'}else{if(instant)p.style.transition='none';h.classList.remove('menu-open');d.body.style.top='';if(!instant)scrollTo(0,y)}b.setAttribute('aria-expanded',String(on));b.classList.toggle('is-open',on);p.classList.toggle('is-open',on);p.setAttribute('aria-hidden',String(!on));['main','footer'].forEach(function(t){var e=d.querySelector(t);if(e)e.toggleAttribute('inert',on)});if(on){var a=p.querySelector('a');if(a)a.focus()}else if(!instant)b.focus()}d.addEventListener('click',function(e){var t=e.target;if(t.closest('#mobile-toggle'))set(!open);else if(open&&t.closest('a'))set(!1,!0)});d.addEventListener('keydown',function(e){if(!open)return;if(e.key==='Escape')return set(!1);if(e.key!=='Tab')return;var f=[q('mobile-toggle')].concat([].slice.call(q('mobile-panel').querySelectorAll('a, button'))).filter(Boolean),a=f[0],z=f[f.length-1];if(d.activeElement===(e.shiftKey?a:z)){e.preventDefault();(e.shiftKey?z:a).focus()}});matchMedia('(min-width: 1024px)').addEventListener('change',function(e){if(e.matches&&open)set(!1)});d.addEventListener('astro:before-swap',function(){if(open)set(!1,!0)})})();</script>
+
 <script>
 import { prefetch } from 'astro:prefetch';
+import { onPageLoad } from '../../utils/page-load';
 
 /* Phones have no hover, so the page behind a link starts loading the moment a
    finger lands on it (as hovering does on computers, astro.config prefetch).
@@ -338,7 +347,7 @@ document.addEventListener('mouseover', function (e) {
   if (a) hoverTimer = setTimeout(function () { warmPage(a.href); }, 80);
 }, { passive: true });
 
-document.addEventListener('astro:page-load', function () {
+onPageLoad(function () {
   /* Abort previous listeners to prevent stacking across View Transitions */
   if (window.__headerAC) window.__headerAC.abort();
   var ac = new AbortController();
@@ -580,7 +589,7 @@ document.addEventListener('astro:page-load', function () {
   }
 
   /* ═══════ SCROLL ═══════ */
-  var ticking = false, mobileOpen = false;
+  var ticking = false;
   /* The application bar's height above the header (ApplicationBar.astro sets it; 0 when it isn't showing) */
   function topBarHeight() {
     return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--apply-bar-h')) || 0;
@@ -594,90 +603,8 @@ document.addEventListener('astro:page-load', function () {
     if (!ticking) { requestAnimationFrame(onScroll); ticking = true; }
   }, { passive: true, signal: sig });
 
-  /* ═══════ MOBILE NAV ═══════ */
-  var mBtn = document.getElementById('mobile-toggle');
-  var mPanel = document.getElementById('mobile-panel');
-  var mainEl = document.querySelector('main');
-  var footerEl = document.querySelector('footer');
-  var savedY = 0;
-
-  function mGetFocusable() {
-    return [mBtn].concat(Array.from(mPanel.querySelectorAll('a, button'))).filter(Boolean);
-  }
-
-  function mOpen() {
-    mobileOpen = true; savedY = window.scrollY;
-    mPanel.style.transition = '';            /* restore in case mHideInstant killed it */
-    /* The header stays where it is when it pins: below whatever of the application bar is on screen */
-    document.documentElement.style.setProperty('--menu-top', Math.max(0, topBarHeight() - savedY) + 'px');
-    document.documentElement.classList.add('menu-open');
-    document.body.style.top = '-' + savedY + 'px';
-    mBtn.setAttribute('aria-expanded', 'true');
-    mBtn.classList.add('is-open');
-    mPanel.classList.add('is-open'); mPanel.setAttribute('aria-hidden', 'false');
-    if (mainEl) mainEl.setAttribute('inert', '');
-    if (footerEl) footerEl.setAttribute('inert', '');
-    var firstLink = mPanel.querySelector('a');
-    if (firstLink) firstLink.focus();
-  }
-
-  function mCloseMenu() {
-    if (!mobileOpen) return;
-    mobileOpen = false;
-    document.documentElement.classList.remove('menu-open');
-    document.body.style.top = '';
-    window.scrollTo(0, savedY);
-    mBtn.setAttribute('aria-expanded', 'false');
-    mBtn.classList.remove('is-open');
-    mPanel.classList.remove('is-open'); mPanel.setAttribute('aria-hidden', 'true');
-    if (mainEl) mainEl.removeAttribute('inert');
-    if (footerEl) footerEl.removeAttribute('inert');
-    mBtn.focus();
-  }
-
-  /* Hide instantly (no transition) — used when a link navigates away */
-  function mHideInstant() {
-    if (!mobileOpen) return;
-    mobileOpen = false;
-    mPanel.style.transition = 'none';
-    mPanel.classList.remove('is-open'); mPanel.setAttribute('aria-hidden', 'true');
-    document.documentElement.classList.remove('menu-open');
-    document.body.style.top = '';
-    mBtn.setAttribute('aria-expanded', 'false');
-    mBtn.classList.remove('is-open');
-    if (mainEl) mainEl.removeAttribute('inert');
-    if (footerEl) footerEl.removeAttribute('inert');
-  }
-
-  if (mBtn) mBtn.addEventListener('click', function () { mobileOpen ? mCloseMenu() : mOpen(); }, { signal: sig });
-
-  document.addEventListener('keydown', function (e) {
-    if (!mobileOpen) return;
-    if (e.key === 'Escape') { mCloseMenu(); return; }
-    if (e.key === 'Tab') {
-      var f = mGetFocusable(), first = f[0], last = f[f.length - 1];
-      if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
-      else { if (document.activeElement === last) { e.preventDefault(); first.focus(); } }
-    }
-  }, { signal: sig });
-
-  window.matchMedia('(min-width: 1024px)').addEventListener('change', function (e) { if (e.matches && mobileOpen) mCloseMenu(); }, { signal: sig });
-
-  /* Close mobile menu on any link click (header CTA, panel links, logo, etc.) */
-  document.addEventListener('click', function (e) {
-    if (!mobileOpen) return;
-    var link = e.target.closest('a');
-    if (link) mHideInstant();
-  }, { signal: sig });
 });
 
-/* Force-clean menu state before View Transition swaps the DOM.
-   Prevents html.menu-open (position:fixed, overflow:hidden) from
-   leaking into the new page if mHideInstant() timing races the swap. */
-document.addEventListener('astro:before-swap', function () {
-  document.documentElement.classList.remove('menu-open');
-  document.body.style.top = '';
-});
 </script>
 
 <style>

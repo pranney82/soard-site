@@ -1004,9 +1004,10 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
 </noscript>
 
 <script>
+  import { onPageLoad } from '../utils/page-load';
   /* ── Home page: hero photo parallax ──
    * Subtle vertical parallax on the hero photo for depth.
-   * Uses astro:page-load for View Transition compatibility. */
+   * Set up for each page (onPageLoad), so it works after in-site moves too. */
 
   let _scrollHandler: (() => void) | null = null;
 
@@ -1042,12 +1043,13 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     }
   }
 
-  document.addEventListener('astro:page-load', initHomePage);
+  onPageLoad(initHomePage);
   document.addEventListener('astro:before-swap', cleanup);
 </script>
 
 <!-- Kids strip scroll arrows (desktop only) -->
 <script>
+  import { onPageLoad } from '../utils/page-load';
   function initKidsScroll() {
     const scroll = document.querySelector('.kids-scroll') as HTMLElement | null;
     const prev = document.querySelector('.kids-scroll-btn--prev') as HTMLElement | null;
@@ -1066,11 +1068,12 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     scroll.addEventListener('scroll', updateArrows, { passive: true });
     updateArrows();
   }
-  document.addEventListener('astro:page-load', initKidsScroll);
+  onPageLoad(initKidsScroll);
 </script>
 
 <!-- Room images: scroll-driven parallax (desktop only) -->
 <script>
+  import { onPageLoad } from '../utils/page-load';
   let _rmObserver: IntersectionObserver | null = null;
   let _rmScroll: (() => void) | null = null;
 
@@ -1119,12 +1122,13 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     onScroll(); // initial position
   }
 
-  document.addEventListener('astro:page-load', initRoomParallax);
+  onPageLoad(initRoomParallax);
   document.addEventListener('astro:before-swap', rmCleanup);
 </script>
 
 <!-- Shared element morph: kid thumbnail → profile hero -->
 <script>
+  import { onPageLoad } from '../utils/page-load';
   function initHomeKidTransitions() {
     document.querySelectorAll<HTMLAnchorElement>('.kid-thumb').forEach(thumb => {
       thumb.addEventListener('click', () => {
@@ -1135,7 +1139,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
       });
     });
   }
-  document.addEventListener('astro:page-load', initHomeKidTransitions);
+  onPageLoad(initHomeKidTransitions);
 </script>
 
 <script>
@@ -1143,6 +1147,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
      The build wrote it from the last copy; a date set or moved since shows here
      without a rebuild ("Reveal mid November", then the day once it's confirmed). */
   import { loadUpcoming, revealDateLine } from '../utils/reveals-client';
+  import { onPageLoad } from '../utils/page-load';
 
   async function refreshUpNextDate() {
     const el = document.querySelector<HTMLElement>('.upnext-date[data-reveal-kid]');
@@ -1154,5 +1159,5 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     if (!el.isConnected || (!r && !list.length)) return;
     el.textContent = r ? revealDateLine(r) : 'Reveal coming soon';
   }
-  document.addEventListener('astro:page-load', refreshUpNextDate);
+  onPageLoad(refreshUpNextDate);
 </script>

@@ -4,21 +4,33 @@
  *
  * Include once in BaseLayout. Images are visible by default.
  * JS opts into the blur→sharp fade only for images it can manage.
- * Uses astro:page-load for View Transition compatibility.
+ * Set up by onPageLoad (src/utils/page-load.ts): as soon as a page is read in, and after each in-site move.
  *
  * On SPA nav, cached images are already visible in the view transition
  * snapshot — img.complete is true, so we mark them loaded instantly
  * (no fade, no flash). Only non-cached images get the blur-up fade.
+ *
+ * The page a tab opens is set up before its pictures have arrived: the ones the browser is already drawing as they
+ * come (not lazy) are left to draw, as they always have; only lazy ones, still to come, fade in.
  */
 ---
 
 <script>
+  import { onPageLoad, firstPage } from '../../utils/page-load';
   function initLqip() {
     document.querySelectorAll<HTMLImageElement>('.lqip-img:not(.loaded)').forEach(img => {
       // The page's main picture (fetchpriority="high", e.g. a kid's hero) is never
       // hidden for the fade: it draws over its blur as it arrives
       if ((img.complete && img.naturalWidth > 0) || img.getAttribute('fetchpriority') === 'high') {
         img.classList.add('loaded');
+        return;
+      }
+      // The page this tab opened: a picture already arriving on screen keeps drawing as it comes (hiding it now
+      // would blank it mid-way); it's marked loaded once it's whole
+      if (firstPage() && img.loading !== 'lazy') {
+        const done = () => img.classList.add('loaded');
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
         return;
       }
       // Not yet loaded — opt into the blur→sharp fade
@@ -32,5 +44,5 @@
       }, { once: true });
     });
   }
-  document.addEventListener('astro:page-load', initLqip);
+  onPageLoad(initLqip);
 </script>

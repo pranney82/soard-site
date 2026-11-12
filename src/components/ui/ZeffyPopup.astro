@@ -24,6 +24,7 @@
 </dialog>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   /* Per-visit: everything below is aborted on astro:before-swap, so listeners never stack across client-side
      navigations, and the page never stays locked if someone leaves with the pop-up open */
   let _popupAC: AbortController | null = null;
@@ -36,7 +37,7 @@
     document.body.style.overflow = '';
   }
 
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     cleanupPopup();
     const dialog = document.getElementById('zeffy-modal') as HTMLDialogElement | null;
     const box = document.getElementById('zeffy-modal-container');

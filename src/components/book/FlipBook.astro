@@ -237,7 +237,8 @@ const paragraphs = (t: string) => String(t || '').split(/\n{2,}/).map((s) => s.r
 </div>
 
 <script>
-  /* One reader per visit: made on astro:page-load, taken down before the
+  import { onPageLoad } from '../../utils/page-load';
+  /* One reader per visit: made for each page (onPageLoad), taken down before the
      next page swaps in (the site navigates without full reloads). A book
      inside another page (data-lazy) starts a screen's height before it
      comes into view, or at once when the address asks for one of its pages;
@@ -253,7 +254,7 @@ const paragraphs = (t: string) => String(t || '').split(/\n{2,}/).map((s) => s.r
     // Gone to another page while the code came
     if (root.isConnected) readers.push(mountFlipbook(root, book));
   };
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     for (const root of document.querySelectorAll<HTMLElement>('[data-flipbook]:not([data-preview])')) {
       if (root.dataset.mounted) continue;
       root.dataset.mounted = '1';

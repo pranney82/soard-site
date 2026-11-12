@@ -447,6 +447,7 @@ const tiles = photos.map((p, i) => {
 </style>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   /* The photo viewer: one <dialog> per gallery, filled from the tiles */
   type Tile = { el: HTMLAnchorElement; id: string; ar: number; alt: string };
 
@@ -653,5 +654,5 @@ const tiles = photos.map((p, i) => {
     });
   }
 
-  document.addEventListener('astro:page-load', initRecapPhotos);
+  onPageLoad(initRecapPhotos);
 </script>

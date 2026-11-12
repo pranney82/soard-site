@@ -258,10 +258,11 @@ const tagColors: Record<string, string> = {
   </article>
 </BaseLayout>
 
-<!-- Reading progress bar — re-binds per astro:page-load so it keeps working
+<!-- Reading progress bar — re-binds for each page (onPageLoad) so it keeps working
      after client-side navigation (module scripts only execute once, and the
      old #reading-progress element is swapped out with the page). -->
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   let _progressCleanup: (() => void) | null = null;
 
   function initReadingProgress() {
@@ -280,7 +281,7 @@ const tagColors: Record<string, string> = {
     update();
   }
 
-  document.addEventListener('astro:page-load', initReadingProgress);
+  onPageLoad(initReadingProgress);
   document.addEventListener('astro:before-swap', () => { _progressCleanup?.(); _progressCleanup = null; });
 </script>
 

@@ -122,10 +122,11 @@ const bookSchema = {
 </BaseLayout>
 
 <script>
+  import { onPageLoad } from '../utils/page-load';
   /* "Open the book" and the cover: scroll to the reader, then turn the cover
      open once it's in view (if it's still closed). Someone back for more sees
      "Pick up at page N" instead, and the book opens there. */
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     const read = document.getElementById('read');
     if (!read) return;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;

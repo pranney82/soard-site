@@ -546,6 +546,7 @@ const ytId: string | null = !series && !streamId && ev.videoUrl ? youTubeId(ev.v
 </style>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   /* Video facade: the player loads only when someone presses play */
   function initRecapVideo() {
     document.querySelectorAll<HTMLButtonElement>('.rc-video__facade').forEach((b) => {
@@ -567,5 +568,5 @@ const ytId: string | null = !series && !streamId && ev.videoUrl ? youTubeId(ev.v
       });
     });
   }
-  document.addEventListener('astro:page-load', initRecapVideo);
+  onPageLoad(initRecapVideo);
 </script>

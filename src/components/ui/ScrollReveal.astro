@@ -5,7 +5,9 @@
  * Include once in BaseLayout. Handles all [data-reveal] elements
  * site-wide with proper View Transition lifecycle:
  *   - astro:after-swap  → instantly reveal above-fold elements BEFORE paint
- *   - astro:page-load   → set up observer for below-fold elements
+ *   - first run         → instantly reveal above-fold elements of the page the tab opened, before it's drawn
+ *   - onPageLoad        → set up observer for below-fold elements (src/utils/page-load.ts: once the page
+ *                          is read in and drawn, and after each in-site move)
  *   - astro:before-swap  → disconnect observer before DOM swap
  *   - 3s safety timeout  → force-reveal if observer somehow fails
  *   - <noscript>         → all content visible if JS is blocked
@@ -24,6 +26,7 @@
 </noscript>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   let _revealObserver: IntersectionObserver | null = null;
   let _revealSafety: ReturnType<typeof setTimeout> | null = null;
 
@@ -89,12 +92,10 @@
     }, 3000);
   }
 
-  // Run on initial load — bundled modules may execute after astro:page-load
-  // has already fired, so we can't rely solely on the event listener.
-  initReveal();
-
-  // Re-run on client-side navigations (ClientRouter / View Transitions)
+  // The page this tab opened: what's on screen shows before it's drawn (the rest is set up once it has been)
+  revealAboveFold();
+  // Every page: the one the tab opened once it's drawn, then each one the router swaps in (on screen before it's drawn)
   document.addEventListener('astro:after-swap', revealAboveFold);
-  document.addEventListener('astro:page-load', initReveal);
+  onPageLoad(initReveal);
   document.addEventListener('astro:before-swap', cleanupReveal);
 </script>

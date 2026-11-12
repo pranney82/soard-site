@@ -453,6 +453,7 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
   import { remindPromise } from '../../utils/live-banner';
   import { wireRemindForm } from '../../utils/remind-signup';
   import { holdPlace, keepFocus } from '../../utils/hold-place';
+  import { onPageLoad } from '../../utils/page-load';
 
   /**
    * "Get every reveal by email": a sign-up with no kid, so it's for every reveal. Whether it's
@@ -634,7 +635,7 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
     draw();
   }
 
-  document.addEventListener('astro:page-load', () => {
+  onPageLoad(() => {
     document.querySelectorAll<HTMLElement>('[data-upnext]').forEach((s) => { void setUp(s); });
   });
 </script>

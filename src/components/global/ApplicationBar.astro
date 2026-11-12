@@ -63,6 +63,7 @@
 </aside>
 
 <script>
+  import { onPageLoad } from '../../utils/page-load';
   // Kept in step with functions/_apply-bar.js (tests/apply-bar.test.mjs checks)
   const STORAGE_KEY = 'soard-application-dismissed';
   const COOKIE = 'soard_apply_bar';
@@ -143,7 +144,7 @@
   }
   setInterval(() => { if (!document.hidden) check(); }, CHECK_MS);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
-  document.addEventListener('astro:page-load', check);
+  onPageLoad(check);
 
   // The next page, before it's shown: a page fetched ahead of time can't bring back a bar
   // this visitor closed, or one for a season that closed since
