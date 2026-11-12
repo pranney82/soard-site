@@ -103,7 +103,8 @@
   .msgs[data-place='hero'] .remind-note { margin: 0; min-height: 0; }
   .msgs[data-place='hero'] .remind-note:empty { display: none; }
 
-  @media (max-width: 960px) {
+  /* (PHONE, DESK and SIDE: word for word as in src/utils/live-media.ts) */
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
     .msgs[data-place='section'] { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: 'head' 'feed' 'compose'; row-gap: 24px; }
     .msgs[data-place='section'] .msgs__wall { max-height: 360px; }
     .msgs[data-place='hero'] .msgs__head { text-align: center; }

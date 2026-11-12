@@ -9,6 +9,7 @@
  */
 import type { LiveClient } from './live-client';
 import type { Stage } from './live-stage';
+import { PHONE } from './live-media';
 
 interface Options {
   client: LiveClient;
@@ -18,7 +19,7 @@ interface Options {
 export function createGive(root: HTMLElement, opts: Options) {
   const frame = root.querySelector<HTMLIFrameElement>('iframe');
   const close = root.querySelector<HTMLButtonElement>('[data-give-close]');
-  const phones = matchMedia('(max-width: 960px)');
+  const phones = matchMedia(PHONE);
   let previous: HTMLElement | null = null;
   let isOpen = false;
 
@@ -28,7 +29,7 @@ export function createGive(root: HTMLElement, opts: Options) {
     previous = document.activeElement as HTMLElement | null;
     root.hidden = false;
     isOpen = true;
-    // On a phone the sheet covers the video, so the video moves to a small player above it
+    // On a phone the sheet covers the video, so the video moves to a small player above it (held sideways, beside it)
     if (phones.matches) opts.stage.pin(true);
     close?.focus({ preventScroll: true });
     opts.client.beacon('click_donate', { where, how: 'panel' });

@@ -7,10 +7,17 @@
  * during the watch party (starting soon, live, replay) its pictures run as a
  * filmstrip in the frame with the video, where the space already is:
  *
- *   portrait video (the crew's)   down the side of the video, as tall as it.
- *                                 A 9:16 picture never fills a screen's width,
- *                                 so the video gives up little or nothing
- *   landscape video               along the bottom, under it
+ *   portrait video (the crew's)   down the side of the picture, as tall as it,
+ *                                 with the controls running under both. A 9:16
+ *                                 picture never fills a screen's width, so the
+ *                                 video gives up little or nothing
+ *   landscape video               along the bottom, under the controls
+ *   a phone held sideways         down the side of a portrait picture; beside
+ *                                 a landscape one, a row under its controls
+ *
+ * It sits in LiveStage's "beside" slot and claims its room there (--beside,
+ * --beside-gap); its own shape (a column or a row) follows the room it has
+ * (the stage's "beside" container), not the video's orientation.
  *
  * Grouped as the design section is: Before (the photos), The plan (as-built,
  * "Today" / "Before", and proposed, "New"), The look (boards). Any picture
@@ -43,13 +50,30 @@
   .hds { display: none; }
   .hero[data-party][data-design] .hds { display: block; position: relative; flex: none; min-width: 0; text-align: left; }
   /* Beside a portrait video: as tall as the stage, and its own height never sets the row's (the list scrolls inside) */
-  .hero[data-party][data-design][data-orientation='portrait'] .hds { width: var(--hds-w); }
-  .hero[data-party][data-design][data-orientation='landscape'] .hds { width: 100%; height: var(--hds-h); }
+  /* It sits in the stage's "beside" slot (LiveStage): beside a portrait picture it claims its room there (--beside,
+     --beside-gap) and is as tall as the picture, with the controls running under both; under a landscape one it's the
+     last row, under the controls */
+  .hero[data-party][data-design][data-orientation='portrait'] { --beside: var(--hds-w); --beside-gap: var(--hds-gap); }
+  .hero[data-party][data-design] .hds { width: 100%; height: 100%; }
+  .hero[data-party][data-design][data-orientation='landscape'] .hds { height: var(--hds-h); margin-top: var(--hds-gap); }
+  /* Under a landscape picture's controls, the room it takes (LiveStage reads it when the captions go under the picture) */
+  .hero[data-party][data-design] { --beside-row: calc(var(--hds-h) + var(--hds-gap)); }
+  /* A phone held sideways, a landscape picture with captions on: under the captions, bar and Jump there's no room left for
+     it, so it takes a column of its own beside them, as tall as they are, when that leaves the picture bigger than
+     moving the captions under it (data-fit 'col': LiveStage tries both and lays out the rest) */
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+    .hero[data-party][data-design][data-orientation='landscape'] [data-stage][data-fit='col']:not(:fullscreen) {
+      --beside: var(--hds-w); --beside-gap: var(--hds-gap);
+      grid-template-columns: minmax(0, var(--pic)) 16px minmax(var(--side-min), 1fr) var(--beside-gap) var(--beside);
+      grid-template-areas: 'screen . cc . beside' 'screen . bar . beside' 'screen . jump . beside' 'screen . . . beside';
+    }
+    .hero[data-party][data-design][data-orientation='landscape'] [data-stage][data-fit='col']:not(:fullscreen) .stage__beside { align-self: stretch; }
+    .hero[data-party][data-design][data-orientation='landscape'] [data-stage][data-fit='col']:not(:fullscreen) .hds { height: 100%; margin-top: 0; }
+  }
+  /* Its shape follows the room it has (the stage's "beside" container): a column down the side of the picture, a row
+     when it runs under it */
   .hds-in { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; }
-  .hero[data-orientation='landscape'] .hds-in { flex-direction: row; gap: 14px; }
-
   .hds-head { margin: 0; display: grid; gap: 2px; line-height: 1.25; flex: none; }
-  .hero[data-orientation='landscape'] .hds-head { width: 96px; align-content: start; padding-top: 2px; }
   .hds-name { font-family: var(--font-display); font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--c-text); overflow-wrap: anywhere; }
   .hds-hint { font-size: 12.5px; color: var(--c-text-muted); }
   .hds-hint--mouse { display: none; }
@@ -63,20 +87,16 @@
     display: flex; flex-direction: column; gap: 14px; padding: 0 2px 2px 0;
     scrollbar-width: thin; scrollbar-color: rgba(55, 58, 54, 0.28) transparent;
   }
-  .hero[data-orientation='landscape'] .hds-scroll { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 0 0 4px; }
 
   .hds-group { display: flex; flex-direction: column; gap: 6px; flex: none; }
   .hds-label { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-muted); white-space: nowrap; }
   .hds-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .hero[data-orientation='landscape'] .hds-list { display: flex; gap: 8px; height: calc(var(--hds-h) - 23px); }
-  .hero[data-orientation='landscape'] .hds-list > li { height: 100%; }
 
   .hds-item {
     position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; padding: 0; border: 0; border-radius: 10px;
     overflow: hidden; background: var(--c-border); cursor: zoom-in; color: inherit; font: inherit;
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .hero[data-orientation='landscape'] .hds-item { width: auto; height: 100%; }
   .hds-item img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   .hds-item img:not([src]) { visibility: hidden; }
   /* Drawings and boards: whole, on paper */
@@ -97,7 +117,7 @@
   }
   .hds-tag--proposed { background: var(--c-yellow); color: var(--c-dark); }
 
-  @media (max-width: 960px) {
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
     .hero { --hds-w: clamp(76px, 23vw, 92px); --hds-h: 88px; --hds-gap: 10px; }
     .hds-in { gap: 8px; }
     .hds-name { font-size: 13px; }
@@ -106,7 +126,18 @@
     .hds-item { border-radius: 8px; }
     .hds-label { font-size: 10px; letter-spacing: 0.1em; }
     .hds-list { gap: 6px; }
-    .hero[data-orientation='landscape'] .hds-head { width: 72px; }
+  }
+  /* (A strip down the side is at most --hds-w, 148px, wide; anything wider runs under the picture) */
+  @container beside (min-width: 200px) {
+    .hds-in { flex-direction: row; gap: 14px; }
+    .hds-head { width: 96px; align-content: start; padding-top: 2px; }
+    .hds-scroll { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 0 0 4px; }
+    .hds-list { display: flex; gap: 8px; height: calc(var(--hds-h) - 23px); }
+    .hds-list > li { height: 100%; }
+    .hds-item { width: auto; height: 100%; }
+  }
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
+    @container beside (min-width: 200px) { .hds-head { width: 72px; } }
   }
   @media (prefers-reduced-motion: reduce) {
     .hds-item { transition: none; }

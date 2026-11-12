@@ -36,6 +36,7 @@
 import { fetchDesign, slideSrc, designSignature, type DesignSlide } from './reveal-design-client';
 import { holdPlace } from './hold-place';
 import type { Stage } from './live-stage';
+import { DESK } from './live-media';
 
 const ASK_OPEN_MS = 3 * 60_000;
 const ASK_CLOSED_MS = 10 * 60_000;
@@ -77,7 +78,7 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
   const railName = rail?.querySelector<HTMLElement>('[data-hds="name"]') || null;
   const railScroll = rail?.querySelector<HTMLElement>('[data-hds="scroll"]') || null;
   const viewer = document.querySelector<HTMLDialogElement>('[data-ldz-viewer]');
-  const laptop = matchMedia('(min-width: 961px)');
+  const laptop = matchMedia(DESK);
   let kid = '';
   let moment = '';
   let sig = '';
@@ -373,6 +374,22 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
   // From the screen's left edge to the frame (the video and its strip), with a margin each side
   const sideWidth = () => Math.floor((frame?.getBoundingClientRect().left || 0) - 24);
   const fitSide = () => { if (viewer && mode === 'side') viewer.style.setProperty('--ldv-w', `${Math.max(SIDE_MIN_W, sideWidth())}px`); };
+  // On a phone the small video's shape decides the room the viewer leaves it, and that shape can change while the viewer
+  // is open (a phone turned sideways gets the landscape starting-soon screen), so it's followed, not read once
+  const wideNow = () => mode === 'pinned' && hero?.dataset.orientation === 'landscape';
+  const fitPin = () => { if (viewer?.open) viewer.classList.toggle('ldv--wide', wideNow()); };
+  const shapeWatch = hero ? new MutationObserver(fitPin) : null;
+  // An iPad turned (or a window resized) across the laptop/phone line while it's open: it opens again, on the same
+  // picture, in the way that fits now (beside the video, or over it with the video pinned)
+  const onLayout = () => {
+    if (!viewer?.open || !shown) return;
+    if (modeNow() === mode) { fitSide(); return; }
+    const again = shown;
+    viewer.addEventListener('close', () => { if (alive) open(again); }, { once: true });
+    viewer.close();
+  };
+  laptop.addEventListener('change', onLayout);
+  if (hero) shapeWatch?.observe(hero, { attributes: true, attributeFilter: ['data-orientation'] });
 
   function open(s: DesignSlide) {
     if (!viewer || !slides.includes(s)) return;
@@ -381,7 +398,7 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     mode = modeNow();
     viewer.classList.toggle('ldv--side', mode === 'side');
     viewer.classList.toggle('ldv--pinned', mode === 'pinned');
-    viewer.classList.toggle('ldv--wide', mode === 'pinned' && hero?.dataset.orientation === 'landscape');
+    viewer.classList.toggle('ldv--wide', wideNow());
     viewer.setAttribute('aria-modal', mode === 'modal' ? 'true' : 'false');
     fitSide();
     void show(s);
@@ -474,6 +491,8 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     },
     destroy() {
       alive = false;
+      shapeWatch?.disconnect();
+      laptop.removeEventListener('change', onLayout);
       asking?.abort();
       clearTimeout(askTimer);
       document.removeEventListener('visibilitychange', onVisible);

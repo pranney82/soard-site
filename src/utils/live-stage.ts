@@ -13,6 +13,7 @@
 import type { LiveClient, LivePlayer } from './live-client';
 import { mountPlayer, type PlayerHandle, type PlayerStatus } from './live-player';
 import { watchMeter } from './live-stats';
+import { PHONE, SIDE, typingIn } from './live-media';
 
 export type StageMode = 'loading' | 'idle' | 'upcoming' | 'starting' | 'live' | 'replay';
 export interface StageView {
@@ -130,6 +131,9 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   const flag = (name: string, on: boolean) => { if (on) root.setAttribute(name, ''); else root.removeAttribute(name); };
   const video = () => (player?.video ?? null);
   const shape = () => sized || view.orientation;
+  // The shape the page was last told: it hears again whenever the shape changes, not only when the party starts (a phone
+  // turned sideways swaps the starting-soon screen's shape mid-party, and the page lays out around it)
+  let told = '';
 
   // ── What goes in the frame ──────────────────────────────────────
   function update(next: StageView) {
@@ -184,7 +188,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
       }
     }
     if (party && (next.mode === 'live' || next.mode === 'starting') && !watching) { watching = true; client.watch(); }
-    if (party !== wasParty || !wasParty) opts.onShape?.(shape(), party);
+    if (party !== wasParty || !wasParty || shape() !== told) { told = shape(); opts.onShape?.(told as 'portrait' | 'landscape', party); }
     paint();
     updateDock();
   }
@@ -226,6 +230,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     sized = h > w ? 'portrait' : 'landscape';
     root.dataset.orientation = sized;
     root.style.setProperty('--ar', String(Math.min(2.4, Math.max(0.42, w / h))));
+    told = sized;
     opts.onShape?.(sized, party);
   }
   function onMuted(m: boolean) { muted = m; paint(); }
@@ -240,11 +245,14 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
       const t = v.currentTime;
       if (seek && Number.isFinite(d) && d > 0) {
         if (document.activeElement !== seek || !seeking) seek.value = String(Math.round((t / d) * 1000));
-        seek.style.setProperty('--p', `${(t / d) * 100}%`);
+        // How far it's played (0 to 1), on the line's cell (the line you see is drawn there, under the slider)
+        seek.parentElement?.style.setProperty('--f', String(Math.min(1, Math.max(0, t / d))));
         seek.setAttribute('aria-valuetext', `${formatTime(t)} of ${formatTime(d)}`);
       }
-      const time = $('time');
-      if (time) time.textContent = Number.isFinite(d) && d > 0 ? `${formatTime(t)} / ${formatTime(d)}` : formatTime(t);
+      // The time and the length are two pieces, so the length can step aside when the bar is narrow
+      const now = $('time-now'); const total = $('time-total');
+      if (now) now.textContent = formatTime(t);
+      if (total) total.textContent = Number.isFinite(d) && d > 0 ? `/ ${formatTime(d)}` : '';
       paintCaption(t);
       paintJump(t);
     };
@@ -285,7 +293,9 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     if (status) status.textContent = starting ? (view.late ? 'Running late' : 'Starting soon') : live ? (onAir ? 'Live' : STATUS[pstatus as PlayerStatus] || 'Connecting') : kind === 'replay' ? 'Replay' : '';
     const count = (live && onAir || starting) && viewers >= VIEWERS_MIN;
     setHidden($('count'), !count);
-    const ct = $('count-text'); if (ct && count) ct.textContent = `${viewers.toLocaleString()} ${starting ? 'waiting' : 'watching'}`;
+    // The number and its word apart, so the word can step aside first on a narrow bar
+    const cn = $('count-num'); const cw = $('count-word');
+    if (count) { if (cn) cn.textContent = viewers.toLocaleString(); if (cw) cw.textContent = starting ? 'waiting' : 'watching'; }
     // Muted: one clear "Tap for sound". After that: sound, a heart, full screen
     const soundCta = live && isVideo && showing && muted;
     setHidden($('sound'), !soundCta);
@@ -311,7 +321,12 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     const ok = kind === 'replay' && revealAt != null && Number.isFinite(d) && d > 0 && revealAt < d;
     const mark = $('mark');
     setHidden(mark, !ok);
-    if (mark && ok) mark.style.setProperty('--at', `${(revealAt! / d) * 100}%`);
+    // The line (its gap) and the star both read where it is, so it's set on the line's cell
+    const cell = mark?.parentElement;
+    if (cell) {
+      cell.toggleAttribute('data-mark', ok);
+      if (ok) cell.style.setProperty('--at', String(Math.min(1, Math.max(0, revealAt! / d))));
+    }
   }
   function paintJump(t: number) {
     const show = party && kind === 'replay' && revealAt != null && !!player && pstatus !== 'iframe';
@@ -400,7 +415,6 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   $('cc-toggle')?.addEventListener('click', toggleCaptions);
   root.querySelectorAll('[data-full]').forEach((b) => b.addEventListener('click', toggleFullscreen));
   $('play')?.addEventListener('click', togglePlay);
-  $('mark')?.addEventListener('click', jumpToReveal);
   $('jump')?.addEventListener('click', jumpToReveal);
   // Tapping the picture: sound on for a muted live video, play / pause for a replay
   playerEl?.addEventListener('click', () => {
@@ -409,9 +423,30 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     else if (kind === 'replay') togglePlay();
   });
   let seeking = false;
+  // A tap on the reveal's star plays from the reveal, exactly, as Jump to the reveal does: the star is drawn on the
+  // line and the line takes the tap, which on its own would land wherever on the star the finger did (on a short line,
+  // a minute or more either side). A press that moves is a drag, star or not
+  let press: { x: number; y: number; star: boolean } | null = null;
+  const onStar = (e: PointerEvent) => {
+    const m = $('mark');
+    if (!m || m.hidden) return false;
+    const r = m.getBoundingClientRect();
+    // (its 3px white ring included)
+    return Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)) <= r.width / 2 + 3;
+  };
+  seek?.addEventListener('pointerdown', (e) => { press = { x: e.clientX, y: e.clientY, star: onStar(e) }; });
+  seek?.addEventListener('pointermove', (e) => { if (press?.star && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 6) press.star = false; });
+  seek?.addEventListener('pointercancel', () => { press = null; });
+  seek?.addEventListener('pointerup', () => {
+    const star = press?.star;
+    press = null;
+    if (star) { seeking = false; jumpToReveal(); }
+  });
   seek?.addEventListener('input', () => {
     const v = video();
     if (!v || !Number.isFinite(v.duration)) return;
+    // (a tap on the star goes to the reveal when it lifts, not first to where it touched)
+    if (press?.star) return;
     seeking = true;
     v.currentTime = (Number(seek.value) / 1000) * v.duration;
   });
@@ -420,12 +455,22 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   root.addEventListener('keydown', (e) => {
     if (!party || e.metaKey || e.ctrlKey || e.altKey) return;
     const t = e.target as HTMLElement;
-    if (t.matches('input, textarea')) return;
+    // Typing stays typing; the progress line is no text box, so the keys work there too. The design strip beside the
+    // picture has keys of its own (its pictures open the viewer), so the video's don't reach into it
+    if (t.matches('textarea, input:not([data-s="seek"])') || t.closest('.stage__beside')) return;
     const k = e.key.toLowerCase();
     if (k === 'm' && player) { e.preventDefault(); toggleSound(); }
     else if (k === 'f') { e.preventDefault(); toggleFullscreen(); }
     else if (k === 'c' && hasCaptions) { e.preventDefault(); toggleCaptions(); }
-    else if ((k === 'k' || (k === ' ' && t === root)) && kind === 'replay') { e.preventDefault(); togglePlay(); }
+    else if ((k === 'k' || (k === ' ' && (t === root || t === seek))) && kind === 'replay') { e.preventDefault(); togglePlay(); }
+    // On the line, the arrows go 5 seconds (the slider's own step is a thousandth of the video: under a second here)
+    else if (t === seek && kind === 'replay' && /^Arrow(Left|Right|Up|Down)$/.test(e.key)) {
+      const v = video();
+      if (!v || !Number.isFinite(v.duration)) return;
+      e.preventDefault();
+      const back = e.key === 'ArrowLeft' || e.key === 'ArrowDown';
+      v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + (back ? -5 : 5)));
+    }
   });
 
   // ── Love: one heart. Yours pops; when others send love, it beats ──
@@ -476,9 +521,22 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
       ? pstatus === 'iframe' || pstatus === 'playing' || pstatus === 'buffering' || pstatus === 'reconnecting'
       : pstatus === 'playing' || pstatus === 'buffering');
     const pin = pinned && party;
-    setDock(pin || (party && going && !inView && !dockOff && !document.fullscreenElement));
+    setDock(pin || (party && going && !inView && !dockOff && !typing && !document.fullscreenElement));
     setPinned(pin && docked);
   }
+  // While someone types on a phone the small player steps aside: its keyboard leaves no room on the screen for both,
+  // and it sat over the message being typed (or, on a page the keyboard left very short, its × went off the top). The
+  // reveal keeps playing, and the player comes back when typing ends
+  const phone = matchMedia(PHONE);
+  let typing = false;
+  const onTyping = () => {
+    const now = phone.matches && typingIn(document.activeElement) && !root.contains(document.activeElement);
+    if (now !== typing) { typing = now; updateDock(); }
+  };
+  // (on its way out, focus is on nothing for a moment: wait to see where it lands)
+  const onTypingOut = () => requestAnimationFrame(onTyping);
+  document.addEventListener('focusin', onTyping);
+  document.addEventListener('focusout', onTypingOut);
   let io: IntersectionObserver | null = null;
   if (screen && 'IntersectionObserver' in window) {
     io = new IntersectionObserver(([e]) => {
@@ -489,8 +547,62 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     }, { threshold: [0, DOCK_AT, 1] });
     io.observe(screen);
   }
-  const onFullscreen = () => updateDock();
+  const onFullscreen = () => { updateDock(); refit(); };
   document.addEventListener('fullscreenchange', onFullscreen);
+
+  // ── Which way round, on a phone held sideways ──
+  // LiveStage has more than one way to lay the stage out there (data-fit): in full screen, the controls beside the
+  // picture or under it; on the page, with captions on beside a wide picture that has the design with it, the
+  // captions above the controls (with the design under them), under the picture, or the design in a column of its
+  // own. Which leaves the picture biggest turns on the screen's exact width and height, so the stage tries each and
+  // keeps the one with the biggest picture that fits on the screen. It runs before the screen is next drawn, so no
+  // other way ever shows
+  const sideways = matchMedia(SIDE);
+  const besideEl = root.querySelector<HTMLElement>('.stage__beside');
+  // (the height the page's frame goes by: the screen's, held while someone types; LivePage)
+  const roomProbe = document.createElement('div');
+  roomProbe.setAttribute('aria-hidden', 'true');
+  roomProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:var(--live-vh, 100svh);visibility:hidden;pointer-events:none';
+  document.body.append(roomProbe);
+  const setFit = (w: string) => { if (w) root.dataset.fit = w; else delete root.dataset.fit; };
+  function fitWays(): string[] {
+    if (!party || !sideways.matches || !screen) return [];
+    // ('' is the stage's usual way: in full screen, the controls under the picture)
+    if (document.fullscreenElement === root) return ['side', ''];
+    if (root.dataset.orientation === 'landscape' && root.hasAttribute('data-cc') && (besideEl?.offsetHeight ?? 0) > 0) return ['', 'under', 'col'];
+    return [];
+  }
+  function fit() {
+    const ways = fitWays();
+    if (ways.length < 2) { setFit(''); return; }
+    const full = document.fullscreenElement === root;
+    const room = full ? innerHeight : roomProbe.getBoundingClientRect().height;
+    let best = ''; let bestW = -1; let bestOver = Infinity;
+    for (const w of ways) {
+      setFit(w);
+      const pic = screen!.getBoundingClientRect().width;
+      const r = root.getBoundingClientRect();
+      // How far it runs past the bottom of the screen (on the page: with the page at its top, where the frame is sized)
+      const over = Math.max(0, (full ? r.bottom : r.bottom + scrollY) - room);
+      const better = over <= 1 ? bestOver > 1 || pic > bestW + 0.5 : bestOver > 1 && over < bestOver - 0.5;
+      if (better) { best = w; bestW = pic; bestOver = over; }
+    }
+    setFit(best);
+  }
+  let fitQueued = false;
+  // (in the next frame's first step, before it's drawn: after anything else that resizes the frame, like LivePage's
+  // hold while typing, has had its turn)
+  function refit() {
+    if (fitQueued) return;
+    fitQueued = true;
+    requestAnimationFrame(() => { fitQueued = false; fit(); });
+  }
+  addEventListener('resize', refit);
+  // What changes the choice: captions, Jump, the picture's shape, the mode, and the design being shown (on the page)
+  const fitWatch = new MutationObserver(refit);
+  fitWatch.observe(root, { attributes: true, attributeFilter: ['data-party', 'data-mode', 'data-orientation', 'data-cc', 'data-jump', 'style'] });
+  const host = root.closest('.hero');
+  if (host) fitWatch.observe(host, { attributes: true, attributeFilter: ['data-party', 'data-design', 'data-orientation'] });
   $('undock')?.addEventListener('click', (e) => {
     e.stopPropagation();
     dockOff = true;
@@ -520,6 +632,11 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
       if (watching) { watching = false; client.unwatch(); }
       io?.disconnect();
       document.removeEventListener('fullscreenchange', onFullscreen);
+      document.removeEventListener('focusin', onTyping);
+      document.removeEventListener('focusout', onTypingOut);
+      removeEventListener('resize', refit);
+      fitWatch.disconnect();
+      roomProbe.remove();
       for (const off of offs) off();
     },
   };

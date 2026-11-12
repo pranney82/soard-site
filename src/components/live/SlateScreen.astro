@@ -26,7 +26,8 @@
  * ?photo=<CF image id>, ?still=1 (no motion), ?tv=1 (screen in the room:
  * first card hands the stream to phones, no music), ?music=0 (silent) or
  * ?music=<url> (a different track), ?follow=1 (set by /live/slate/),
- * ?embed=1 (inside the live page's video frame: always silent),
+ * ?embed=1 (inside the live page's video frame: always silent, no heading or cards, and drawn larger for that
+ * small frame; see "Inside the live page" in the styles),
  * ?design=preview (the kid editor's unsaved design, from the parent window;
  * silent), ?slide=N (hold one slide of the design) and ?pace=0.2 (play it
  * faster, for checking).
@@ -155,7 +156,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
           is and where it is in the story (slate-design.ts), the rooms stepping aside for them */}
       <div class="caption">
         {rooms.length > 0 && (
-          <div class="rooms"><span class="rooms-label" data-rooms-today>Today</span>{rooms.join(' · ')}</div>
+          <div class="rooms"><span class="rooms-label" data-rooms-today>Today</span><span class="rooms-text">{rooms.join(' · ')}</span></div>
         )}
         <div class="design-chip" data-design-chip><span class="design-chip__kicker" data-chip="kicker"></span><span class="design-chip__text" data-chip="text"></span></div>
         <div class="design-steps" data-design-steps hidden></div>
@@ -602,6 +603,12 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     body[data-o='portrait'] .rooms, body[data-o='portrait'] .design-chip { font-size: 32px; }
     body[data-o='portrait'] .rooms-label, body[data-o='portrait'] .design-chip__kicker { font-size: 26px; }
     .rooms-label, .design-chip__kicker { flex-shrink: 0; font-size: 21px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c-text-muted); }
+    /* The rooms have the whole line (the design's steps never show with them) and may run past the picture to just short
+       (8px) of the screen's edge, as they always could; a list longer than that ends in "…" there */
+    .frame { --to-edge: 104px; }
+    body[data-o='portrait'] .frame { --to-edge: 52px; }
+    .rooms { grid-column: 1 / -1; margin-right: calc(-1 * var(--to-edge)); }
+    .rooms-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
     /* ── The design: the room's story in the frame (slate-design.ts) ── */
     body[data-design] .rooms { display: none; }
@@ -655,15 +662,65 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     body[data-o='portrait'] .cards { left: 60px; top: 1556px; width: 960px; height: 212px; }
     body[data-o='portrait'][data-partners='no'] .cards { top: 1660px; }
 
-    /* Inside the live page (.embed) someone is already here: a code to scan does nothing for them, and the page has
-       real Share and Give buttons under the frame (Peter, Nov 9 2026). The cards are for the stream and a TV at the
-       house; here the picture takes their room. */
-    body.embed .cards { display: none; }
-    /* The frame takes the cards' place, its yellow block stopping 24 above the partners (as the card does) */
-    body.embed[data-o='landscape'] .frame { height: 772px; }
+    /* ── Inside the live page (.embed) ──
+       Someone is already here: a code to scan does nothing for them, and the page has real Share and Give buttons under
+       the frame (Peter, Nov 9 2026), so the cards go. The page says the kid's name right over the frame, so the heading
+       goes too (Peter, Nov 11 2026). What's left is drawn for the frame it's shown in: on a phone that's about 260 px
+       wide, a quarter of this screen's size, so in portrait the countdown, the line over the pictures, their labels and
+       the partners are drawn about twice as big as on the stream (the clock about 48 px tall on an iPhone, no words
+       under about 10 px even on an iPhone SE), and the picture keeps nearly all its room. A phone held sideways gets
+       the landscape screen (LivePage), drawn the same way. The stream, the crew's screen and a TV never get these. */
+    body.embed .cards, body.embed .eyebrow, body.embed .title, body.embed .sub { display: none; }
+    /* The story's steps too: the strip beside the frame shows the whole set, and the line is the words' alone, so a
+       picture's name is never cut short ("The new flo…") */
+    body.embed .design-steps { display: none !important; }
+    /* At this size a line holds about 36 letters ("Accessible Bathroom · Dream Bedroom" is 35), so what's in the frame
+       takes up to two whole lines, growing upward from the frame (it's placed there, and the frame sits low enough for
+       two), instead of being cut mid-word */
+    body.embed .caption { grid-template-columns: minmax(0, 1fr); column-gap: 0; min-height: 0; }
+    body.embed .rooms, body.embed .design-chip { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: normal; line-height: 1.15; }
+    body.embed .rooms-label, body.embed .design-chip__kicker { margin-right: 0.45em; }
+    /* (and, as on the stream, the rooms step aside while the design plays: one line over the frame, never two) */
+    body.embed[data-design] .rooms { display: none; }
+    body.embed .design-chip__text { overflow: visible; }
+    /* The frame takes the cards' place, its yellow block stopping 24 above the (taller) partners, as the card does */
+    /* The countdown needs less than the left half: the picture (and the line over it) takes the room */
+    body.embed[data-o='landscape'] .copy { width: 660px; }
+    body.embed[data-o='landscape'] .frame { left: 790px; width: 1018px; top: 184px; height: 668px; }
     body.embed[data-o='landscape'][data-partners='no'] .frame { height: 872px; }
-    body.embed[data-o='portrait'] .frame { height: calc(1920px - var(--pt) - 484px - 172px); }
-    body.embed[data-o='portrait'][data-partners='no'] .frame { height: calc(1920px - var(--pt) - 484px - 72px); }
+    /* Landscape: the countdown has the left column to itself; the line over the picture and the partners a size up */
+    body.embed[data-o='landscape'] .when-label { font-size: 60px; letter-spacing: 0.1em; }
+    body.embed[data-o='landscape'] .when-rel { font-size: 60px; white-space: nowrap; }
+    body.embed[data-o='landscape'][data-state='count'] .when-time { font-size: 180px; }
+    body.embed[data-o='landscape'][data-state='soon'] .when-time, body.embed[data-o='landscape'][data-state='now'] .when-time { font-size: 80px; }
+    body.embed[data-o='landscape'] .rooms, body.embed[data-o='landscape'] .design-chip { font-size: 60px; }
+    body.embed[data-o='landscape'] .rooms-label, body.embed[data-o='landscape'] .design-chip__kicker { font-size: 60px; letter-spacing: 0.1em; }
+    body.embed[data-o='landscape'] .slide-badge { font-size: 66px; padding: 18px 28px 16px; }
+    body.embed[data-o='landscape'] .photo .paper.has-badge img { padding-top: 168px; }
+    body.embed[data-o='landscape'] .partners { height: 180px; }
+    body.embed[data-o='landscape'] .partners-label { font-size: 60px; letter-spacing: 0.08em; width: 430px; line-height: 1.2; }
+    body.embed[data-o='landscape'] .chip { --logo-h: 100px; height: 136px; min-width: 230px; }
+    body.embed[data-o='landscape'] .chip img { max-width: 400px; }
+    /* Portrait: the countdown at the top beside the logo, then the line over the pictures, the pictures, the partners */
+    body.embed[data-o='portrait'] .when { padding-left: 32px; border-left-width: 10px; gap: 6px 28px; }
+    body.embed[data-o='portrait'] .when-label { font-size: 56px; letter-spacing: 0.1em; }
+    body.embed[data-o='portrait'] .when-rel { font-size: 56px; }
+    body.embed[data-o='portrait'] .when-time { font-size: 104px; }
+    body.embed[data-o='portrait'][data-state='soon'] .when-time, body.embed[data-o='portrait'][data-state='now'] .when-time { font-size: 76px; }
+    body.embed[data-o='portrait'][data-state='count'] .when-time { font-size: 200px; }
+    body.embed[data-o='portrait'] .frame { top: 580px; height: calc(1920px - 580px - 200px - 48px); }
+    body.embed[data-o='portrait'][data-partners='no'] .frame { height: calc(1920px - 580px - 72px); }
+    body.embed[data-o='portrait'] .caption { bottom: calc(100% + 22px); }
+    body.embed[data-o='portrait'] .rooms, body.embed[data-o='portrait'] .design-chip { font-size: 56px; }
+    body.embed[data-o='portrait'] .rooms-label, body.embed[data-o='portrait'] .design-chip__kicker { font-size: 56px; letter-spacing: 0.1em; }
+    body.embed[data-o='portrait'] .design-steps { width: 300px; gap: 8px; }
+    body.embed[data-o='portrait'] .step { height: 10px; border-radius: 5px; }
+    body.embed[data-o='portrait'] .slide-badge { top: 36px; left: 36px; padding: 20px 30px 18px; border-radius: 16px; font-size: 60px; }
+    body.embed[data-o='portrait'] .photo .paper.has-badge img { padding-top: 170px; }
+    body.embed[data-o='portrait'] .partners { height: 200px; gap: 32px; }
+    body.embed[data-o='portrait'] .partners-label { font-size: 56px; letter-spacing: 0.08em; width: 400px; line-height: 1.2; }
+    body.embed[data-o='portrait'] .chip { --logo-h: 116px; height: 156px; min-width: 260px; padding: 16px 32px; border-radius: 26px; }
+    body.embed[data-o='portrait'] .chip img { max-width: 440px; }
     .card {
       position: absolute; inset: 0; display: flex; align-items: center; gap: 26px;
       background: #fff; border: 1px solid var(--c-border); border-radius: 24px; padding: 22px 28px 22px 22px;

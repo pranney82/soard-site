@@ -16,7 +16,7 @@
  *   └──────────────┘
  *   captions line                        (replay, when switched on)
  *   ● LIVE · 34 watching    [Tap for sound]   then   [sound] [♥] [full screen]
- *   or  [▶] seek bar with the reveal marked  time  [CC] [full screen]   (replay)
+ *   or  [▶] seek bar with the reveal marked, time under it  [CC] [full screen]   (replay)
  *   [ Jump to the reveal ]               (replay, once the moment is known)
  *
  * The only things ever shown over the frame are for when there is no
@@ -84,7 +84,7 @@ const ICON = {
   <div class="stage__bar" data-s="bar" hidden>
     <div class="bar__live" data-s="livebar">
       <span class="bar__status"><span class="bar__dot" aria-hidden="true"></span><span data-s="status">Connecting</span></span>
-      <span class="bar__count" data-s="count" hidden><Fragment set:html={ICON.eye} /><span data-s="count-text"></span></span>
+      <span class="bar__count" data-s="count" hidden><span class="bar__count-n"><Fragment set:html={ICON.eye} /><span data-s="count-num"></span></span><span class="bar__count-word" data-s="count-word"></span></span>
       <span class="bar__end">
         <button class="bar__sound" type="button" data-s="sound" hidden><Fragment set:html={ICON.soundOff} /><span>Tap for sound</span></button>
         <button class="bar__btn" type="button" data-s="mute" aria-label="Mute" title="Sound (M)" hidden>
@@ -101,18 +101,23 @@ const ICON = {
         <span class="bar__icon-pause"><Fragment set:html={ICON.pause} /></span>
       </button>
       <div class="seek">
+        <span class="seek__line" aria-hidden="true"></span>
+        <span class="seek__mark" data-s="mark" aria-hidden="true" hidden><Fragment set:html={ICON.spark} /></span>
         <input class="seek__range" type="range" min="0" max="1000" step="1" value="0" data-s="seek" aria-label="Seek" aria-valuetext="0:00" />
-        <button class="seek__mark" type="button" data-s="mark" aria-label="Jump to the reveal" title="The reveal" hidden><Fragment set:html={ICON.spark} /></button>
       </div>
-      <span class="bar__time" data-s="time">0:00</span>
+      <span class="bar__time" data-s="time"><span data-s="time-now">0:00</span><span class="bar__total" data-s="time-total"></span></span>
       <button class="bar__btn bar__cc" type="button" data-s="cc-toggle" aria-label="Captions" aria-pressed="false" title="Captions (C)" hidden>CC</button>
       <button class="bar__btn" type="button" data-full aria-label="Full screen" title="Full screen (F)"><Fragment set:html={ICON.full} /></button>
     </div>
   </div>
 
   <button class="stage__jump" type="button" data-s="jump" hidden>
-    <Fragment set:html={ICON.spark} /><span data-s="jump-label">Jump to the reveal</span><span class="stage__jump-at" data-s="jump-at"></span>
+    <Fragment set:html={ICON.spark} /><span class="stage__jump-label" data-s="jump-label">Jump to the reveal</span><span class="stage__jump-at" data-s="jump-at"></span>
   </button>
+
+  <!-- Something that goes with the picture (the page's design strip). The grid places it beside the picture; it comes
+       last so the keyboard reaches the video's own controls first -->
+  <div class="stage__beside"><slot name="beside" /></div>
 </div>
 
 <style>
@@ -150,11 +155,31 @@ const ICON = {
 
   /* ── Watch party: the video, with the bar underneath ── */
   .stage[data-party] {
-    display: grid; grid-template-columns: minmax(0, 1fr);
-    /* As big as the height allows at the picture's shape, never wider than the column */
-    width: min(var(--stage-max, 100%), calc((var(--fh, 640px) - var(--below)) * var(--ar)));
+    /* The picture: as big as the height allows at its shape (--pic). Beside it, whatever the page puts there (it says
+       how wide with --beside and --beside-gap: the design strip, as tall as the picture). The captions line, the bar
+       and Jump run under both. The stage is as wide as that, or as wide as its controls need (--controls-min) when
+       that's more, never wider than the column: on a phone a portrait picture is sized by the screen's height, so it
+       can be narrower than its bar needs, and then the picture and what's beside it keep their size in the middle and
+       the bar takes the room (Peter, Nov 11 2026: the video stays full size, no shortcuts) */
+    --pic: calc((var(--fh, 640px) - var(--below)) * var(--ar));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, var(--pic)) var(--beside-gap, 0px) var(--beside, 0px) minmax(0, 1fr);
+    grid-template-areas: '. screen . beside .' 'cc cc cc cc cc' 'bar bar bar bar bar' 'jump jump jump jump jump';
+    width: min(var(--stage-max, 100%), max(calc(var(--pic) + var(--beside-gap, 0px) + var(--beside, 0px)), var(--controls-min, 0px)));
     margin-inline: auto;
   }
+  /* A landscape picture fills the width: what goes with it sits under everything */
+  .stage[data-party][data-orientation='landscape'] { grid-template-areas: '. screen . . .' 'cc cc cc cc cc' 'bar bar bar bar bar' 'jump jump jump jump jump' 'beside beside beside beside beside'; }
+  .stage[data-party] .stage__screen { grid-area: screen; }
+  .stage[data-party] .stage__beside { grid-area: beside; position: relative; min-width: 0; container: beside / inline-size; }
+  .stage[data-party] .stage__cc { grid-area: cc; }
+  .stage[data-party] .stage__bar { grid-area: bar; container: bar / inline-size; }
+  .stage[data-party] .stage__jump { grid-area: jump; }
+  /* A replay's bar holds play, the line, captions and full screen: room enough for a line worth dragging */
+  .stage[data-party][data-mode='replay'] { --controls-min: 320px; }
+  /* Live: "Live", the count and three buttons (or Tap for sound); starting soon: its words, the count and the heart */
+  .stage[data-party][data-mode='live'] { --controls-min: 270px; }
+  .stage[data-party][data-mode='starting'] { --controls-min: 250px; }
   .stage[data-party][data-cc] { --below: calc(var(--bar) + var(--gap) + 3.4em + var(--gap)); }
   .stage[data-party][data-jump] { --below: calc(var(--bar) + var(--gap) + 46px + var(--gap)); }
   .stage[data-party][data-cc][data-jump] { --below: calc(var(--bar) + var(--gap) + 3.4em + var(--gap) + 46px + var(--gap)); }
@@ -202,11 +227,19 @@ const ICON = {
     padding: 0 6px 0 16px; border-radius: 100px; background: #fff; border: 1px solid var(--c-border); min-width: 0;
   }
   .stage__bar[hidden] { display: none; }
-  .bar__live, .bar__replay { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+  .bar__live { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+  /* Replay: play, the progress line with the time under it, then captions and full screen. The time shares the
+     line's cell instead of taking a width of its own, so the line gets everything the buttons don't need, and a
+     portrait video's narrow bar still holds every control (nothing ever hangs off its end) */
+  .bar__replay { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: auto; align-items: center; column-gap: 8px; width: 100%; min-width: 0; }
+  .bar__replay > .seek, .bar__replay > .bar__time { grid-row: 1; grid-column: 2; }
   .bar__live[hidden], .bar__replay[hidden] { display: none; }
-  .bar__status { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text); white-space: nowrap; }
+  .bar__status { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text); white-space: nowrap; }
   .bar__status span:last-child { overflow: hidden; text-overflow: ellipsis; }
-  @media (max-width: 360px) { .bar__status { font-size: 11px; letter-spacing: 0.04em; } .stage__bar { padding-left: 12px; } }
+  @media (max-width: 360px) { .stage__bar { padding-left: 12px; } }
+  /* The bar's words give way by the bar's own width, not the screen's (beside a sideways phone's picture it's narrow on
+     a wide screen): the viewer count's words go first, so "Live" and "Starting soon" are never squeezed out */
+  @container bar (max-width: 300px) { .bar__status { font-size: 11px; letter-spacing: 0.04em; } }
   .bar__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c-text-light); position: relative; flex-shrink: 0; }
   .stage[data-onair] .bar__dot { background: var(--c-yellow); }
   .stage[data-onair][data-mode='live'] .bar__dot::after {
@@ -214,8 +247,15 @@ const ICON = {
     animation: live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
   @keyframes live-ping { 0% { transform: scale(0.6); opacity: 0.9; } 70%, 100% { transform: scale(1.5); opacity: 0; } }
-  .bar__count { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--c-text-muted); white-space: nowrap; }
+  /* The count takes the room between the status and the buttons. Short of room, its word steps aside first, then the
+     number with its eye (a line that's never shown takes them): never a bare eye, never "Live" squeezed */
+  .bar__count {
+    flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 5px; height: 20px; line-height: 20px; overflow: hidden;
+    font-size: 13px; font-weight: 600; color: var(--c-text-muted); white-space: nowrap;
+  }
+  .bar__count::before { content: ''; flex: 0 0 0; height: 20px; margin-right: -5px; }
   .bar__count[hidden] { display: none; }
+  .bar__count-n { display: inline-flex; align-items: center; gap: 6px; }
   .bar__count :global(svg) { width: 15px; height: 15px; }
   .bar__end { margin-left: auto; display: flex; align-items: center; gap: 4px; }
   .bar__end [hidden] { display: none; }
@@ -257,29 +297,66 @@ const ICON = {
   .bar__icon-pause, .stage[data-playing] .bar__icon-play { display: none; }
   .stage[data-playing] .bar__icon-pause { display: grid; }
   .bar__icon-play { display: grid; }
-  .bar__time { font-size: 13px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* Under the progress line, at its end. When there isn't room for all of it, the length steps aside first, then
+     the time: each wraps onto a second line that is never shown, so nothing runs into the buttons */
+  .bar__time {
+    align-self: end; display: flex; flex-wrap: wrap; column-gap: 0.3em; height: 14px; line-height: 14px; overflow: hidden;
+    font-size: 12px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none;
+  }
+  /* Pushes the time to the end; as tall as a line, so a first line holding only this still hides what wrapped */
+  .bar__time::before { content: ''; flex: 1 0 0; height: 14px; }
+  .bar__total:empty { display: none; }
 
-  .seek { position: relative; flex: 1 1 auto; min-width: 60px; height: 40px; display: flex; align-items: center; }
-  .seek__range { --p: 0%; width: 100%; height: 40px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
-  .seek__range::-webkit-slider-runnable-track { height: 6px; border-radius: 6px; background: linear-gradient(to right, var(--c-dark) var(--p), var(--c-border) var(--p)); }
-  .seek__range::-moz-range-track { height: 6px; border-radius: 6px; background: var(--c-border); }
-  .seek__range::-moz-range-progress { height: 6px; border-radius: 6px; background: var(--c-dark); }
-  .seek__range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%; background: var(--c-dark); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
-  .seek__range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--c-dark); border: 2px solid #fff; }
+  /* The line sits in the top of its cell (--seek-pad leaves the bottom for the time); the whole cell still seeks */
+  .seek {
+    --seek-pad: 14px; position: relative; min-width: 0; height: 40px; display: flex; align-items: center;
+    /* The slider's handle (16px) runs along a track 8px in from each end of the cell, so its centre travels from 16px
+       to 16px short of the end: the reveal's star, drawn exactly where the handle is at that moment (--at, how far
+       along the reveal is), always fits in the cell with its ring, even at the very start or end */
+    --mark-x: calc(16px + (100% - 32px) * var(--at, 0.5));
+  }
+  /* The line you see is its own element, along the track (with how far it's played, --f on the cell, and a gap for
+     the star); the slider itself is see-through except its handle, and sits over both, so the handle is always whole
+     and on top (a gap cut in the slider's own track cut its handle too: browsers draw the handle inside the track) */
+  .seek__line {
+    position: absolute; left: 8px; right: 8px; top: calc((100% - var(--seek-pad)) / 2 - 3px); height: 6px; border-radius: 6px; pointer-events: none;
+    /* (along the line itself, the handle's centre is 8px in from its ends) */
+    --played: calc(8px + (100% - 16px) * var(--f, 0));
+    --star: calc(8px + (100% - 16px) * var(--at, 0.5));
+    background: linear-gradient(to right, var(--c-dark) var(--played), var(--c-border) var(--played));
+  }
+  .seek[data-mark] .seek__line {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(var(--star) - 16px), transparent calc(var(--star) - 16px), transparent calc(var(--star) + 16px), #000 calc(var(--star) + 16px));
+    mask-image: linear-gradient(to right, #000 calc(var(--star) - 16px), transparent calc(var(--star) - 16px), transparent calc(var(--star) + 16px), #000 calc(var(--star) + 16px));
+  }
+  /* (its 8px sides: a tap there still seeks, to the very start or end) */
+  .seek__range { position: relative; z-index: 1; width: 100%; height: 40px; margin: 0; padding: 0 8px var(--seek-pad); background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+  .seek__range::-webkit-slider-runnable-track { height: 6px; border-radius: 6px; background: transparent; }
+  .seek__range::-moz-range-track { height: 6px; border-radius: 6px; background: transparent; }
+  .seek__range::-moz-range-progress { height: 6px; background: transparent; }
+  .seek__range::-webkit-slider-thumb { -webkit-appearance: none; box-sizing: border-box; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%; background: var(--c-dark); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+  .seek__range::-moz-range-thumb { box-sizing: border-box; width: 16px; height: 16px; border-radius: 50%; background: var(--c-dark); border: 2px solid #fff; }
   .seek__range:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; border-radius: 6px; }
   .seek__mark {
-    position: absolute; top: 50%; left: var(--at, 50%); width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0; border: 0; border-radius: 50%;
-    display: grid; place-items: center; background: var(--c-yellow); color: var(--c-dark); cursor: pointer; box-shadow: 0 0 0 3px #fff;
+    /* In the line's gap, under the handle, clear of play and captions. Drawn, not a button: every tap and drag goes to
+       the line (a drag that starts on the star still drags), and a tap on the star plays from the reveal, as Jump to
+       the reveal does (live-stage.ts). Jump, under the bar, is the button, and the keyboard's way there */
+    position: absolute; top: calc((100% - var(--seek-pad)) / 2); left: var(--mark-x);
+    width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0; border: 0; border-radius: 50%;
+    display: grid; place-items: center; background: var(--c-yellow); color: var(--c-dark); box-shadow: 0 0 0 3px #fff; pointer-events: none;
   }
   .seek__mark[hidden] { display: none; }
   .seek__mark :global(svg) { width: 14px; height: 14px; }
-  .seek__mark:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
 
+  /* One line, always: on a narrow video the reveal's time steps aside onto a line that is never shown (and at the
+     very narrowest the words end in "…"), instead of the words wrapping out of the button */
   .stage__jump {
-    margin-top: var(--gap); height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    margin-top: var(--gap); height: 46px; display: inline-flex; flex-wrap: wrap; align-items: center; align-content: flex-start; justify-content: center;
+    column-gap: 10px; row-gap: 24px; padding: 12px 16px 0; overflow: hidden;
     border: 0; border-radius: 100px; background: var(--c-yellow); color: var(--c-dark);
-    font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 24px rgba(253, 216, 53, 0.35);
+    font: inherit; font-size: 15px; font-weight: 800; line-height: 22px; cursor: pointer; box-shadow: 0 8px 24px rgba(253, 216, 53, 0.35);
   }
+  .stage__jump-label { min-width: 0; max-width: calc(100% - 28px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .stage__jump[hidden] { display: none; }
   .stage__jump :global(svg) { width: 18px; height: 18px; }
   .stage__jump-at { font-weight: 600; opacity: 0.75; font-variant-numeric: tabular-nums; }
@@ -287,15 +364,83 @@ const ICON = {
 
   /* ── Full screen: the whole stage, so captions and the bar stay off the picture ── */
   .stage[data-party]:fullscreen {
-    --fh: calc(100vh - 32px); --stage-max: calc(100vw - 32px);
+    --fh: calc(100vh - 32px); --stage-max: calc(100vw - 32px); --beside: 0px; --beside-gap: 0px;
     width: 100vw; height: 100vh; padding: 16px; margin: 0; background: var(--c-dark-deep);
     align-content: center; justify-content: center;
-    grid-template-columns: min(calc(100vw - 32px), calc((var(--fh) - var(--below)) * var(--ar)));
+    /* Just the picture, with its controls as wide as they need under it */
+    grid-template-columns: min(calc(100vw - 32px), max(var(--pic), var(--controls-min, 0px)));
+    grid-template-areas: 'screen' 'cc' 'bar' 'jump';
   }
+  .stage[data-party]:fullscreen .stage__screen { width: min(100%, var(--pic)); justify-self: center; }
+  .stage[data-party]:fullscreen .stage__beside { display: none; }
+
+  /* ── A phone held sideways: the picture as tall as the screen allows (the page gives the frame the screen's height,
+     less the menu and the kid's name), and everything else beside it; under it, the controls would leave a picture a
+     few dozen pixels high. A portrait picture has the design down its side and the controls past that; a landscape
+     one has the controls beside it with the design as a row under them. The controls keep room enough to use (a
+     replay's the most); a wide picture gives way to them. Full screen is full screen ── */
+  /* (PHONE, DESK and SIDE: word for word as in src/utils/live-media.ts) */
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+    .stage[data-party][data-orientation]:not(:fullscreen) {
+      --pic: calc(var(--fh, 640px) * var(--ar));
+      --side-min: max(var(--controls-min, 0px), 280px);
+      width: 100%;
+      align-items: start;
+    }
+    /* A portrait picture is narrow enough never to give way: it's always the screen's full height, so the design beside
+       it is exactly that tall too (--fh), even when the controls beside them are taller */
+    .stage[data-party][data-orientation='portrait']:not(:fullscreen) {
+      grid-template-columns: var(--pic) var(--beside-gap, 0px) var(--beside, 0px) 16px minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      grid-template-areas: 'screen . beside . cc' 'screen . beside . bar' 'screen . beside . jump' 'screen . beside . .';
+    }
+    .stage[data-party][data-orientation='portrait']:not(:fullscreen) .stage__beside { height: var(--fh); }
+    /* The first control beside the picture starts level with its top */
+    .stage[data-party][data-orientation]:not(:fullscreen) .stage__cc:not([hidden]), .stage[data-party][data-orientation]:not(:fullscreen) .stage__cc[hidden] + .stage__bar,
+    .stage[data-party][data-fit='side']:fullscreen .stage__cc:not([hidden]), .stage[data-party][data-fit='side']:fullscreen .stage__cc[hidden] + .stage__bar { margin-top: 0; }
+    /* The corner player a size smaller on a screen this short */
+    .stage[data-party][data-orientation] .stage__picture.is-docked { --mini-h: min(210px, 50svh); }
+    /* "Starting soon" needs less room than a replay's controls: the starting-soon screen gets it */
+    .stage[data-party][data-orientation][data-mode='starting']:not(:fullscreen) { --side-min: 250px; }
+    /* The controls stack from the top, the design under them; what's left of the picture's height stays below. Beside
+       a wide picture they take a little less room than elsewhere, so the picture keeps the screen's height */
+    .stage[data-party][data-orientation='landscape']:not(:fullscreen) {
+      --side-min: max(min(var(--controls-min, 0px), 260px), 250px);
+      grid-template-columns: minmax(0, var(--pic)) 16px minmax(var(--side-min), 1fr);
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      grid-template-areas: 'screen . cc' 'screen . bar' 'screen . jump' 'screen . beside';
+    }
+    /* With captions on, beside a wide picture that has the design with it, there's no room for the captions, controls
+       and design all down the side. Either the captions go under the picture (here) or the design takes a column of
+       its own (LiveDesignRail), whichever leaves the picture bigger on this screen (data-fit, below). Under the
+       picture, the captions leave it the height the controls and the design take beside it, at least */
+    .stage[data-party][data-orientation='landscape'][data-fit='under']:not(:fullscreen) {
+      --right: calc(var(--bar) + var(--beside-row, 0px));
+      --pic: calc((max(var(--fh, 640px), var(--right)) - 3.4em - var(--gap)) * var(--ar));
+      grid-template-areas: 'screen . bar' 'screen . jump' 'screen . beside' 'cc . beside';
+    }
+    .stage[data-party][data-orientation='landscape'][data-fit='under'][data-jump]:not(:fullscreen) { --right: calc(var(--bar) + var(--gap) + 46px + var(--beside-row, 0px)); }
+    .stage[data-party][data-orientation='landscape'][data-fit='under']:not(:fullscreen) .stage__cc:not([hidden]) { margin-top: var(--gap); }
+    .stage[data-party][data-orientation='landscape'][data-fit='under']:not(:fullscreen) .stage__bar { margin-top: 0; }
+    /* Full screen held sideways: the controls beside the picture at the screen's full height, when that leaves it
+       bigger than under it (always, for a portrait picture; a wide one only on a long enough screen: data-fit, below) */
+    .stage[data-party][data-fit='side']:fullscreen {
+      --pic: calc(var(--fh) * var(--ar));
+      --side-min: max(var(--controls-min, 0px), 280px);
+      grid-template-columns: minmax(0, var(--pic)) 16px minmax(var(--side-min), 1fr);
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      grid-template-areas: 'screen . cc' 'screen . bar' 'screen . jump' 'screen . .';
+      align-items: start;
+    }
+    .stage[data-party][data-fit='side'][data-orientation='landscape']:fullscreen { --side-min: max(min(var(--controls-min, 0px), 260px), 250px); }
+  }
+  /* (data-fit: there's more than one way to lay the stage out on a phone held sideways, and which leaves the picture
+     biggest turns on the screen's exact width and height, which no one shape rule tells apart, so live-stage.ts tries
+     them and keeps the one with the biggest picture that fits on the screen) */
 
   /* ── Mini player: just the picture, with its own little bar above it ── */
   .stage[data-party] .stage__picture.is-docked {
-    position: fixed; inset: auto 16px calc(16px + var(--dock-bottom, 0px) + env(safe-area-inset-bottom, 0px)) auto;
+    position: fixed; inset: auto max(16px, env(safe-area-inset-right, 0px)) calc(16px + var(--dock-bottom, 0px) + env(safe-area-inset-bottom, 0px)) auto;
     width: min(260px, calc(var(--mini-h, 300px) * var(--ar))); height: auto; aspect-ratio: var(--ar);
     z-index: 950; /* over content, under the sticky header (1000) and its mobile menu (1100) */
     border-radius: 16px; cursor: pointer;
@@ -310,18 +455,38 @@ const ICON = {
   /* Pinned in the design viewer's top left corner, beside the picture's caption (the viewer, LiveDesign.astro,
      leaves this space: --ldp-top and --ldp-h are set there) */
   .stage[data-party][data-pin='design'] .stage__picture.is-docked.is-pinned {
-    inset: var(--ldp-top, 44px) auto auto 12px; --mini-h: var(--ldp-h, 148px);
+    inset: var(--ldp-top, 44px) auto auto var(--ldp-left, 12px); --mini-h: var(--ldp-h, 148px);
   }
   .stage[data-party][data-pin='design'][data-orientation='landscape'] .stage__picture.is-docked.is-pinned { --mini-h: var(--ldp-hw, 88px); }
+  /* The give form with the keyboard up (a phone's page shrunk short, upright): the form takes the whole height and the
+     small video steps out of the way until the keyboard goes (LiveGive) */
+  @media (max-height: 480px) and (max-aspect-ratio: 1749/1000), (max-height: 480px) and (max-width: 559px) {
+    .stage[data-party]:not([data-pin='design']) .stage__picture.is-docked.is-pinned { visibility: hidden; }
+  }
+  /* A phone held sideways: the give form runs down the right (LiveGive), so the video sits down the left beside it,
+     as tall as the screen allows */
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+    .stage[data-party]:not([data-pin='design']) .stage__picture.is-docked.is-pinned .stage__dockbar { right: auto; left: 0; }
+    .stage[data-party]:not([data-pin='design']) .stage__picture.is-docked.is-pinned {
+      /* (its label sits above it: clear of the site's logo, which hangs up to 16px below the header. Its width: the screen
+         less the form and the room right of it (--give-w, --give-edge: LiveGive), its own edge and 16px between them) */
+      inset: calc(var(--header-height) + 52px) auto auto max(16px, env(safe-area-inset-left)); --mini-h: calc(100svh - var(--header-height) - 68px);
+      width: min(calc(100vw - var(--give-w, 0px) - var(--give-edge, 8px) - max(16px, env(safe-area-inset-left)) - 16px), calc(var(--mini-h) * var(--ar)));
+    }
+  }
   .stage__picture.is-docked .stage__note-text { display: none; }
   .stage__picture.is-docked .stage__note-title { font-size: 14px; }
+  /* The label and × above the small player: across its width, or wider when it's too small for both, growing away from
+     the screen's edge it's pinned to (so the × is always whole) */
   .stage__dockbar {
-    position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: flex; align-items: center; justify-content: space-between;
+    position: absolute; right: 0; bottom: calc(100% + 6px); min-width: 100%; width: max-content;
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
   }
+  .stage[data-pin='design'] .stage__dockbar { right: auto; left: 0; }
   .stage__dockbar[hidden] { display: none; }
   .stage__dock-label {
     display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 100px; background: var(--c-dark-deep); color: #fff;
-    font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
   }
   .stage__dock-label .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-yellow); }
   .stage__undock {
@@ -332,13 +497,12 @@ const ICON = {
   .stage__undock :global(svg) { width: 16px; height: 16px; }
   .stage__undock:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
 
-  @media (max-width: 960px) {
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
     .stage[data-party] .stage__picture.is-docked { --mini-h: 210px; }
     .stage[data-party] .stage__picture { border-radius: 16px; }
     .stage[data-party] .stage__accent { display: none; }
   }
   @media (max-width: 400px) {
-    .bar__count span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .stage__bar { padding-left: 12px; }
   }
   /* Touch screens: the site makes every button at least 44px tall (global.css), so the round
@@ -349,9 +513,9 @@ const ICON = {
     .bar__cc { height: 44px; }
     .bar__sound { height: 44px; }
     .seek, .seek__range { height: 44px; }
-    .seek__mark, .stage__undock { min-height: 0; }
+    .stage__undock { min-height: 0; }
     .stage__undock { position: relative; }
-    .seek__mark::after, .stage__undock::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
+    .stage__undock::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
   }
   @media (prefers-reduced-motion: reduce) {
     .stage__accent { animation: none; opacity: 0.35; }
