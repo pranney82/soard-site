@@ -46,7 +46,9 @@ export const RUNTIME_TYPES = ['live-status', 'email-broadcast', 'newsletter', 'i
   // Partners contacts, and what the website set in JobTread: sponsors, vendors on jobs, vendor accounts (D1 and JobTread only)
   'partner-contacts', 'jobtread-sponsor', 'jobtread-access', 'jobtread-vendor',
   // A founder reading a staff mailbox (_mailbox.js): logged, nothing changed
-  'mailbox'];
+  'mailbox',
+  // Admin → Donors & Partners: what only the site knows about donors (_donor-crm.js), private D1, never on the website
+  'donor-crm'];
 
 /** Normalize a timestamp to SQLite datetime format (YYYY-MM-DD HH:MM:SS) to compare with audit_log.created_at */
 export function toSqliteTimestamp(dateStr) {

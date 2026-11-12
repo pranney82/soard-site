@@ -4614,6 +4614,7 @@
     import * as ES from './events-shared.js';
     import { AfterEventPanel, SponsorsList, EventBasics } from './event-recap-admin.js';
     import { EditWordsButton } from './email-words.js';
+    import { AreaTabs, PartnerGiving } from './donor-tabs.js';
     // Every Zeffy link field: SOARD's Zeffy forms to pick from, and what it says is what Save checks (fieldState)
     import { ZeffyLink, fieldState, useZeffyFormList } from './zeffy-forms.js';
     // A kid's Give button opens a donation or a peer-to-peer form
@@ -5294,6 +5295,21 @@
       useEffect(load, []);
       if (err) return html`<${LoadErrorCard} error=${`Could not load job costs: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
       return mod ? html`<${mod.JobCosts} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
+    }
+
+    // Donors: everyone who gives (from Zeffy) and Checks into Zeffy, kept in
+    // ./donors.js and loaded on first visit.
+    let donorsModule = null;
+    function DonorsLazy(props) {
+      const [mod, setMod] = useState(() => lazyNow(donorsModule));
+      const [err, setErr] = useState(null);
+      const load = () => {
+        donorsModule ||= lazyKeep(import('./donors.js'));
+        donorsModule.then((m) => setMod(m)).catch((e) => { donorsModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load donors: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.Donors} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
     // Board: the board's meetings, minutes, files and documents (its admins only),
@@ -9328,7 +9344,14 @@
      * Items: ref={itemRef(key)}; the grip: {...handleProps(key)}; a whole
      * tile can also start a mouse drag with tileDown(e, key) (6px threshold).
      */
-    function useKdReorder({ keys, onDrop, nameOf = (k) => k, grid = false, disabled = false }) {
+    // fixed: keys in the order that are never picked up (Partners' Champion heading, the line between its two sections).
+    // placeOf(order, key): how a place is said ("Champion, 3 of 36"); by default its position in the whole order.
+    // refuse(order, key): why a move to that order can't happen (a section folded shut), said instead; null when it can
+    function useKdReorder({ keys, onDrop, nameOf = (k) => k, grid = false, disabled = false, fixed = null, placeOf = null, refuse = null }) {
+      // A drag started before a re-render (a reload meanwhile) still drops with the newest handlers and data
+      const latest = useRef({});
+      latest.current = { onDrop, nameOf, placeOf, refuse };
+      const placeWords = (o, k) => (latest.current.placeOf ? latest.current.placeOf(o, k) : `position ${o.indexOf(k) + 1} of ${o.length}`);
       const [live, setLive] = useState(null);
       const [lifted, setLifted] = useState(null);
       const [announce, setAnnounce] = useState('');
@@ -9377,6 +9400,8 @@
         if (from < 0 || to < 0 || to >= cur.length || from === to) return cur;
         const next = [...cur];
         next.splice(to, 0, next.splice(from, 1)[0]);
+        const why = latest.current.refuse?.(next, key);
+        if (why) { setAnnounce(why); return cur; }
         glide();
         orderRef.current = next;
         setLive(next);
@@ -9396,22 +9421,35 @@
           if (cancel) glide();
           orderRef.current = start;
           setLive(null);
-          setAnnounce(cancel ? `Move cancelled. ${nameOf(s.key)} is back at position ${start.indexOf(s.key) + 1}.` : `${nameOf(s.key)} dropped. No change.`);
+          setAnnounce(cancel ? `Move cancelled. ${latest.current.nameOf(s.key)} is back at ${placeWords(start, s.key)}.` : `${latest.current.nameOf(s.key)} dropped. No change.`);
           return;
         }
-        setAnnounce(`${nameOf(s.key)} dropped at position ${end.indexOf(s.key) + 1} of ${end.length}.`);
-        const ok = await onDrop(end, start);
-        if (ok === false) { glide(); orderRef.current = start; setLive(null); }
+        setAnnounce(`${latest.current.nameOf(s.key)} dropped at ${placeWords(end, s.key)}.`);
+        const ok = await latest.current.onDrop(end, start);
+        if (ok === false) {
+          // Not saved (a question answered Cancel, a save refused): back where it was, said so, and the focus with it
+          glide(); orderRef.current = start; setLive(null);
+          setAnnounce(`${latest.current.nameOf(s.key)} is back at ${placeWords(start, s.key)}. Nothing changed.`);
+          if (s.keyboard) requestAnimationFrame(() => requestAnimationFrame(() => els.current.get(s.key)?.querySelector('[data-kd-grip]')?.focus()));
+        }
       };
       const lift = (key, keyboard, extra = {}) => {
+        if (fixed?.includes(key)) return;
         st.current = { key, keyboard, start: orderRef.current, ...extra };
         setLifted({ key, keyboard });
         if (keyboard) {
           const at = orderRef.current.indexOf(key);
-          setAnnounce(`${nameOf(key)} picked up, position ${at + 1} of ${orderRef.current.length}. ${grid ? 'Arrow keys move it' : 'Up and down arrows move it'}, Space drops it, Escape cancels.`);
+          setAnnounce(`${latest.current.nameOf(key)} picked up, ${placeWords(orderRef.current, key)}. ${grid ? 'Arrow keys move it' : 'Up and down arrows move it'}, Space drops it, Escape cancels.`);
         }
       };
 
+      // Crossing a fixed heading: past its middle by a quarter of its height in the direction of travel, so a pointer
+      // resting near the middle never flips the item from one side to the other
+      const crossed = (i, from, y, r) => {
+        const mid = r.y + r.h / 2;
+        const band = r.h / 4;
+        return i > from ? y > mid + band : y < mid - band;
+      };
       // Pointer: the window follows the drag (a moved node drops pointer capture)
       const target = (x, y) => {
         const s = st.current;
@@ -9423,17 +9461,26 @@
             const el = els.current.get(cur[i]);
             if (!el?.isConnected) continue;
             const r = pos(el);
-            if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return i;
+            if (!(x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)) continue;
+            // A fixed heading between two grids: crossed only past its middle in the direction of travel, so the
+            // logo doesn't flip from side to side while the pointer moves over it
+            if (fixed?.includes(cur[i])) return crossed(i, from, y, r) ? i : -1;
+            return i;
           }
           return -1;
         }
-        // Rows: past the middle of a row in the direction of travel
+        // Rows: past the middle of a row in the direction of travel (a fixed heading: past its dead zone)
         let to = -1;
         for (let i = 0; i < cur.length; i++) {
           if (i === from) continue;
           const el = els.current.get(cur[i]);
           if (!el?.isConnected) continue;
           const r = pos(el);
+          if (fixed?.includes(cur[i])) {
+            if (i < from && crossed(i, from, y, r)) { to = i; break; }
+            if (i > from && crossed(i, from, y, r)) to = i;
+            continue;
+          }
           const mid = r.y + r.h / 2;
           if (i < from && y < mid) { to = i; break; }
           if (i > from && y > mid) to = i;
@@ -9455,7 +9502,7 @@
         s.raf = requestAnimationFrame(edgeLoop);
       };
       const begin = (e, key, threshold) => {
-        if (disabled || st.current.key || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        if (disabled || st.current.key || fixed?.includes(key) || (e.pointerType === 'mouse' && e.button !== 0)) return;
         const el = els.current.get(key);
         if (!el) return;
         const p = pos(el);
@@ -9507,8 +9554,8 @@
         if (s.key !== key || !s.keyboard) return;
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(true); refocus(key); return; }
         let by = 0;
-        if (e.key === 'ArrowUp') by = grid ? -cols() : -1;
-        if (e.key === 'ArrowDown') by = grid ? cols() : 1;
+        if (e.key === 'ArrowUp') by = -1;
+        if (e.key === 'ArrowDown') by = 1;
         if (grid && e.key === 'ArrowLeft') by = -1;
         if (grid && e.key === 'ArrowRight') by = 1;
         if (e.key === 'Home') by = -Infinity;
@@ -9517,17 +9564,38 @@
         e.preventDefault();
         const cur = orderRef.current;
         const at = cur.indexOf(key);
-        const to = Math.max(0, Math.min(cur.length - 1, at + by));
+        // In a grid, up and down go to the tile on screen above or below (nearest column), whatever the rows hold;
+        // in the top or bottom row they stay put
+        const upDown = grid && (e.key === 'ArrowUp' || e.key === 'ArrowDown');
+        const to = upDown ? (across(key, by) ?? at) : Math.max(0, Math.min(cur.length - 1, at + by));
         s.moving = true;
         const next = moveTo(key, to);
-        setAnnounce(`${nameOf(key)}, position ${next.indexOf(key) + 1} of ${next.length}.`);
+        if (next !== cur) setAnnounce(`${latest.current.nameOf(key)}, ${placeWords(next, key)}.`);
         refocus(key);
         setTimeout(() => { if (st.current === s) s.moving = false; }, 120);
       };
-      const cols = () => {
-        const first = els.current.get(orderRef.current[0]);
-        if (!first) return 1;
-        return Math.max(1, orderRef.current.filter((k) => els.current.get(k)?.offsetTop === first.offsetTop).length);
+      // The place of the item on screen in the row above (dir -1) or below (+1), nearest its column: a short last row,
+      // or two grids of different sizes in one order (a heading between them counts as a row), land where the eye says
+      const across = (key, dir) => {
+        const at = els.current.get(key);
+        if (!at?.isConnected) return null;
+        // Layout places (pos), never mid-glide ones, so quick presses read the rows as they'll be
+        const p = pos(at);
+        const r = { top: p.y, bottom: p.y + p.h, left: p.x, width: p.w };
+        const mid = r.left + r.width / 2;
+        const rows = [];
+        for (const [i, k] of orderRef.current.entries()) {
+          const el = k === key ? null : els.current.get(k);
+          if (!el?.isConnected) continue;
+          const q = pos(el);
+          const b = { top: q.y, bottom: q.y + q.h, left: q.x, right: q.x + q.w };
+          if (dir < 0 ? b.bottom <= r.top + 1 : b.top >= r.bottom - 1) rows.push({ i, top: b.top, left: b.left, right: b.right });
+        }
+        if (!rows.length) return null;
+        const edge = dir < 0 ? Math.max(...rows.map((x) => x.top)) : Math.min(...rows.map((x) => x.top));
+        const row = rows.filter((x) => Math.abs(x.top - edge) < 2);
+        const dist = (x) => (mid < x.left ? x.left - mid : mid > x.right ? mid - x.right : 0);
+        return row.reduce((a, x) => (dist(x) < dist(a) ? x : a)).i;
       };
       // Tabbing away from a picked-up item drops it where it is
       const onBlur = (key) => setTimeout(() => {
@@ -14559,6 +14627,34 @@
           ${h.name} ${h.action === 'added' ? 'added' : h.action === 'would-remove' ? 'left the job, logo would come off' : 'taken off'} ${h.side === 'jobtread' ? 'in JobTread' : h.side === 'bill' ? 'for a bill or purchase order' : 'on the website'}${h.by ? ` by ${h.by}` : ''} · ${kdWhen(h.at)}</li>`)}</ul></details>` : null}
       </div>`;
     }
+    // ─── A partner's level changing: said the same way everywhere (a drag across sections, the menus, the editor) ───
+    // The page changes with the next publish; JobTread roles follow the level as saved (functions/api/_partner-roles.js,
+    // the 15-minute sweep), published or not, so a move made just to see it in the preview still reaches JobTread
+    const ptLevelNote = (to, saving = false) => `${PS.levelOf(to).where} The page changes when you publish. ${saving ? 'Once you save, anyone' : 'Anyone'} of theirs in JobTread gets the ${PS.levelOf(to).label} role there soon, published or not.`;
+    const ptAskLevel = (names, to) => ask({
+      title: `Move ${names.length === 1 ? names[0] : kdPlural(names.length, 'partner')} to ${PS.levelOf(to).label}?`,
+      text: ptLevelNote(to), yes: `Move to ${PS.levelOf(to).label}`,
+      // It changes JobTread too: the focus starts on Cancel, so a stray Enter after a keyboard move never says yes
+      careful: true,
+    });
+    // Signature and Champion are placed by hand, in one order with the Champion heading between them, so a logo can be
+    // dragged from one to the other; the directory runs A to Z
+    const PT_HAND = ['signature', 'champion'];
+    const PT_EDGE = '§champion';
+
+    /** Where to put partners in their section, without dragging (WCAG 2.5.7): before one of the others, or at the end */
+    function PtSpotDialog({ names, level, others, onPick, onClose }) {
+      const [before, setBefore] = useState(others[0]?.slug || '');
+      const label = PS.levelOf(level).label;
+      return html`<${KdDialog} title=${`Move ${names.length === 1 ? names[0] : kdPlural(names.length, 'partner')} to a spot`} sub=${`In ${label}${names.length > 1 ? ', keeping them in the order they’re in now' : ''}.`} size="sm" onClose=${onClose}
+        footer=${html`<button type="button" class="btn btn-ghost" onClick=${onClose}>Cancel</button><button type="button" class="btn btn-primary" onClick=${() => onPick(before)}>Move</button>`}>
+        <label class="form-label" for="pt-spot">Put ${names.length === 1 ? 'it' : 'them'}</label>
+        <select id="pt-spot" class="form-select" data-autofocus value=${before} onChange=${(e) => setBefore(e.target.value)}>
+          ${others.map((o, i) => html`<option key=${o.slug} value=${o.slug}>${i === 0 ? 'First, ' : ''}before ${o.name} (now ${o.at})</option>`)}
+          <option value="">At the end</option>
+        </select>
+      <//>`;
+    }
     const ptKidsLine = (list) => (list?.length ? `On ${kdPlural(list.length, 'kid page')}${ptYears(list) ? ` (${ptYears(list)})` : ''}` : '');
     const ptWebShown = (url) => { const w = PS.normalizeWebsite(url); return w.ok && w.url ? PS.domainOf(w.url) : ''; };
 
@@ -14586,6 +14682,10 @@
       const [busy, setBusy] = useState(false);
       const [dialog, setDialog] = useState(null); // { kind: 'create' | 'missing' | 'deleted' | 'categories' | 'delete', ... }
       const [flash, setFlash] = useState(null);
+      // The Partners page beside the list, rebuilt after every move; it opens at the partner last moved
+      const [preview, setPreview] = useState(false);
+      const [moved, setMoved] = useState(null);
+      const [said, setSaid] = useState('');
       const searchRef = useRef(null);
       const publish = usePublishData();
       // Phones show checkboxes in Select mode only, so rows keep room for the name
@@ -14660,10 +14760,16 @@
       const warnCount = count('attention');
       const hlCount = count('highlighted');
 
-      // ── Reordering Signature and Champion (the directory is A to Z) ──
-      const dropOrder = (level) => async (end, start) => {
+      // ── Placing Signature and Champion by hand (the directory is A to Z) ──
+      // One order for both, the Champion heading between them: a logo dragged past the heading changes level
+      const handKeys = [...secs.signature.map((p) => p.slug), PT_EDGE, ...secs.champion.map((p) => p.slug)];
+      const levelIn = (order, slug) => (order.indexOf(slug) < order.indexOf(PT_EDGE) ? 'signature' : 'champion');
+      const sectionOf = (order, level) => (level === 'signature' ? order.slice(0, order.indexOf(PT_EDGE)) : order.slice(order.indexOf(PT_EDGE) + 1));
+      const placeOf = (order, slug) => { const l = levelIn(order, slug); const list = sectionOf(order, l); return `${PS.levelOf(l).label}, ${list.indexOf(slug) + 1} of ${list.length}`; };
+      // A section's new order, saved with Undo (the toast's) back to how it was
+      const saveOrder = async (level, slugs, start) => {
         setSavingOrder(level);
-        const r = await ptReorder('partners', end);
+        const r = await ptReorder('partners', slugs);
         setSavingOrder(null);
         if (!r.success) { addToast(`Couldn’t save the order: ${r.error}`, 'error'); return false; }
         if (!r.changed?.length) { addToast('Order unchanged', 'info'); return true; }
@@ -14677,10 +14783,65 @@
         onReload?.();
         return true;
       };
-      const drags = {
-        signature: useKdReorder({ keys: secs.signature.map((p) => p.slug), onDrop: dropOrder('signature'), nameOf, grid: view === 'logos', disabled: narrowed || !!savingOrder || busy }),
-        champion: useKdReorder({ keys: secs.champion.map((p) => p.slug), onDrop: dropOrder('champion'), nameOf, grid: view === 'logos', disabled: narrowed || !!savingOrder || busy }),
+      const dropHand = async (end, start) => {
+        const across = end.find((k) => k !== PT_EDGE && levelIn(end, k) !== levelIn(start, k));
+        if (!across) {
+          const level = PT_HAND.find((l) => sectionOf(end, l).join('\n') !== sectionOf(start, l).join('\n'));
+          if (!level) return true;
+          const ok = await saveOrder(level, sectionOf(end, level), sectionOf(start, level));
+          if (ok) setMoved(end.find((k, i) => k !== start[i]) || null);
+          return ok;
+        }
+        const to = levelIn(end, across);
+        if (!(await ptAskLevel([nameOf(across)], to))) return false;
+        // One save: its new level, and every place that changed in either section (each partner's order is its place)
+        const updates = [];
+        const before = [];
+        for (const l of PT_HAND) sectionOf(end, l).forEach((slug, i) => {
+          const p = info.get(slug)?.p;
+          if (!p) return;
+          const level = PS.withDefaults(p).level;
+          const order = Math.max(0, Math.round(Number(p.order) || 0));
+          if (level === l && order === i) return;
+          updates.push({ slug, set: { ...(level !== l ? { level: l } : {}), order: i } });
+          before.push({ slug, set: { level, order } });
+        });
+        setSavingOrder(to);
+        const ok = await runBatch(updates, () => `${nameOf(across)} moved to ${PS.levelOf(to).label}`, before);
+        setSavingOrder(null);
+        if (ok) setMoved(across);
+        return ok;
       };
+      // A section folded shut shows none of its logos: nothing moves into it until it's open
+      const refuse = (order, slug) => { const l = levelIn(order, slug); return collapsed[l] ? `${PS.levelOf(l).label} is closed. Open it to move a logo there.` : null; };
+      const drag = useKdReorder({ keys: handKeys, onDrop: (end, start) => dropHand(end, start), nameOf, placeOf, refuse, fixed: [PT_EDGE],
+        grid: view === 'logos', disabled: narrowed || !!savingOrder || busy });
+      // Put partners at the top, the bottom, or before another, without dragging; focus goes back to the first of them
+      const placeAt = async (list, where) => {
+        const level = list[0].d.level;
+        const cur = sectionOf(drag.order, level);
+        const moving = cur.filter((slug) => list.some((x) => x.p.slug === slug));
+        const rest = cur.filter((slug) => !moving.includes(slug));
+        const at = where === 'top' ? 0 : where === 'bottom' || !where ? rest.length : Math.max(0, rest.indexOf(where));
+        const next = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+        const names = moving.length === 1 ? nameOf(moving[0]) : kdPlural(moving.length, 'partner');
+        if (next.join('\n') === cur.join('\n')) { addToast(`${names} ${moving.length === 1 ? 'is' : 'are'} already there`, 'info'); return; }
+        const ok = await saveOrder(level, next, cur);
+        if (!ok) return;
+        setMoved(moving[0]);
+        setSaid(`${names} moved to ${PS.levelOf(level).label}, ${next.indexOf(moving[0]) + 1}${moving.length > 1 ? ` to ${next.indexOf(moving[0]) + moving.length}` : ''} of ${next.length}.`);
+        setTimeout(() => document.querySelector(`[data-pt-slug="${CSS.escape(moving[0])}"] [data-kd-grip], [data-pt-slug="${CSS.escape(moving[0])}"] .ppl-row__name, [data-pt-slug="${CSS.escape(moving[0])}"] .pt-tile__open`)?.focus(), 350);
+      };
+      const spotFor = (list) => {
+        const level = list[0].d.level;
+        const cur = sectionOf(drag.order, level);
+        // Each named at its place now, counting the partners that move too
+        const others = cur.filter((slug) => !list.some((x) => x.p.slug === slug)).map((slug) => ({ slug, name: nameOf(slug), at: cur.indexOf(slug) + 1 }));
+        setDialog({ kind: 'spot', list, level, others });
+      };
+      const previewItem = useMemo(() => partners.find((p) => p.slug === moved) || secs.signature[0] || partners[0] || null, [partners, moved]);
+      // One place says what just happened, a drag's words or a menu move's, whichever came last
+      useEffect(() => { if (drag.announce) setSaid(drag.announce); }, [drag.announce]);
 
       // ── Selection and changes to many at once ──
       const toggle = (slug) => setSelected((s) => { const n = new Set(s); if (n.has(slug)) n.delete(slug); else n.add(slug); return n; });
@@ -14697,7 +14858,8 @@
         setBusy(false);
         if (!r.success) { addToast(`Couldn’t save: ${r.error}${r.changed.length ? ` (${kdPlural(r.changed.length, 'partner')} saved first)` : ''}`, 'error'); onReload?.(); return false; }
         if (r.conflicts.length) addToast(`${kdPlural(r.conflicts.length, 'partner')} changed elsewhere while saving and ${r.conflicts.length === 1 ? 'was' : 'were'} left as ${r.conflicts.length === 1 ? 'it is' : 'they are'}: ${r.conflicts.map(nameOf).join(', ')}`, 'error');
-        if (!r.changed.length) { if (!r.conflicts.length) addToast('Nothing changed: they were already that way', 'info'); onReload?.(); return true; }
+        // Nothing saved because each one changed elsewhere first: not a success (a drag puts its logos back)
+        if (!r.changed.length) { if (!r.conflicts.length) addToast('Nothing changed: they were already that way', 'info'); onReload?.(); return !r.conflicts.length; }
         addToast(done(r.changed.length), 'success', before ? {
           label: 'Undo',
           fn: async () => {
@@ -14708,8 +14870,14 @@
         onReload?.();
         return true;
       };
-      const moveTo = (list, level) => runBatch(list.map((x) => ({ slug: x.p.slug, set: { level } })),
-        (n) => `${n === 1 ? list[0].p.name : kdPlural(n, 'partner')} moved to ${PS.levelOf(level).label}`, snapshot(list, ['level', 'order']));
+      const moveTo = async (list, level) => {
+        const going = list.filter((x) => x.d.level !== level);
+        if (going.length && !(await ptAskLevel(going.map((x) => x.p.name), level))) return false;
+        const ok = await runBatch(list.map((x) => ({ slug: x.p.slug, set: { level } })),
+          (n) => `${n === 1 ? list[0].p.name : kdPlural(n, 'partner')} moved to ${PS.levelOf(level).label}`, snapshot(list, ['level', 'order']));
+        if (ok && going.length === 1) setMoved(going[0].p.slug);
+        return ok;
+      };
       const highlight = (list, on) => runBatch(list.map((x) => ({ slug: x.p.slug, set: { featured: on } })),
         (n) => `${n === 1 ? list[0].p.name : kdPlural(n, 'partner')} ${on ? 'highlighted in the directory' : 'no longer highlighted'}`, snapshot(list, ['featured']));
 
@@ -14721,6 +14889,12 @@
           { label: 'Edit', onSelect: () => onEdit(p.slug) },
           web.ok && web.url ? { label: 'Visit their website', hint: PS.domainOf(web.url), onSelect: () => window.open(web.url, '_blank', 'noopener') } : null,
           { divider: true },
+          ...(PT_HAND.includes(d.level) && !narrowed ? [
+            { label: 'Move to the top', hint: `First in ${PS.levelOf(d.level).label}`, onSelect: () => placeAt([x], 'top') },
+            { label: 'Move to the bottom', hint: `Last in ${PS.levelOf(d.level).label}`, onSelect: () => placeAt([x], 'bottom') },
+            { label: 'Move to a spot…', hint: 'Before another partner', onSelect: () => spotFor([x]) },
+            { divider: true },
+          ] : []),
           ...PS.LEVELS.filter((l) => l.id !== d.level).map((l) => ({ label: `Move to ${l.label}`, hint: l.short, onSelect: () => moveTo([x], l.id) })),
           PS.inDirectory(d) ? { label: d.featured ? 'Remove the highlight' : 'Highlight in the directory', hint: d.featured ? null : 'A soft yellow outline on their card', onSelect: () => highlight([x], !d.featured) } : null,
           { divider: true },
@@ -14830,11 +15004,12 @@
 
       const empty = !partners.length;
       const levelHead = (l, list, visible) => {
-        const drag = drags[l.id];
+        const hand = PT_HAND.includes(l.id);
         const ids = visible;
         const allOn = ids.length > 0 && ids.every((s) => selected.has(s));
         const someOn = !allOn && ids.some((s) => selected.has(s));
-        return html`<header class="sec-head ppl-section__head pt-section__head">
+        // The Champion heading is a place in the hand order: a logo dragged above it is Signature, below it Champion
+        return html`<header class="sec-head ppl-section__head pt-section__head" ref=${l.id === 'champion' ? drag.itemRef(PT_EDGE) : undefined}>
           <div class="pt-section__title">
             <h3 id=${`pt-sec-${l.id}`}>
               <button type="button" class="ppl-collapse" aria-expanded=${!collapsed[l.id]} onClick=${() => setCollapsed((c) => ({ ...c, [l.id]: !c[l.id] }))}>
@@ -14844,8 +15019,8 @@
           </div>
           <div class="pt-section__tools">
             ${savingOrder === l.id ? html`<span class="ppl-saving"><span class="spinner spinner-14" /> Saving order</span>`
-              : drag && list.length > 1 && !narrowed && !collapsed[l.id] ? html`<span class="ppl-hint">Drag ${pplIcon.grip} to reorder</span>`
-              : !drag && list.length > 1 ? html`<span class="ppl-hint">A to Z</span>` : null}
+              : hand && list.length && !narrowed && !collapsed[l.id] ? html`<span class="ppl-hint">Drag ${pplIcon.grip} to reorder${l.id === 'signature' ? ' · the home page strip follows this order' : ''}</span>`
+              : !hand && list.length > 1 ? html`<span class="ppl-hint">A to Z</span>` : null}
             ${checks && ids.length && !collapsed[l.id] ? html`<input type="checkbox" class="pt-check" aria-label=${`Select all ${ids.length} ${l.label} partners${narrowed ? ' shown' : ''}`}
               checked=${allOn} ref=${(el) => { if (el) el.indeterminate = someOn; }} onChange=${() => setMany(ids, !allOn)} />` : null}
           </div>
@@ -14856,10 +15031,12 @@
         <div class="page-header ppl-head pt-head">
           <div>
             <h2>Partners</h2>
-            <p class="page-sub">Everyone on the Partners page, in its sections and order. Signature and Champion partners can be dragged into place; the directory runs A to Z. Changes go live when you publish.</p>
+            <p class="page-sub">Everyone on the Partners page, in its sections and order. Drag Signature and Champion logos into place, from one to the other too, or use a partner’s menu; the directory runs A to Z. Changes go live when you publish.</p>
           </div>
           <div class="ppl-head__actions">
             <a class="btn btn-ghost btn-sm" href="/partners/" target="_blank" rel="noopener">Partners page ${pplIcon.external}</a>
+            ${!empty ? html`<button type="button" class="btn btn-ghost btn-sm" aria-pressed=${preview} onClick=${() => setPreview((v) => !v)}
+              title="The Partners page as it will be after you publish, redrawn after every move">Preview</button>` : null}
             ${!empty ? html`<${PplMenu} label="Export the partners" btnClass="btn btn-ghost btn-sm ppl-head-menu" width=${280}
               button=${html`Export ${pplIcon.chevron}`} items=${[
                 { label: 'Download a spreadsheet', hint: 'Every partner in page order, with kid pages and latest build', onSelect: () => { pplDownload(`soard-partners-${pplToday()}.csv`, PS.partnersCsv(partners, usage.byPartner), 'text/csv;charset=utf-8'); addToast('Spreadsheet downloaded', 'info'); } },
@@ -14950,6 +15127,18 @@
           ${hiddenSel ? html`<span class="pt-selectbar__hidden">${hiddenSel} hidden by the ${q ? 'search' : 'filter'}; changes apply to all ${selected.size}</span>` : null}
           <${PplMenu} label="Move the selected partners" btnClass="btn btn-sm pt-selectbar__btn" width=${270} disabled=${busy}
             button=${html`Level ${pplIcon.chevron}`} items=${PS.LEVELS.map((l) => ({ label: `Move to ${l.label}`, hint: l.short, onSelect: () => moveTo(picked, l.id) }))} />
+          ${(() => {
+            // Placing them: all in one hand-ordered section (Signature or Champion), the order shown in full
+            const level = picked[0]?.d.level;
+            if (!PT_HAND.includes(level) || !picked.every((x) => x.d.level === level) || narrowed) return null;
+            const L = PS.levelOf(level).label;
+            return html`<${PplMenu} label="Place the selected partners" btnClass="btn btn-sm pt-selectbar__btn" width=${260} disabled=${busy || !!savingOrder}
+              button=${html`Order ${pplIcon.chevron}`} items=${[
+                { label: `To the top of ${L}`, onSelect: () => placeAt(picked, 'top') },
+                { label: `To the bottom of ${L}`, onSelect: () => placeAt(picked, 'bottom') },
+                { label: 'To a spot…', hint: 'Before another partner', onSelect: () => spotFor(picked) },
+              ]} />`;
+          })()}
           <button type="button" class="btn btn-sm pt-selectbar__btn" disabled=${busy} onClick=${() => setDialog({ kind: 'categories' })}>Categories…</button>
           <${PplMenu} label="Highlight the selected partners" btnClass="btn btn-sm pt-selectbar__btn" width=${250} disabled=${busy || !picked.some((x) => PS.inDirectory(x.d))}
             button=${html`Highlight ${pplIcon.chevron}`} items=${[
@@ -14962,18 +15151,20 @@
           <button type="button" class="btn btn-sm pt-selectbar__btn pt-selectbar__clear" onClick=${() => { setSelected(new Set()); setSelecting(false); }}>Clear</button>
         </div>` : null}
         <p class="sr-only" id="pt-reorder-help">Press Space to pick up, the arrow keys to move, Space again to drop, or Escape to cancel.</p>
-        <div class="sr-only" aria-live="assertive" aria-atomic="true">${drags.signature.announce || drags.champion.announce}</div>
+        <div class="sr-only" aria-live="assertive" aria-atomic="true">${said}</div>
         ${PS.LEVELS.map((l) => {
-          const drag = drags[l.id] || null;
-          const keys = drag ? drag.order : secs[l.id].map((p) => p.slug);
+          const hand = PT_HAND.includes(l.id);
+          const keys = hand ? sectionOf(drag.order, l.id) : secs[l.id].map((p) => p.slug);
           const visible = keys.filter(shown);
           if (narrowed && !visible.length) return null;
-          const list = secs[l.id];
+          // Mid-drag a section holds what the drag puts there: one emptied or filled by a logo crossing over shows it at once
+          const list = hand ? keys.map((slug) => info.get(slug)?.p).filter(Boolean) : secs[l.id];
+          const handDrag = hand ? drag : null;
           return html`<section class=${`card ppl-section pt-section pt-section--${l.id}`} key=${l.id} aria-labelledby=${`pt-sec-${l.id}`}>
             ${levelHead(l, list, visible)}
             ${collapsed[l.id] ? null : !list.length ? html`<p class="ppl-empty">${l.id === 'signature' ? 'No Signature partners yet. Move your top few here: they lead the Partners page and fill the home page logo strip.' : `No ${l.label} partners yet.`}</p>`
-              : view === 'logos' ? html`<ul class=${`pt-wall pt-wall--${l.id}`}>${visible.map((s) => tile(s, drag, l.id))}</ul>`
-              : html`<ul class="ppl-rows pt-rows">${visible.map((s) => row(s, drag, l.id))}</ul>`}
+              : view === 'logos' ? html`<ul class=${`pt-wall pt-wall--${l.id}`}>${visible.map((s) => tile(s, handDrag, l.id))}</ul>`
+              : html`<ul class="ppl-rows pt-rows">${visible.map((s) => row(s, handDrag, l.id))}</ul>`}
           </section>`;
         })}
         ${narrowed && !partners.some((p) => shown(p.slug)) ? html`<div class="card ppl-empty-all"><p class="text-muted">No partners match${q ? ` “${q}”` : ''}.</p>
@@ -15027,6 +15218,10 @@
           onClose=${() => setDialog(null)} onDone=${() => { setDialog(null); onReload?.(); }} />` : null}
         ${dialog?.kind === 'deleted' ? html`<${PtDeletedDialog} collection="partners" taken=${new Set(partners.map((p) => p.slug))} noun="partner"
           path=${PT_PATH} addToast=${addToast} onClose=${() => setDialog(null)} onRestored=${(slug) => { onReload?.(); setFlash(slug); }} />` : null}
+        ${dialog?.kind === 'spot' ? html`<${PtSpotDialog} names=${dialog.list.map((x) => x.p.name)} level=${dialog.level} others=${dialog.others}
+          onClose=${() => setDialog(null)} onPick=${(before) => { const list = dialog.list; setDialog(null); placeAt(list, before || 'bottom'); }} />` : null}
+        ${preview && previewItem ? html`<${PagePreview} kind="partner" item=${previewItem} slug=${previewItem.slug} dirty=${false}
+          buildOpts=${{ collection: partners }} onClose=${() => setPreview(false)} />` : null}
         ${dialog?.kind === 'categories' ? html`<${PtCategoriesDialog} list=${picked} busy=${busy} onClose=${() => setDialog(null)}
           onApply=${async (add, remove) => {
             const ok = await runBatch(picked.map((x) => ({ slug: x.p.slug, add, remove })),
@@ -15996,7 +16191,7 @@
     function PartnerCreateDialog({ partners, prefill, onClose, onCreated, addToast, sponsor = false, designer = false }) {
       const credit = sponsor || designer;
       const noun = designer ? 'design partner' : 'sponsor';
-      const [f, setF] = useState(() => ({ name: prefill?.name || '', website: prefill?.website || '', level: 'friend', category: [designer ? 'design' : sponsor ? 'funding' : 'build'], logo: prefill?.logo || '' }));
+      const [f, setF] = useState(() => ({ name: prefill?.name || '', website: prefill?.website || '', level: 'friend', category: [prefill?.category || (designer ? 'design' : sponsor ? 'funding' : 'build')], logo: prefill?.logo || '' }));
       const [people, setPeople] = useState(() => prefill?.people || []);
       const [uploading, setUploading] = useState(false);
       const [preview, setPreview] = useState(null);
@@ -16671,7 +16866,9 @@
       ].filter(Boolean);
       const checksDone = checks.filter((c) => c.done).length;
       const taglineMax = 80;
-      const placeNote = d.level === 'signature' ? 'Feature card at the top of the Partners page, and the home page logo strip.' : level.where;
+      // A new level once saved: the page on the next publish, JobTread's role soon after the save (ptLevelNote)
+      const placeNote = base?.slug && d.level !== PS.withDefaults(base).level ? ptLevelNote(d.level, true)
+        : d.level === 'signature' ? 'Feature card at the top of the Partners page, and the home page logo strip.' : level.where;
 
       const sec = (id, title, sub, body, actions = null) => html`<section class="card kd-sec pt-sec" id=${`pt-sec-${id}`} aria-labelledby=${`pt-sec-${id}-h`}>
         <header class="kd-sec__head">
@@ -16792,6 +16989,7 @@
                 </ol>
                 <button type="button" class="btn btn-ghost btn-sm kd-history__all" onClick=${() => setHistoryOpen(true)}>${history.versions.length > 3 ? `All ${history.versions.length} versions` : 'Compare and restore'}</button>`}
           </section>
+          <${PartnerGiving} slug=${slug} />
           <section class="kd-card kd-card--site" aria-labelledby="pt-site-h">
             <h3 id="pt-site-h">On the site</h3>
             <ul class="pt-places">
@@ -24674,6 +24872,7 @@ ${sections || '<p>No one yet.</p>'}
           // The sidebar's areas first, in its order, then the places inside them
           ...NAV_ITEMS.filter((it) => navShown(it, boardAdmin)).map((it) => ({ type: 'page', label: it.label, meta: it.meta, id: it.id, section: 'Pages' })),
           { type: 'page', label: 'Community Projects', id: 'kids-hub', subTab: 'community', section: 'Pages' },
+          { type: 'page', label: 'Partners', meta: 'Partner logos on the website, in Donors & Partners', id: 'partners-hub', section: 'Pages' },
           { type: 'page', label: 'Community Partners', id: 'partners-hub', subTab: 'community-partners', section: 'Pages' },
           { type: 'page', label: 'Outlets (As Featured strip)', id: 'press-hub', subTab: 'outlets', section: 'Pages' },
           { type: 'page', label: 'Board', id: 'people-hub', subTab: 'board', section: 'Pages' },
@@ -25033,12 +25232,14 @@ ${sections || '<p>No one yet.</p>'}
         { id: 'demo-day', label: 'Demo Day', icon: 'demoDay', hash: '#demo-day', meta: 'Calendar invites for the first day of construction' },
         { id: 'broadcast', label: 'Reveals', icon: 'goLive', hash: '#broadcast', meta: 'Live broadcast and invites' },
         { id: 'job-costs', label: 'Job Costs', icon: 'jobCosts', hash: '#job-costs', meta: 'Spending against budgets, bills, close-outs, the budget builder and the insurance audit' },
+        // Donors & Partners (Nov 2026): everyone who gives, the partners on the website, and checks into Zeffy, one area
+        // with one set of tabs (./donor-tabs.js); Partners kept its own address (#partners) under it
+        { id: 'donors', label: 'Donors & Partners', icon: 'donors', hash: '#donors', meta: 'Everyone who gives, the partners on the website, and checks into Zeffy' },
         // Only the Board area's admins see it (boardAdminGate); its API refuses everyone else
         { id: 'board', label: 'Board', icon: 'board', hash: '#board', meta: 'Meetings, minutes and documents for the board', gate: 'board' },
       ] },
       { label: 'Website', items: [
         { id: 'people-hub', label: 'People', icon: 'team', hash: '#people', meta: 'Team, board, advisors' },
-        { id: 'partners-hub', label: 'Partners', icon: 'partners', hash: '#partners', meta: 'Sponsors and community partners' },
         { id: 'press-hub', label: 'Press', icon: 'press', hash: '#press', meta: 'Stories, found coverage, outlets' },
         { id: 'events', label: 'Events', icon: 'events', hash: '#events' },
         { id: 'site-hub', label: 'Site Config', icon: 'globe', hash: '#site', meta: 'Every public page, page by page' },
@@ -25055,7 +25256,8 @@ ${sections || '<p>No one yet.</p>'}
     const NAV_ITEMS = NAV.flatMap((g) => g.items);
     // Areas with an address but no line in the menu: the one they belong to shows as current.
     // A Resources guide opens its editor here (#articles/<slug>); the guides are listed in Site Config → Resources.
-    const NAV_OFF = [{ id: 'articles', hash: '#articles', under: 'site-hub' }];
+    // Partners and Community partners are tabs of Donors & Partners (#partners, #partners?waiting from the staff email)
+    const NAV_OFF = [{ id: 'articles', hash: '#articles', under: 'site-hub' }, { id: 'partners-hub', hash: '#partners', under: 'donors' }];
     const NAV_PLACES = [...NAV_ITEMS, ...NAV_OFF];
     // Older addresses, and the ones Slack posts and emails link to
     const NAV_ALIASES = { 'reveal-invites': 'broadcast', 'go-live': 'broadcast', 'advisory-applications': 'people-hub', 'audit-log': 'history', 'publish-history': 'history', deploys: 'history', 'trade-partners': 'job-costs' };
@@ -25066,6 +25268,8 @@ ${sections || '<p>No one yet.</p>'}
     function viewOfHash(hash = location.hash) {
       // Demo Day was a Reveals tab first; its old address still opens it
       if (/^#broadcast\/demo\b/.test(String(hash))) return 'demo-day';
+      // Checks was a Job Costs tab until Nov 2026 (Slack posts from before link it there): Donors has it now
+      if (/^#job-costs\/checks\b/.test(String(hash))) return 'donors';
       const seg = (String(hash).match(/^#([\w-]+)/) || [])[1];
       if (!seg) return 'dashboard';
       return NAV_PLACES.find((it) => it.hash === `#${seg}`)?.id || NAV_ALIASES[seg] || null;
@@ -25110,6 +25314,7 @@ ${sections || '<p>No one yet.</p>'}
       messages: [() => messagesModule, (p) => { messagesModule = p; }, './messages.js'],
       automations: [() => automationsModule, (p) => { automationsModule = p; }, './automations.js'],
       'job-costs': [() => jobCostsModule, (p) => { jobCostsModule = p; }, './job-costs.js'],
+      donors: [() => donorsModule, (p) => { donorsModule = p; }, './donors.js'],
       board: [() => boardModule, (p) => { boardModule = p; }, './board-admin.js'],
     };
     /** Start loading an area's code (hover, focus, or a quiet moment after the admin opens) */
@@ -25699,6 +25904,10 @@ ${sections || '<p>No one yet.</p>'}
 
       // Delete from list view
       const [deleteModal, setDeleteModal] = useState(null);
+      // Donors & Partners → Put it on the website: Partners' own Add dialog, over the donor's page ({ prefill, resolve })
+      const [donorPartner, setDonorPartner] = useState(null);
+      // Left Donors & Partners while it was open: answered "no", so nothing waits on it and it doesn't come back
+      useEffect(() => { if (view !== 'donors' && donorPartner) { donorPartner.resolve(null); setDonorPartner(null); } }, [view]);
       const [deleteLoading, setDeleteLoading] = useState(false);
 
       const handleListDelete = async () => {
@@ -25754,6 +25963,7 @@ ${sections || '<p>No one yet.</p>'}
         vendors: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M3 13h18" /></svg>`,
         finance: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 3v18h18" /><path d="m7 15 4-4 3 3 5-6" /></svg>`,
         jobCosts: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" /><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" /><path d="M12 17.5v-11" /></svg>`,
+        donors: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /></svg>`,
         board: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h20" /><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" /><path d="m7 21 5-5 5 5" /></svg>`,
         financials: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>`,
         deploys: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" /><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /></svg>`,
@@ -25993,12 +26203,14 @@ ${sections || '<p>No one yet.</p>'}
                 onBack=${() => { setEditSlug(null); loadData(); }} onSaved=${() => loadData()} onReload=${loadData}
                 onOpenKid=${(s) => navigate('kids-hub', s, 'kids')} />`;
             }
-            const tab = (id, label, n) => html`<button class="hub-tab ${pTab === id ? 'active' : ''}" onClick=${() => { setSubTab(id); setEditSlug(null); }}>${label}<span class="ppl-tab-count">${n}</span></button>`;
+            // The tabs of Donors & Partners: Donors and Checks are the Donors view's (./donors.js)
+            const pickTab = (id) => {
+              if (id === 'donors') navigate('donors');
+              else if (id === 'checks') location.hash = '#donors/checks';
+              else { setSubTab(id === 'community' ? 'community-partners' : 'partners'); setEditSlug(null); }
+            };
             return html`
-              <div class="hub-tabs">
-                ${tab('partners', 'Partners', partners.length)}
-                ${tab('community-partners', 'Community partners', communityPartners.length)}
-              </div>
+              <${AreaTabs} current=${pTab === 'community-partners' ? 'community' : 'partners'} partners=${partners.length} community=${communityPartners.length} onPick=${pickTab} />
               ${pTab === 'community-partners'
                 ? listOrError('communityPartners', 'community partners', html`<${CommunityPartnersList} items=${communityPartners} projects=${communityProjects} addToast=${addToast} onReload=${loadData}
                     onEdit=${(s) => setEditSlug(s)} onAdd=${() => setEditSlug('')} />`)
@@ -26086,6 +26298,15 @@ ${sections || '<p>No one yet.</p>'}
 
           case 'job-costs':
             return html`<${JobCostsLazy} addToast=${addToast} />`;
+
+          // ─── Donors: ./donors.js (#donors, #donors/checks, #donors/<contact id>, #donors/gift/<payment id>) ───
+          case 'donors':
+            return html`<${DonorsLazy} addToast=${addToast} partners=${partners} partnersCount=${partners.length} communityCount=${communityPartners.length}
+                createPartner=${(prefill) => new Promise((resolve) => setDonorPartner({ prefill, resolve }))} />
+              ${donorPartner ? html`<${PartnerCreateDialog} partners=${partners} addToast=${addToast}
+                prefill=${{ ...donorPartner.prefill, category: 'funding', note: 'They go on the Partners page under Funding, as a Friend, when you publish. Their gifts in Donors & Partners go with them.' }}
+                onClose=${() => { donorPartner.resolve(null); setDonorPartner(null); }}
+                onCreated=${(slug) => { donorPartner.resolve(slug); setDonorPartner(null); loadData(); }} />` : null}`;
 
           // ─── Board: ./board-admin.js (#board, #board/meeting/<id>, #board/documents…) ───
           case 'board':

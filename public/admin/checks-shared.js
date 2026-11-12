@@ -1,5 +1,5 @@
 /**
- * What Admin → Job Costs → Checks and the site's check reader (functions/api/_check-gifts.js) both decide, in one place:
+ * What Admin → Donors & Partners → Checks and the site's check reader (functions/api/_check-gifts.js) both decide, in one place:
  * whether two names are one giver, whether two addresses are one, whether an address is whole, and whether text holds a
  * number that could be a bank account. The page uses them to keep a card's choices agreeing with each other as a person
  * picks; the site uses them to check what's sent. One copy, so the page never offers what the site would refuse.

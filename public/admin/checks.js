@@ -1,5 +1,5 @@
 /**
- * Admin → Job Costs → Checks: every check deposited in Mercury, and its card to send to Zeffy
+ * Admin → Donors & Partners → Checks: every check deposited in Mercury, and its card to send to Zeffy
  * ===========================================================================
  * Over /api/checks-admin (functions/api/_check-gifts.js). Peter, Nov 10 2026:
  * "admin wants to approve all entries into zeffy". The site reads each check
@@ -18,11 +18,11 @@
 
 import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { ask } from './ask.js';
+import { zeffyPaymentUrl, ZEFFY_PAYMENTS } from './zeffy-links.js';
 import { sameGiver, surelySameGiver, sameName, nearlySameName, sameAddress, addressKey, addressLine, addressProblem, nameProblem, emailProblem, payerKey } from './checks-shared.js';
 
 const html = htm.bind(h);
 const API = '/api/checks-admin';
-const ZEFFY_URL = 'https://www.zeffy.com/en-US/o/all-payments';
 // An answer that didn't come through can't say what happened: the list, read again, does
 const NO_ANSWER = 'The site’s answer didn’t come through. Look at the list before trying again: it shows what went through.';
 const NO_LIST = 'The site didn’t answer.';
@@ -124,6 +124,7 @@ function CheckRow({ c, act, busy }) {
         ${c.memo ? html`<span>Memo: ${c.memo}</span>` : ''}
         ${mailFacts(c)}
         ${c.link ? html`<a class="link" href=${c.link} target="_blank" rel="noopener" aria-label=${`Open in Mercury: ${whoFor(c)}`}>Open in Mercury</a>` : ''}
+        ${c.zeffyId ? html`<a class="link" href=${zeffyPaymentUrl(c.zeffyId)} target="_blank" rel="noopener" aria-label=${`Open in Zeffy: ${whoFor(c)}`}>Open in Zeffy</a>` : ''}
       </div>
     </div>
     <span class="jc-charge__amt">${usd(c.cents)}</span>
@@ -463,7 +464,7 @@ function ApproveCard({ c, act, busy, forms, formsGone, formsFailed, dontReasons,
     ${k.notes.length || since.length ? html`<ul class="ck-notes">${since.map((t) => html`<li key=${t.text} class="ck-since"><span>${t.text}</span> <button type="button" class="btn btn-ghost btn-sm" aria-label=${`OK, looked at it: ${t.text}`} onClick=${t.ok}>OK</button></li>`)}${k.notes.map((n) => html`<li key=${n.kind}>${n.text}</li>`)}</ul>` : ''}
     ${entries.length ? html`<ul class="ck-cands" aria-label="Zeffy entries that may be this check">
       ${entries.map((x) => html`<li key=${x.id}>
-        <span><strong>${x.name || 'No name'}</strong> · ${usd(x.cents)} · ${fromUnix(x.at)}${x.form ? ` · ${x.form}` : ''}</span>
+        <span><strong>${x.name || 'No name'}</strong> · ${usd(x.cents)} · ${fromUnix(x.at)}${x.form ? ` · ${x.form}` : ''} · <a class="link" href=${zeffyPaymentUrl(x.id)} target="_blank" rel="noopener" aria-label=${`See it in Zeffy: ${x.name || 'No name'}, ${usd(x.cents)}, ${fromUnix(x.at)}`}>See it in Zeffy</a></span>
         <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} aria-label=${`This is the check: ${x.name || 'No name'}, ${usd(x.cents)}, ${fromUnix(x.at)}, for ${whoFor(c)}`} onClick=${() => matchTo(x)}>${busy === `link:${c.id}` && linking === x.id ? 'Working…' : 'This is the check'}</button>
       </li>`)}
     </ul>` : ''}
@@ -542,7 +543,8 @@ function ToDo({ c, act, busy }) {
     </div>
     <p class="ck-need__why">${c.why}</p>
     <div class="jc-row ck-actions">
-      <a class="btn btn-ghost btn-sm" href=${ZEFFY_URL} target="_blank" rel="noopener" aria-label=${`Open Zeffy: ${whoFor(c)}`}>Open Zeffy</a>
+      ${c.zeffyId || !c.extras?.length ? html`<a class="btn btn-ghost btn-sm" href=${zeffyPaymentUrl(c.zeffyId)} target="_blank" rel="noopener" aria-label=${`${c.zeffyId ? (c.state === 'came-back' ? 'Open its record to cancel in Zeffy' : 'Open in Zeffy') : 'Open Zeffy'}: ${whoFor(c)}`}>${c.zeffyId ? (c.state === 'came-back' ? 'Open its record to cancel' : 'Open in Zeffy') : 'Open Zeffy'}</a>` : ''}
+      ${(c.extras || []).map((id, i) => html`<a key=${id} class="btn btn-ghost btn-sm" href=${zeffyPaymentUrl(id)} target="_blank" rel="noopener" aria-label=${`Open the record to delete in Zeffy${c.extras.length > 1 ? `, ${i + 1} of ${c.extras.length}` : ''}: ${whoFor(c)}`}>${c.extras.length > 1 ? `Record ${i + 1} to delete` : 'Open the record to delete'}</a>`)}
       ${c.looked ? html`<${LetterDone} c=${c} act=${act} busy=${busy} />` : ''}
       ${c.state === 'linked' ? html`<${Unlink} c=${c} act=${act} busy=${busy} />` : ''}
     </div>
@@ -557,11 +559,11 @@ function Status({ v }) {
     ${!test ? html`<div class="notice" role="status"><div class="notice__body"><strong>The site is testing that it can save to Zeffy.</strong> Sending opens once that test passes, in a few minutes.</div></div>` : ''}
     ${test && !test.ok && !test.leftBehind?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>Checks can’t be sent to Zeffy right now.</strong> Zeffy wouldn’t take the site’s $1 test record. ${stopped ? 'It tried on 3 days and has stopped, so something in Zeffy needs a look. Tell Peter.' : 'It tries again tomorrow.'} Until then, enter checks in Zeffy by hand: each one links itself within the hour.</div></div>` : ''}
     ${test?.ok && test.address && !test.address.ok ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>Addresses aren’t going on donors in Zeffy yet.</strong> Zeffy didn’t keep the test address, so a check’s address shows here but isn’t added. Checks still send. Tell Peter.</div></div>` : ''}
-    ${v.money?.loose?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The weekly money check found ${(v.money.count ?? v.money.loose.length) === 1 ? 'a check gift' : `${v.money.count ?? v.money.loose.length} check gifts`} in Zeffy with no check in Mercury.</strong> ${v.money.loose.slice(0, 10).map((x) => `${x.name || 'No name'}, ${usd(x.cents)}, ${fromUnix(x.at)}`).join('; ')}${(v.money.count ?? v.money.loose.length) > 10 ? `; and ${(v.money.count ?? v.money.loose.length) - 10} more` : ''}. One may be a check entered twice: if it’s a second record for a check already in Zeffy, delete that extra record. If it’s one of several gifts a single check paid, or a check deposited at another bank, nothing to do. This updates each Monday.</div>
-      <div class="notice__actions"><a class="btn btn-ghost" href=${ZEFFY_URL} target="_blank" rel="noopener">Open Zeffy</a></div></div>` : ''}
+    ${v.money?.loose?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The weekly money check found ${(v.money.count ?? v.money.loose.length) === 1 ? 'a check gift' : `${v.money.count ?? v.money.loose.length} check gifts`} in Zeffy with no check in Mercury.</strong> ${v.money.loose.slice(0, 10).map((x, i) => html`${i ? '; ' : ''}<a class="link" href=${zeffyPaymentUrl(x.id)} target="_blank" rel="noopener" aria-label=${`Open in Zeffy: ${x.name || 'No name'}, ${usd(x.cents)}, ${fromUnix(x.at)}`}>${x.name || 'No name'}, ${usd(x.cents)}, ${fromUnix(x.at)}</a>`)}${(v.money.count ?? v.money.loose.length) > 10 ? `; and ${(v.money.count ?? v.money.loose.length) - 10} more` : ''}. One may be a check entered twice: if it’s a second record for a check already in Zeffy, delete that extra record. If it’s one of several gifts a single check paid, or a check deposited at another bank, nothing to do. This updates each Monday.</div>
+      <div class="notice__actions"><a class="btn btn-ghost" href=${ZEFFY_PAYMENTS} target="_blank" rel="noopener">Open Zeffy</a></div></div>` : ''}
     ${v.matchFailing ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The hourly look at Zeffy isn’t working.</strong> Since ${fmtDay(v.matchFailing.since)}, ${v.matchFailing.error}. Cards aren’t kept up to date until it works, and Send reads Zeffy again first anyway.</div></div>` : ''}
     ${test?.leftBehind?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>Zeffy wouldn’t let the site remove its test ${test.leftBehind.length === 1 ? 'record' : 'records'}.</strong> ${test.leftBehind.length === 1 ? 'Delete the $1 SOARD WebsiteTest entry in Zeffy. It isn’t a gift, and this goes away on its own once it’s gone.' : 'Delete the $1 SOARD WebsiteTest entries in Zeffy. They aren’t gifts, and this goes away on its own once they’re gone.'}</div>
-      <div class="notice__actions"><a class="btn btn-ghost" href=${ZEFFY_URL} target="_blank" rel="noopener">Open Zeffy</a></div></div>` : ''}`;
+      <div class="notice__actions">${test.leftBehind.slice(0, 3).map((id, i) => html`<a key=${id} class="btn btn-ghost" href=${zeffyPaymentUrl(id)} target="_blank" rel="noopener">${test.leftBehind.length > 1 ? `Test record ${i + 1} in Zeffy` : 'Open the test record in Zeffy'}</a>`)}${test.leftBehind.length > 3 ? html`<a class="btn btn-ghost" href=${ZEFFY_PAYMENTS} target="_blank" rel="noopener">Open Zeffy</a>` : ''}</div></div>` : ''}`;
 }
 
 export function Checks({ addToast = () => {}, onCount = () => {} }) {

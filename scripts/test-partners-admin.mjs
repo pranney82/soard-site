@@ -193,6 +193,12 @@ function makeApi() {
     const json = (o, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(o) });
     const body = () => { try { return JSON.parse(req.postData() || '{}'); } catch { return {}; } };
     st.calls.push({ path: p, method: req.method(), body: req.method() === 'POST' && !/upload/.test(p) ? body() : null, query: url.search });
+    // Donors & Partners: the Donors tab passed on the way to Partners, and a partner card's Giving
+    if (p === '/api/donors-admin') {
+      if (url.searchParams.get('giving')) return json({ success: true, gifts: url.searchParams.get('giving') === 'p:bell' ? 2 : 0, total: 1250000, cents12: 1200000, latest: { at: 1790000000, cents: 1000000 }, suggest: false });
+      if (url.searchParams.get('counts')) return json({ success: true, checksWaiting: 0 });
+      return json({ success: true, people: [], needs: 0, payments: 0, filledAt: new Date().toISOString(), windowAt: new Date().toISOString() });
+    }
     if (p === '/api/list-content') {
       const dir = url.searchParams.get('dir').replace('src/content/', '');
       const items = Object.entries(st[dir] || {}).map(([slug, c]) => ({ name: `${slug}.json`, path: `src/content/${dir}/${slug}.json`, sha: shaOf(dir, slug), content: c }));
@@ -503,9 +509,12 @@ async function shot(page, name, { grow = true } = {}) {
 const hoverSeen = new Set();
 async function goPartners(page, tab, mobile) {
   if (mobile) { await page.evaluate(() => document.querySelector('.hamburger')?.click()); await sleep(350); }
-  await clickText(page, '.nav-item', 'Partners');
+  // Partners is a tab of Donors & Partners: the sidebar line, then the tab
+  await clickText(page, '.nav-item', 'Donors & Partners');
   await page.waitForSelector('.hub-tabs', { timeout: 10000 });
-  if (tab) { await clickText(page, '.hub-tab', tab); await sleep(300); }
+  await clickText(page, '.hub-tab', tab || 'Partners');
+  await page.waitForFunction(() => location.hash.startsWith('#partners'), { timeout: 10000 }).catch(() => {});
+  await sleep(300);
   if (!tab || tab === 'Partners') await page.waitForSelector('.pt-row', { timeout: 10000 });
   await sleep(400);
 }
@@ -572,7 +581,9 @@ try {
     const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false });
     await goPartners(page);
     const tabs = await $text(page, '.hub-tab');
-    ok(tabs.length === 2 && tabs[0] === `Partners${fxPartners.length}` && tabs[1] === `Community partners${Object.keys(FX.communityPartners).length}`, `tab counts (${tabs.join(' | ')})`);
+    // The tabs of Donors & Partners: Partners and Community partners with their counts, between Donors and Checks
+    ok(tabs.length === 4 && tabs[0] === 'Donors' && tabs[1] === `Partners${fxPartners.length}` && tabs[2] === `Community partners${Object.keys(FX.communityPartners).length}` && /^Checks/.test(tabs[3]), `tab counts (${tabs.join(' | ')})`);
+    ok(await page.$eval('.nav-item.active, [aria-current="page"]', (e) => /Donors & Partners/.test(e.textContent)).catch(() => false), 'Partners is in Donors & Partners: that line is current in the sidebar');
     for (const l of PS.LEVELS) {
       const names = await rowNames(page, l.id);
       ok(JSON.stringify(names) === JSON.stringify(fxSections[l.id].map((p) => p.name.trim())), `${l.label}: ${names.length} rows in page order`);
@@ -637,6 +648,65 @@ try {
     await sleep(1200);
     await shot(page, 'desk-logos');
     await axeCheck(page, 'logo wall');
+    // In the Logos grid too, the last Signature logo steps over the heading into Champion; Escape puts it back
+    const sigTiles0 = await page.$$eval('.pt-wall--signature .pt-tile__name', (els) => els.map((e) => e.textContent.trim()));
+    const lastGrip = (await page.$$('.pt-wall--signature .pt-tile__grip')).at(-1);
+    await lastGrip.focus();
+    await page.keyboard.press('Space');
+    await sleep(150);
+    await page.keyboard.press('ArrowRight');
+    await sleep(300);
+    const gridSay = await page.$eval('.sr-only[aria-live="assertive"]', (e) => e.textContent);
+    ok(/Champion, 1 of \d+/.test(gridSay) && (await page.$$eval('.pt-wall--champion .pt-tile__name', (els) => els[0]?.textContent.trim())) === sigTiles0.at(-1), `Logos grid: a step past the last Signature logo is first in Champion (“${gridSay}”)`);
+    await page.keyboard.press('Escape');
+    await sleep(400);
+    ok(JSON.stringify(await page.$$eval('.pt-wall--signature .pt-tile__name', (els) => els.map((e) => e.textContent.trim()))) === JSON.stringify(sigTiles0), 'Escape puts it back, nothing asked or saved');
+
+    // A mouse drag that hovers on the Champion heading's top half stays in Signature: no flipping, nothing asked
+    let askedGrid = '';
+    await answerAsks(page, { accept: false, onAsk: (t) => { askedGrid = t; } });
+    const sigG0 = await page.$$eval('.pt-wall--signature .pt-tile__name', (els) => els.map((e) => e.textContent.trim()));
+    const lastSig = (await page.$$('.pt-wall--signature .pt-tile')).at(-1);
+    const ls = await lastSig.boundingBox();
+    const head = await (await page.$('.pt-section--champion .pt-section__head')).boundingBox();
+    await page.mouse.move(ls.x + ls.width / 2, ls.y + ls.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(ls.x + ls.width / 2 + 10, ls.y + ls.height / 2 + 10, { steps: 4 });
+    // Straight down from the tile (nothing else in its way), then wiggle on the heading's top half
+    for (let i = 0; i < 12; i++) { await page.mouse.move(ls.x + ls.width / 2 + (i % 2 ? 6 : -6), head.y + head.height * 0.3 + (i % 3), { steps: 2 }); await sleep(30); }
+    await page.mouse.up();
+    await sleep(700);
+    ok(!askedGrid && JSON.stringify(await page.$$eval('.pt-wall--signature .pt-tile__name', (els) => els.map((e) => e.textContent.trim()))) === JSON.stringify(sigG0), 'Logos grid: hovering the heading’s top half keeps the logo in Signature, nothing asked');
+    // Past the middle of the heading it crosses, and the move asks first (Cancel puts it back)
+    const lastSig2 = (await page.$$('.pt-wall--signature .pt-tile')).at(-1);
+    const ls2 = await lastSig2.boundingBox();
+    const head2 = await (await page.$('.pt-section--champion .pt-section__head')).boundingBox();
+    await page.mouse.move(ls2.x + ls2.width / 2, ls2.y + ls2.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(ls2.x + ls2.width / 2 + 10, ls2.y + ls2.height / 2 + 10, { steps: 4 });
+    for (let i = 0; i < 12; i++) { await page.mouse.move(ls2.x + ls2.width / 2 + (i % 2 ? 6 : -6), head2.y + head2.height * 0.8 + (i % 3), { steps: 2 }); await sleep(30); }
+    await page.mouse.up();
+    await sleep(900);
+    ok(/Move .+ to Champion\?/.test(askedGrid), 'past the heading’s middle it crosses into Champion, and asks first');
+    ok(JSON.stringify(await page.$$eval('.pt-wall--signature .pt-tile__name', (els) => els.map((e) => e.textContent.trim()))) === JSON.stringify(sigG0), 'Cancel puts it back');
+    await answerAsks(page, { accept: true });
+
+    // Up from the short last row of the Champion grid: the tile above it, in its own column
+    const chTiles = await page.$$('.pt-wall--champion .pt-tile');
+    const lastTile = chTiles.at(-1);
+    const tileAt = await lastTile.boundingBox();
+    const lastName = await lastTile.$eval('.pt-tile__name', (e) => e.textContent.trim());
+    await (await lastTile.$('.pt-tile__grip')).focus();
+    await page.keyboard.press('Space');
+    await sleep(150);
+    await page.keyboard.press('ArrowUp');
+    await sleep(350);
+    const moved = await page.evaluate((n) => { const t = [...document.querySelectorAll('.pt-wall--champion .pt-tile')].find((x) => x.querySelector('.pt-tile__name')?.textContent.trim() === n); const r = t?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top } : null; }, lastName);
+    const colsAbove = await page.$$eval('.pt-wall--champion .pt-tile', (ts, y) => ts.map((t) => t.getBoundingClientRect()).filter((r) => r.bottom <= y + 1).map((r) => r.left + r.width / 2), tileAt.y);
+    const nearest = colsAbove.reduce((a, x) => (Math.abs(x - (tileAt.x + tileAt.width / 2)) < Math.abs(a - (tileAt.x + tileAt.width / 2)) ? x : a), Infinity);
+    ok(moved && moved.y < tileAt.y && Math.abs(moved.x - nearest) < 4, `Logos grid: up from the last row lands in its own column (${Math.round(moved?.x)} vs ${Math.round(nearest)})`);
+    await page.keyboard.press('Escape');
+    await sleep(300);
     await clickText(page, '.pt-view button', 'List');
     await page.waitForSelector('.pt-row');
 
@@ -689,6 +759,155 @@ try {
     await clickToastAction(page, /moved to Champion/);
     await page.waitForFunction((n) => [...document.querySelectorAll('.pt-section--friend .ppl-row__name')].some((e) => e.textContent.trim() === n), { timeout: 5000 }, friend.name).catch(() => {});
     ok(api.st.partners[friend.slug].level === 'friend' && api.st.partners[friend.slug].order === 0, 'Undo moves them back to Friend, A to Z');
+
+    // A level change asks first, saying the page changes on publish and JobTread's role soon; Cancel sends nothing
+    let askedLevel = '';
+    await answerAsks(page, { accept: false, onAsk: (t) => { askedLevel = t; } });
+    const before0 = api.st.calls.length;
+    await rowMenu(page, friend.name, 'Move to Champion');
+    await sleep(600);
+    ok(/^Move .+ to Champion\?/.test(askedLevel) && /when you publish/.test(askedLevel) && /JobTread gets the Champion role/.test(askedLevel), `a level change asks first, page and JobTread both said (“${askedLevel.slice(0, 160)}”)`);
+    ok(!api.st.calls.slice(before0).some((c) => c.path === '/api/partners-batch') && api.st.partners[friend.slug].level === 'friend', 'Cancel changes nothing');
+    await answerAsks(page, { accept: true, onAsk: (t) => { askedLevel = t; } });
+
+    // From the keyboard, a Champion crosses the heading into Signature: asked, then one save with its level and every new place
+    const sigA = await rowNames(page, 'signature');
+    const chA = await rowNames(page, 'champion');
+    askedLevel = '';
+    await page.focus('.pt-section--champion .ppl-handle');
+    await page.keyboard.press('Space');
+    await sleep(150);
+    await page.keyboard.press('ArrowUp');
+    await sleep(250);
+    const sayUp = await page.$eval('.sr-only[aria-live="assertive"]', (e) => e.textContent).catch(() => '');
+    ok(/Signature, \d+ of \d+/.test(sayUp), `the move says where it is now, by section (“${sayUp}”)`);
+    await page.keyboard.press('Space');
+    await page.waitForFunction((n) => [...document.querySelectorAll('.pt-section--signature .ppl-row__name')].some((e) => e.textContent.trim() === n), { timeout: 5000 }, chA[0]).catch(() => {});
+    await sleep(400);
+    const crossed = lastCall(api, '/api/partners-batch');
+    const crossedSlug = Object.values(api.st.partners).find((x) => x.name === chA[0])?.slug;
+    ok(/Move .+ to Signature\?/.test(askedLevel), 'crossing into Signature asks first');
+    ok(crossed?.body.updates?.some((u) => u.slug === crossedSlug && u.set.level === 'signature' && u.set.order === sigA.length), `${chA[0]} is saved as Signature, last in it, in one request`);
+    ok(JSON.stringify(await rowNames(page, 'signature')) === JSON.stringify([...sigA, chA[0]]) && JSON.stringify(await rowNames(page, 'champion')) === JSON.stringify(chA.slice(1)), 'both sections show the new order');
+    ok(await waitToast(page, /moved to Signature/), 'toast: moved to Signature, with Undo');
+    await clickToastAction(page, /moved to Signature/);
+    await page.waitForFunction((n) => [...document.querySelectorAll('.pt-section--champion .ppl-row__name')][0]?.textContent.trim() === n, { timeout: 5000 }, chA[0]).catch(() => {});
+    ok(api.st.partners[crossedSlug].level === 'champion' && JSON.stringify(await rowNames(page, 'champion')) === JSON.stringify(chA), 'Undo puts it back first in Champion');
+
+    // Cancel at the level question: back in its place, the focus on it, and said so
+    await answerAsks(page, { accept: null });
+    await page.focus('.pt-section--champion .ppl-handle');
+    const chH = await rowNames(page, 'champion');
+    await page.keyboard.press('Space');
+    await sleep(150);
+    await page.keyboard.press('ArrowUp');
+    await sleep(250);
+    await page.keyboard.press('Space');
+    await page.waitForSelector('.ask-overlay .ask', { timeout: 4000 }).catch(() => {});
+    await sleep(300);
+    await shot(page, 'desk-level-ask', { grow: false });
+    ok(await page.evaluate(() => document.activeElement?.getAttribute('data-ask') === 'no'), 'the level question opens on Cancel');
+    await page.evaluate(() => document.querySelector('.ask-overlay [data-ask="no"]')?.click());
+    await sleep(900);
+    ok(JSON.stringify(await rowNames(page, 'champion')) === JSON.stringify(chH), 'Cancel at the question: the order is as it was');
+    ok(await page.evaluate((n) => document.activeElement?.closest('[data-pt-slug]')?.querySelector('.ppl-row__name')?.textContent.trim() === n && document.activeElement.matches('[data-kd-grip]'), chH[0]), 'the focus is back on its handle');
+    ok(/is back at Champion, 1 of \d+\. Nothing changed\./.test(await page.$eval('.sr-only[aria-live="assertive"]', (e) => e.textContent)), 'and it says nothing changed');
+    await page.keyboard.press('Escape');
+    await answerAsks(page, { accept: true });
+
+    // A section folded shut takes no logo: the move is refused and said, the logo stays picked up where it is
+    await page.evaluate(() => document.querySelector('.pt-section--signature .ppl-collapse')?.click());
+    await sleep(200);
+    await page.focus('.pt-section--champion .ppl-handle');
+    await page.keyboard.press('Space');
+    await sleep(150);
+    await page.keyboard.press('ArrowUp');
+    await sleep(300);
+    ok(/Signature is closed\. Open it to move a logo there\./.test(await page.$eval('.sr-only[aria-live="assertive"]', (e) => e.textContent)), 'moving into a closed section is refused, and said');
+    ok(await page.evaluate(() => document.activeElement?.matches('[data-kd-grip]') && !!document.activeElement.closest('.pt-section--champion')), 'the logo stays in Champion with the focus on it');
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    await page.evaluate(() => document.querySelector('.pt-section--signature .ppl-collapse')?.click());
+    await sleep(200);
+
+    // With the mouse: the last Signature dragged below the Champion heading, then Cancel at the question puts it back
+    await answerAsks(page, { accept: false });
+    const sigB = await rowNames(page, 'signature');
+    await page.$eval('.pt-section--signature', (el) => el.scrollIntoView({ block: 'start' }));
+    await sleep(200);
+    const sigHandles = await page.$$('.pt-section--signature .ppl-handle');
+    const from = await sigHandles.at(-1).boundingBox();
+    const chHead = await (await page.$('.pt-section--champion .pt-section__head')).boundingBox();
+    const toY = chHead.y + chHead.height + 30;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 14; i++) { await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + ((toY - from.y) * i) / 14); await sleep(35); }
+    await page.mouse.up();
+    await sleep(800);
+    const sigBLast = Object.values(api.st.partners).find((x) => x.name === sigB.at(-1));
+    ok(JSON.stringify(await rowNames(page, 'signature')) === JSON.stringify(sigB) && sigBLast?.level === 'signature', 'Cancel after a drag across puts the logo back where it was, nothing saved');
+    await answerAsks(page, { accept: true });
+
+    // Without dragging: a partner's menu puts it at the top, and the focus stays on it
+    const chC = await rowNames(page, 'champion');
+    const third = chC[2];
+    await rowMenu(page, third, 'Move to the top');
+    await page.waitForFunction((n) => document.querySelectorAll('.pt-section--champion .ppl-row__name')[0]?.textContent.trim() === n, { timeout: 5000 }, third).catch(() => {});
+    await sleep(500);
+    const topCall = lastCall(api, '/api/reorder-content');
+    ok(topCall?.body.items[0]?.slug === Object.values(api.st.partners).find((x) => x.name === third)?.slug && topCall.body.items.length === chC.length, `menu: “Move to the top” puts ${third} first in Champion, one request`);
+    ok(await page.evaluate((n) => document.activeElement?.closest('[data-pt-slug]')?.querySelector('.ppl-row__name')?.textContent.trim() === n, third), 'the focus stays on the partner moved');
+    ok(/Champion, 1 of \d+/.test(await page.$eval('.sr-only[aria-live="assertive"]', (e) => e.textContent)), 'and its new place is said');
+    await clickToastAction(page, /Champion order saved/);
+    await sleep(600);
+
+    // Several at once: two Champions to the bottom, keeping their order
+    const chD = await rowNames(page, 'champion');
+    for (const n of [chD[0], chD[1]]) await page.evaluate((n) => [...document.querySelectorAll('.pt-row')].find((r) => r.querySelector('.ppl-row__name')?.textContent.trim() === n)?.querySelector('.pt-check')?.click(), n);
+    await page.waitForSelector('.pt-selectbar');
+    await clickText(page, '.pt-selectbar button', 'Order');
+    await page.waitForSelector('.ppl-menu__pop', { timeout: 3000 });
+    await shot(page, 'desk-order-menu', { grow: false });
+    await clickText(page, '.ppl-menu__pop [role="menuitem"]', 'To the bottom of Champion');
+    await page.waitForFunction((a, b) => { const r = [...document.querySelectorAll('.pt-section--champion .ppl-row__name')].map((e) => e.textContent.trim()); return r.at(-2) === a && r.at(-1) === b; }, { timeout: 5000 }, chD[0], chD[1]).catch(() => {});
+    const chE = await rowNames(page, 'champion');
+    ok(chE.at(-2) === chD[0] && chE.at(-1) === chD[1] && chE.length === chD.length, 'Order → To the bottom moves both, in the order they were');
+    await clickToastAction(page, /Champion order saved/);
+    await sleep(600);
+    await page.evaluate(() => [...document.querySelectorAll('.pt-selectbar button')].find((b) => b.textContent.trim() === 'Clear')?.click());
+    await sleep(200);
+
+    // A spot: before another partner, from a dialog
+    const chF = await rowNames(page, 'champion');
+    await rowMenu(page, chF[0], 'Move to a spot…');
+    await page.waitForSelector('#pt-spot', { timeout: 3000 });
+    await shot(page, 'desk-spot', { grow: false });
+    ok(/Move .+ to a spot/.test(await page.evaluate(dialogTitle)), 'the spot dialog names who moves');
+    const beforeSlug = Object.values(api.st.partners).find((x) => x.name === chF[3])?.slug;
+    await page.select('#pt-spot', beforeSlug);
+    await clickText(page, '.kd-dialog__foot button', 'Move');
+    await page.waitForFunction((n) => document.querySelectorAll('.pt-section--champion .ppl-row__name')[2]?.textContent.trim() === n, { timeout: 5000 }, chF[0]).catch(() => {});
+    ok((await rowNames(page, 'champion'))[2] === chF[0], `${chF[0]} lands just before ${chF[3]}`);
+    await clickToastAction(page, /Champion order saved/);
+    await sleep(600);
+
+    // The Partners page beside the list, rebuilt after a move
+    await clickText(page, '.pt-head button', 'Preview');
+    await page.waitForSelector('iframe', { timeout: 8000 }).catch(() => {});
+    const frames0 = await page.$$eval('iframe', (f) => f.map((x) => x.getAttribute('src') || ''));
+    ok(frames0.some((u) => /\/partners\/\?admin-preview=/.test(u)), `Preview shows the Partners page (${frames0.join(', ')})`);
+    ok(await page.evaluate(() => document.body.classList.contains('preview-docked')), 'docked beside the list on a wide screen');
+    await sleep(2500);
+    await shot(page, 'desk-preview', { grow: false });
+    const chG = await rowNames(page, 'champion');
+    await rowMenu(page, chG[1], 'Move to the top');
+    await page.waitForFunction((seen) => [...document.querySelectorAll('iframe')].some((f) => !seen.includes(f.getAttribute('src'))), { timeout: 8000 }, frames0).catch(() => {});
+    const frames1 = await page.$$eval('iframe', (f) => f.map((x) => x.getAttribute('src') || ''));
+    ok(frames1.some((u) => !frames0.includes(u) && /\/partners\/\?admin-preview=/.test(u)), 'a move redraws the preview');
+    await clickToastAction(page, /Champion order saved/);
+    await sleep(600);
+    await clickText(page, '.pt-head button', 'Preview');
+    await sleep(300);
 
     // Select rows, change categories and highlight for all of them
     const pick = fxSections.friend.slice(0, 3);
@@ -1248,6 +1467,8 @@ try {
     await clickText(page, '.pt-level-opt', 'Champion');
     await sleep(150);
     ok(await page.$('.pt-prev__champ') !== null && !(await page.$('#pt-tagline')), 'Champion: the champion card, and no tagline field (champion cards have none)');
+    const levelNote = await page.$eval('.kd-card--status .kd-card__note', (e) => e.textContent).catch(() => '');
+    ok(/The page changes when you publish/.test(levelNote) && /Once you save, anyone of theirs in JobTread gets the Champion role/.test(levelNote), `a new level says what the save changes, JobTread too (“${levelNote}”)`);
     ok(/Unsaved changes/.test(await page.$eval('.kd-bar__save', (e) => e.textContent)), 'the bar says Unsaved changes');
     // A website that isn't one blocks Save
     await typeInto(page, '#pt-web', 'call us');
@@ -1304,6 +1525,10 @@ try {
     ok(api.st.partners.bell.name === 'Bell Cabinetry & Design' && api.st.partners.bell.tagline === 'Cabinets for every room since 2016', 'a save made meanwhile is merged: their tagline and your name both kept');
     ok((await page.$eval('#pt-tagline', (i) => i.value)) === 'Cabinets for every room since 2016', 'the editor shows their tagline too');
 
+    // Their giving from Zeffy on the card, a click from their page in Donors & Partners
+    await page.waitForFunction(() => /Last 12 months/.test(document.querySelector('[aria-labelledby="pt-giving-h"]')?.textContent || ''), { timeout: 6000 }).catch(() => {});
+    const giving = await page.$eval('[aria-labelledby="pt-giving-h"]', (e) => ({ text: e.textContent.replace(/\s+/g, ' '), href: e.querySelector('a')?.getAttribute('href') })).catch(() => ({}));
+    ok(/Last 12 months\s*\$12,000/.test(giving.text || '') && /All time\s*\$12,500, 2 gifts/.test(giving.text || '') && giving.href === '#donors/org/p%3Abell', `the partner card shows their giving and links their page in Donors (${(giving.text || '').slice(0, 90)})`);
     // Preview frames the real Partners page with the unsaved name
     await clickText(page, '.kd-ed-actions .btn', 'Preview');
     await typeInto(page, '#pt-name', 'Bell Preview Test');

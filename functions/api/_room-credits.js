@@ -1773,7 +1773,8 @@ export async function applyLink(env, { now = Date.now(), by = SYNC_USER } = {}) 
  *     before) and each Same as made for it becomes a Same as for the new one: the one list, seen and changed in the
  *     admin. A name a person linked to some other company stays theirs
  *   - Rooms credited with it are credited with the new company in its place (a room with a job: what its field now
- *     names), its pledges are added to the new company's, and its people join the new company's
+ *     names), its pledges are added to the new company's, and its people join the new company's; what Donors &
+ *     Partners knows about it (its Zeffy names, Keep anonymous) is the new company's
  *   - Then the old company is deleted, as Delete does (Recently deleted keeps it)
  * Nobody is put on or taken off anything. Stopped part way (a D1 error), the old company is still there and running
  * the merge again finishes it: every step is safe to repeat. → { rooms: [records] }
@@ -1875,6 +1876,9 @@ export async function mergeCredits(env, { from, fromName = '', into }, by = null
         SELECT job_id, ?, record, ?, ?, account_id, people, logos, off, gone_at, took, left_on, gone_logos, before_off, updated_at
         FROM vendor_job_seen WHERE who = ? AND off IS NOT NULL`).bind(`p:${into}`, intoName, into, `p:${from}`).run();
     } catch (e) { if (!missingTable(e)) throw e; }
+    // What staff said about it in Donors & Partners (the Zeffy names it gives under, Keep anonymous) is the new
+    // company's (./_donor-crm.js; safe to repeat)
+    await (await import('./_donor-crm.js')).mergeOrgCalls(DB, from, into);
     // Last, the old company itself, as Delete does it (Recently deleted keeps it)
     const { deleteItem } = await import('./delete-content.js');
     await deleteItem(env, { path: `src/content/partners/${from}.json`, message: `Merged into ${intoName}: ${fromRec.name}` }, by || 'unknown');

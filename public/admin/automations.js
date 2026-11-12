@@ -1560,22 +1560,39 @@ const MAP = { t: 'SOARD', children: [
             const so = `So far ${plural(d.added, 'new donor')} added, and ${plural(d.tagged, 'donor')} already on the list tagged${d.leftOut ? `. ${plural(d.leftOut, 'donor')} who unsubscribed ${d.leftOut === 1 ? 'was' : 'were'} left alone` : ''}.`;
             return ON(d.caughtUp ? `Up to date. ${so}` : `Catching up on gifts since September 1. ${so}`, d.lastAddedAt);
           } },
+        { t: 'Donors from Zeffy', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes on the live hub’s heartbeat (the last 120 days of Zeffy’s payments), and each night from 2 AM Eastern (all of them, a few pages a run), only while Zeffy has room in its minute for everything else.',
+          does: 'Keeps Admin → Donors & Partners’ list of every gift in Zeffy, read-only, and draws each donor from it: giving by year, first, latest and largest gift, years in a row, New, Active or Lapsed. A read that reaches Zeffy’s last page takes out what Zeffy no longer has; a read cut short changes nothing. A new gift goes on the list the moment Zeffy’s webhook delivers it. A new gift Zeffy sends no thank-you for (a check, a donor-advised fund, a gift in kind, anything entered by hand), and every gift of $1,000 or more, goes on To thank for the team; it comes off when someone says Thanked or Not needed, or when Zeffy shows it refunded or gone. Nothing is written to Zeffy.',
+          touches: ['Zeffy', 'D1', 'Kit'], where: 'functions/api/_donors.js, _donor-thanks.js (broadcast-hooks.js, donors-admin.js), public/admin/donors.js',
+          info: 'Peter, Nov 11 2026: a donor CRM built like Kids. Zeffy stays where gifts are taken, receipted and changed. The site’s own test records never enter the list.',
+          live: (f) => {
+            const d = f.donorList;
+            if (!d || !env(f)) return null;
+            if (!f.env.zeffyApi) return ATTN('ZEFFY_API_KEY is missing in Cloudflare, so the list can’t read Zeffy.');
+            if (!d.windowTriedAt) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(d.windowTriedAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(d.windowTriedAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, d.windowAt);
+            if (d.error) return ATTN(`The last read stopped: ${d.error}. It tries again in 15 minutes; the list keeps what it read last.`, d.windowAt);
+            if (!d.windowAt || stale(d.windowAt, HOUR)) return ATTN(`No whole read of Zeffy since ${d.windowAt ? stamp(d.windowAt) : 'it started'}${d.windowError ? `: ${d.windowError}` : ''}. It keeps trying every 15 minutes.`, d.windowAt);
+            if (d.held) return ATTN(`Zeffy’s list came back ${plural(d.held.count, 'gift')} shorter than the one kept here (${stamp(d.held.at)}). Nothing was taken out; they come off only if the next whole read agrees.`, d.windowAt);
+            if (!d.filledAt) return ON(`Reading all of Zeffy’s history for the first time: ${plural(d.payments, 'gift')} so far.`, d.windowAt);
+            return ON(`Up to date: ${plural(d.payments, 'gift')}. Last read ${stamp(d.windowAt)}; the whole history last read ${stamp(d.filledAt)}.`, d.windowAt);
+          } },
         { t: 'Checks into Zeffy', s: 'live', k: 'schedule',
           when: 'Every 5 minutes on the live hub’s heartbeat, one check a run: a check’s card is ready a few minutes after it’s deposited in Mercury, and every card waiting is checked against Zeffy again each hour. Nothing goes to Zeffy until a person sends it.',
-          does: 'Reads the picture of each check deposited in Mercury with two AI readers, and any letter the team attached to the deposit (a cover letter, a grant sheet), then fills in a card in Job Costs → Checks: who it’s from (a choice when the check and the letter differ; through a giving platform or donor-advised fund, the donor it names), which Zeffy donor (a choice when Zeffy has more than one who could be them), the form (Grant on the Grant Funding form), the date, an optional email and the mailing address. It looks through 400 days of Zeffy first, under any name, and puts any entry that may already be this check on the card. A person sends it to Zeffy, matches it to that entry, or says it isn’t for Zeffy and why. Each record goes in with the receipt and email off, so nothing reaches a donor, and the address and email go on the donor after. A check someone typed into Zeffy by hand is matched by itself. Each Monday a money check names any check gift in Zeffy with no check in Mercury, the sign of a check entered twice.',
+          does: 'Reads the picture of each check deposited in Mercury with two AI readers, and any letter the team attached to the deposit (a cover letter, a grant sheet), then fills in a card in Donors & Partners → Checks: who it’s from (a choice when the check and the letter differ; through a giving platform or donor-advised fund, the donor it names), which Zeffy donor (a choice when Zeffy has more than one who could be them), the form (Grant on the Grant Funding form), the date, an optional email and the mailing address. It looks through 400 days of Zeffy first, under any name, and puts any entry that may already be this check on the card. A person sends it to Zeffy, matches it to that entry, or says it isn’t for Zeffy and why. Each record goes in with the receipt and email off, so nothing reaches a donor, and the address and email go on the donor after. A check someone typed into Zeffy by hand is matched by itself. Each Monday a money check names any check gift in Zeffy with no check in Mercury, the sign of a check entered twice.',
           touches: ['Mercury', 'Zeffy', 'Workers AI', 'Slack', 'D1'], where: 'functions/api/_check-gifts.js (broadcast-hooks.js, checks-admin.js), public/admin/checks.js',
           info: 'Peter, Nov 10 2026: a person approves every entry into Zeffy. Slack says when a check is ready to send. The picture is never kept, and no account or routing number is stored or shown.',
           live: (f) => {
             const c = f.checks;
             if (!c || !env(f)) return null;
             if (!f.env.zeffyApi) return OFF('Add ZEFFY_API_KEY in Cloudflare.');
-            if (c.writeOk === false) return ATTN('Sending is off: Zeffy wouldn’t take the site’s $1 test record. Job Costs → Checks says why; enter checks in Zeffy by hand until it works.', c.lastRunAt);
-            if (c.moneyLoose) return ATTN(`The money check on ${stamp(c.moneyAt)} found ${plural(c.moneyLoose, 'check gift')} in Zeffy with no check in Mercury. Job Costs → Checks lists them.`, c.moneyAt);
+            if (c.writeOk === false) return ATTN('Sending is off: Zeffy wouldn’t take the site’s $1 test record. Donors & Partners → Checks says why; enter checks in Zeffy by hand until it works.', c.lastRunAt);
+            if (c.moneyLoose) return ATTN(`The money check on ${stamp(c.moneyAt)} found ${plural(c.moneyLoose, 'check gift')} in Zeffy with no check in Mercury. Donors & Partners → Checks lists them.`, c.moneyAt);
             if (c.matchFailing) return ATTN(`The hourly look at Zeffy has failed since ${stamp(c.matchFailing.since)}: ${c.matchFailing.error}. Cards aren’t kept up to date until it works.`, c.lastRunAt);
             if (c.error) return ATTN(`The last run didn’t finish: ${c.error}.`, c.lastRunAt);
             if (!c.lastRunAt) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             if (stale(c.lastRunAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(c.lastRunAt)}. Check the Heartbeat entry.`, c.lastRunAt);
-            if (c.waiting) return ATTN(`${plural(c.waiting, 'check')} to send to Zeffy in Job Costs → Checks.`, c.last);
+            if (c.waiting) return ATTN(`${plural(c.waiting, 'check')} to send to Zeffy in Donors & Partners → Checks.`, c.last);
             return ON(c.total ? `${plural(c.total, 'check')} so far, none waiting.` : 'Waiting for the first check deposited in Mercury.', c.last);
           } },
         { t: 'Major gifts on the board page', s: 'live', k: 'schedule',

@@ -8,7 +8,7 @@
  *   Campaign: Help Build a Brighter Home
  *   Received: October 20, 2026
  *
- * $1,000 and up starts with "🚨 MAJOR GIFT" instead. A line whose field is
+ * $1,000 and up starts with "🚨 MAJOR GIFT" instead, with a button to the gift in Admin → Donors (to thank them). A line whose field is
  * missing is left out, never posted empty or guessed. No email address or
  * other contact details, and no totals (the reveal belongs to the family).
  * Not posted: imported payments (a bulk import would flood the channel),
@@ -204,6 +204,8 @@ export function giftMessage(p) {
     test: test ? 'Test from the website · no gift was made' : null,
     lead: test ? 'Gift alerts are connected. Real gifts look just like this.' : null,
     facts: [['Campaign', clean(p?.description) || null], ['Received', receivedOn(p?.created)]],
+    // A major gift is thanked by the team: its page in Donors (who it's from, To thank, Thanked)
+    buttons: major && !test && PAYMENT_ID.test(String(p?.id || '')) ? [{ label: 'Open in Donors', url: `${SITE_ORIGIN}/admin/#donors/gift/${encodeURIComponent(p.id)}` }] : [],
   });
 }
 
@@ -324,6 +326,10 @@ export async function handleWebhook(env, request, { now = Date.now(), selfTest =
   const cfg = await readZeffyConfig(env.DB);
   await writeZeffyConfig(env.DB, selfTest ? { since: cfg.since || iso } : { lastWebhookAt: iso, since: cfg.since || iso });
   const r = await handlePayment(env, event.data, { via: 'webhook', now });
+  // Into the donor list at once (the next read settles it); never in the way of the gift's Slack post
+  if (r.result !== 'invalid') {
+    try { await (await import('./_donors.js')).noteDonorPayment(env, event.data, { now }); } catch (e) { console.error('[donors] webhook', e.message); }
+  }
   if (r.result === 'invalid') return Response.json({ ok: false, error: 'no payment in the event' }, { status: 400 });
   // 500, not 502: Cloudflare replaces 502 bodies with its own error page
   if (r.result === 'failed') return Response.json({ ok: false, error: r.error }, { status: 500 });
@@ -332,6 +338,25 @@ export async function handleWebhook(env, request, { now = Date.now(), selfTest =
 
 // ─── The catch-up check ─────────────────────────────────────────────
 
+/**
+ * What Zeffy last said about its rate limit: 100 requests a minute for the whole organization, every key and every
+ * caller together. Each answer carries X-RateLimit-Remaining and X-RateLimit-Reset (Zeffy's docs ask callers to slow
+ * down before it reaches 0); only bulk readers (the donor list, ./_donors.js) look at it and wait. Nothing here delays
+ * or refuses a call: Checks and gift alerts go through as they always have
+ */
+export const zeffyQuota = { remaining: null, reset: null, at: 0 };
+function noteQuota(res, now = Date.now()) {
+  // No header (a proxy, a test) is not knowing, never 0 left
+  const raw = res?.headers?.get?.('X-RateLimit-Remaining');
+  const left = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+  if (!Number.isFinite(left)) return;
+  zeffyQuota.remaining = left;
+  const resetRaw = res.headers.get('X-RateLimit-Reset');
+  const reset = resetRaw == null ? NaN : Number(resetRaw);
+  zeffyQuota.reset = Number.isFinite(reset) ? reset : null;
+  zeffyQuota.at = now;
+}
+
 export async function zeffyGet(env, path, params = {}, fetchImpl = fetch) {
   const url = new URL(`${ZEFFY_API}${path}`);
   for (const [k, v] of Object.entries(params)) if (v != null) url.searchParams.set(k, String(v));
@@ -339,6 +364,7 @@ export async function zeffyGet(env, path, params = {}, fetchImpl = fetch) {
     headers: { Authorization: `Bearer ${String(env.ZEFFY_API_KEY).trim()}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(15000),
   });
+  noteQuota(res);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     const err = new Error(body?.error?.message || `Zeffy answered ${res.status}`);
@@ -356,6 +382,7 @@ export async function zeffySend(env, method, path, body = null, fetchImpl = fetc
     ...(body ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(15000),
   });
+  noteQuota(res);
   const answer = await res.json().catch(() => null);
   if (!res.ok) {
     const err = new Error(answer?.error?.message || `Zeffy answered ${res.status}`);

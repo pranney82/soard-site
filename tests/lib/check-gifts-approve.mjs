@@ -1,4 +1,4 @@
-// What a person does on a check's card in Job Costs → Checks (public/admin/checks.js), for tests: take what the site filled
+// What a person does on a check's card in Donors & Partners → Checks (public/admin/checks.js), for tests: take what the site filled
 // in, change what the test says to, and press Send to Zeffy. It mirrors the page's own defaults, so a test that sends "as the
 // card says" sends what a person pressing Send would. A card that asks a person to pick (a donor, a name) throws unless the
 // test picks. Names and amounts in tests are made up.

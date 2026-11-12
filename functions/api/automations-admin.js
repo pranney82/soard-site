@@ -20,6 +20,7 @@
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
  *  - boardGifts: major gifts on the board page (when Zeffy was last read, any trouble; never a gift)
  *  - kitDonors: Zeffy donors onto the newsletter in Kit (last run, people added, tagged, left alone; counts and times only)
+ *  - donorList: Admin → Donors & Partners' read-only list of Zeffy payments (when last read, the nightly read, any trouble; counts only)
  *  - checks:    checks deposited in Mercury becoming Zeffy records (counts and times only; never a name or amount)
  *  - boardWords: board files' words for the board page's search (how many read, found by their words, failed; counts only)
  *  - mercury:   Mercury through SOARD's relay (both keys present, and the accounts it answers with: names and kinds only)
@@ -82,6 +83,7 @@ import { backfillStatus } from './_coi-backfill.js';
 import { processFacts } from './_process-docs.js';
 import { giftsStatus } from './_board-gifts.js';
 import { donorsStatus } from './_kit-donors.js';
+import { donorListStatus } from './_donors.js';
 import { revealStatsFacts } from './_reveal-stats.js';
 import { checksFacts } from './_check-gifts.js';
 import { wordsStatus } from './_board-file-words.js';
@@ -557,6 +559,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     boardGifts: await settle(() => giftsStatus(DB)),
     // Zeffy donors onto the newsletter in Kit: people counts and times only (_kit-donors.js)
     kitDonors: await settle(() => donorsStatus(DB)),
+    donorList: await settle(() => donorListStatus(DB)),
     // Reveal stats: when the live page last counted someone, and Facebook and YouTube's last read; times only (_reveal-stats.js)
     revealStats: await settle(() => revealStatsFacts(DB)),
     // Board files read for the board page's search: counts only (_board-file-words.js)

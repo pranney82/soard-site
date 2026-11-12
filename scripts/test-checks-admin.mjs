@@ -1,7 +1,7 @@
 /**
- * test-checks-admin.mjs — drive Job Costs → Checks in a real browser
+ * test-checks-admin.mjs — drive Donors & Partners → Checks in a real browser
  * ===================================================================
- * Opens the admin at #job-costs/checks (public/ served directly) with the REAL
+ * Opens the admin at #donors/checks (public/ served directly) with the REAL
  * /api/checks-admin behind it, on an in-memory D1 and a pretend Zeffy, and walks
  * it the way staff would (Peter, Nov 10 2026: a person approves every entry into
  * Zeffy): a card with two names and two possible donors, a typed address, a
@@ -186,7 +186,7 @@ async function open(browser, origin, viewport) {
   await page.setRequestInterception(true);
   page.on('request', (req) => (new URL(req.url()).origin === origin ? req.continue() : req.abort()));
   await answerAsks(page, { accept: true });
-  await page.goto(`${origin}/admin/#job-costs/checks`, { waitUntil: 'networkidle2' });
+  await page.goto(`${origin}/admin/#donors/checks`, { waitUntil: 'networkidle2' });
   await page.waitForSelector('.ck', { timeout: 15000 });
   await page.waitForFunction(() => document.querySelectorAll('.ck-approve select option').length > 3, { timeout: 8000 }).catch(() => {});
   return { page, errors };
@@ -238,11 +238,17 @@ const browser = await puppeteer.launch({ headless: 'shell', args: ['--no-sandbox
 try {
   console.log('The cards');
   const { page, errors } = await open(browser, origin, { width: 1440, height: 1000 });
-  ok(await page.$eval('.seg [role="tab"][aria-selected="true"]', (e) => e.textContent.trim().startsWith('Checks')), 'the Checks tab is open');
+  ok(await page.$eval('.hub-tab.active', (e) => e.textContent.trim().startsWith('Checks')), 'the Checks tab is open');
   const ids = await cardIds(page);
   ok(['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'l2', 'l3'].every((x) => ids.includes(x)), `every card and to-do waits on someone (${ids})`);
   ok(/To send to Zeffy/.test(await textOf(page, '.ck h3')), 'the section says what it’s for');
   ok(!/Let the site enter checks|watching/i.test(await textOf(page, '.ck')), 'no talk of the site entering checks by itself');
+  // Every check in Zeffy opens its own record there, as it opens in Mercury (?transactionId= is Zeffy's own link to one payment)
+  const hrefs = (sel) => page.$$eval(`${sel} a`, (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
+  const l2Links = await hrefs('.ck-need[data-check="l2"]');
+  ok(l2Links.some(([t, h]) => t === 'Open in Zeffy' && /\/o\/all-payments\?transactionId=zl2$/.test(h)), `a to-do opens its own record in Zeffy (${JSON.stringify(l2Links)})`);
+  const t1Links = await hrefs('[data-check="t1"]');
+  ok(t1Links.some(([t, h]) => t === 'Open in Zeffy' && /transactionId=zh1$/.test(h)) && t1Links.some(([t]) => t === 'Open in Mercury'), `a check in Zeffy links its record beside Mercury (${JSON.stringify(t1Links)})`);
   const c1 = '.ck-need[data-check="c1"]';
   ok(/Dana Whitfield \(from the letter\)/.test(await textOf(page, c1)) && /Whitfield Family Charitable Fund at Harbor Trust Advisors \(on the check\)/.test(await textOf(page, c1)), 'two names: the letter’s first, then the check’s');
   ok(await page.$eval(`${c1} button[type=submit]`, (b) => b.getAttribute('aria-disabled') === 'true'), 'Send waits until a donor is picked');
@@ -280,7 +286,7 @@ try {
   const c6Value = (label) => page.evaluate((sel, label) => [...document.querySelector(sel).querySelectorAll('label')].find((l) => l.querySelector('span')?.textContent.trim().startsWith(label))?.querySelector('select, input')?.value, c6, label);
   ok(await c6Value('Mailing address') === 'type' && await c6Value('Street') === '515 Magnolia Bluff Terrace' && await c6Value('Email') === 'imogen.castellanos@example.com', 'its card comes back with the address and email that person chose');
 
-  const seg = (name) => page.evaluate((name) => [...document.querySelectorAll('.seg [role="tab"]')].find((b) => b.textContent.trim().startsWith(name))?.click(), name);
+  const seg = (name) => page.evaluate((name) => [...document.querySelectorAll('.hub-tab')].find((b) => b.textContent.trim().startsWith(name))?.click(), name);
   console.log('A pick and the card made again');
   const c7 = '.ck-need[data-check="c7"]';
   const c7Value = (label) => page.evaluate((sel, label) => [...document.querySelector(sel).querySelectorAll('label')].find((l) => l.querySelector('span')?.textContent.trim().startsWith(label))?.querySelector('select, input')?.value, c7, label);
@@ -289,7 +295,7 @@ try {
   const remake = async (letterAddress) => {
     const row = await DB.prepare("SELECT card FROM check_gifts WHERE id = 'c7'").first();
     await DB.prepare("UPDATE check_gifts SET card = ? WHERE id = 'c7'").bind(JSON.stringify({ ...JSON.parse(row.card), letterAddress })).run();
-    await seg('Charges'); await wait(400); await seg('Checks');
+    await seg('Donors'); await wait(400); await seg('Checks');
     await page.waitForSelector(c7, { timeout: 8000 }); await wait(500);
   };
   await remake({ ...OAKLEAF, line1: '88 Peachtree St NE #4' });
@@ -341,7 +347,7 @@ try {
   ok(/different gift/.test(asked), 'sending anyway asks first, naming the entry');
   ok(zeffy.posts.length === posts, 'Cancel sends nothing');
   // What was typed stays through the answer and a look at another tab
-  await seg('Charges');
+  await seg('Donors');
   await wait(400);
   await seg('Checks');
   await page.waitForSelector(c2, { timeout: 8000 });

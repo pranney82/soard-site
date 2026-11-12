@@ -120,7 +120,7 @@ try {
   console.log('Desktop 1440×900');
   let page = await open(1440, 900);
   const groups = await page.$$eval('.side-nav .nav-group', (gs) => gs.map((g) => `${g.querySelector('.nav-section')?.textContent || '·'}: ${[...g.querySelectorAll('.nav-label')].map((l) => l.textContent).join(', ')}`));
-  ok(groups.join(' | ') === '·: Dashboard, Applications, Kids, Demo Day, Reveals, Job Costs | Website: People, Partners, Press, Events, Site Config | System: Emails & invites, Automations, History', `groups and order (${groups.join(' | ')})`);
+  ok(groups.join(' | ') === '·: Dashboard, Applications, Kids, Demo Day, Reveals, Job Costs, Donors & Partners | Website: People, Press, Events, Site Config | System: Emails & invites, Automations, History', `groups and order (${groups.join(' | ')})`);
   ok(await active(page) === 'Dashboard', 'Dashboard is current on load');
   const badges = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.side-nav .nav-item')].map((a) => [a.querySelector('.nav-label').textContent, (a.querySelector('.nav-count')?.textContent || '') + (a.querySelector('.nav-live') ? 'LIVE' : '')]).filter(([, v]) => v)));
   ok(JSON.stringify(badges) === JSON.stringify({ Applications: '4', Reveals: 'LIVE', People: '2', Press: '3' }), `counts and LIVE (${JSON.stringify(badges)})`);
@@ -167,7 +167,7 @@ try {
   await page.close();
 
   for (const [hash, want, extra, moved] of [['#broadcast/invites', 'Reveals'], ['#broadcast/demo', 'Demo Day'], ['#demo-day', 'Demo Day'], ['#advisory-applications', 'People', 'Applications'],
-    ['#people/advisory', 'People', 'Advisory'], ['#kids/community', 'Kids', 'Community Projects'], ['#partners/community-partners', 'Partners', 'Community partners'],
+    ['#people/advisory', 'People', 'Advisory'], ['#kids/community', 'Kids', 'Community Projects'], ['#partners/community-partners', 'Donors & Partners', 'Community partners'], ['#partners', 'Donors & Partners', 'Partners'],
     ['#site/newsletter', 'Site Config'], ['#history', 'History', 'Changes'], ['#history/publishes', 'History', 'Publishes'],
     ['#publish-history', 'History', 'Publishes', '#history/publishes'], ['#deploys', 'History', 'Publishes', '#history/publishes'], ['#audit-log', 'History', 'Changes', '#history'],
     ['#articles', 'Site Config', null, '#site/resources'], ['#press/found', 'Press'], ['#nonsense', 'Dashboard']]) {
@@ -295,8 +295,8 @@ try {
   await page.keyboard.press('Escape'); await pause(400);
   ok(await page.evaluate(() => !document.querySelector('.sidebar.open') && document.activeElement?.classList.contains('hamburger')), 'Escape closes it, focus back on the menu button');
   await page.click('.hamburger'); await pause(400);
-  await clickNav(page, 'Partners'); await pause(500);
-  ok(await active(page) === 'Partners' && !(await page.$('.sidebar.open')) && hashOf(page) === '#partners', 'picking an area closes the drawer');
+  await clickNav(page, 'Donors & Partners'); await pause(500);
+  ok(await active(page) === 'Donors & Partners' && !(await page.$('.sidebar.open')) && hashOf(page) === '#donors', 'picking an area closes the drawer');
   ok(page.errors.length === 0, `no errors (${page.errors.slice(0, 2).join(' | ')})`);
   await page.close();
 

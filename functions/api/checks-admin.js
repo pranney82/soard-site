@@ -1,5 +1,5 @@
 /**
- * /api/checks-admin — Admin → Job Costs → Checks (public/admin/checks.js)
+ * /api/checks-admin — Admin → Donors & Partners → Checks (public/admin/checks.js)
  * ===========================================================================
  * Behind Cloudflare Access like every admin route. Every check deposited in Mercury, and its card: the site fills each one in
  * (./_check-gifts.js), and a person sends it to Zeffy, matches it to an entry Zeffy has, or says it isn't for Zeffy.

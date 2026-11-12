@@ -49,7 +49,8 @@ test('a major gift is $1,000 or more after refunds, through the same screen as t
 
 test('who gave: a name, a company and the person who gave for it, never an email or address', () => {
   const g = giftOf(payment());
-  assert.deepEqual(g, { id: 'pay_0001', at: S(NOW - DAY), cents: 250000, name: 'Jane Doe', company: '', anonymous: false, campaign: 'Evening of Sunshine', every: '', inKind: false });
+  // contact and method are kept for Keep anonymous; the board page never gets them (giftsNow leaves them out)
+  assert.deepEqual(g, { id: 'pay_0001', at: S(NOW - DAY), cents: 250000, name: 'Jane Doe', company: '', anonymous: false, campaign: 'Evening of Sunshine', every: '', inKind: false, contact: '', method: 'card' });
   assert.doesNotMatch(JSON.stringify(g), /example\.com|Example St|4242/);
   const co = giftOf(payment({ buyer: { first_name: 'Lee', last_name: 'Sample', is_corporate: true, company_name: '  Sample  Builders ' } }));
   assert.equal(co.company, 'Sample Builders');
@@ -97,7 +98,11 @@ test('a gift Zeffy took in several charges is one gift: $4,000 + $4,000 + $2,000
   // Zeffy takes $5,000 at most in one charge: the giver pays three times in four minutes
   const split = [payment({ id: 'pay_0a', created: S(at), amount: 400000 }), payment({ id: 'pay_0b', created: S(at + 2 * MIN), amount: 400000 }), payment({ id: 'pay_0c', created: S(at + 4 * MIN), amount: 200000 })];
   const [g, ...rest] = giftsOf(split);
-  assert.deepEqual({ ...g }, { id: 'pay_0a', at: S(at + 4 * MIN), cents: 1000000, name: 'Jane Doe', company: '', anonymous: false, campaign: 'Evening of Sunshine', every: '', inKind: false, parts: 3 });
+  // Every charge is kept with it (ids, charges) for Keep anonymous; the board page never gets them
+  const { ids, charges, ...shown } = g;
+  assert.deepEqual(shown, { id: 'pay_0a', at: S(at + 4 * MIN), cents: 1000000, name: 'Jane Doe', company: '', anonymous: false, campaign: 'Evening of Sunshine', every: '', inKind: false, contact: '', method: 'card', parts: 3 });
+  assert.equal(ids.length, 3);
+  assert.equal(charges.length, 3);
   assert.equal(rest.length, 0);
   // The same payments read twice (Zeffy's pages overlap) are counted once
   assert.equal(giftsOf([...split, ...split])[0].cents, 1000000);
@@ -172,4 +177,33 @@ test('in January last year’s gifts are gone: a new year starts empty', async (
   await maybeReadGifts(env, { fetchImpl: zeffy, now: NOW });
   const g = await giftsNow(env.DB, { now: Date.parse('2027-01-01T06:00:00Z') });
   assert.deepEqual({ year: g.year, count: g.count, total: g.total, list: g.list }, { year: 2027, count: 0, total: 0, list: [] });
+});
+
+test('Keep anonymous in Donors & Partners hides the giver on the board, the person or the organization the gift counts for', async () => {
+  const { act } = await import('../functions/api/_donor-crm.js');
+  const db2 = await createD1({ schemaSql: ["CREATE TABLE partners (slug TEXT PRIMARY KEY, data TEXT)", "INSERT INTO partners VALUES ('acme', '{\"name\":\"Acme Builders\",\"level\":\"friend\"}')"] });
+  const at = NOW - 3 * DAY;
+  const pays = [
+    payment({ id: 'pay_p1', contact: 'ct_jane', created: S(at) }),
+    payment({ id: 'pay_p2', contact: 'ct_lee', created: S(at), buyer: { first_name: 'Lee', last_name: 'Sample', email: 'lee@example.com', is_corporate: true, company_name: 'Acme Builders' } }),
+    payment({ id: 'pay_p3', contact: 'ct_kim', created: S(at), buyer: { first_name: 'Kim', last_name: 'Park', email: 'kim@example.com' } }),
+  ];
+  const list = pays.map((p) => giftOf(p));
+  // The donor list has them too (the gift webhook and the 15-minute read): one not there yet is hidden while anyone is kept
+  const { noteDonorPayment } = await import('../functions/api/_donors.js');
+  for (const p of pays) await noteDonorPayment({ DB: db2 }, p, { now: NOW });
+  const { writeState } = await import('../functions/api/_board-roles.js');
+  await writeState(db2, 'gifts', { year: 2026, list, at: new Date(NOW).toISOString(), triedAt: new Date(NOW).toISOString() });
+  let v = await giftsNow(db2, { now: NOW });
+  assert.deepEqual(v.list.map((g) => g.name || g.company || 'Anonymous').sort(), ['Jane Doe', 'Kim Park', 'Lee Sample']);
+  assert.ok(v.list.every((g) => !('contact' in g) && !('method' in g)), 'the board never gets the contact');
+  await act({ DB: db2 }, { act: 'anon', key: 'c:ct_jane', on: true }, 'staff@example.org', { now: NOW });
+  await act({ DB: db2 }, { act: 'anon', key: 'p:acme', on: true }, 'staff@example.org', { now: NOW });
+  v = await giftsNow(db2, { now: NOW });
+  const by = Object.fromEntries(v.list.map((g) => [g.id, g]));
+  assert.equal(by.pay_p1.anonymous, true, 'the person kept anonymous');
+  assert.equal(by.pay_p1.name, '');
+  assert.equal(by.pay_p2.anonymous, true, 'a gift for an organization kept anonymous');
+  assert.equal(by.pay_p2.company, '');
+  assert.equal(by.pay_p3.name, 'Kim Park', 'everyone else as they were');
 });

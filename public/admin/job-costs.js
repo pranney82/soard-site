@@ -15,8 +15,6 @@
  *              each sort and read by the DataX Receipt Processor
  *   Bills      subs' bills waiting for approval (the DataX Bill Approver
  *              emails Holly; staff can decide here too), being paid, paid
- *   Checks     every check deposited in Mercury and its Zeffy record, and the few the
- *              site can't finish itself (./checks.js)
  *   W-9s & insurance  every company SOARD pays, on jobs or not, and the W-9
  *              and certificates kept on the site for each (./vendor-papers.js)
  *   Close-outs every finished makeover's final numbers, and what each cost
@@ -35,11 +33,10 @@ import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { ask } from './ask.js';
 import { InsuranceAudit } from './insurance-audit.js';
 import { VendorPapers } from './vendor-papers.js';
-import { Checks } from './checks.js';
 
 const html = htm.bind(h);
 const API = '/api/job-costs-admin';
-const TABS = [['jobs', 'Jobs'], ['charges', 'Charges'], ['bills', 'Bills'], ['checks', 'Checks'], ['papers', 'W-9s & insurance'], ['closeouts', 'Close-outs'], ['rules', 'Rules'], ['setup', 'Setup'], ['ramp', 'Ramp bills'], ['insurance', 'Insurance audit']];
+const TABS = [['jobs', 'Jobs'], ['charges', 'Charges'], ['bills', 'Bills'], ['papers', 'W-9s & insurance'], ['closeouts', 'Close-outs'], ['rules', 'Rules'], ['setup', 'Setup'], ['ramp', 'Ramp bills'], ['insurance', 'Insurance audit']];
 const BUCKET_NAMES = { job: 'Makeover', store: 'Sunny & Ranney store', operating: 'Operating' };
 const HOW = { person: 'the cardholder’s job', build: 'the job in Build', staff: 'picked by staff', bill: 'from its JobTread bill', rule: 'vendor rule', card: 'the store’s card', account: 'the account', refund: 'the charge it refunds' };
 
@@ -167,7 +164,8 @@ const CSS = `
 }
 `;
 let styled = false;
-function useStyles() {
+/** Job Costs' styles: Checks uses them too, wherever it shows (Admin → Donors & Partners, ./donors.js) */
+export function useStyles() {
   if (styled) return;
   styled = true;
   const el = document.createElement('style');
@@ -198,14 +196,11 @@ export function JobCosts({ addToast = () => {} }) {
   const tabs = useRef(null);
   useEffect(() => { tabs.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [place.tab, !!data]);
 
-  // The Checks tab sets its own count as it acts: a load that began before that keeps the newer count
-  const checksAt = useRef(0);
   const load = async (opts) => {
-    const began = Date.now();
     const j = await call(null, opts);
     if (!j.success) { setErr(j.error || 'Could not load job costs'); return; }
     setErr(null);
-    setData((d) => ({ ...(d || {}), ...j, ...(d && checksAt.current > began ? { checksWaiting: d.checksWaiting } : {}) }));
+    setData((d) => ({ ...(d || {}), ...j }));
   };
   useEffect(() => { load({ setup: place.tab === 'setup' || place.tab === 'bills' }); }, [place.tab]);
   // Live: charges arrive by the second, so look again every 15 seconds while the tab is open
@@ -240,7 +235,7 @@ export function JobCosts({ addToast = () => {} }) {
   const unsorted = data.charges.filter((c) => !c.bucket && !c.billId && c.cents > 0 && c.status !== 'cancelled' && c.status !== 'failed').length;
   const proposed = data.recode.filter((r) => r.state === 'proposed').length;
   const waiting = (data.bills || []).filter((b) => ['waiting', 'second'].includes(b.approval?.state) || b.approval?.payState === 'failed').length;
-  const counts = { charges: unsorted + (data.odd || []).length, ramp: proposed, bills: waiting, checks: data.checksWaiting || 0 };
+  const counts = { charges: unsorted + (data.odd || []).length, ramp: proposed, bills: waiting };
   const job = place.tab === 'jobs' && place.job ? data.ledgers.find((l) => l.jobId === place.job) : null;
 
   return html`
@@ -253,7 +248,7 @@ export function JobCosts({ addToast = () => {} }) {
       </div>
       <${Health} h=${data.health} />
       <div class="seg" role="tablist" aria-label="Job costs" ref=${tabs}>
-        ${TABS.map(([k, label]) => html`<button role="tab" aria-selected=${place.tab === k && !(k === 'jobs' && job)} onClick=${() => open(k)}>${label}${counts[k] ? html` <span class="count ${['charges', 'bills', 'checks'].includes(k) ? 'is-warn' : ''}">${counts[k]}</span>` : ''}</button>`)}
+        ${TABS.map(([k, label]) => html`<button role="tab" aria-selected=${place.tab === k && !(k === 'jobs' && job)} onClick=${() => open(k)}>${label}${counts[k] ? html` <span class="count ${['charges', 'bills'].includes(k) ? 'is-warn' : ''}">${counts[k]}</span>` : ''}</button>`)}
       </div>
       ${job ? html`<${JobDetail} l=${job} data=${data} act=${act} busy=${busy} onBack=${() => open('jobs')} />`
         : place.tab === 'jobs' && place.job ? html`<div class="notice"><div class="notice__body">That job isn’t open any more, or hasn’t been read from JobTread yet. Closed jobs are under Close-outs.</div><div class="notice__actions"><button class="btn btn-ghost" onClick=${() => open('jobs')}>All jobs</button><button class="btn btn-ghost" onClick=${() => open('closeouts', place.job)}>Its close-out</button></div></div>`
@@ -264,7 +259,6 @@ export function JobCosts({ addToast = () => {} }) {
         : place.tab === 'rules' ? html`<${Rules} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'setup' ? html`<${Setup} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'insurance' ? html`<${InsuranceAudit} addToast=${addToast} />`
-        : place.tab === 'checks' ? html`<${Checks} addToast=${addToast} onCount=${(n) => { checksAt.current = Date.now(); setData((d) => (d && d.checksWaiting !== n ? { ...d, checksWaiting: n } : d)); }} />`
         : place.tab === 'papers' ? html`<${VendorPapers} id=${place.job} onOpen=${(id) => open('papers', id)} addToast=${addToast} />`
         : html`<${Ramp} data=${data} act=${act} busy=${busy} />`}
     </div>`;

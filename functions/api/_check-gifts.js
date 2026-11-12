@@ -58,6 +58,7 @@ import { nameKeyOf, realDate as isDay } from './_vendor-files.js';
 import { pageText, scannedPages } from './_vendor-read.js';
 import { TZ } from './_reveals.js';
 // Decided the same way on the Checks page: one copy of what's one giver, one address, a whole address, a bank-like number
+import { zeffyPaymentUrl, zeffyContactUrl, ZEFFY_PAYMENTS } from '../../public/admin/zeffy-links.js';
 import { hasAccountDigits, payerKey, surelySameGiver, sameGiver, sameName, addressProblem, addressKey, addressLine, nameProblem, emailProblem, emailOf, TAG_DOMAIN, isTag } from '../../public/admin/checks-shared.js';
 
 export { hasAccountDigits, payerKey, surelySameGiver, sameGiver, addressKey, TAG_DOMAIN };
@@ -105,9 +106,7 @@ export const WRITE_TEST_EMAIL = 'peter+zeffy-write-test@soardcharity.com';
 /** The write test's address: made up, on a test contact that's removed straight after */
 const WRITE_TEST_ADDRESS = { line1: '1 Test Way', city: 'Roswell', state: 'GA', postal_code: '30075', country: 'US' };
 
-const CARDS_URL = `${SITE_ORIGIN}/admin/#job-costs/checks`;
-const ZEFFY_PAYMENTS = 'https://www.zeffy.com/en-US/o/all-payments';
-const ZEFFY_CONTACTS = 'https://www.zeffy.com/en-US/o/crm/contacts';
+const CARDS_URL = `${SITE_ORIGIN}/admin/#donors/checks`;
 
 /**
  * What a card asks the person to look at before sending, in the words the page and Slack use. A card with none of these is
@@ -1221,14 +1220,20 @@ export function refusalWords(e) {
   return 'Zeffy wouldn’t take this record.';
 }
 
-/** Say it once, in Needs attention. It counts as said only when Slack took it, so the next look tries again */
-async function tell(env, row, kind, { title, lead, fix = null }) {
+// Cards about a record Zeffy no longer has: no button to it (it would open nothing)
+const GONE_KINDS = new Set(['record-gone']);
+/**
+ * Say it once, in Needs attention. It counts as said only when Slack took it, so the next look tries again.
+ * zeffy: the Zeffy records the card is about, [{ label, id }], each a button straight to it; by default the check's own
+ * record when it has one
+ */
+async function tell(env, row, kind, { title, lead, fix = null, zeffy = row.zeffy_id && !GONE_KINDS.has(kind) ? [{ label: 'Open in Zeffy', id: row.zeffy_id }] : [] }) {
   const said = String(row.alerted || '').split(',').filter(Boolean);
   if (said.includes(kind) || !env.SLACK_BOT_TOKEN) return;
   const card = slackCard({
     icon: '🧾', title, lead,
     facts: [['Amount', money(row.cents)], ['From', row.payer || null], ['Deposited', dayOf(row.deposited_at)]],
-    fix, buttons: [{ label: 'Open Checks', url: CARDS_URL }],
+    fix, buttons: [{ label: 'Open Checks', url: CARDS_URL }, ...zeffy.filter((z) => z?.id).map((z) => ({ label: z.label, url: zeffyPaymentUrl(z.id) }))],
   });
   const r = await slackIssue(env, `check:${row.id}`, card, { title: `Check for ${money(row.cents)}`, kind: 'attention' }).catch(() => null);
   if (r?.ok) await env.DB.prepare('UPDATE check_gifts SET alerted = ? WHERE id = ?').bind([...said, kind].join(','), row.id).run();
@@ -1242,7 +1247,7 @@ async function allClear(env, row, words) {
 /** Back on its card for a person, with what happened (a send Zeffy didn't answer or refused, a record gone): said in Slack once */
 async function toPerson(env, row, reason, { note = undefined, now }) {
   if (!(await setRow(env.DB, row.id, { state: 'person', reason, ...(note !== undefined ? { note } : {}) }, now, row.state))) return false;
-  await tell(env, row, reason, { title: `A check needs a look: ${money(row.cents)}`, lead: (typeof note === 'string' && !note.startsWith('[') && note) || REASONS[reason], fix: 'Open Checks in Job Costs.' });
+  await tell(env, row, reason, { title: `A check needs a look: ${money(row.cents)}`, lead: (typeof note === 'string' && !note.startsWith('[') && note) || REASONS[reason], fix: 'Open Checks in Donors & Partners.' });
   return true;
 }
 
@@ -1401,7 +1406,7 @@ async function clearTags(env, { now, fetchImpl }) {
       icon: '🧾', title: 'A donor’s contact in Zeffy has the site’s no-mail address',
       lead: `The site put ${tag.email} on a donor’s contact for a moment, to keep a check with their other gifts, and Zeffy won’t let it take the address off.`,
       fix: `In Zeffy, find the contact with the email ${tag.email} and delete that email. It reaches no one, so nothing has been sent.`,
-      buttons: [{ label: 'Open Zeffy', url: ZEFFY_CONTACTS }],
+      buttons: [{ label: 'Open the donor in Zeffy', url: zeffyContactUrl(tag.contact) }],
     });
     const r = await slackIssue(env, `check-tag:${tag.email}`, card, { title: 'A donor’s contact in Zeffy', kind: 'attention' }).catch(() => null);
     if (r?.ok) await env.DB.prepare('UPDATE check_tags SET alerted = 1 WHERE contact = ? AND email = ?').bind(String(tag.contact), tag.email).run();
@@ -1568,7 +1573,8 @@ async function extraFound(env, row, sent, hit, now, fetchImpl, { clear = { paylo
   await tell(env, { ...row, alerted: (row.alerted || '').split(',').filter((k) => k !== 'extra').join(',') }, 'extra', {
     title: out ? `A check marked not for Zeffy has a record in Zeffy: ${money(row.cents)}` : `A check has a second record in Zeffy: ${money(row.cents)}`,
     lead: `Zeffy saved a send of this check that it hadn’t answered, after the check was ${out ? 'marked not for Zeffy' : 'matched to another record'}.`,
-    fix: 'Delete that record in Zeffy (Checks names it). The site sees it’s gone within the hour.',
+    fix: 'Delete that record in Zeffy. The site sees it’s gone within the hour.',
+    zeffy: [{ label: 'Open the record to delete', id: hit.id }],
   });
   return true;
 }
@@ -1634,7 +1640,7 @@ async function settleUnsure(env, { now, fetchImpl }) {
     if (row.state === 'came-back') {
       if (hit && !row.zeffy_id && await setRow(env.DB, row.id, { zeffy_id: String(hit.id), via: sent?.by ? 'person' : 'site', ...(sent?.by ? { by: sent.by } : {}), payload: null }, now, 'came-back')) {
         await newContactTagOff(env, sent, hit, now, fetchImpl);
-        await tell(env, row, 'back-saved', { title: `A check that came back is in Zeffy: ${money(row.cents)}`, lead: 'Zeffy saved the record the site sent for it, after the check came back.', fix: 'Cancel the record in Zeffy: no money came in for it.' });
+        await tell(env, row, 'back-saved', { title: `A check that came back is in Zeffy: ${money(row.cents)}`, lead: 'Zeffy saved the record the site sent for it, after the check came back.', fix: 'Cancel the record in Zeffy: no money came in for it.', zeffy: [{ label: 'Open the record to cancel', id: hit.id }] });
       } else if (hit && String(hit.id) !== String(row.zeffy_id)) await extraFound(env, row, sent, hit, now, fetchImpl);
     } else if (['left-out', 'linked', 'created'].includes(row.state)) {
       // Decided another way meanwhile: what turns up is a second record
@@ -2216,7 +2222,7 @@ async function matchOpen(env, { now, fetchImpl }) {
     const open = await openAmounts(env.DB, row.id, now);
     const typed = [...new Map([...m.same, ...m.maybe, ...m.other, ...netBoth(row, payments, claimedFor(row, claimed), { turnedPaid: turned })].map((p) => [String(p.id), p])).values()]
       .filter((p) => String(p.status || '').toLowerCase() === 'succeeded' && (paidByCheck(p) || byDaf(p)) && (madeByHand(p) || turned.has(String(p.id))) && !open.has(Number(p.amount)));
-    if (typed.length) await tell(env, row, 'double', { title: `This check may be in Zeffy twice: ${money(row.cents)}`, lead: m.same.length ? 'It was sent to Zeffy from Checks, and someone entered it by hand too.' : `It was sent to Zeffy from Checks, and Zeffy has ${byDaf(typed[0]) ? 'a donor-advised gift marked paid' : 'a hand entry'} for the same amount${namesOn(typed[0])[0] ? ` under ${namesOn(typed[0])[0]}` : ''}. It may be the same gift.`, fix: 'If it is, delete the extra one in Zeffy. If that record has an email on it, Zeffy may tell the donor, so keep the one with the email.' });
+    if (typed.length) await tell(env, row, 'double', { title: `This check may be in Zeffy twice: ${money(row.cents)}`, lead: m.same.length ? 'It was sent to Zeffy from Checks, and someone entered it by hand too.' : `It was sent to Zeffy from Checks, and Zeffy has ${byDaf(typed[0]) ? 'a donor-advised gift marked paid' : 'a hand entry'} for the same amount${namesOn(typed[0])[0] ? ` under ${namesOn(typed[0])[0]}` : ''}. It may be the same gift.`, fix: 'If it is, delete the extra one in Zeffy. If that record has an email on it, Zeffy may tell the donor, so keep the one with the email.', zeffy: [{ label: 'The record from Checks', id: row.zeffy_id }, ...typed.slice(0, 3).map((p, i) => ({ label: typed.length > 1 ? `Other entry ${i + 1}` : 'The other entry', id: p.id }))] });
   }
 }
 
@@ -2578,7 +2584,8 @@ export async function moneyCheck(env, { now = Date.now(), fetchImpl = fetch } = 
       icon: '🧾', title: `Zeffy has ${loose.length === 1 ? 'a check gift' : `${loose.length} check gifts`} with no check in Mercury`,
       lead: `${money(result.looseCents)} in Zeffy check gifts has no Mercury deposit behind it: ${lines.join('; ')}${loose.length > 10 ? '; and more on Checks' : ''}. One may be a check entered twice.`,
       fix: 'Look at each in Zeffy. If it’s a second record for a check already in Zeffy, delete that extra record. If it’s one of several gifts a single check paid, or a check deposited at another bank, nothing to do.',
-      buttons: [{ label: 'Open Checks', url: CARDS_URL }],
+      // Each gift it names, straight to its record (the first few; Checks links them all)
+      buttons: [{ label: 'Open Checks', url: CARDS_URL }, ...result.loose.slice(0, 4).map((x, i) => ({ label: `${x.name ? x.name.slice(0, 40) : `Gift ${i + 1}`} in Zeffy`, url: zeffyPaymentUrl(x.id) }))],
     });
     await slackIssue(env, `checks:money:${result.at.slice(0, 10)}`, card, { title: 'Checks into Zeffy', kind: 'attention' }).catch(() => null);
   }
@@ -2804,7 +2811,7 @@ function viewOf(r, claimed, now = Date.now()) {
   const theEntry = entry ? `Zeffy’s entry (${entry.name || 'no name'}, ${money(entry.cents)}${entry.at ? `, ${new Date(entry.at * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: TZ })}` : ''})` : 'Zeffy’s entry';
   const amountToDo = saved && ['amount-off', 'still-unpaid'].includes(r.reason);
   const why = sending ? 'Zeffy hasn’t answered yet. The site is looking for the record, so don’t enter this one.'
-    : extras.length ? `Zeffy has ${extras.length > 1 ? `${extras.length} more records` : r.state === 'left-out' ? 'a record' : 'a second record'} for this check (${extras.join(', ')}), from ${extras.length > 1 ? 'sends' : 'a send'} it didn’t answer clearly${r.state === 'left-out' ? ', though the check was marked not for Zeffy' : ''}. Delete ${extras.length > 1 ? 'those' : 'that one'} in Zeffy, and this goes away within the hour.`
+    : extras.length ? `Zeffy has ${extras.length > 1 ? `${extras.length} more records` : r.state === 'left-out' ? 'a record' : 'a second record'} for this check, from ${extras.length > 1 ? 'sends' : 'a send'} it didn’t answer clearly${r.state === 'left-out' ? ', though the check was marked not for Zeffy' : ''}. Delete ${extras.length > 1 ? 'those' : 'that one'} in Zeffy, and this goes away within the hour.`
     : letterToDo && !amountToDo ? 'A file was added in Mercury after this check went into Zeffy. Look at it there, and fix the record in Zeffy if it says something else (Zeffy can’t move a gift: delete it and enter it again, and it links itself within the hour).'
     : addressToDo && !amountToDo ? (tried?.address || tried?.email
       ? `Zeffy wouldn’t take ${tried.address ? 'the donor’s address' : 'the email'}. Add it to ${tried.who || r.payer || 'the donor'} in Zeffy: ${[tried.address ? addressLine(tried.address) : '', tried.email ? `${tried.address ? 'and the email ' : ''}${tried.email}` : ''].filter(Boolean).join(', ')}.`
@@ -2822,7 +2829,7 @@ function viewOf(r, claimed, now = Date.now()) {
     needsYou: waiting || toDo, toDo,
     id: r.id, cents: r.cents, status: r.status, state: r.state, depositedAt: r.deposited_at, depositDay: dayOf(r.deposited_at), postedAt: r.posted_at,
     payer: r.payer || '', checkDate: r.check_date || '', memo: r.memo || '', checkNumber: r.check_number || '',
-    formId: r.form_id || '', formTitle: r.form_title || '', via: r.via || null, by: r.by || null, zeffyId: r.zeffy_id || null, link: r.link || null,
+    formId: r.form_id || '', formTitle: r.form_title || '', via: r.via || null, by: r.by || null, zeffyId: r.zeffy_id || null, extras: extras.length ? extras : null, link: r.link || null,
     reason: r.reason || null, why, candidates: candidates?.length ? candidates : null, ver: versionOf(r),
     category: r.category || null,
     // The card a person approves: filled in by prepareCard, with each note in words

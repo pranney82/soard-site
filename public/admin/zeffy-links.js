@@ -125,3 +125,14 @@ export const DAF_MIN_TEXT = '$' + DAF_MIN.toLocaleString('en-US');
 export const dafOn = (settings) => settings?.zeffy?.daf === true && !!siteForm(settings, 'donateUrl');
 /** "Give from your DAF": the one-time form at the minimum, so "Donor-advised fund" is there after Continue; null when it's off */
 export const dafGift = (settings) => (dafOn(settings) ? giftLink(settings, 'donateUrl', DAF_MIN) : null);
+
+// ─── One record in Zeffy's own dashboard ───────────────────────────
+// Zeffy opens a payment or a donor in a side panel without changing the address, but both open straight from a link
+// carrying the id its API gives: a payment's id is Zeffy's transactionId (checked in SOARD's Zeffy, Nov 11 2026, on a
+// record the site made). Admin and Slack link these, so a person lands on the record itself, never a list to search.
+export const ZEFFY_PAYMENTS = 'https://www.zeffy.com/en-US/o/all-payments';
+export const ZEFFY_CONTACTS = 'https://www.zeffy.com/en-US/o/crm/contacts';
+/** That payment in Zeffy; Zeffy's Payments list when there's no id */
+export const zeffyPaymentUrl = (id) => (id ? `${ZEFFY_PAYMENTS}?transactionId=${encodeURIComponent(String(id))}` : ZEFFY_PAYMENTS);
+/** That donor (contact) in Zeffy; Zeffy's Contacts list when there's no id */
+export const zeffyContactUrl = (id) => (id ? `${ZEFFY_CONTACTS}?contactId=${encodeURIComponent(String(id))}` : ZEFFY_CONTACTS);

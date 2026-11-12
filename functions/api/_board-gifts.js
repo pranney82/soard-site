@@ -12,7 +12,8 @@
  * Zeffy stays the record. The board's copy (board_state 'gifts') is the year
  * read again whole every 15 minutes on the board heartbeat and replaced, so a
  * refund or a deleted payment drops out by itself; a read that fails keeps the
- * last one. A giver who ticked a form's "anonymous" question is "Anonymous".
+ * last one. A giver who ticked a form's "anonymous" question is "Anonymous", and so is one staff marked Keep
+ * anonymous in Donors & Partners (on the person, or the organization the gift counts for: ./_donor-crm.js).
  * A campaign named for a child reads "Makeovers": a gift is never tied to a
  * kid (the reveal belongs to the family).
  */
@@ -86,6 +87,9 @@ function rowOf(p, kids = []) {
     campaign: campaignOf(p.description, kids),
     every: recurringLabel(p) || '',
     inKind: p.payment_method?.type === 'in_kind',
+    // Kept for Keep anonymous (never shown: giftsNow leaves it out)
+    contact: p.contact ? String(p.contact) : '',
+    method: p.payment_method?.type || '',
   };
 }
 
@@ -98,34 +102,56 @@ function rowOf(p, kids = []) {
  * (when it was all in), and `parts` says how many it took
  */
 export function giftsOf(payments, kids = []) {
-  const byId = new Map();
+  const rows = [];
+  // Who really gave each charge, the form's anonymous ones too: kept with the gift's charges only, never shown
+  const real = new Map();
   for (const p of payments || []) {
     const g = rowOf(p, kids);
     if (!g) continue;
     const b = p.buyer || {};
+    real.set(g.id, { name: givenName(b), company: b.is_corporate || p.payment_method?.type === 'daf' ? clean(b.company_name) : '' });
     const who = (clean(`${clean(b.first_name)} ${clean(b.last_name)}`) || clean(b.company_name) || clean(b.email)).toLowerCase();
-    byId.set(g.id, { g, key: who && !g.every ? [who, g.campaign, g.inKind].join('\n') : `id\n${g.id}` });
+    rows.push({ ...g, key: who && !g.every ? [who, g.campaign, g.inKind].join('\n') : `id\n${g.id}` });
   }
+  // Each charge's id, contact and company are kept with the gift (never shown: giftsNow leaves them out), so Keep
+  // anonymous is checked on every charge of a gift Zeffy took in several
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return joinCharges(rows, { ids: true }).filter((g) => g.cents >= MAJOR_GIFT_CENTS)
+    .map((g) => ({ ...g, charges: (g.ids || [g.id]).map((id) => { const r = byId.get(id) || {}; const who = real.get(id) || {}; return { id, contact: r.contact || '', company: who.company || r.company || '', name: who.name || r.name || '', method: r.method || '' }; }) }));
+}
+
+/**
+ * Charges into gifts, the one rule the board and the donor list share (./_donors.js): rows with the same `key` (one
+ * giver, one campaign, one kind; a monthly gift or an unknown giver keys by its own id) each within an hour of the one
+ * before are one gift. A gift keeps its first charge's fields and id, its last one's time (when it was all in), the
+ * sum of their cents, a name or company only if none of its charges was anonymous, and `parts` when it took several
+ * (with `ids`, each charge's id: the donor list links them). Every gift whatever its size, newest first; `key` is left off
+ */
+export function joinCharges(rows, { ids = false } = {}) {
+  // A payment read twice (Zeffy's pages can overlap) counts once
+  const byId = new Map();
+  for (const r of rows || []) byId.set(String(r.id), r);
   const givers = new Map();
-  for (const { g, key } of byId.values()) givers.set(key, [...(givers.get(key) || []), g]);
+  for (const r of byId.values()) givers.set(r.key, [...(givers.get(r.key) || []), r]);
   const list = [];
   const add = (parts) => {
     const hidden = parts.some((x) => x.anonymous);
+    const { key, ...first } = parts[0];
     const gift = {
-      ...parts[0],
+      ...first,
       at: parts.at(-1).at,
       cents: parts.reduce((t, x) => t + x.cents, 0),
       name: hidden ? '' : parts.find((x) => x.name)?.name || '',
       company: hidden ? '' : parts.find((x) => x.company)?.company || '',
       anonymous: hidden,
     };
-    if (parts.length > 1) gift.parts = parts.length;
-    if (gift.cents >= MAJOR_GIFT_CENTS) list.push(gift);
+    if (parts.length > 1) { gift.parts = parts.length; if (ids) gift.ids = parts.map((x) => x.id); }
+    list.push(gift);
   };
-  for (const rows of givers.values()) {
-    rows.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+  for (const run0 of givers.values()) {
+    run0.sort((a, b) => a.at - b.at || String(a.id).localeCompare(String(b.id)));
     let run = [];
-    for (const g of rows) {
+    for (const g of run0) {
       if (run.length && g.at - run.at(-1).at > SPLIT_GAP_S) { add(run); run = []; }
       run.push(g);
     }
@@ -173,7 +199,33 @@ export async function giftsNow(DB, { now = Date.now() } = {}) {
   const s = await readState(DB, KEY);
   if (!s.at || !Array.isArray(s.list)) return null;
   const year = Number(todayEastern(now).slice(0, 4));
-  const list = s.year === year ? s.list : [];
+  // Keep anonymous, as staff have it now (a gift read before they said so too). Unreadable: every name stays hidden
+  // rather than one shown that shouldn't be
+  const raw = s.year === year ? s.list : [];
+  let hidden = null;
+  let loose = null;
+  try {
+    const crm = await import('./_donor-crm.js');
+    loose = crm.looseKey;
+    hidden = await crm.boardHidden(DB, raw, { now });
+  } catch (e) { console.error('[board] keep anonymous', e.message); hidden = null; }
+  // An anonymous gift's campaign is "A gift" when it names the giver or any organization kept anonymous (a
+  // sponsorship titled with the company's name), compared with legal endings, case and punctuation set aside. Unable
+  // to tell (Keep anonymous couldn't be read): every anonymous gift's campaign is "A gift"
+  const names = (hidden?.names || []);
+  const says = (campaign, g) => {
+    if (!hidden || !loose) return true;
+    const c = ` ${loose.words(campaign).join(' ')} `;
+    return [g.name, g.company, ...(g.charges || []).flatMap((x) => [x.name, x.company]), ...names].some((n) => {
+      const w = n ? loose.words(n) : [];
+      return w.length && w.join('').length >= 3 && c.includes(` ${w.join(' ')} `);
+    });
+  };
+  const list = raw.map(({ contact, method, charges, ids, ...g }) => {
+    const hide = g.anonymous || !hidden || hidden.has(g.id);
+    if (!hide) return g;
+    return { ...g, name: '', company: '', anonymous: true, campaign: says(g.campaign, { ...g, charges }) ? 'A gift' : g.campaign };
+  });
   return { year, at: s.at, stale: now - Date.parse(s.at) > STALE_MS, count: list.length, total: list.reduce((t, g) => t + g.cents, 0), list };
 }
 
