@@ -251,7 +251,9 @@ export function mountPlayer(container: HTMLElement, opts: Options): PlayerHandle
       if (video.paused && !video.ended && (live || !muted)) tryPlay();
     },
     play() {
-      if (status === 'ended') video.currentTime = 0;
+      // Played again after the end: from the start, unless a place has been picked since (Jump to the reveal sets one
+      // just before playing, and this used to send it back to 0:00)
+      if (status === 'ended' && video.currentTime >= video.duration - 0.5) video.currentTime = 0;
       tryPlay();
     },
     destroy() {

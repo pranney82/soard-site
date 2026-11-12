@@ -51,28 +51,34 @@ const ZEFFY_EMBED = formLinks(requireSiteForm(siteSettings, 'liveUrl'))!.embed;
 
   /* Desktop: down the left side, over the messages; the video on the right keeps playing */
   /* (PHONE, DESK and SIDE: word for word as in src/utils/live-media.ts) */
-  @media (min-width: 961px) and (pointer: fine), (min-width: 961px) and (pointer: none), (min-width: 961px) and (min-height: 541px), (min-width: 961px) and (max-aspect-ratio: 1749/1000) {
+  @media (min-width: 961px) and (pointer: fine), (min-width: 961px) and (pointer: none), (min-width: 961px) and (min-height: 541px), (min-width: 961px) and (max-aspect-ratio: 1749/1000), (min-width: 1024px) {
     .give { top: calc(var(--header-height) + 12px); bottom: 12px; left: 12px; width: min(460px, 40vw); }
     .give__panel { border-radius: 20px; }
     @keyframes giveIn { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
   }
   /* Phones: a sheet from the bottom, under the small player pinned at the top */
-  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) and (max-width: 1023px) {
     .give { left: 0; right: 0; bottom: 0; top: calc(var(--header-height) + 196px); }
     .give__panel { border-radius: 20px 20px 0 0; }
     @keyframes giveIn { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
   }
-  /* A phone held sideways: down the right, the whole height (under a small player there'd be a sliver of form);
-     the video stays where it is on the left, playing */
-  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+  /* A phone held sideways: down the right, the screen's whole height, over the site's header as well (height is what a
+     sideways phone is short of, and a keyboard that shrinks the page left the form only its title under the header);
+     the video stays on the left, playing */
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 1023px) and (pointer: coarse) {
     /* (--give-w and --give-edge, the room right of it, clear of the notch: the pinned video takes what's left of them,
        LiveStage) */
     :root { --give-w: min(460px, 58vw); --give-edge: max(8px, env(safe-area-inset-right)); }
     .give {
-      top: var(--header-height); bottom: 0; left: 0; right: 0; display: flex; justify-content: flex-end;
-      padding: 8px var(--give-edge) 8px 0; background: rgba(22, 23, 27, 0.62);
+      top: 0; bottom: 0; left: 0; right: 0; display: flex; justify-content: flex-end;
+      padding: max(8px, env(safe-area-inset-top)) var(--give-edge) 8px 0; background: rgba(22, 23, 27, 0.62);
     }
     .give__panel { width: var(--give-w); border-radius: 20px; }
+    /* The keyboard up: the form's own lines make room for what's being typed */
+    @media (max-height: 260px) {
+      .give__lead { display: none; }
+      .give__head { padding: 10px 12px 8px 18px; }
+    }
   }
   /* The keyboard up on a phone (its page shrunk short, upright): the form takes the whole height, so what's typed stays
      in sight (the small video steps aside meanwhile, LiveStage) */

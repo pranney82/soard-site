@@ -6,8 +6,10 @@
  * these, so each @media there repeats the query word for word, with a note pointing here:
  * change one, change them all.
  *
- * PHONE  the phone layout: up to 960px wide, or any touch screen held sideways (the
- *        biggest Android phones turned sideways are about 1000px wide)
+ * PHONE  the phone layout: up to 960px wide, or a touch screen up to 1023px wide held
+ *        sideways (the biggest Android phones turned sideways are about 1000px wide; no
+ *        phone is 1024, and every tablet held sideways is, so a tablet whose keyboard
+ *        leaves its page short never flips into the phone layout)
  * DESK   everything else: the laptop layout
  * SIDE   a phone held sideways: at least 7:4, at most 540px tall and at least 560px wide.
  *        Wide, not only "landscape": every phone held sideways is 1.78:1 or wider (an
@@ -16,9 +18,9 @@
  *        (Android in-app browsers do), however short it leaves it, never flips the page
  *        sideways
  */
-export const PHONE = '(max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px)';
-export const DESK = '(min-width: 961px) and (pointer: fine), (min-width: 961px) and (pointer: none), (min-width: 961px) and (min-height: 541px), (min-width: 961px) and (max-aspect-ratio: 1749/1000)';
-export const SIDE = '(min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse)';
+export const PHONE = '(max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) and (max-width: 1023px)';
+export const DESK = '(min-width: 961px) and (pointer: fine), (min-width: 961px) and (pointer: none), (min-width: 961px) and (min-height: 541px), (min-width: 961px) and (max-aspect-ratio: 1749/1000), (min-width: 1024px)';
+export const SIDE = '(min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 1023px) and (pointer: coarse)';
 
 /** A text field: while one has focus on a phone, its on-screen keyboard is up (LivePage holds the frame's height, the
  *  corner player steps aside) */

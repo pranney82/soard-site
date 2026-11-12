@@ -61,7 +61,7 @@
   /* A phone held sideways, a landscape picture with captions on: under the captions, bar and Jump there's no room left for
      it, so it takes a column of its own beside them, as tall as they are, when that leaves the picture bigger than
      moving the captions under it (data-fit 'col': LiveStage tries both and lays out the rest) */
-  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 1023px) and (pointer: coarse) {
     .hero[data-party][data-design][data-orientation='landscape'] [data-stage][data-fit='col']:not(:fullscreen) {
       --beside: var(--hds-w); --beside-gap: var(--hds-gap);
       grid-template-columns: minmax(0, var(--pic)) 16px minmax(var(--side-min), 1fr) var(--beside-gap) var(--beside);
@@ -117,7 +117,7 @@
   }
   .hds-tag--proposed { background: var(--c-yellow); color: var(--c-dark); }
 
-  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) and (max-width: 1023px) {
     .hero { --hds-w: clamp(76px, 23vw, 92px); --hds-h: 88px; --hds-gap: 10px; }
     .hds-in { gap: 8px; }
     .hds-name { font-size: 13px; }
@@ -136,7 +136,7 @@
     .hds-list > li { height: 100%; }
     .hds-item { width: auto; height: 100%; }
   }
-  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) and (max-width: 1023px) {
     @container beside (min-width: 200px) { .hds-head { width: 72px; } }
   }
   @media (prefers-reduced-motion: reduce) {

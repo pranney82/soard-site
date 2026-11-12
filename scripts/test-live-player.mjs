@@ -418,6 +418,20 @@ try {
   await sleep(700);
   g = await probe(page);
   ok(g.time >= 2.5 && g.time < 4.5, `a tap on the star plays from just before the reveal (${g.time?.toFixed(1)}s)`);
+  // On the star's edge, over the slider's 8px end: the slider's own move there comes after the tap and is put back
+  await page.evaluate(() => { const v = document.querySelector('video'); v.pause(); v.currentTime = 0.5; });
+  await sleep(300);
+  await page.touchscreen.tap(star.x + 11, star.y);
+  await sleep(700);
+  g = await probe(page);
+  ok(g.time >= 2.5 && g.time < 4.5, `a tap on the star's edge, at the line's end, plays from just before the reveal too (${g.time?.toFixed(1)}s)`);
+  // After the replay has ended, Jump (and the star) still go to the reveal, not back to 0:00
+  await page.evaluate(() => { const v = document.querySelector('video'); v.currentTime = v.duration - 0.2; v.play(); });
+  await page.waitForFunction(() => document.querySelector('[data-stage]')?.dataset.pstatus === 'ended', { timeout: 8000 }).catch(() => {});
+  await page.click('[data-s="jump"]');
+  await sleep(700);
+  g = await probe(page);
+  ok(g.pstatus === 'playing' && g.time >= 2.5 && g.time < 4.5, `after the end, Jump plays from just before the reveal (${g.time?.toFixed(1)}s, ${g.pstatus})`);
   feed.revealAt = 6;
 
   // A phone held sideways, a wide picture with captions on and the room's design with it: the picture keeps (nearly)
@@ -513,6 +527,31 @@ try {
   await sleep(900);
   const after = await page.evaluate(() => ({ y: Math.round(scrollY), docked: !!document.querySelector('.is-docked') }));
   ok(Math.abs(after.y - was.y) <= 90 && after.docked, `typing done: the page is where it was (${was.y} → ${after.y}) and the corner player is back`);
+
+  // A tablet held sideways, the keyboard up: still the laptop layout, the message box beside the video and in sight
+  await page.setViewport({ width: 1180, height: 820, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await open(page);
+  await waitFor(page, ['playing']); await sleep(800);
+  const tbox = await (await page.$('#msg-body')).boundingBox();
+  await page.touchscreen.tap(tbox.x + 20, tbox.y + 12);
+  await page.setViewport({ width: 1180, height: 430, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await sleep(900);
+  g = await probe(page);
+  const tf = await page.evaluate(() => { const b = document.querySelector('#msg-body').getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), w: Math.round(b.width) }; });
+  ok(g.panelBeside && !g.docked && tf.top >= 0 && tf.bottom <= g.vh && tf.w < g.vw * 0.7, `1180×430, a tablet's keyboard up: messages still beside the video, the box in sight (${tf.w} wide at ${tf.top}-${tf.bottom} of ${g.vh})`);
+  await page.evaluate(() => document.activeElement.blur());
+
+  // A laptop: the frame follows the window's height even while a text field has focus (no keyboard comes up there)
+  await page.setViewport({ width: 1440, height: 900 });
+  await open(page);
+  await waitFor(page, ['playing']); await sleep(800);
+  await page.click('#msg-body');
+  const tall = (await probe(page)).picture.h;
+  await page.setViewport({ width: 1440, height: 640 });
+  await sleep(800);
+  g = await probe(page);
+  ok(g.picture.h < tall && g.stage.b <= g.vh, `laptop, typing, window made shorter: the video follows it (${tall} → ${g.picture.h} tall, stage to ${g.stage.b} of ${g.vh})`);
+  await page.evaluate(() => document.activeElement.blur());
 
   console.log('\n▶ leave the page and come back');
   state = STATES.live; feed.shape = 'portrait';

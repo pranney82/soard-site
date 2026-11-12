@@ -380,7 +380,7 @@ const ICON = {
      one has the controls beside it with the design as a row under them. The controls keep room enough to use (a
      replay's the most); a wide picture gives way to them. Full screen is full screen ── */
   /* (PHONE, DESK and SIDE: word for word as in src/utils/live-media.ts) */
-  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 1023px) and (pointer: coarse) {
     .stage[data-party][data-orientation]:not(:fullscreen) {
       --pic: calc(var(--fh, 640px) * var(--ar));
       --side-min: max(var(--controls-min, 0px), 280px);
@@ -463,15 +463,19 @@ const ICON = {
   @media (max-height: 480px) and (max-aspect-ratio: 1749/1000), (max-height: 480px) and (max-width: 559px) {
     .stage[data-party]:not([data-pin='design']) .stage__picture.is-docked.is-pinned { visibility: hidden; }
   }
-  /* A phone held sideways: the give form runs down the right (LiveGive), so the video sits down the left beside it,
-     as tall as the screen allows */
-  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+  /* A phone held sideways: the give form runs down the right, the screen's whole height (LiveGive), so the video sits
+     down the left beside it, as tall as the screen allows; on a page the keyboard has left very short it steps aside,
+     rather than shrink to a speck */
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 1023px) and (pointer: coarse) {
     .stage[data-party]:not([data-pin='design']) .stage__picture.is-docked.is-pinned .stage__dockbar { right: auto; left: 0; }
     .stage[data-party]:not([data-pin='design']) .stage__picture.is-docked.is-pinned {
-      /* (its label sits above it: clear of the site's logo, which hangs up to 16px below the header. Its width: the screen
-         less the form and the room right of it (--give-w, --give-edge: LiveGive), its own edge and 16px between them) */
-      inset: calc(var(--header-height) + 52px) auto auto max(16px, env(safe-area-inset-left)); --mini-h: calc(100svh - var(--header-height) - 68px);
+      /* (its label sits above it. Its width: the screen less the form and the room right of it (--give-w, --give-edge:
+         LiveGive), its own edge and 16px between them) */
+      inset: calc(env(safe-area-inset-top, 0px) + 52px) auto auto max(16px, env(safe-area-inset-left)); --mini-h: calc(100svh - env(safe-area-inset-top, 0px) - 68px);
       width: min(calc(100vw - var(--give-w, 0px) - var(--give-edge, 8px) - max(16px, env(safe-area-inset-left)) - 16px), calc(var(--mini-h) * var(--ar)));
+    }
+    @media (max-height: 140px) {
+      .stage[data-party]:not([data-pin='design']) .stage__picture.is-docked.is-pinned { visibility: hidden; }
     }
   }
   .stage__picture.is-docked .stage__note-text { display: none; }
@@ -497,7 +501,7 @@ const ICON = {
   .stage__undock :global(svg) { width: 16px; height: 16px; }
   .stage__undock:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
 
-  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) and (max-width: 1023px) {
     .stage[data-party] .stage__picture.is-docked { --mini-h: 210px; }
     .stage[data-party] .stage__picture { border-radius: 16px; }
     .stage[data-party] .stage__accent { display: none; }

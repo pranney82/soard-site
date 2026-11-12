@@ -178,7 +178,7 @@
   }
   /* (Last, so it wins over the phone rules above.) A phone held sideways: the small video keeps the left side to itself and the viewer takes the rest at full height
      (above the picture, the room the video needs would leave the picture a sliver) */
-  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 1023px) and (pointer: coarse) {
     .ldv.ldv--pinned {
       --pin-w: calc(var(--ldp-h) * 0.5625);
       grid-template-columns: calc(var(--ldp-left) + var(--pin-w) + 16px) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);

@@ -375,7 +375,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .live-card--dark .live-card__text { color: rgba(254, 252, 245, 0.85); }
 
   /* (PHONE, DESK and SIDE: word for word as in src/utils/live-media.ts) */
-  @media (min-width: 961px) and (pointer: fine), (min-width: 961px) and (pointer: none), (min-width: 961px) and (min-height: 541px), (min-width: 961px) and (max-aspect-ratio: 1749/1000) {
+  @media (min-width: 961px) and (pointer: fine), (min-width: 961px) and (pointer: none), (min-width: 961px) and (min-height: 541px), (min-width: 961px) and (max-aspect-ratio: 1749/1000), (min-width: 1024px) {
     /* A portrait stage sits in an auto-sized column, where a percentage width has nothing to
        resolve against (desktop only: on phones the column is the screen width, and 100% is right) */
     .hero[data-party][data-orientation='portrait'] .hero-frame { --stage-max: 100vw; }
@@ -383,7 +383,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     .hero[data-party] .hero-text { display: flex; flex-direction: column; min-height: 0; }
     .hero[data-party] .hero-party:not([hidden]) { flex: 1 1 0; display: flex; flex-direction: column; }
   }
-  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) {
+  @media (max-width: 960px), (pointer: coarse) and (min-aspect-ratio: 7/4) and (max-height: 540px) and (max-width: 1023px) {
     .hero-inner, .hero[data-party] .hero-inner, .hero[data-party][data-orientation='landscape'] .hero-inner { grid-template-columns: minmax(0, 1fr); gap: 40px; text-align: center; }
     .hero-lead, .hero-status { margin-inline: auto; }
     .hero-ctas { justify-content: center; }
@@ -414,7 +414,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   }
   /* A phone held sideways: the kid's name a size smaller, and the frame as tall as what's left, since the stage puts
      its controls and the design beside the picture there (LiveStage) */
-  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (pointer: coarse) {
+  @media (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 960px), (min-aspect-ratio: 7/4) and (max-height: 540px) and (min-width: 560px) and (max-width: 1023px) and (pointer: coarse) {
     .hero[data-party] .hero-text h1 { font-size: 1.1rem; margin-bottom: 6px; }
     .hero[data-party] .hero-frame { --fh: calc(var(--live-vh, 100svh) - var(--header-height) - 12px - 1.4rem - 6px - 14px); }
     /* Clear of the notch and the rounded corners on the side they're on (the page is drawn to the screen's edges) */
@@ -1062,11 +1062,14 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     vhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100svh;visibility:hidden;pointer-events:none';
     document.body.append(vhProbe);
     const root = document.documentElement;
+    // Typing on a touch screen, where an on-screen keyboard comes up (on a laptop the window's own height always counts)
+    const touch = matchMedia('(pointer: coarse)');
+    const typingNow = () => touch.matches && typingIn(document.activeElement);
     let heldW = 0;
     // The full height for each width seen while nobody was typing: a turn mid-typing (keyboard still up) holds again
     // at the height that width really has, once it's known
     const fullH = new Map<number, number>();
-    const noteFull = () => { if (!typingIn(document.activeElement)) fullH.set(innerWidth, vhProbe.getBoundingClientRect().height); };
+    const noteFull = () => { if (!typingNow()) fullH.set(innerWidth, vhProbe.getBoundingClientRect().height); };
     noteFull();
     let heldH = 0;
     let goTimer = 0;
@@ -1083,21 +1086,21 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     // nothing to type in lets go after a second
     const keyboardUp = () => innerWidth === heldW && vhProbe.getBoundingClientRect().height < heldH - 1;
     const doneTyping = () => {
-      if (!heldW || typingIn(document.activeElement)) return;
+      if (!heldW || typingNow()) return;
       if (!keyboardUp()) { letGo(); return; }
       clearTimeout(goTimer);
-      goTimer = window.setTimeout(() => { if (!typingIn(document.activeElement)) letGo(); }, 1000);
+      goTimer = window.setTimeout(() => { if (!typingNow()) letGo(); }, 1000);
     };
     // (the first height holds while focus moves from field to field: by the second, the keyboard may already be up)
     const onFocusIn = (e: FocusEvent) => {
-      if (!typingIn(e.target as Element)) return;
+      if (!touch.matches || !typingIn(e.target as Element)) return;
       clearTimeout(goTimer);
       if (!heldW) holdHeight();
     };
     const onFocusOut = () => { requestAnimationFrame(doneTyping); };
     // (and the field being typed in stays in sight when the page shrinks under it, whatever the browser does itself)
     const onWidth = () => {
-      const typing = typingIn(document.activeElement);
+      const typing = typingNow();
       if (!typing) {
         // (the keyboard on its way down: what the page is now isn't its full height yet)
         if (heldW) { doneTyping(); if (heldW) return; }

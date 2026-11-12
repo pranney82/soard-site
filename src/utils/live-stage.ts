@@ -425,8 +425,11 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   let seeking = false;
   // A tap on the reveal's star plays from the reveal, exactly, as Jump to the reveal does: the star is drawn on the
   // line and the line takes the tap, which on its own would land wherever on the star the finger did (on a short line,
-  // a minute or more either side). A press that moves is a drag, star or not
+  // a minute or more either side). A press that moves is a drag, star or not. It jumps when the finger lifts; the
+  // slider's own move to where the finger was, which for a tap in its 8px end comes after the lift, is put back
+  // (starTapped: until the next press or key, the only things that move the slider)
   let press: { x: number; y: number; star: boolean } | null = null;
+  let starTapped = false;
   const onStar = (e: PointerEvent) => {
     const m = $('mark');
     if (!m || m.hidden) return false;
@@ -434,19 +437,20 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     // (its 3px white ring included)
     return Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)) <= r.width / 2 + 3;
   };
-  seek?.addEventListener('pointerdown', (e) => { press = { x: e.clientX, y: e.clientY, star: onStar(e) }; });
+  seek?.addEventListener('pointerdown', (e) => { starTapped = false; press = { x: e.clientX, y: e.clientY, star: onStar(e) }; });
   seek?.addEventListener('pointermove', (e) => { if (press?.star && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 6) press.star = false; });
   seek?.addEventListener('pointercancel', () => { press = null; });
   seek?.addEventListener('pointerup', () => {
     const star = press?.star;
     press = null;
-    if (star) { seeking = false; jumpToReveal(); }
+    if (star) { starTapped = true; seeking = false; jumpToReveal(); }
   });
+  seek?.addEventListener('keydown', () => { press = null; starTapped = false; });
   seek?.addEventListener('input', () => {
     const v = video();
-    if (!v || !Number.isFinite(v.duration)) return;
-    // (a tap on the star goes to the reveal when it lifts, not first to where it touched)
-    if (press?.star) return;
+    if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return;
+    // (a tap on the star goes to the reveal, never first to where it touched: the handle stays where the video is)
+    if (press?.star || starTapped) { seek.value = String(Math.round((v.currentTime / v.duration) * 1000)); return; }
     seeking = true;
     v.currentTime = (Number(seek.value) / 1000) * v.duration;
   });
@@ -537,6 +541,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   const onTypingOut = () => requestAnimationFrame(onTyping);
   document.addEventListener('focusin', onTyping);
   document.addEventListener('focusout', onTypingOut);
+  phone.addEventListener('change', onTyping);
   let io: IntersectionObserver | null = null;
   if (screen && 'IntersectionObserver' in window) {
     io = new IntersectionObserver(([e]) => {
@@ -634,6 +639,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
       document.removeEventListener('fullscreenchange', onFullscreen);
       document.removeEventListener('focusin', onTyping);
       document.removeEventListener('focusout', onTypingOut);
+      phone.removeEventListener('change', onTyping);
       removeEventListener('resize', refit);
       fitWatch.disconnect();
       roomProbe.remove();
