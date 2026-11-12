@@ -9,7 +9,8 @@
  * Peter gets an email at 80% of a month's allowance and when it runs out (once each, each month).
  *
  * Google's terms shape what we do with the answers: its places and coordinates are never drawn on our
- * own map (the service-area map and its check stay on the Census, ./_geo.js), nothing it returns is
+ * own map or used to decide whether a home is inside the area (its terms forbid that; Esri and the
+ * Census find the house for the check, ./_geo.js), nothing it returns is
  * kept except the address a family picks (theirs), and wherever its results show, "Google Maps" is
  * credited beside them.
  */

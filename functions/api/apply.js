@@ -7,7 +7,7 @@
  *   start      { year, turnstileToken?, website, renew? } → { token }  new draft (renew: the expired draft its page had, instead of the quick check)
  *   resume     { token }                            → the draft's answers, files, page, last area check
  *   area       { token, address }                   → where the home sits against the service area
- *                                                     (Census; signed-in staff may leave out the token
+ *                                                     (Esri, else the Census; signed-in staff may leave out the token
  *                                                     to try it in a preview)
  *   save       { token, answers, page }             → saves the whole answer set
  *   email-link { token, email? }                    → emails a resume link
@@ -122,7 +122,7 @@ export function publicArea(a) {
   return {
     band: a.band || 'unknown', answer: AREA_VALUES[a.band] || null, miles: a.miles ?? null, edgeMiles: a.edgeMiles ?? null,
     nearMiles: a.nearMiles ?? null, lat: a.lat ?? null, lng: a.lng ?? null, county: a.county || null, matched: a.matched || null,
-    ...(a.reason ? { reason: a.reason } : {}),
+    ...(a.source ? { source: a.source } : {}), ...(a.reason ? { reason: a.reason } : {}),
   };
 }
 

@@ -13,8 +13,9 @@
  * It saves to /api/apply as they go (a draft keyed by a token kept in
  * localStorage and in the emailed resume link), suggests addresses as they
  * type the home address and places it on the service-area map (the server
- * asks the Census; the answer it gives is the service-area answer, and the
- * family only answers that themselves when the address can't be found),
+ * finds that house with Esri, else the Census, never changing the address;
+ * the answer it gives is the service-area answer, and the family only
+ * answers that themselves when no one has the house),
  * uploads photos (resized here to JPEG) and the video
  * (straight to Cloudflare Stream over tus, resumable; on a computer it can
  * also record one with the camera), shows a review page, and submits.
@@ -3870,7 +3871,7 @@ function init(root, cfg, mode) {
       area.tries = areaFailed() ? (again && was?.key === key ? area.tries + 1 : 1) : 0;
       if (areaFailed() && navigator.onLine && area.tries <= 3) area.again = setTimeout(areaAgain, 5000 * 3 ** (area.tries - 1));
       area.retrying = false;
-      // The Census's county is the one JobTread should get: fill it unless the family picked one themselves
+      // The county of the house found is the one JobTread should get: fill it unless the family picked one themselves
       if (areaNow.county && homeAddressId()) {
         const county = readAnswers().county;
         if (!county || countyNote) fillCounty(areaNow.county, fieldEl(homeAddressId()));
@@ -3884,26 +3885,14 @@ function init(root, cfg, mode) {
     return area.pending;
   }
 
-  /** "123 MAIN ST, MARIETTA, GA, 30060" → "123 Main St, Marietta, GA 30060" */
   /**
-   * What the check found, in the family's own words while it's their house (same number, same ZIP): the
-   * map service writes "Holcomb Wood Pkwy" for the Woods they picked, and leaves out the apartment
+   * The home the check placed: always the address the family entered, word for word. The server keeps a
+   * place only when it's that same house (the same number on the same street), so there's never another
+   * address to show them
    */
   function foundAddress() {
     const a = homeAddressNow() || {};
-    const m = String(areaNow?.matched || '');
-    const no = (x) => (String(x || '').match(/^\s*(\d+)/) || [])[1];
-    const zip = (x) => (String(x || '').match(/\b(\d{5})(?:-\d{4})?\s*$/) || [])[1];
-    const theirs = no(a.line1) && no(a.line1) === no(m) && (!zip(m) || !zip(a.zip) || zip(m) === zip(a.zip));
-    return theirs ? [a.line1, a.line2, a.city, [a.state, zip(a.zip)].filter(Boolean).join(' ')].filter(Boolean).join(', ') : prettyAddress(m);
-  }
-  function prettyAddress(s) {
-    const parts = String(s || '').split(/\s*,\s*/).filter(Boolean);
-    if (parts.length < 3) return String(s || '');
-    const word = (w) => (/^(N|S|E|W|NE|NW|SE|SW)$/i.test(w) ? w.toUpperCase() : w.replace(/^(\w)(.*)$/, (m, a, b) => a.toUpperCase() + b.toLowerCase()));
-    const zip = /^\d{5}/.test(parts[parts.length - 1]) ? parts.pop() : '';
-    const state = parts.pop().toUpperCase();
-    return `${parts.map(p => p.split(/\s+/).map(word).join(' ')).join(', ')}, ${state}${zip ? ` ${zip}` : ''}`;
+    return [a.line1, a.line2, a.city, [a.state, String(a.zip || '').slice(0, 5)].filter(Boolean).join(' ')].filter(Boolean).join(', ');
   }
   const milesText = (m) => (m == null ? '' : m >= 10 ? String(Math.round(m)) : String(Math.max(0.1, Math.round(m * 10) / 10)));
   const AREA_ICONS = {
@@ -3947,9 +3936,9 @@ function init(root, cfg, mode) {
     const was = box.dataset.area;
     box.dataset.area = st;
     if (st !== 'checking') {
-      const home = placed && placed.lat != null ? { lat: placed.lat, lng: placed.lng, miles: placed.miles, band: placed.band } : null;
+      const home = placed && placed.lat != null ? { lat: placed.lat, lng: placed.lng, miles: placed.miles, band: placed.band, source: placed.source || null } : null;
       const mapEl = box.querySelector('[data-area-map]');
-      const sig = JSON.stringify([home?.lat, home?.lng, lang, form.serviceArea?.polygon]);
+      const sig = JSON.stringify([home?.lat, home?.lng, home?.source, lang, form.serviceArea?.polygon]);
       if (mapEl.dataset.sig !== sig) {
         mapEl.innerHTML = areaMapHtml(form.serviceArea, home, mapWords(lang, !!home, kind));
         mapEl.dataset.sig = sig;

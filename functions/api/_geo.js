@@ -1,21 +1,27 @@
 /**
  * Where is this home? (service-area check)
  * ===========================================================================
- * The U.S. Census Bureau's geocoder turns a street address into a map point
- * and its county: free, no key, U.S. addresses only. The point is then placed
- * against the service area (Admin → Applications → Settings → Service area):
- * inside it, close to it (within the "close" distance) or farther out
- * (../../public/admin/area-shared.js holds the geometry).
+ * The family enters their address (Google's suggestions and the Postal Service's check make it a real
+ * one); this only finds where that house is, and never changes the address. The house is then placed
+ * against the service area (Admin → Applications → Settings → Service area): inside it, close to it
+ * (within the "close" distance) or farther out (../../public/admin/area-shared.js holds the geometry).
  *
- * The application asks this as the family types their address (POST /api/apply
- * action 'area'), so the form answers the service-area question itself, and
- * checks it again on submit. Intake runs it once more for staff when the form
- * didn't (an application made before the check existed).
+ * Who's asked, in order, and only for the house typed (the same number on the same street; anything
+ * else is no answer, never a stand-in):
+ *   1. Esri, when SOARD's credentials are set (./_esri.js): it has the houses
+ *   2. the U.S. Census Bureau's geocoder: free, but it misses newer streets
+ *   3. OpenStreetMap: only where it has the house itself
+ * Google isn't one: its terms forbid using its places to decide whether a home is inside an area.
+ * When none has the house, the family answers the question themselves and staff are told.
+ *
+ * The application asks this as the family types their address (POST /api/apply action 'area'), so the
+ * form answers the service-area question itself, and checks it again on submit. Intake runs it once
+ * more for staff when the form didn't (an application made before the check existed).
  */
 
-import { insidePolygon, milesToEdge, placeHome, areaRules, cleanCorners, NEAR_MILES } from '../../public/admin/area-shared.js';
+import { insidePolygon, milesToEdge, placeHome, areaRules, cleanCorners, NEAR_MILES, sameHouse, streetKey } from '../../public/admin/area-shared.js';
 
-export { insidePolygon, milesToEdge };
+export { insidePolygon, milesToEdge, sameHouse };
 
 const CENSUS = 'https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress';
 // OpenStreetMap's search (the same Photon that suggests addresses as families type, ./_address.js)
@@ -23,23 +29,26 @@ const PHOTON = 'https://photon.komoot.io/api/';
 const UA = 'SunshineOnARanneyDay-application/1.0 (sunshineonaranneyday.com)';
 
 /**
- * { lat, lng, county, matched } for a one-line address, or null when it can't be placed. The
- * Census first; it has outages (a 502 after ten seconds, for hours), so when it can't be asked,
- * OpenStreetMap places the home instead. Throws only when neither can place it.
+ * { lat, lng, county, matched, source } for a one-line address, or null when no one asked has that house.
+ * `esri` is ./_esri.js's lookup (null without credentials). Throws only when no one could be asked (the
+ * check is tried again later), never because a house wasn't found.
  */
-export async function geocode(address, fetchImpl = fetch) {
+export async function geocode(address, fetchImpl = fetch, { esri = null } = {}) {
   const q = String(address || '').trim();
   if (!q) return null;
-  try {
-    const g = await censusGeocode(q, fetchImpl);
-    if (g) return g;
-    // The Census doesn't know it (a new home, a newer street): OpenStreetMap, but only where it has the house itself
-    return await osmGeocode(q, fetchImpl, { houseOnly: true }).catch(() => null);
-  } catch (e) {
-    const alt = await osmGeocode(q, fetchImpl).catch(() => null);
-    if (alt) return alt;
-    throw e;
+  let failed = null;
+  let answered = false; // Esri or the Census said they don't have it (OpenStreetMap's maps are too patchy for its "no" to count)
+  const asks = [[esri, true], [(x) => censusGeocode(x, fetchImpl), true], [(x) => osmGeocode(x, fetchImpl), false]];
+  for (const [ask, full] of asks) {
+    if (!ask) continue;
+    try {
+      const g = await ask(q);
+      if (g) return g;
+      if (full) answered = true;
+    } catch (e) { failed ||= e; }
   }
+  if (!answered && failed) throw failed;
+  return null;
 }
 
 async function censusGeocode(q, fetchImpl) {
@@ -47,27 +56,23 @@ async function censusGeocode(q, fetchImpl) {
   const res = await fetchImpl(url, { signal: AbortSignal.timeout(6000), headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`Census geocoder returned ${res.status}`);
   const data = await res.json();
-  const m = data?.result?.addressMatches?.[0];
-  if (!m?.coordinates) return null;
+  // The Census answers with its nearest guess when it doesn't know a street ("420 Cooper Rd" for 420 Copper Ridge Dr,
+  // ten miles off): only the house that was typed counts
+  const typed = q.split(',')[0];
+  const m = (data?.result?.addressMatches || []).find(x => x?.coordinates && sameHouse(typed, String(x.matchedAddress || '').split(',')[0]));
+  if (!m) return null;
   const county = m.geographies?.Counties?.[0]?.BASENAME || (m.geographies?.Counties?.[0]?.NAME || '').replace(/ County$/, '') || null;
-  return { lat: Number(m.coordinates.y), lng: Number(m.coordinates.x), county, matched: m.matchedAddress || null };
+  return { lat: Number(m.coordinates.y), lng: Number(m.coordinates.x), county, matched: m.matchedAddress || null, source: 'census' };
 }
 
-// "Lawrence Street Northeast" and "Lawrence St NE" are the same street
-const WORDS = {
-  street: 'st', avenue: 'ave', road: 'rd', drive: 'dr', lane: 'ln', court: 'ct', circle: 'cir', boulevard: 'blvd', parkway: 'pkwy',
-  place: 'pl', trail: 'trl', highway: 'hwy', terrace: 'ter', northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw',
-  north: 'n', south: 's', east: 'e', west: 'w',
-};
-const streetKey = (s) => String(s || '').toLowerCase().replace(/[.,#]/g, ' ').split(/\s+/).filter(Boolean).map(w => WORDS[w] || w).join(' ');
+
 
 /**
- * The same from OpenStreetMap, for a Census outage: the home itself where it's mapped, else a place
- * on the same street in the same ZIP or town (close enough to put it on the service-area map). With
- * `houseOnly` (the Census answered, but doesn't know this address) only the home itself.
- * null when nothing on that street turns up. `address` is addressText's "line1[, line2], City, ST 12345".
+ * The same from OpenStreetMap: only where it has the house itself (the same number on the same street,
+ * in the same ZIP or town), never a neighbor or the street. null when it doesn't.
+ * `address` is addressText's "line1[, line2], City, ST 12345".
  */
-async function osmGeocode(address, fetchImpl, { houseOnly = false } = {}) {
+async function osmGeocode(address, fetchImpl) {
   const parts = address.split(',').map(s => s.trim()).filter(Boolean);
   const m = /^(\d+[a-z]?)\s+(.+)$/i.exec(parts[0] || '');
   if (!m || parts.length < 3) return null;
@@ -88,14 +93,14 @@ async function osmGeocode(address, fetchImpl, { houseOnly = false } = {}) {
   const near = (p) => (zip && String(p.postcode || '').slice(0, 5) === zip)
     || [p.city, p.town, p.village, p.district].some(c => c && String(c).toLowerCase() === city.toLowerCase());
   const found = (data.features || []).filter(f => f?.geometry?.coordinates?.length === 2 && (!f.properties?.countrycode || f.properties.countrycode === 'US'));
-  const home = found.find(f => onStreet(f.properties) && near(f.properties) && String(f.properties.housenumber || '').toLowerCase() === m[1].toLowerCase());
-  const best = home || (houseOnly ? null : found.find(f => onStreet(f.properties) && near(f.properties)));
+  const best = found.find(f => onStreet(f.properties) && near(f.properties) && String(f.properties.housenumber || '').toLowerCase() === m[1].toLowerCase());
   if (!best) return null;
   const [lng, lat] = best.geometry.coordinates.map(Number);
   return {
     lat, lng,
     county: String(best.properties.county || '').replace(/ County$/, '') || null,
     matched: [parts[0], city, state, zip].filter(Boolean).join(', ').toUpperCase(),
+    source: 'openstreetmap',
   };
 }
 
@@ -116,23 +121,27 @@ export function checkableAddress(a) {
 }
 
 /**
- * The full check for an address against the area ({ polygon, nearMiles } or
- * just the corners):
+ * The full check for an address against the area ({ polygon, nearMiles } or just the corners):
  * { status: 'inside' | 'outside' | 'unknown', band: 'inside' | 'near' | 'far' | 'unknown',
- *   miles?, edgeMiles?, nearMiles?, lat?, lng?, county?, matched?, reason?, error? }
- * reason is 'no-match' (the Census doesn't know the address) or 'error' (it
- * couldn't be asked); either way the family answers for themselves.
+ *   miles?, edgeMiles?, nearMiles?, lat?, lng?, county?, matched?, source?, accuracy?, reason?, error? }
+ * reason is 'no-match' (no one asked has the house) or 'error' (no one could be asked); either way the
+ * family answers for themselves. `esri`: ./_esri.js's esriLocator(env), when the caller has it.
  */
-export async function checkServiceArea(address, area, fetchImpl = fetch) {
+export async function checkServiceArea(address, area, fetchImpl = fetch, { esri = null } = {}) {
   const rules = Array.isArray(area) ? { polygon: cleanCorners(area), nearMiles: NEAR_MILES } : areaRules(area);
   try {
-    const g = await geocode(address, fetchImpl);
-    if (!g) return { status: 'unknown', band: 'unknown', reason: 'no-match', error: 'The Census couldn’t find this address.' };
+    const g = await geocode(address, fetchImpl, { esri });
+    if (!g) return { status: 'unknown', band: 'unknown', reason: 'no-match', error: 'The address lookup couldn’t find this house.', ...(esri ? { withEsri: true } : {}) };
     const p = placeHome(g.lat, g.lng, rules);
     return { status: p.band === 'inside' ? 'inside' : p.band === 'unknown' ? 'unknown' : 'outside', band: p.band, miles: p.miles, edgeMiles: p.edgeMiles, nearMiles: rules.nearMiles, ...g };
   } catch (e) {
     return { status: 'unknown', band: 'unknown', reason: 'error', error: e.message };
   }
+}
+
+/** Who found the house, in a sentence: "Esri", "the Census", "OpenStreetMap" (older checks: the Census) */
+export function sourceName(area) {
+  return { esri: 'Esri', census: 'the Census', openstreetmap: 'OpenStreetMap' }[area?.source] || 'the Census';
 }
 
 /** The band of a stored check (older checks only said inside / outside) */

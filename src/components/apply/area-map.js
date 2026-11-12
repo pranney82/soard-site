@@ -51,7 +51,7 @@ function viewFor(polygon, home) {
 }
 
 /**
- * The map as HTML. area: { polygon }, home: { lat, lng, miles?, band } | null,
+ * The map as HTML. area: { polygon }, home: { lat, lng, miles?, band, source? } | null,
  * words: { label, homeLabel, legendArea, legendHome, away } (in the page's language).
  */
 export function areaMapHtml(area, home, words = {}) {
@@ -107,7 +107,9 @@ export function areaMapHtml(area, home, words = {}) {
   }
 
   const legend = `<span class="af-map-key"><span class="af-map-key-area" aria-hidden="true"></span>${esc(words.legendArea || 'Our service area')}</span>${hasHome && v.homeInView ? `<span class="af-map-key"><span class="af-map-key-pin" aria-hidden="true"></span>${esc(words.legendHome || 'The home you entered')}</span>` : ''}`;
-  return `<div class="af-map-frame" style="aspect-ratio:${W} / ${v.h};--r:${(W / v.h).toFixed(3)}" role="img" aria-label="${esc(words.label || '')}">${svg}<div class="af-map-labels" aria-hidden="true">${counts}${towns}${pin}</div></div><p class="af-map-legend" aria-hidden="true">${legend}</p>`;
+  // Esri found the home: its credit on the map, where map credits sit (its terms ask for it wherever its answer shows)
+  const credit = hasHome && home.source === 'esri' ? '<span class="af-map-credit" translate="no">Powered by Esri</span>' : '';
+  return `<div class="af-map-frame" style="aspect-ratio:${W} / ${v.h};--r:${(W / v.h).toFixed(3)}" role="img" aria-label="${esc(words.label || '')}">${svg}<div class="af-map-labels" aria-hidden="true">${counts}${towns}${pin}</div>${credit}</div><p class="af-map-legend" aria-hidden="true">${legend}</p>`;
 }
 
 /**

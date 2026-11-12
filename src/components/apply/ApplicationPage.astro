@@ -1177,6 +1177,8 @@ const breadcrumbs = [
   html.af-focus .af-place[data-tight] .af-map-legend { display: none; }
   html.af-focus .af-place[data-split][data-nomap] .af-map { display: none; }
   .af-map-key { display: inline-flex; align-items: center; gap: 8px; }
+  /* Esri's credit when it found the home: in the map's corner, above the names, readable on any map */
+  .af-map-credit { position: absolute; right: 4px; bottom: 4px; z-index: 3; padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,.86); font: 400 12px/1.4 var(--font-body), sans-serif; color: #4A4B4F; letter-spacing: normal; text-transform: none; white-space: nowrap; pointer-events: none; }
   .af-map-key-area { width: 18px; height: 12px; border-radius: 3px; background: rgba(255,218,36,.55); box-shadow: inset 0 0 0 1.5px var(--c-dark); }
   .af-map-key-pin { width: 12px; height: 12px; border-radius: 50%; background: var(--c-yellow); border: 4px solid var(--c-dark); }
   .af-area-result { min-height: 24px; }

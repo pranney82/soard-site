@@ -47,7 +47,8 @@ import { readApplicant, sendIntake, ensureCommsSchema, ensureCommunityProjectTyp
 import { formFor, ensureFormSchema, getLiveForm } from './_application-forms.js';
 import { spanishToDo, catchUpSpanish } from './_translate.js';
 import { isUpload, isInput, answerText, progressPercent, renderMessage, choice, AREA_VALUES, kindOf, isOrganizationKind, rolesFor } from './_application-form.js';
-import { checkServiceArea, areaText, addressKey, checkableAddress, bandOf } from './_geo.js';
+import { checkServiceArea, areaText, addressKey, checkableAddress, bandOf, sameHouse, sourceName } from './_geo.js';
+import { esriLocator, esriOn } from './_esri.js';
 import { placeHome } from '../../public/admin/area-shared.js';
 import { maybeSyncApplicants, familiesWithHomes } from './_applicants.js';
 import { runJotformBackfill, jotformSecondLook } from './_jotform-backfill.js';
@@ -578,11 +579,13 @@ export function areaFieldOf(form) {
 export function placedArea(check, address, area) {
   if (!check || check.lat == null || check.lng == null || !area?.polygon) return null;
   if (check.key !== addressKey(address)) return null;
+  // Kept before only the house entered counted ("420 Cooper Rd" for 420 Copper Ridge Dr): looked up again
+  if (check.matched && !sameHouse(address?.line1, String(check.matched).split(',')[0])) return null;
   const p = placeHome(check.lat, check.lng, area);
   return p.band === 'unknown' ? null : { ...check, ...p, nearMiles: area.nearMiles };
 }
 
-export const MAX_AREA_CHECKS = 40; // Census lookups per draft (a family retyping their address a few times uses a handful)
+export const MAX_AREA_CHECKS = 40; // address lookups per draft (a family retyping their address a few times uses a handful)
 
 /**
  * Check a home address against the service area, for a draft (stored on it)
@@ -597,16 +600,17 @@ export async function areaCheck(env, form, address, { draft = null, fetchImpl = 
   if (!key || !checkableAddress(address)) return { key, band: 'unknown', reason: 'incomplete' };
   const known = placedArea(draft?.area, address, area);
   if (known) return known;
-  // The Census didn't know this exact address before: it won't now either
-  if (draft?.area?.key === key && draft.area.reason === 'no-match') return draft.area;
+  // No one had this house before: they won't now either (unless Esri, which has the most, wasn't asked then)
+  if (draft?.area?.key === key && draft.area.reason === 'no-match' && (draft.area.withEsri || !esriOn(env))) return draft.area;
   if (draft && (Number(draft.area_checks) || 0) >= MAX_AREA_CHECKS) return { key, band: 'unknown', reason: 'limit' };
-  const r = await checkServiceArea(addressText(address), area, fetchImpl);
+  const r = await checkServiceArea(addressText(address), area, fetchImpl, { esri: esriLocator(env, fetchImpl) });
   const out = {
     key, band: r.band, miles: r.miles ?? null, edgeMiles: r.edgeMiles ?? null, nearMiles: area.nearMiles,
     lat: r.lat ?? null, lng: r.lng ?? null, county: r.county ?? null, matched: r.matched ?? null,
+    ...(r.source ? { source: r.source } : {}), ...(r.accuracy ? { accuracy: r.accuracy } : {}), ...(r.withEsri ? { withEsri: true } : {}),
     ...(r.reason ? { reason: r.reason } : {}), at: iso(now),
   };
-  // Trouble reaching the Census isn't kept: the next save or the submit asks again
+  // Trouble reaching the lookups isn't kept: the next save or the submit asks again
   if (draft && env.DB && r.reason !== 'error') {
     await env.DB.prepare('UPDATE application_drafts SET area = ?, area_checks = COALESCE(area_checks, 0) + 1 WHERE id = ?').bind(JSON.stringify(out), draft.id).run();
     draft.area = out;
@@ -992,7 +996,7 @@ export function staffEmail(app, accountId) {
     : area.status === 'inside' ? `${pill(area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside', TONES.green)}`
     : area.status === 'outside' ? `${pill(`About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ', close' : ''}`, TONES.amber)}`
     : `${pill('Couldn’t check the address', TONES.amber)}`;
-  const countyClash = area?.county && a.county && area.county !== a.county ? ` <span class="muted" style="color:${mail.MUTED};">The Census says ${esc(area.county)} County.</span>` : '';
+  const countyClash = area?.county && a.county && area.county !== a.county ? ` <span class="muted" style="color:${mail.MUTED};">${esc(sourceName(area).replace(/^the /, 'The '))} says ${esc(area.county)} County.</span>` : '';
   const repeatHtml = repeats.length
     ? `${pill('Possible repeat', TONES.amber)} ${esc(repeats.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}${m.status ? `, ${m.status}` : ''}`).join('; '))}`
     : a.previouslyApplied === 'Yes' ? 'The family says yes; no match found' : 'No';
@@ -1047,7 +1051,7 @@ export function staffSlack(app, accountId) {
     : area.status === 'inside' ? (area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside')
     : area.status === 'outside' ? `⚠️ About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ' (close)' : ''}`
     : '⚠️ Couldn’t check the address';
-  const countyClash = area?.county && a.county && area.county !== a.county ? ` (the Census says ${area.county} County)` : '';
+  const countyClash = area?.county && a.county && area.county !== a.county ? ` (${sourceName(area)} says ${area.county} County)` : '';
   return slackCard({
     icon: '📝',
     title: `New application: ${who}`,
@@ -1099,7 +1103,7 @@ function orgStaffEmail(app, accountId) {
   const repeats = s.repeat?.matches || [];
   const photos = Object.keys(app.files || {}).filter((k) => k !== 'video' && app.files[k]?.key).length;
   const { pill, TONES, esc } = mail;
-  const countyClash = area?.county && a.county && area.county !== a.county ? ` <span class="muted" style="color:${mail.MUTED};">The Census says ${esc(area.county)} County.</span>` : '';
+  const countyClash = area?.county && a.county && area.county !== a.county ? ` <span class="muted" style="color:${mail.MUTED};">${esc(sourceName(area).replace(/^the /, 'The '))} says ${esc(area.county)} County.</span>` : '';
   const kindText = a.orgType === 'Something else' && a.orgTypeOther ? a.orgTypeOther : a.orgType;
   const contact = [nameText(a.contactName), a.contactTitle, a.contactEmail].filter(Boolean);
   const rows = [
@@ -1143,7 +1147,7 @@ function orgStaffSlack(app, accountId) {
   const photos = Object.keys(app.files || {}).filter((k) => k !== 'video' && app.files[k]?.key).length;
   const area = s.area;
   const county = countyOf(app);
-  const countyClash = area?.county && a.county && area.county !== a.county ? ` (the Census says ${area.county} County)` : '';
+  const countyClash = area?.county && a.county && area.county !== a.county ? ` (${sourceName(area)} says ${area.county} County)` : '';
   return slackCard({
     icon: '🏫',
     title: `New community project application: ${org}`,
@@ -1391,16 +1395,18 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
   // Neither it nor the repeat check ever holds the application up: a failure is noted and left
   await step('service area', async () => {
     if (s.area) return;
-    // The form placed the home as the family typed it (and again on submit): use that, else ask the Census now
+    // The form placed the home as the family typed it (and again on submit): use that, else look it up now.
+    // Only a check of the house entered counts (one kept before that rule could be another street's)
     const fa = s.formArea;
-    const fromForm = fa && fa.lat != null && fa.key === addressKey(app.answers.address);
+    const fromForm = fa && fa.lat != null && fa.key === addressKey(app.answers.address)
+      && (!fa.matched || sameHouse(app.answers.address?.line1, String(fa.matched).split(',')[0]));
     s.area = fromForm
-      ? { status: fa.band === 'inside' ? 'inside' : 'outside', band: fa.band, miles: fa.miles, edgeMiles: fa.edgeMiles, nearMiles: fa.nearMiles, lat: fa.lat, lng: fa.lng, county: fa.county, matched: fa.matched, from: 'form' }
-      : await checkServiceArea(addressText(app.answers.address), form.serviceArea, fetchImpl);
+      ? { status: fa.band === 'inside' ? 'inside' : 'outside', band: fa.band, miles: fa.miles, edgeMiles: fa.edgeMiles, nearMiles: fa.nearMiles, lat: fa.lat, lng: fa.lng, county: fa.county, matched: fa.matched, ...(fa.source ? { source: fa.source } : {}), from: 'form' }
+      : await checkServiceArea(addressText(app.answers.address), form.serviceArea, fetchImpl, { esri: esriLocator(env, fetchImpl) });
     if (s.area.status !== 'inside' || (s.area.county && app.answers.county && s.area.county !== app.answers.county)) {
       const lines = [areaText(s.area)];
-      if (s.area.matched) lines.push(`The Census matched it to: ${s.area.matched}`);
-      if (s.area.county && app.answers.county && s.area.county !== app.answers.county) lines.push(`The family picked ${app.answers.county} County; the Census says ${s.area.county} County.`);
+      if (s.area.matched) lines.push(`Found by ${sourceName(s.area)}: ${s.area.matched}`);
+      if (s.area.county && app.answers.county && s.area.county !== app.answers.county) lines.push(`The family picked ${app.answers.county} County; ${sourceName(s.area)} says ${s.area.county} County.`);
       const field = areaFieldOf(form) || { type: 'radio', options: [] };
       const said = answerText(field, app.answers.boundary, true);
       lines.push(fromForm ? 'The form placed the home from its address as the family typed it, so they didn’t answer this themselves.' : `The family's answer: ${said || 'not given'}`);
@@ -2086,7 +2092,7 @@ function areaInsights(form, real, gone) {
     near: count('near'),
     far: count('far'),
     notFound: checks.filter(x => x.a.band === 'unknown' && x.a.reason === 'no-match').length,
-    // Not placed for another reason: the address wasn't finished, the Census didn't answer, too many tries
+    // Not placed for another reason: the address wasn't finished, the lookups didn't answer, too many tries
     notChecked: checks.filter(x => x.a.band === 'unknown' && x.a.reason !== 'no-match').length,
     steps,
     farDid: {

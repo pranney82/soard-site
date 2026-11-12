@@ -65,6 +65,7 @@ import {
   restoreFormVersion, listFormVersions, diffForm, getFormRules, saveFormRules, pickRules, areaHistory,
 } from './_application-forms.js';
 import { checkServiceArea, areaText } from './_geo.js';
+import { esriLocator } from './_esri.js';
 import { translateStrings, catchUpSpanish } from './_translate.js';
 import { jobtreadFields } from './_jobtread-fields.js';
 import { recentEvents } from './_applicant-comms.js';
@@ -327,7 +328,7 @@ export async function onRequestPost(context) {
     const live = (await formFor(env.DB, { year: '2027' })).serviceArea;
     const polygon = Array.isArray(body.polygon) && body.polygon.length >= 3 ? body.polygon : live.polygon;
     const nearMiles = body.nearMiles != null ? body.nearMiles : live.nearMiles;
-    const area = await checkServiceArea(String(body.areaTest).slice(0, 300), { polygon, nearMiles });
+    const area = await checkServiceArea(String(body.areaTest).slice(0, 300), { polygon, nearMiles }, fetch, { esri: esriLocator(env) });
     return Response.json({ success: true, area, text: areaText(area) });
   }
   if (body.deleteApp) {

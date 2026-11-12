@@ -160,3 +160,53 @@ export function nearRing(polygon, miles, steps = 144) {
   }
   return ring;
 }
+
+// ── Is it the same house? ──────────────────────────────────────────────
+// Map services answer with their nearest guess for a street they don't know; the server keeps a
+// place only when it's the house that was typed, and the form says which house it found.
+
+// "Lawrence Street Northeast" and "Lawrence St NE" are the same street
+const WORDS = {
+  street: 'st', avenue: 'ave', road: 'rd', drive: 'dr', lane: 'ln', court: 'ct', circle: 'cir', boulevard: 'blvd', parkway: 'pkwy',
+  place: 'pl', trail: 'trl', highway: 'hwy', terrace: 'ter', northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw',
+  north: 'n', south: 's', east: 'e', west: 'w',
+};
+export const streetKey = (s) => String(s || '').toLowerCase().replace(/[.,#]/g, ' ').split(/\s+/).filter(Boolean).map(w => WORDS[w] || w).join(' ');
+// A street's kind and its direction, which a map service may write, drop or spell out
+const KINDS_OF_STREET = new Set(['st', 'ave', 'rd', 'dr', 'ln', 'ct', 'cir', 'blvd', 'pkwy', 'pl', 'trl', 'hwy', 'ter', 'way', 'run', 'xing', 'pt', 'cv', 'loop', 'sq', 'path', 'walk', 'row', 'pass', 'bnd', 'cres', 'crk', 'gln', 'hl', 'holw', 'lndg', 'mdw', 'rdg', 'vw', 'vis', 'aly', 'byp', 'cswy', 'ctr', 'expy', 'fwy', 'grn', 'plz', 'tpke', 'trce', 'tunl', 'xrd', 'spur', 'pike', 'circle', 'cove', 'point', 'crossing']);
+const DIRECTIONS = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']);
+/** Fewest one-letter changes from a to b */
+function editDistance(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = row;
+  }
+  return prev[b.length];
+}
+/** "420 Copper Ridge Dr" → { number: '420', name: 'copper ridge', kind: 'dr', dir: '' } */
+function houseParts(line) {
+  const words = streetKey(line).split(' ').filter(Boolean);
+  const number = /^\d+[a-z]?$/.test(words[0] || '') ? words.shift() : '';
+  const dirs = words.filter((w, i) => DIRECTIONS.has(w) && (i === 0 || i === words.length - 1));
+  const rest = words.filter((w, i) => !(DIRECTIONS.has(w) && (i === 0 || i === words.length - 1)));
+  const kind = rest.length > 1 && KINDS_OF_STREET.has(rest[rest.length - 1]) ? rest.pop() : '';
+  return { number, name: rest.join(' '), kind, dir: dirs.join(' ') };
+}
+/**
+ * Is `found` (a map service's first line) the house `typed`? The same number on the same street: its kind
+ * and direction may be left off ("175 Summer Lake Dr" for 175 Summer Lake Dr SW), and its name a letter or
+ * two apart ("Holcomb Wood Pkwy" for Holcomb Woods Pkwy), but never another street ("420 Cooper Rd" for
+ * 420 Copper Ridge Dr) or another house on it.
+ */
+export function sameHouse(typed, found) {
+  const a = houseParts(typed);
+  const b = houseParts(found);
+  if (!a.number || a.number !== b.number || !a.name || !b.name) return false;
+  if (a.kind && b.kind && a.kind !== b.kind) return false;
+  if (a.dir && b.dir && a.dir !== b.dir) return false;
+  if (a.name === b.name) return true;
+  const longer = Math.max(a.name.length, b.name.length);
+  return longer >= 6 && editDistance(a.name, b.name) <= (longer >= 12 ? 2 : 1);
+}

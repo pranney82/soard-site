@@ -1553,7 +1553,7 @@ const EMPTY_FOR = {
   all: 'No applications yet.',
   attention: 'Nothing needs attention. Every application reached JobTread.',
   outside: 'No applications from outside the service area.',
-  unchecked: 'The Census found every address.',
+  unchecked: 'The address lookup found every home.',
   repeat: 'No possible repeats.',
   test: 'No test applications.',
   deleted: 'No deleted applications.',
@@ -1562,7 +1562,7 @@ const PAGE_SIZE = 50;
 const CHECKS = [['account', 'Account'], ['contacts', 'Contacts'], ['home', 'Home'], ['pdf', 'PDF'], ['photos', 'Photos'], ['video', 'Video'], ['familyMessage', 'Family message'], ['medicalNote', 'Medical note'], ['staffEmail', 'Staff email'], ['staffSlack', 'Staff Slack']];
 const stepDone = (v) => v === true || v === 'none';
 
-/** The family picked one county; the Census put the address in another */
+/** The family picked one county; the address lookup put the home in another */
 function countyMismatch(flags, picked = null) {
   if (!flags) return null;
   if (flags.countyMismatch === true) return { census: flags.area?.county || '', picked: picked || flags.county || '' };
@@ -1580,8 +1580,8 @@ function FlagBadges({ a, picked = null }) {
     ${a.deletedAt && html`<span class="badge badge-gray" title=${`Deleted ${dayText(a.deletedAt)}${a.deletedBy ? ` by ${a.deletedBy}` : ''}`}>Deleted</span>`}
     ${(f.lang || a.lang) === 'es' && html`<span class="badge badge-gray" title="Answered in Spanish">Spanish</span>`}
     ${f.area?.status === 'outside' && html`<span class="badge badge-yellow" title=${f.area.text || ''}>${f.area.miles != null ? `${f.area.miles} mi outside` : 'Outside area'}</span>`}
-    ${f.area?.status === 'unknown' && html`<span class="badge badge-gray" title=${f.area.text || 'The Census couldn’t find this address'}>Address not found</span>`}
-    ${cm && html`<span class="badge badge-yellow" title=${`The family picked ${cm.picked}; the Census says ${cm.census}`}>County mismatch</span>`}
+    ${f.area?.status === 'unknown' && html`<span class="badge badge-gray" title=${f.area.text || 'The address lookup couldn’t find this house'}>Address not found</span>`}
+    ${cm && html`<span class="badge badge-yellow" title=${`The family picked ${cm.picked}; the address lookup says ${cm.census}`}>County mismatch</span>`}
     ${f.repeat?.length > 0 && html`<span class="badge badge-yellow" title=${f.repeat.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}`).join(', ')}>Possible repeat</span>`}`;
 }
 
@@ -1828,7 +1828,7 @@ function SubmissionDetail({ a, detail, onDelete }) {
         <div class="afe-note ${f.area?.status === 'outside' || cm || f.repeat?.length ? 'is-warn' : ''}">
           <div style="display: grid; gap: .3rem;">
             ${f.area && html`<span><strong>Address check:</strong> ${f.area.text}${f.area.county ? ` (${f.area.county} County)` : ''}</span>`}
-            ${cm && html`<span><strong>County:</strong> the family picked ${cm.picked}; the Census says ${cm.census}.</span>`}
+            ${cm && html`<span><strong>County:</strong> the family picked ${cm.picked}; the address lookup says ${cm.census}.</span>`}
             ${f.repeat?.length > 0 && html`<span><strong>Possible repeat:</strong> ${f.repeat.map((m, i) => html`${i ? '; ' : ''}${m.url ? html`<a href=${m.url} target="_blank" rel="noopener" style="text-decoration: underline;">${m.name}</a>` : m.name}${m.year ? ` (${m.year})` : ''}${m.status ? `, ${m.status}` : ''}${m.why ? `: ${m.why}` : ''}`)}</span>`}
             ${f.saidApplied && !f.repeat?.length && html`<span>The family said they applied before.</span>`}
           </div>
@@ -2084,7 +2084,7 @@ function InsightsBody({ ins, k, go, open }) {
   const checks = [
     { label: 'Outside the service area', n: ins.checks?.outside, show: 'outside' },
     { label: 'Possible repeat applicants', n: ins.checks?.repeat, show: 'repeat' },
-    { label: 'Address the Census couldn’t find', n: ins.checks?.unchecked, show: 'unchecked' },
+    { label: 'Homes the address lookup couldn’t find', n: ins.checks?.unchecked, show: 'unchecked' },
   ].filter(c => c.n > 0);
   const given = (ins.referral || []).filter(r => r.source !== 'Not given').length;
   const fo = ins.finishOf || {};
@@ -5457,7 +5457,7 @@ function ServiceAreaCard({ s, go }) {
   return html`
     <section class="card afe-settings" aria-labelledby="afe-set-area">
       <h3 id="afe-set-area">Service area</h3>
-      <p class="afe-lede">Families see this area on a map as they type their home address, and the form answers “inside the service area?” from the address (the Census places it). Staff see the same check on every family.</p>
+      <p class="afe-lede">Families see this area on a map as they type their home address, and the form answers “inside the service area?” from the address (Esri finds the house, else the Census; only the house entered counts). Staff see the same check on every family.</p>
       <div class="afe-area">
         <${AreaOutline} polygon=${poly} nearMiles=${nearMiles} points=${points} moving=${movedSet} size=${220} height=${176} />
         <div class="afe-area-text">
