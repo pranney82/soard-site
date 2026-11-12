@@ -378,9 +378,12 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
   // is open (a phone turned sideways gets the landscape starting-soon screen), so it's followed, not read once
   const wideNow = () => mode === 'pinned' && hero?.dataset.orientation === 'landscape';
   const fitPin = () => { if (viewer?.open) viewer.classList.toggle('ldv--wide', wideNow()); };
-  const shapeWatch = hero ? new MutationObserver(fitPin) : null;
-  // An iPad turned (or a window resized) across the laptop/phone line while it's open: it opens again, on the same
-  // picture, in the way that fits now (beside the video, or over it with the video pinned)
+  // (and the watch party ending or starting while it's open, a live reveal ending before its replay is ready, changes the
+  // way that fits: it kept the small video's place, empty, until the replay came)
+  const shapeWatch = hero ? new MutationObserver(() => { fitPin(); onLayout(); }) : null;
+  // An iPad turned (or a window resized) across the laptop/phone line while it's open, or the watch party ending or
+  // starting: it opens again, on the same picture, in the way that fits now (beside the video, over it with the video
+  // pinned, or alone)
   const onLayout = () => {
     if (!viewer?.open || !shown) return;
     if (modeNow() === mode) { fitSide(); return; }
@@ -389,7 +392,7 @@ export function createLiveDesign(section: HTMLElement, opts: Options = {}) {
     viewer.close();
   };
   laptop.addEventListener('change', onLayout);
-  if (hero) shapeWatch?.observe(hero, { attributes: true, attributeFilter: ['data-orientation'] });
+  if (hero) shapeWatch?.observe(hero, { attributes: true, attributeFilter: ['data-orientation', 'data-party'] });
 
   function open(s: DesignSlide) {
     if (!viewer || !slides.includes(s)) return;
