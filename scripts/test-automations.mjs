@@ -34,7 +34,18 @@ const FACTS = {
   success: true,
   checkedAt: iso(0),
   env: { slack: false, twilio: false, youtube: false, kit: true, resend: true, calendar: true, jobtread: true, facebook: true, stream: true, images: true, deployHook: true, github: true, access: true, constantContact: true, turnstile: true, zeffyWebhook: true, zeffyApi: true, slackBot: true },
-  bindings: { db: true, files: true, ai: true, hub: true },
+  bindings: { db: true, files: true, vendorFiles: true, ai: true, hub: true },
+  // Shaped like production on November 12, 2026 (_hosting.js)
+  hosting: {
+    pages: { tracking: true, live: { at: iso(40 * 60e3), endedAt: iso(38 * 60e3), commit: '819b81c0', by: 'push' }, active: null, failed: null },
+    github: { sha: '819b81c0', at: iso(42 * 60e3), skip: false, build: 'live' },
+    domains: {
+      'sunshineonaranneyday.com': { registrar: 'Cloudflare, Inc.', expires: '2029-03-14T15:05:09Z', ns: ['dakota.ns.cloudflare.com', 'lina.ns.cloudflare.com'], transferredAt: null },
+      'soardcharity.com': { registrar: 'Cloudflare, Inc.', expires: '2028-01-05T16:46:52Z', ns: ['dakota.ns.cloudflare.com', 'lina.ns.cloudflare.com'], transferredAt: null },
+      'sunshineonaranneyday.org': { registrar: 'Cloudflare, Inc.', expires: '2028-01-05T16:47:01Z', ns: ['dakota.ns.cloudflare.com', 'lina.ns.cloudflare.com'], transferredAt: '2026-08-26T22:21:29Z' },
+      'sunnyandranney.com': { registrar: 'Cloudflare, Inc.', expires: '2027-04-23T14:31:50Z', ns: ['dakota.ns.cloudflare.com', 'lina.ns.cloudflare.com'], transferredAt: null },
+    },
+  },
   broadcast: { inputEnabled: true, outputs: { facebook: true, youtube: null, instagram: null }, facebookMode: 'api', reels: false, reminders: { enabled: false, sms: false, push: false }, kitLive: true, messages: true, vapid: true, alertCount: 1, updatedAt: iso(2 * 86400e3) },
   health: { lastTickAt: iso(60e3), lastTickSource: 'hub:alarm', lastDailyAt: iso(86400e3), hubOk: true, streamOk: true, facebookOk: true, webhookAt: iso(2 * 86400e3), webhookEvent: 'live_input.disconnected', replayCheckAt: iso(2 * 86400e3), monitorAt: iso(2 * 86400e3) },
   hub: { ok: true, current: false, lastTickAt: iso(40e3), clients: 2, error: null },
@@ -123,7 +134,7 @@ try {
   ok(await page.$eval('.page-header h2', (e) => e.textContent) === 'Automations', 'the page opens from #automations');
   ok((await page.$eval('.am-check', (e) => e.textContent)).includes('Statuses checked live'), 'it says the statuses were checked live');
   const branches = await page.$$eval('.am-node.d1 text', (t) => t.map((x) => x.textContent));
-  ok(branches.length === 8, `${branches.length} branches drawn (${branches.join(', ')})`);
+  ok(branches.length === 9 && branches.includes('Hosting'), `${branches.length} branches drawn, Hosting among them (${branches.join(', ')})`);
   const canvasTop = await page.$eval('.am-canvas', (e) => e.getBoundingClientRect().top);
   ok(canvasTop < 360, `the map starts above the fold on a laptop (${Math.round(canvasTop)}px down)`);
   const inView = await page.evaluate(() => {
@@ -140,6 +151,8 @@ try {
     ['Reveal checks for PMs', 'Off'], ['Kid and project status follow JobTread', 'Live'], ['Gift alerts in Slack', 'Live'],
     ['Status → family message', 'Live'], ['Quo texts and calls → JobTread', 'Live'], ['/text → Quo text', 'Live'], ['Zillow lookup', 'Live'], ['Approved → job and its page', 'Live'], ['Kid photo as the job’s cover', 'Live'],
     ['Advisory Board application', 'Live'],
+    ['The website on Cloudflare Pages', 'Live'], ['GitHub repository', 'Live'], ['Code push builds', 'Live'], ['Vendor papers bucket (R2)', 'Live'],
+    ['sunshineonaranneyday.com', 'Live'], ['soardcharity.com', 'Live'], ['sunshineonaranneyday.org', 'Live'], ['sunnyandranney.com', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
   const zapier = await page.evaluate(() => [...document.querySelectorAll('.am-inv-branch li b, #am-svc option')].map((e) => e.textContent).filter((x) => /zapier/i.test(x)));
   ok(zapier.length === 0, `Zapier is retired: no entry or service for it${zapier.length ? ` (found ${zapier.join(', ')})` : ''}`);
@@ -492,6 +505,55 @@ try {
   const refused = await panelFor({ ...watched, error: 'not authorized for that account' });
   ok(refused.status === 'Needs attention' && refused.text.includes('not authorized for that account'), 'Cloudflare refusing needs attention, and says why');
   await refused.v.page.close();
+
+  console.log('Desktop, hosting');
+  const hostPanel = async (v, title) => {
+    await v.page.evaluate(() => { const s = document.querySelector('#am-search'); s.value = ''; s.dispatchEvent(new Event('input', { bubbles: true })); });
+    await v.page.type('#am-search', title);
+    await pause(500);
+    await clickNode(v.page, title);
+    await pause(300);
+    return v.page.$eval('.am-panel', (e) => e.textContent);
+  };
+  const healthy = await open(browser, base, { width: 1440, height: 1000 });
+  const pagesText = await hostPanel(healthy, 'The website on Cloudflare Pages');
+  ok(pagesText.includes('Live: built after a push to GitHub') && pagesText.includes('(819b81c0)') && pagesText.includes('Workers & Pages → soard-site'), 'the Pages entry says which build is live, how it started and where the project is');
+  const repoText = await hostPanel(healthy, 'GitHub repository');
+  ok(repoText.includes('built from main’s newest commit, 819b81c0') && repoText.includes('github.com/pranney82/soard-site') && repoText.includes('public'), 'the GitHub entry says the live site is main’s newest commit, where the code is and that it’s public');
+  const comText = await hostPanel(healthy, 'sunshineonaranneyday.com');
+  ok(comText.includes('Paid through Mar 14, 2029. Registered and DNS at Cloudflare.'), 'a domain says when it’s paid through and where it’s registered');
+  const saveText = await hostPanel(healthy, 'Save in the admin');
+  ok(!/GitHub/.test(saveText.replace('aren’t copied to GitHub', '')) && saveText.includes('aren’t copied to GitHub'), 'saving in the admin no longer claims a GitHub backup, and says why');
+  const ghDeps = await healthy.page.evaluate(() => [...document.querySelectorAll('#am-svc option')].find((o) => o.value === 'GitHub')?.textContent);
+  ok(ghDeps === 'GitHub (3)', `only what really uses GitHub depends on it (${ghDeps})`);
+  await healthy.page.screenshot({ path: join(OUT, 'hosting.png'), fullPage: false });
+  ok(healthy.errors.length === 0, `no console errors${healthy.errors.length ? ': ' + healthy.errors.slice(0, 3).join(' | ') : ''}`);
+  await healthy.page.close();
+
+  const broke = { ...FACTS.hosting,
+    pages: { ...FACTS.hosting.pages, failed: { at: iso(9 * 60e3), endedAt: iso(6 * 60e3), commit: 'cccccccc', by: 'push' } },
+    github: { sha: 'cccccccc', at: iso(10 * 60e3), skip: false, build: 'failed' },
+    domains: { ...FACTS.hosting.domains,
+      'sunnyandranney.com': { ...FACTS.hosting.domains['sunnyandranney.com'], expires: iso(-12 * 24 * 3600e3) },
+      'sunshineonaranneyday.org': { ...FACTS.hosting.domains['sunshineonaranneyday.org'], ns: ['ns1.example.net', 'ns2.example.net'] } } };
+  const bad = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, hosting: broke } });
+  for (const t of ['The website on Cloudflare Pages', 'GitHub repository', 'Code push builds', 'sunnyandranney.com', 'sunshineonaranneyday.org']) ok(await statusOf(bad.page, t) === 'Needs attention', `${t}: needs attention when it breaks`);
+  ok(await statusOf(bad.page, 'soardcharity.com') === 'Live', 'a healthy domain stays live beside them');
+  const failText = await hostPanel(bad, 'The website on Cloudflare Pages');
+  ok(failText.includes('The newest build (cccccccc) failed') && failText.includes('still shows the build of') && failText.includes('(819b81c0)'), 'a failed build says which, and which build the site still shows');
+  const dueText = await hostPanel(bad, 'sunnyandranney.com');
+  ok(dueText.includes('hasn’t gone through') && dueText.includes('Cloudflare → Billing'), 'a domain 12 days from running out says the renewal failed and where to fix it');
+  const nsText = await hostPanel(bad, 'sunshineonaranneyday.org');
+  ok(nsText.includes('ns1.example.net') && nsText.includes('not Cloudflare’s'), 'DNS moved off Cloudflare names the nameservers');
+  await bad.page.screenshot({ path: join(OUT, 'hosting-broken.png'), fullPage: false });
+  ok(bad.errors.length === 0, `no console errors${bad.errors.length ? ': ' + bad.errors.slice(0, 3).join(' | ') : ''}`);
+  await bad.page.close();
+
+  const blind = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, hosting: { pages: { tracking: false }, github: { error: 'HTTP 503' }, domains: {} } } });
+  ok(await statusOf(blind.page, 'The website on Cloudflare Pages') === 'Live' && await statusOf(blind.page, 'sunshineonaranneyday.com') === 'Live', 'with nothing to read, hosting keeps its written statuses');
+  ok((await hostPanel(blind, 'GitHub repository')).includes('GitHub didn’t answer just now (HTTP 503)'), 'and says GitHub didn’t answer');
+  ok(blind.errors.length === 0, `no console errors${blind.errors.length ? ': ' + blind.errors.slice(0, 3).join(' | ') : ''}`);
+  await blind.page.close();
 
   console.log('Phone');
   const phone = await open(browser, base, { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });

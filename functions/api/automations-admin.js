@@ -45,6 +45,8 @@
  *  - advisory:  Advisory Board applications (how many, New, the last one and who heard; counts only)
  *  - demoInvites: demo day invites (the switch, the last 5-minute check, invites out; counts only)
  *  - processDocs: the process Docs Site → Automations → Process follows (names, last read, any problem)
+ *  - hosting:   where the site lives (_hosting.js): Cloudflare's production builds, main's newest commit on GitHub
+ *               and what became of it, and each domain's registrar, paid-through date and nameservers (short shas and dates only)
  *
  * Not in _middleware's public list, so Access guards it. Never cached.
  * Each section fails on its own: one unreachable service never blanks the rest.
@@ -88,6 +90,7 @@ import { revealStatsFacts } from './_reveal-stats.js';
 import { checksFacts } from './_check-gifts.js';
 import { wordsStatus } from './_board-file-words.js';
 import { permitFacts } from './_permit-office.js';
+import { hostingFacts } from './_hosting.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -436,6 +439,8 @@ const settle = async (fn) => { try { return await fn(); } catch (e) { return { e
 
 export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const DB = env.DB;
+  // Outside reads (Cloudflare, GitHub, the registries): started first so they run alongside the rest
+  const hostingRead = settle(() => hostingFacts(env, { fetchImpl, now }));
   const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule, guestCheck, kidState, kidsHidden, zeffyCfg, zeffyFailing, slackLink] = await Promise.all([
     settle(() => siteConfig(DB, 'broadcast-config')),
     settle(() => siteConfig(DB, 'broadcast-health')),
@@ -482,7 +487,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
   return {
     checkedAt: new Date(now).toISOString(),
     env: envFacts(env),
-    bindings: { db: !!env.DB, files: !!env.FILES, ai: !!env.AI, hub: !!env.LIVE_HUB },
+    bindings: { db: !!env.DB, files: !!env.FILES, vendorFiles: !!env.VENDOR_FILES, ai: !!env.AI, hub: !!env.LIVE_HUB },
     broadcast: broadcastFacts(ok(cfg), alertTexts),
     health: healthFacts(ok(health)),
     hub: hub?.error && !hub.bound
@@ -564,6 +569,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     revealStats: await settle(() => revealStatsFacts(DB)),
     // Board files read for the board page's search: counts only (_board-file-words.js)
     boardWords: await settle(() => wordsStatus(DB)),
+    // Where the site lives: Cloudflare's builds, GitHub's main, the domains' registrations (_hosting.js)
+    hosting: await hostingRead,
   };
 }
 

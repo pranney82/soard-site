@@ -32,7 +32,7 @@ import { reviewOf } from './process-shared.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'November 9, 2026';
+const WRITTEN_ON = 'November 12, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -144,6 +144,48 @@ const dataxHook = (event, missing) => (f) => {
   if (!jt || jt.error || !jt.webhooks) return null;
   const found = Object.values(jt.webhooks).some((h) => /^(datax\.to|winyourdata\.com)\//.test(h.where || '') && (h.events || []).includes(event));
   return found ? { why: 'Registered in JobTread.' } : OFF(missing);
+};
+// Hosting (_hosting.js): Cloudflare's builds, main on GitHub, the domains' registrations
+const shaOf = (b) => (b?.commit ? ` (${b.commit})` : '');
+const DEPLOYS = 'Cloudflare → Workers & Pages → soard-site → Deployments';
+const pagesLive = (f) => {
+  const p = f.hosting?.pages;
+  if (!p) return null;
+  if (!p.tracking) return env(f) ? { why: 'CF_PAGES_TOKEN isn’t in Cloudflare, so the builds can’t be seen from here (or from Publish).' } : null;
+  if (p.error) return ATTN(`Cloudflare wouldn’t list the builds (${p.error}), so Publish can’t follow them either. CF_PAGES_TOKEN needs Pages: Read.`);
+  const live = p.live;
+  const since = live ? ` The site still shows the build of ${stamp(live.endedAt || live.at)}${shaOf(live)}.` : '';
+  if (p.failed) return ATTN(`The newest build${shaOf(p.failed)} failed ${stamp(p.failed.endedAt || p.failed.at)}.${since} Its log is in ${DEPLOYS}.`, live?.endedAt || null);
+  if (!live) return ATTN(`Cloudflare lists no build that went live. See ${DEPLOYS}.`);
+  const how = { push: 'after a push to GitHub', publish: 'by Publish' }[live.by] || '';
+  if (p.active) return ON(`Building now${shaOf(p.active)}, started ${ago(p.active.at)}. Live meanwhile: the build of ${stamp(live.endedAt || live.at)}${shaOf(live)}.`, live.endedAt || live.at);
+  return ON(`Live: built ${how ? `${how} ` : ''}${stamp(live.endedAt || live.at)}${shaOf(live)}.`, live.endedAt || live.at);
+};
+const codeLive = (f) => {
+  const g = f.hosting?.github;
+  if (!g) return null;
+  if (g.error || !g.sha) return { why: `GitHub didn’t answer just now${g.error ? ` (${g.error})` : ''}.` };
+  const head = `main’s newest commit, ${g.sha} (${stamp(g.at)})`;
+  if (!g.build) return ON(`Newest on main: ${g.sha}, ${stamp(g.at)}.`, g.at);
+  if (g.build === 'live') return ON(`The live site is built from ${head}.`, g.at);
+  if (g.build === 'building') return ON(`${head[0].toUpperCase()}${head.slice(1)}, is building now.`, g.at);
+  if (g.build === 'failed') return ATTN(`${head[0].toUpperCase()}${head.slice(1)}, didn’t build, so the site is behind the code. Its log is in ${DEPLOYS}.`, g.at);
+  if (g.skip) return ON(`${head[0].toUpperCase()}${head.slice(1)}, asked not to be built ([skip ci]).`, g.at);
+  if (!stale(g.at, 15 * MIN)) return ON(`${g.sha} just landed on main; its build starts in a moment.`, g.at);
+  return ATTN(`${head[0].toUpperCase()}${head.slice(1)}, has no build, so the site is behind the code. Cloudflare may have missed the push: Retry deployment in ${DEPLOYS}, or push again.`, g.at);
+};
+const DAY = 24 * HOUR;
+const dateOf = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const domainLive = (f, name) => {
+  const d = f.hosting?.domains?.[name];
+  if (!d || d.error || !d.expires) return null;
+  const off = d.registrar && !/cloudflare/i.test(d.registrar);
+  if (off) return ATTN(`Registered at ${d.registrar} now, not Cloudflare. Check who moved it.`);
+  if (d.ns?.length && !d.ns.every((n) => n.endsWith('.ns.cloudflare.com'))) return ATTN(`Its nameservers are ${d.ns.join(', ')}, not Cloudflare’s, so the DNS records in Cloudflare don’t count.`);
+  const left = (ms(d.expires) - Date.now()) / DAY;
+  if (left < 0) return ATTN(`Ran out ${dateOf(d.expires)}. Renew it now in Cloudflare → Domain Registration: about 30 days after it runs out, it stops working.`);
+  if (left < 25) return ATTN(`Runs out ${dateOf(d.expires)}, and the renewal Cloudflare tries a month ahead hasn’t gone through. Check the card in Cloudflare → Billing, then renew it in Domain Registration.`);
+  return ON(`Paid through ${dateOf(d.expires)}. Registered and DNS at Cloudflare.${d.stale ? ' (The registry didn’t answer just now; this is its last answer.)' : ''}`);
 };
 const reminderBlock = (f, channel) => {
   const b = f.broadcast;
@@ -336,7 +378,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Kid and project status follow JobTread', s: 'live', k: 'event',
           when: 'A JobTread workflow reports a job’s status, closed date or task change (right away), and an hourly sweep on the live hub’s heartbeat. Visits to the reveals feed are the backup.',
           does: 'Sets each kid page’s status from its job: Awaiting Funding shows “Needs funding”, Design through Build shows “In progress”, and the Reveal task done, Closed Done or Warranty shows “Completed”. On Site and Denied take the profile off the site (Denied tells staff once by email and Slack), and it comes back by itself when the job moves on. Community projects follow an organization’s job the same way: “In progress” while it’s funded or built, “Completed” once it’s done, and only Denied takes one off the site. Each change is saved like an admin save, with History, then the site publishes, at most every 10 minutes.',
-          touches: ['JobTread', 'D1', 'GitHub', 'Cloudflare Pages', 'Resend', 'Slack'], where: 'functions/api/_kid-status.js (from reveal-invites.js, broadcast-hooks.js, reveals.js)',
+          touches: ['JobTread', 'D1', 'Cloudflare Pages', 'Resend', 'Slack'], where: 'functions/api/_kid-status.js (from reveal-invites.js, broadcast-hooks.js, reveals.js)',
           info: 'Staff can’t change a linked kid’s or project’s status in the admin: Kids and Community Projects show the JobTread status with a link to the job. A job belongs to a kid or project by the link an approval made, else by name and year (“Perfect Harmony Health (2026)”); a project matched by name only ever moves on to Completed, so an old job left open can’t reopen it. Kids and projects with no job in JobTread (older years) stay under the admin’s control, a page staff hid themselves stays hidden, and jobs named TEST are ignored.',
           live: (f) => {
             const k = f.kidStatus;
@@ -352,7 +394,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Vendor and sponsor logos on kid pages', s: 'live', k: 'schedule',
           when: 'Every 10 minutes on the live hub’s heartbeat (JobTread has no webhook for someone given access to a job), with visits to the reveals feed as the backup. A save in Partners or on a page re-checks what’s waiting right away.',
           does: 'Reads who has access to each open job. A partner’s company (anyone on the job with a level role, or the old Vendor or Monetary Sponsor; never a Trade Partner) gets its logo on the kid’s page (or the community project’s): the Partners directory’s logo by the same name or by a website on their email’s domain, else the logo already on another page under that name. When there’s no logo anywhere, staff get one email per company per page with the company, the person’s name and email, their role and the kid, and it waits under Partners → JobTread, no logo. Each change is saved like an admin save, with History, then the site publishes, at most every 10 minutes.',
-          touches: ['JobTread', 'D1', 'GitHub', 'Cloudflare Pages', 'Resend'], where: 'functions/api/_kid-partners.js (from broadcast-hooks.js, reveals.js and save-content.js)',
+          touches: ['JobTread', 'D1', 'Cloudflare Pages', 'Resend'], where: 'functions/api/_kid-partners.js (from broadcast-hooks.js, reveals.js and save-content.js)',
           info: 'The company is the JobTread login’s account, else the person’s name. A logo the page already shows is left as it is. On the job means on the page: a logo that goes missing while the company is on the job goes back at the next check. When everyone from a company is taken off the job in JobTread, its logo comes off the page and the site publishes (Vendors on their JobTread jobs). Linzi gets the emails to start with; Partners → JobTread, no logo changes who. “Same as” links a company JobTread names differently (“Randall Bros” for Randall Brothers) once, for every job after; “No logo needed” sets one aside. A kid’s Partners section lists the logos still needed, with an upload named for the company. Jobs named TEST are ignored.',
           live: (f) => {
             const l = f.kidLogos;
@@ -398,7 +440,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Room credits ↔ JobTread', s: 'live', k: 'schedule',
           when: 'Every 10 minutes on the live hub’s heartbeat, right after the logo check; at once when someone picks or takes off a credit on a kid’s card in Admin → Kids, settles a name, saves a sponsor’s contacts, or takes a company off a makeover, puts one back or adds its logo.',
           does: 'Who designed a room and who paid for it (Peter, Nov 10 2026). Clareece picks them in JobTread’s Designed By and Monetary Sponsor dropdowns, whose choices are the companies in Partners (Design and Funding, and anyone already credited), spelled as Partners spells them; staff can pick them on the kid’s cards too, which writes the same field. A change made in JobTread counts on the second look, ten minutes on, so a slip fixed at once does nothing. Credited means on the makeover (Peter, Nov 11 2026: “if they are the monetary sponsor or designer, they should always have job access. and simple add/delete”). A company picked that isn’t on the makeover goes on, the way Add to job does: its logo on the page and its people on the open job, with no email from JobTread; a sponsor’s contacts each go on once, so Demo Day and reveal invites reach them. Taking off a company’s last credit there takes it off the makeover, the way Take off this job does. Taking a company off the makeover (the X on its logo, Take off this job, or everyone of theirs out of the job in JobTread) takes its credits there with it, in JobTread too. Adding it back (Undo, Put back, its logo again, back on the job in JobTread, or picked again) brings them back. The kid’s page keeps a copy (sponsors, designers) for Partners and Demo Day.',
-          touches: ['JobTread', 'D1', 'GitHub', 'Cloudflare Pages'], where: 'functions/api/_room-credits.js · _jt-fields.js (from room-credits-admin.js, sponsors-admin.js and broadcast-hooks.js)',
+          touches: ['JobTread', 'D1', 'Cloudflare Pages'], where: 'functions/api/_room-credits.js · _jt-fields.js (from room-credits-admin.js, sponsors-admin.js and broadcast-hooks.js)',
           info: 'A job that can’t be read, a field that’s gone, or a value list that may be cut short changes nothing. The site’s own writes read JobTread’s values just before and make one change. A company a person took off a job goes back on when it’s picked after that, since a pick is a person saying so; taken off after the pick, it stays off and the pick goes with it. A finished makeover (closed job) keeps its credits as they are: nobody is put on or taken off there. A take-off that can’t happen yet (a page busy, JobTread not answering) is tried again each run, and the credit doesn’t come back meanwhile. Where launch found JobTread naming a sponsor the website didn’t have, a person says which is right, in Partners → JobTread access or on the kid’s card, and changes made meanwhile still count. A name in a field that isn’t a company in Partners is shown on the kid’s card (Same as, Add to Partners, Not a company). Choices are added as Partners needs them; one the site added goes only when no job anywhere holds it and it’s no longer wanted (an old spelling after a rename), and a choice a person added in JobTread always stays. A room with no JobTread job keeps its credits on its page until it gets one, then they go into the job. Contacts are private: D1 partner_contacts, never the partner record or the site. Kids and community projects. Jobs named TEST are ignored.',
           live: (f) => {
             const r = f.roomCredits;
@@ -572,7 +614,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Approved → job and its page', s: 'live', k: 'schedule',
           when: 'A family’s Approved status has settled: their decision email is out (or staff chose not to email) and 30 minutes have passed. Checked by the application sweep every 2 minutes; nothing happens while family emails are paused.',
           does: 'Makes the makeover’s JobTread job the way the old Zap did (“Name (Year)”, Status On Site, Makeover Type, at the family’s home, as the Qualification Committee), or uses the job they already have, with the child’s photo from the application as its cover. Then makes a hidden profile in Kids (first name, age, year, rooms, Awaiting funding), linked to that job so its status follows JobTread. An organization (no birthday or diagnosis: a school, a clinic) gets a hidden community project instead, under its name, In progress and first on the Community page, linked the same way. Posts the good news to Slack and notes it in the family’s history.',
-          touches: ['JobTread', 'D1', 'GitHub', 'Slack'], where: 'functions/api/_applicant-approved.js (from _applications.js maybeSweepApplications)',
+          touches: ['JobTread', 'D1', 'Slack'], where: 'functions/api/_applicant-approved.js (from _applications.js maybeSweepApplications)',
           info: 'Nothing private goes in the profile, because its GitHub copy is public: no last name, diagnosis, address or photos. It stays off Meet the Kids until staff add the story and photos and switch on “Show on Meet the Kids”. A profile or project staff already made is linked, never rewritten. Organizations approved before projects were made this way (The Lionheart School, Oct 21 2026) get theirs on the next run. Families approved before this started are never touched, and nothing is deleted if a family is moved back later. A family missing a home address or *Makeover Year is one Slack problem that turns ✅ once it’s done. Replaces the Zapier “account updated” Zap.',
           live: (f) => {
             const a = f.approvals;
@@ -944,6 +986,72 @@ const MAP = { t: 'SOARD', children: [
       ]},
     ]},
 
+  { t: 'Hosting', sub: 'Where the site lives: Cloudflare, GitHub and the domains', color: 'host', side: 'r',
+    about: 'One Cloudflare account holds the website, its database, photos, videos and files, the admin’s sign-in and all four of SOARD’s domains. The code is on GitHub, and a push to its main branch builds the site.',
+    children: [
+      { t: 'Cloudflare', children: [
+        { t: 'SOARD’s Cloudflare account', s: 'live', k: 'link',
+          does: 'Everything the website runs on: the site itself (Pages), the live hub Worker, the D1 database, both R2 file buckets, Images, Stream, Workers AI and its AI Gateway, Browser Rendering (the real browser the press monitor and reveal designs borrow), Access (the admin’s sign-in), Email Routing, and the registration and DNS of all four domains.',
+          touches: ['Cloudflare'], where: 'dash.cloudflare.com → SOARD’s account (owned by Peter’s soardcharity.com login)',
+          info: 'Also in the account and not the website’s: the Sunny & Ranney store’s site (sunnyandranney-site), its database (sunnyandranney-db) and its Workers (sales-tax, shop-redirect, terminal-token, hours-sync), and a Worker named deploy-coordinator that no website code uses. They aren’t on this map. The domains are on Cloudflare’s free plan; Stream is a monthly subscription (see its entry).' },
+        { t: 'The website on Cloudflare Pages', s: 'live', k: 'link',
+          does: 'Serves sunshineonaranneyday.com: every public page, the admin at /admin/ and the site’s API under /api/. Each build runs npm run build on GitHub’s main branch, which pulls all the content from D1 first. A build that fails leaves the last good one live.',
+          touches: ['Cloudflare Pages', 'GitHub', 'D1'], where: 'Cloudflare → Workers & Pages → soard-site (also at soard-site.pages.dev)',
+          info: 'The site’s keys are in soard-site → Settings → Variables and secrets; this map only ever sees whether a key is set, never what it is. Every other branch pushed to GitHub gets its own preview address on soard-site.pages.dev. The live hub that keeps the heartbeat and reveal day running is a separate Worker, soard-live-hub, deployed from workers/live-hub.',
+          live: (f) => pagesLive(f) },
+      ]},
+      { t: 'Storage', children: [
+        { t: 'D1 database', s: 'live', k: 'link',
+          does: 'All content, settings, broadcast state, reminder sign-ups, invite records and the audit log.',
+          touches: ['D1'], where: 'soard-db (binding DB) · Cloudflare → Storage & databases → D1',
+          info: 'Every build reads it, and the admin is the only way content changes. Its Time Travel (soard-db → Time Travel in Cloudflare) can put the whole database back the way it was at an earlier minute, if a bad change ever needs undoing all at once.',
+          live: (f) => (!f.bindings ? null : f.bindings.db ? ON() : ATTN('The DB binding is missing.')) },
+        { t: 'Cloudflare Images', s: 'live', k: 'link',
+          does: 'Every photo and logo on the site. Staff upload, list and delete from the admin.',
+          touches: ['Cloudflare Images'], where: 'functions/api/upload-image.js · list-images.js · delete-image.js',
+          live: needsKey('images', 'CF_IMAGES_TOKEN is missing, so uploads fail.') },
+        { t: 'Cloudflare Stream', s: 'live', k: 'link',
+          does: 'Reveal videos and live inputs. Staff upload straight from the admin.',
+          touches: ['Cloudflare Stream'], where: 'functions/api/upload-video.js · stream-videos.js',
+          info: 'The Stream subscription has lapsed twice before. If uploads fail with a 403, check Billing before chasing tokens.',
+          live: (f) => (!env(f) ? null : !f.env.stream ? ATTN('CF_STREAM_TOKEN is missing.') : f.health?.streamOk === false ? ATTN('The last health check couldn’t reach Stream. Check Billing → Subscriptions first.') : ON()) },
+        { t: 'Files bucket (R2)', s: 'live', k: 'link',
+          does: 'Financial PDFs and other uploads, served at /files/ and files.sunshineonaranneyday.com.',
+          touches: ['Cloudflare R2'], where: 'soard-files (binding FILES)',
+          live: (f) => (!f.bindings ? null : f.bindings.files ? ON() : ATTN('The FILES binding is missing.')) },
+        { t: 'Vendor papers bucket (R2)', s: 'live', k: 'link',
+          does: 'Vendors’ W-9s and certificates of insurance. It has no public address: staff open a file through the admin, which checks their sign-in first.',
+          touches: ['Cloudflare R2'], where: 'soard-vendor-docs (binding VENDOR_FILES) · functions/api/_vendor-files.js',
+          info: 'Kept apart from the files bucket on purpose: anyone with a link can open a file in soard-files.',
+          live: (f) => (!f.bindings || !('vendorFiles' in f.bindings) ? null : f.bindings.vendorFiles ? ON() : ATTN('The VENDOR_FILES binding is missing, so vendor papers can’t be saved or opened.')) },
+      ]},
+      { t: 'Code', children: [
+        { t: 'GitHub repository', s: 'live', k: 'link',
+          does: 'The website’s code: the pages, the admin, the API and the live hub. Cloudflare watches its main branch, and every push there builds and publishes the site.',
+          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/pranney82/soard-site (branch main)',
+          info: 'The repository is public: anyone can read the code, so keys and families’, donors’ and staff’s details never go in it. Keys live in Cloudflare and content lives in D1, so the code alone can’t bring back the site’s words or photos. Cloudflare still lists it under its first name, pranney82/soard, which GitHub sends on to soard-site.',
+          live: (f) => codeLive(f) },
+      ]},
+      { t: 'Domains', children: [
+        { t: 'sunshineonaranneyday.com', s: 'live', k: 'link',
+          does: 'The website’s address, SOARD’s since 2012. www.sunshineonaranneyday.com, sunshineonaranneyday.org and soardcharity.com all forward here. files. serves the files bucket and mercury-relay. points at SOARD’s Mercury relay. Kit and Resend send SOARD’s email from it, and Cloudflare Email Routing passes on mail sent to its addresses.',
+          touches: ['Cloudflare Registrar', 'Cloudflare DNS'], where: 'Cloudflare → Domain Registration → Manage domains · sunshineonaranneyday.com → DNS → Records',
+          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.', live: (f) => domainLive(f, 'sunshineonaranneyday.com') },
+        { t: 'soardcharity.com', s: 'live', k: 'link',
+          does: 'Staff email: every soardcharity.com address is a Google Workspace account (Gmail, Drive, Calendar), and the admin’s sign-in follows those accounts. Its web address forwards to sunshineonaranneyday.com.',
+          touches: ['Cloudflare Registrar', 'Cloudflare DNS', 'Google Workspace'], where: 'Cloudflare → Domain Registration → Manage domains · soardcharity.com → DNS → Records · its forward: soardcharity.com → Rules → Redirect Rules',
+          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.', live: (f) => domainLive(f, 'soardcharity.com') },
+        { t: 'sunshineonaranneyday.org', s: 'live', k: 'link',
+          does: 'Forwards to sunshineonaranneyday.com, and keeps the .org out of anyone else’s hands. Moved to Cloudflare on Aug 26, 2026.',
+          touches: ['Cloudflare Registrar', 'Cloudflare DNS'], where: 'Cloudflare → Domain Registration → Manage domains · sunshineonaranneyday.org → Rules → Redirect Rules',
+          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.', live: (f) => domainLive(f, 'sunshineonaranneyday.org') },
+        { t: 'sunnyandranney.com', s: 'live', k: 'link',
+          does: 'The Sunny & Ranney store’s address and its staff email (Google Workspace). The store’s site is its own Pages project, sunnyandranney-site, and shop.sunnyandranney.com forwards to it.',
+          touches: ['Cloudflare Registrar', 'Cloudflare DNS', 'Google Workspace'], where: 'Cloudflare → Domain Registration → Manage domains · sunnyandranney.com → DNS → Records',
+          info: 'Cloudflare renews it by itself about 30 days before it runs out and charges the card on SOARD’s Cloudflare account; if that fails it tries three more times. Auto-renew was on for all four domains on Nov 12, 2026, and each is locked against transfer with its owner’s details kept private.', live: (f) => domainLive(f, 'sunnyandranney.com') },
+      ]},
+    ]},
+
   // ─── Left side ──────────────────────────
   { t: 'The board', sub: 'Meetings, minutes and the board’s own page', color: 'board', side: 'l',
     children: [
@@ -1197,11 +1305,12 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Publishing', children: [
         { t: 'Save in the admin', s: 'live', k: 'admin',
           when: 'Staff save or delete anything in the admin.',
-          does: 'Writes D1, commits a backup copy to GitHub and records it in the audit log.',
-          touches: ['D1', 'GitHub'], where: 'functions/api/save-content.js · delete-content.js · _github.js',
-          live: needsKey('github', 'GITHUB_TOKEN is missing, so saves aren’t backed up to GitHub.', ATTN, 'Backups go to GitHub.') },
-        { t: 'Deploy Now', s: 'live', k: 'admin',
-          when: 'Staff press Deploy.',
+          does: 'Writes D1, keeps the old version in History and records the change in the audit log. The site shows it after the next Publish.',
+          touches: ['D1'], where: 'functions/api/save-content.js · delete-content.js · _content-history.js',
+          info: 'Saves aren’t copied to GitHub: the site’s content left the code on Oct 24, 2026, and D1 is the only copy. History undoes one record; D1’s Time Travel can undo the whole database.',
+          live: (f) => (!f.bindings ? null : f.bindings.db ? ON() : ATTN('The DB binding is missing, so nothing can be saved.')) },
+        { t: 'Publish', s: 'live', k: 'admin',
+          when: 'Staff press Publish.',
           does: 'Calls the Cloudflare Pages deploy hook to rebuild the site.',
           touches: ['Cloudflare Pages'], where: 'functions/api/flush-deploy.js',
           live: needsKey('deployHook', 'The deploy hook isn’t set, so Deploy can’t rebuild the site.') },
@@ -1213,7 +1322,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Event pages after the event', s: 'live', k: 'schedule',
           when: 'Every 15 minutes on the live hub’s heartbeat. An event counts as over from midnight after its last day, Atlanta time.',
           does: 'Rebuilds the site the morning after an event, so its page turns into the thank-you: the pro photos, then the sponsors, with no tickets or countdown. Tells Slack, and asks for the photos if there are none yet. When next year’s gala or golf tournament is added, saves this year’s photos and sponsors onto this year’s event, so /events/gala/2026/ keeps them for good.',
-          touches: ['D1', 'GitHub', 'Cloudflare Pages', 'Slack'], where: 'functions/api/_event-recap.js (from broadcast-hooks.js) · public/admin/events-shared.js',
+          touches: ['D1', 'Cloudflare Pages', 'Slack'], where: 'functions/api/_event-recap.js (from broadcast-hooks.js) · public/admin/events-shared.js',
           info: '/events/gala/ and /events/golf/ always show the newest of their series; each year also keeps its own page (/events/gala/2026/). A gala’s or tournament’s photos are the ones added to its editor’s Gallery tab after its date; any other event shows its own Event Photos.',
           live: (f) => {
             const e = f.eventRecap;
@@ -1226,7 +1335,8 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Code push builds', s: 'live', k: 'build',
           when: 'A push to main on GitHub.',
           does: 'Cloudflare Pages builds and publishes the site.',
-          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/pranney82/soard-site' },
+          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/pranney82/soard-site',
+          live: (f) => codeLive(f) },
         { t: 'Build pulls content', s: 'live', k: 'build',
           when: 'Every build, before the site is generated.',
           does: 'Copies all content and settings from D1 into the site, then fetches image placeholders and sizes from Cloudflare Images.',
@@ -1239,25 +1349,6 @@ const MAP = { t: 'SOARD', children: [
           when: 'Run by hand from a computer.',
           does: 'Sends sitemap URLs to Bing and Yandex through IndexNow.',
           touches: ['IndexNow'], where: 'scripts/indexnow.js' },
-      ]},
-      { t: 'Storage', children: [
-        { t: 'D1 database', s: 'live', k: 'link',
-          does: 'All content, settings, broadcast state, reminder sign-ups, invite records and the audit log.',
-          touches: ['D1'], where: 'soard-db (binding DB)',
-          live: (f) => (!f.bindings ? null : f.bindings.db ? ON() : ATTN('The DB binding is missing.')) },
-        { t: 'Cloudflare Images', s: 'live', k: 'link',
-          does: 'Every photo and logo on the site. Staff upload, list and delete from the admin.',
-          touches: ['Cloudflare Images'], where: 'functions/api/upload-image.js · list-images.js · delete-image.js',
-          live: needsKey('images', 'CF_IMAGES_TOKEN is missing, so uploads fail.') },
-        { t: 'Cloudflare Stream', s: 'live', k: 'link',
-          does: 'Reveal videos and live inputs. Staff upload straight from the admin.',
-          touches: ['Cloudflare Stream'], where: 'functions/api/upload-video.js · stream-videos.js',
-          info: 'The Stream subscription has lapsed twice before. If uploads fail with a 403, check Billing before chasing tokens.',
-          live: (f) => (!env(f) ? null : !f.env.stream ? ATTN('CF_STREAM_TOKEN is missing.') : f.health?.streamOk === false ? ATTN('The last health check couldn’t reach Stream. Check Billing → Subscriptions first.') : ON()) },
-        { t: 'Files bucket (R2)', s: 'live', k: 'link',
-          does: 'Financial PDFs and other uploads, served at /files/ and files.sunshineonaranneyday.com.',
-          touches: ['Cloudflare R2'], where: 'soard-files (binding FILES)',
-          live: (f) => (!f.bindings ? null : f.bindings.files ? ON() : ATTN('The FILES binding is missing.')) },
       ]},
       { t: 'AI helpers', children: [
         { t: 'Alt text & SEO writer', s: 'live', k: 'admin',
@@ -1843,7 +1934,7 @@ const FILTERS = [
   ['link', 'Connections'],
   ['attn', 'Needs a look'],
 ];
-const PALETTE = { reveals: '#B08900', live: '#6352C9', email: '#2B6CB0', site: '#13807A', give: '#A0571A', jt: '#4E7A2E', apply: '#8C3D6B', board: '#4A5A6A' };
+const PALETTE = { reveals: '#B08900', live: '#6352C9', email: '#2B6CB0', site: '#13807A', give: '#A0571A', jt: '#4E7A2E', apply: '#8C3D6B', board: '#4A5A6A', host: '#0E7490' };
 
 const model = prepareMap(MAP, 'a');
 /** Apply the live facts to every entry. Exported for tests. */
