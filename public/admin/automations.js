@@ -168,7 +168,7 @@ const pagesLive = (f) => {
   const since = live ? ` The site still shows the build of ${stamp(live.endedAt || live.at)}${shaOf(live)}.` : '';
   if (p.failed) return ATTN(`The newest build${shaOf(p.failed)} failed ${stamp(p.failed.endedAt || p.failed.at)}.${since} Its log is in ${DEPLOYS}.`, live?.endedAt || null);
   if (!live) return ATTN(`Cloudflare lists no build that went live. See ${DEPLOYS}.`);
-  const how = { push: 'after a push to GitHub', hook: 'by Publish or a push' }[live.by] || '';
+  const how = { push: 'after a push to GitHub', publish: 'by Publish' }[live.by] || '';
   if (p.active) return ON(`Building now${shaOf(p.active)}, started ${ago(p.active.at)}. Live meanwhile: the build of ${stamp(live.endedAt || live.at)}${shaOf(live)}.`, live.endedAt || live.at);
   return ON(`Live: built ${how ? `${how} ` : ''}${stamp(live.endedAt || live.at)}${shaOf(live)}.`, live.endedAt || live.at);
 };
@@ -183,7 +183,7 @@ const codeLive = (f) => {
   if (g.build === 'failed') return ATTN(`${head[0].toUpperCase()}${head.slice(1)}, didn’t build, so the site is behind the code. Its log is in ${DEPLOYS}.`, g.at);
   if (g.skip) return ON(`${head[0].toUpperCase()}${head.slice(1)}, asked not to be built ([skip ci]).`, g.at);
   if (!stale(g.at, 15 * MIN)) return ON(`${g.sha} just landed on main; its build starts in a moment.`, g.at);
-  return ATTN(`${head[0].toUpperCase()}${head.slice(1)}, has no build, so the site is behind the code. GitHub’s workflow may not have reached Cloudflare (Actions → Build the site on Cloudflare says why): start a build in ${DEPLOYS}, or push again.`, g.at);
+  return ATTN(`${head[0].toUpperCase()}${head.slice(1)}, has no build, so the site is behind the code. Cloudflare may have missed the push: Retry deployment in ${DEPLOYS}, or push again.`, g.at);
 };
 const DAY = 24 * HOUR;
 const dateOf = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
@@ -1056,7 +1056,7 @@ const MAP = { t: 'SOARD', children: [
         { t: 'GitHub repository', s: 'live', k: 'link',
           does: 'The website’s code: the pages, the admin, the API and the live hub. Cloudflare watches its main branch, and every push there builds and publishes the site.',
           touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/sunshineonaranneyday/soard-site (branch main)',
-          info: 'The repository is public: anyone can read the code, so keys and families’, donors’ and staff’s details never go in it. Keys live in Cloudflare and content lives in D1, so the code alone can’t bring back the site’s words or photos. It belongs to SOARD’s GitHub organization, Sunshine on a Ranney Day, beside the Sunny & Ranney store’s code; who can change it is under the organization’s People. Cloudflare’s own link to GitHub can’t follow a repository to a new owner, so since the move a GitHub workflow asks Cloudflare to build each push (see Code push builds).',
+          info: 'The repository is public: anyone can read the code, so keys and families’, donors’ and staff’s details never go in it. Keys live in Cloudflare and content lives in D1, so the code alone can’t bring back the site’s words or photos. It belongs to SOARD’s GitHub organization, Sunshine on a Ranney Day, beside the Sunny & Ranney store’s code; who can change it is under the organization’s People.',
           links: [{ label: 'Open on GitHub', href: GH }, { label: 'People', href: 'https://github.com/orgs/sunshineonaranneyday/people' }], live: (f) => codeLive(f) },
       ]},
       { t: 'Domains', children: [
@@ -1365,9 +1365,8 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Code push builds', s: 'live', k: 'build',
           when: 'A push to main on GitHub.',
-          does: 'GitHub asks Cloudflare Pages to build and publish the site, through the project’s deploy hook (the same kind of address Publish uses). A commit that says [skip ci] isn’t built.',
-          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/sunshineonaranneyday/soard-site · .github/workflows/cloudflare-build.yml (secret CF_DEPLOY_HOOK)',
-          info: 'Cloudflare used to hear about pushes through its own GitHub link, which can’t follow a repository to a new owner; since the code moved to SOARD’s organization on Nov 12, 2026, this workflow does it. Each push’s run is under the repository’s Actions tab.',
+          does: 'Cloudflare Pages builds and publishes the site.',
+          touches: ['GitHub', 'Cloudflare Pages'], where: 'github.com/sunshineonaranneyday/soard-site',
           live: (f) => codeLive(f) },
         { t: 'Build pulls content', s: 'live', k: 'build',
           when: 'Every build, before the site is generated.',

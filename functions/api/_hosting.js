@@ -65,8 +65,7 @@ const domainCache = new Map();
 const TIMEOUT = 6000;
 
 const short = (sha) => (typeof sha === 'string' && sha ? sha.slice(0, 8) : null);
-// A deploy hook is Publish, or since the move to SOARD's organization a push (.github/workflows/cloudflare-build.yml)
-const BY = { 'github:push': 'push', deploy_hook: 'hook' };
+const BY = { 'github:push': 'push', deploy_hook: 'publish' };
 
 async function getJson(fetchImpl, url, headers = {}) {
   const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(TIMEOUT) });
