@@ -524,7 +524,9 @@ export async function act(env, body, by, { now = Date.now() } = {}) {
   if (a === 'big') {
     const subject = String(body.subject || '');
     if (!subject) throw bad('Which name?');
-    await putCall(DB, { kind: 'big', subject, answer: 0 }, by, now);
+    // The same giver under another of its names: not asked about for a year either
+    const also = (Array.isArray(body.also) ? body.also : []).map(String).filter(Boolean).slice(0, 5);
+    await DB.batch([subject, ...also].map((s) => callStmt(DB, { kind: 'big', subject: s, answer: 0 }, by, now)));
     return { ok: true };
   }
   if (a === 'org-new') {
@@ -859,12 +861,18 @@ export function needsOf(rows, crm, { now = Date.now(), unplaced = [] } = {}) {
     people.set(person, p);
   }
   const pairs = new Map();
+  // Several records with one name or email: one question at a time (the next comes once that one is answered), so
+  // three of one name are never three questions about the same people at once
+  const asked3 = new Set();
   const group = (k, list, why) => {
     const l = list.filter((p) => p.cents > 0).slice(0, 4);
     for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) {
       const [a, b] = [l[i].key, l[j].key].sort();
       if (crm.calls.notSame.has(`${a}\n${b}`) || pairs.has(`${a}\n${b}`)) continue;
+      if (asked3.has(a) || asked3.has(b)) continue;
       pairs.set(`${a}\n${b}`, { a, b, why });
+      asked3.add(a);
+      asked3.add(b);
     }
   };
   const byName = new Map();
@@ -903,10 +911,18 @@ export function needsOf(rows, crm, { now = Date.now(), unplaced = [] } = {}) {
     ...[...companies.values()].filter((c) => !asked.has(c.key)).map((c) => ({ subject: `company:${c.key}`, link: 'company', linkSubject: c.name, name: c.name, cents12: c.cents12, anonymous: c.anonymous, people: [...c.people.values()].slice(0, 3) })),
     ...[...contacts.values()].filter((c) => ORG_WORDS.test(c.name)).map((c) => ({ subject: `contact:${c.id}`, link: 'contact', linkSubject: c.id, name: c.name, cents12: c.cents12, anonymous: c.anonymous, people: [] })),
   ];
+  // One name asked about once: a company typed on gifts and a Zeffy contact of the same name are one giver (the
+  // company's name is linked; the contact's then matches by itself)
+  const bigByName = new Map();
   for (const b of bigOnes) {
     if (b.cents12 < CHAMPION_CENTS || b.anonymous) continue;
-    if (!yearAgo(crm.calls.big.get(b.subject)?.at)) continue;
-    items.push({ id: `big:${b.subject}`, kind: 'big', subject: b.subject, link: b.link, linkSubject: b.linkSubject, name: b.name, cents12: b.cents12, people: b.people });
+    const nk = nameKey(b.name) || b.subject;
+    if (bigByName.has(nk)) { bigByName.get(nk).also.push(b.subject); continue; }
+    bigByName.set(nk, { ...b, also: [] });
+  }
+  for (const b of bigByName.values()) {
+    if ([b.subject, ...b.also].some((s) => !yearAgo(crm.calls.big.get(s)?.at))) continue;
+    items.push({ id: `big:${b.subject}`, kind: 'big', subject: b.subject, also: b.also, link: b.link, linkSubject: b.linkSubject, name: b.name, cents12: b.cents12, people: b.people });
   }
   for (const u of unplaced) if (!crm.calls.movedDone.has(u.contact)) items.push({ id: `moved:${u.contact}`, kind: 'moved', contact: u.contact, to: u.to, at: u.at });
   const order = { level: 0, big: 1, near: 2, clash: 3, same: 4, moved: 5 };

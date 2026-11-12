@@ -542,7 +542,7 @@ function NeedsList({ ctx, onChanged, only = null }) {
     if (it.kind === 'big') return html`<li key=${id} class="card dn-need">
       <p class="dn-need__q">${it.name} gave ${usd(it.cents12)} in the last 12 months and isn’t an organization here.</p>
       <p class="dn-need__sub">${it.people?.length ? `Given by ${it.people.join(', ')}. ` : ''}Keep it as an organization to see all its giving together. Only staff see it; putting it on the website is a separate step.</p>
-      <div class="dn-need__do">${btn(id, 'Keep it as an organization', async () => { const k = await keepAsOrg(it.name, { kind: it.link, subject: it.linkSubject }, ctx); return k ? true : false; }, true)}${btn(`${id}:no`, 'Not now', () => said({ act: 'big', subject: it.subject }, 'It won’t ask about it again for a year'))}</div></li>`;
+      <div class="dn-need__do">${btn(id, 'Keep it as an organization', async () => { const k = await keepAsOrg(it.name, { kind: it.link, subject: it.linkSubject }, ctx); return k ? true : false; }, true)}${btn(`${id}:no`, 'Not now', () => said({ act: 'big', subject: it.subject, also: it.also || [] }, 'It won’t ask about it again for a year'))}</div></li>`;
     if (it.kind === 'near') return html`<li key=${id} class="card dn-need">
       <p class="dn-need__q">Is ${it.link === 'company' ? html`“${it.subject}”` : it.name} ${it.orgName}?</p>
       <p class="dn-need__sub">${it.link === 'company' ? `A company named on ${usd(it.cents)} of gifts${it.people?.length ? ` (${it.people.join(', ')})` : ''}.` : `A Zeffy contact who gave ${usd(it.cents)}.`} ${it.why}. Yes counts its gifts for ${it.orgName}.</p>

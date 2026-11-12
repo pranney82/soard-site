@@ -826,3 +826,26 @@ test('a contact staff said isn’t a kept partner named for a person is never hi
   await doIt({ act: 'not', kind: 'contact', subject: 'ct_js', org: 'p:jsf' });
   assert.equal((await board([boardRow('js', 'John Smith', 'ct_js')])).js, false);
 });
+
+test('a big giver under one name twice (a company typed on gifts, and a Zeffy contact of that name) is asked about once; Not now holds for both', async () => {
+  await add(pay({ id: 'bb1', contact: 'ct_vf', first: 'Vale Family', last: 'Foundation', email: 'grants@valefamily.example', company: 'Vale Family Foundation', amount: 3000000, created: S(NOW - 30 * DAY) }));
+  const big = (await needs()).filter((x) => x.kind === 'big');
+  assert.equal(big.length, 1, 'one question, not two');
+  assert.equal(big[0].name, 'Vale Family Foundation');
+  assert.deepEqual(big[0].also, ['contact:ct_vf']);
+  await doIt({ act: 'big', subject: big[0].subject, also: big[0].also });
+  assert.equal((await needs()).filter((x) => x.kind === 'big').length, 0, 'not asked again under its other name');
+});
+
+test('three records of one name: one Same person? at a time, the next once that one is answered', async () => {
+  await add(pay({ id: 'rv1', contact: 'ct_rv1', first: 'Rita', last: 'Vance', email: 'rita1@example.com', amount: 5000 }));
+  await add(pay({ id: 'rv2', contact: 'ct_rv2', first: 'Rita A.', last: 'Vance', email: 'rita2@example.com', amount: 6000 }));
+  await add(pay({ id: 'rv3', contact: 'ct_rv3', first: 'RITA', last: 'VANCE', email: 'rita3@example.com', amount: 7000 }));
+  let same = (await needs()).filter((x) => x.kind === 'same');
+  assert.equal(same.length, 1);
+  await doIt({ act: 'same', a: same[0].a.key, b: same[0].b.key, same: true });
+  same = (await needs()).filter((x) => x.kind === 'same');
+  assert.equal(same.length, 1, 'the third record, asked about next');
+  await doIt({ act: 'same', a: same[0].a.key, b: same[0].b.key, same: false });
+  assert.equal((await needs()).filter((x) => x.kind === 'same').length, 0);
+});
