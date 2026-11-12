@@ -325,7 +325,14 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     const cell = mark?.parentElement;
     if (cell) {
       cell.toggleAttribute('data-mark', ok);
-      if (ok) cell.style.setProperty('--at', String(Math.min(1, Math.max(0, revealAt! / d))));
+      const at = ok ? Math.min(1, Math.max(0, revealAt! / d)) : 0;
+      if (ok) cell.style.setProperty('--at', String(at));
+      // The line runs 8px in from each end of the cell, the star (16px each side of its centre with its gap) sits where
+      // the handle will be: a piece of line under 8px either side of it is a speck, so it's left out
+      const w = cell.clientWidth;
+      const star = 16 + (w - 32) * at;
+      const edge = !ok || !w ? '' : star - 16 - 8 < 8 ? 'start' : w - 8 - (star + 16) < 8 ? 'end' : '';
+      if (edge) cell.dataset.markEdge = edge; else delete cell.dataset.markEdge;
     }
   }
   function paintJump(t: number) {
@@ -593,6 +600,12 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   const onFullscreen = () => { flag('data-fullscreen', document.fullscreenElement === root); updateDock(); refit(); };
   document.addEventListener('fullscreenchange', onFullscreen);
 
+  // The captions line and the progress line, when their width changes (a turn, full screen, the layout chosen below,
+  // captions switched on): a caption is split into its two-line pages again, and the line's ends measured again, at
+  // once, paused or not (a paused caption was cut at its third line until it played again)
+  const roomWatch = 'ResizeObserver' in window ? new ResizeObserver(() => { paintCaption(video()?.currentTime ?? 0); paintMark(); }) : null;
+  for (const el of [$('cc'), seek?.parentElement]) if (el) roomWatch?.observe(el);
+
   // ── Which way round, on a phone held sideways ──
   // LiveStage has more than one way to lay the stage out there (data-fit): in full screen, the controls beside the
   // picture or under it; on the page, with captions on beside a wide picture that has the design with it, the
@@ -680,6 +693,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
       phone.removeEventListener('change', onTyping);
       removeEventListener('resize', refit);
       fitWatch.disconnect();
+      roomWatch?.disconnect();
       roomProbe.remove();
       for (const off of offs) off();
     },

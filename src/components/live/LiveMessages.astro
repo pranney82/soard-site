@@ -44,7 +44,9 @@
   .msgs h2 { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.02em; margin: 8px 0 16px; }
   .msgs__lead { color: var(--c-text-muted); line-height: 1.7; max-width: 560px; margin: 0 0 8px; }
   .msgs__feed { position: relative; min-height: 0; display: flex; flex-direction: column; }
-  .msgs__wall { border-radius: var(--border-radius-lg); padding: 16px; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; }
+  /* (no overscroll-behavior: a swipe that reaches the wall's end moves the page; on a phone the wall is a few hundred
+     pixels of the screen under the video, and it held every swipe) */
+  .msgs__wall { border-radius: var(--border-radius-lg); padding: 16px; overflow-y: auto; scroll-behavior: smooth; }
   .msg-jump {
     position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
     border: 0; border-radius: 100px; padding: 8px 16px; background: var(--c-dark); color: #fff;

@@ -330,6 +330,16 @@ const ICON = {
     -webkit-mask-image: linear-gradient(to right, #000 calc(var(--star) - 16px), transparent calc(var(--star) - 16px), transparent calc(var(--star) + 16px), #000 calc(var(--star) + 16px));
     mask-image: linear-gradient(to right, #000 calc(var(--star) - 16px), transparent calc(var(--star) - 16px), transparent calc(var(--star) + 16px), #000 calc(var(--star) + 16px));
   }
+  /* A piece of line left before the star (or after it) too short to read as line is left out, rather than drawn as a
+     speck (live-stage.ts measures it: data-mark-edge) */
+  .seek[data-mark][data-mark-edge='start'] .seek__line {
+    -webkit-mask-image: linear-gradient(to right, transparent calc(var(--star) + 16px), #000 calc(var(--star) + 16px));
+    mask-image: linear-gradient(to right, transparent calc(var(--star) + 16px), #000 calc(var(--star) + 16px));
+  }
+  .seek[data-mark][data-mark-edge='end'] .seek__line {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(var(--star) - 16px), transparent calc(var(--star) - 16px));
+    mask-image: linear-gradient(to right, #000 calc(var(--star) - 16px), transparent calc(var(--star) - 16px));
+  }
   /* (its 8px sides: a tap there still seeks, to the very start or end) */
   .seek__range { position: relative; z-index: 1; width: 100%; height: 40px; margin: 0; padding: 0 8px var(--seek-pad); background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
   .seek__range::-webkit-slider-runnable-track { height: 6px; border-radius: 6px; background: transparent; }

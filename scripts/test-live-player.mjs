@@ -580,7 +580,14 @@ try {
   };
   const c1 = await capAt(0.5); const c2 = await capAt(7.5);
   ok(c1.lines <= 2 && c2.lines <= 2 && c1.h === c2.h && c1.text !== c2.text && c2.jumpB <= c2.vh, `two lines at a time, the line one height (${c1.h}, ${c2.h}), Jump on the screen (${c2.jumpB} of ${c2.vh}): "${c1.text.slice(0, 30)}…" then "…${c2.text.slice(-30)}"`);
+  // Paused on it, the phone turned: the caption is split again for its new width at once, never cut at a third line
+  await page.setViewport({ width: 844, height: 390, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await sleep(900);
+  const turned = await page.evaluate(() => { const x = document.querySelector('[data-s="cc-text"]'); return { lines: Math.round(x.getBoundingClientRect().height / parseFloat(getComputedStyle(x).lineHeight)), paused: document.querySelector('video').paused }; });
+  ok(turned.paused && turned.lines <= 2, `paused, then turned sideways: still at most two lines (${turned.lines})`);
   feed.vtt = null;
+  await page.setViewport({ width: 390, height: 664, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await sleep(300);
   await page.click('[data-s="cc-toggle"]'); await sleep(300);
 
   console.log('\n▶ leave the page and come back');
