@@ -136,12 +136,22 @@ async function main() {
   }
 
   const files = readdirSync(KIDS_DIR).filter(f => f.endsWith('.json'));
+  // The reveals as this build sees them (scripts/prebuild.js writes them first): which rooms are revealed, and which
+  // have a confirmed reveal ahead, by src/pages/kids/[slug].astro's rules
+  let schedule = { upcoming: [], past: [] };
+  try { schedule = JSON.parse(readFileSync(join(OUT_DIR, 'upcoming-reveals.json'), 'utf8')); } catch { /* none: only completed rooms count as revealed */ }
+  const ahead = new Set((schedule.upcoming || []).map((r) => r.slug));
+  const confirmedAhead = new Set((schedule.upcoming || []).filter((r) => r.confirmed).map((r) => r.slug));
+  const passed = new Set((schedule.past || []).map((r) => r.slug));
 
   // Collect all unique image IDs across hero, photos, and storyPhotos
   const imageIds = new Set();
   for (const file of files) {
     try {
       const data = JSON.parse(readFileSync(join(KIDS_DIR, file), 'utf8'));
+      const slug = data.slug || file.replace(/\.json$/, '');
+      const revealed = data.status === 'completed' || (passed.has(slug) && !ahead.has(slug));
+      const confirmed = !revealed && confirmedAhead.has(slug);
       if (data.heroImage) imageIds.add(cfId(data.heroImage));
       for (const p of data.photos || []) {
         if (p.url) imageIds.add(cfId(p.url));
@@ -150,11 +160,23 @@ async function main() {
         if (p.url) imageIds.add(cfId(p.url));
       }
       // Design plans + before/after pairs: the kid page and /how-it-works/ need
-      // their aspect ratio to crop the drawing title block (family address)
+      // their aspect ratio to crop the drawing title block (family address).
+      // Only ones a page shows as of this build: this file is in the public repo,
+      // and Cloudflare Images serves any image id to anyone. So the kid page's
+      // rules (public/admin/reveal-design.js pagePlans, pagePairs): from the reveal,
+      // every plan but a drawing brought in from JobTread whose address hasn't been
+      // seen to, and the pairs whose before isn't kept off or waiting; from the
+      // confirmed reveal, the existing and proposed plans with their address seen
+      // to; before that, none. The next build lists what has come to show since
+      const seenTo = (p) => ['wiped', 'covered', 'checked'].includes(p?.addressCheck);
       for (const p of data.plans || []) {
-        if (p.url) imageIds.add(cfId(p.url));
+        if (!p.url) continue;
+        const shows = revealed ? (!p.source || p.type === 'board' || seenTo(p)) : confirmed ? (p.type !== 'board' && seenTo(p)) : false;
+        if (shows) imageIds.add(cfId(p.url));
       }
-      for (const pair of data.beforeAfterPhotos || []) {
+      const held = new Set((data.beforePhotos || []).filter((p) => p?.url && !(p.looked && !p.offPage)).map((p) => p.url));
+      for (const pair of revealed ? data.beforeAfterPhotos || [] : []) {
+        if (pair.before && held.has(pair.before)) continue;
         if (pair.before) imageIds.add(cfId(pair.before));
         if (pair.after) imageIds.add(cfId(pair.after));
       }

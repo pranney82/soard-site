@@ -17,6 +17,7 @@ import {
   listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, makeoverWord, shortStory, tidy, kidName, shownPartners, leadPhoto,
   chosenWords, plainWords, askHeadlineHtml, askHeadlineFit,
 } from './_reveal-invite-email.js';
+import { pagePairs } from '../../public/admin/reveal-design.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
 
@@ -110,18 +111,19 @@ function leadOf(kid, broken) {
   return leadPhoto(kid, broken);
 }
 
-/** The first before and after that both load. Half a pair says nothing, so it's both or neither. */
+/**
+ * The first before and after that both load. Half a pair says nothing, so it's both or neither; and never one whose
+ * before is a before photo kept off the page (pagePairs)
+ */
 function pairOf(kid, broken) {
-  return (kid.beforeAfterPhotos || []).find((p) => p?.before && p?.after
-    && !broken.has(cfImg(p.before, PAIR_TRANSFORM)) && !broken.has(cfImg(p.after, PAIR_TRANSFORM))) || null;
+  return pagePairs(kid).find((p) => !broken.has(cfImg(p.before, PAIR_TRANSFORM)) && !broken.has(cfImg(p.after, PAIR_TRANSFORM))) || null;
 }
 
 /** The before and after pictures the Project Reveal could load, for the image check */
 /** Everything beyond the usual images a Project Reveal draft checks first: its before and after, and its Stream video */
 export const revealChecks = (kid) => [...beforeAfterUrls(kid), streamCheckUrl(kid)].filter(Boolean);
 
-export const beforeAfterUrls = (kid) => (kid?.beforeAfterPhotos || []).filter((p) => p?.before && p?.after)
-  .flatMap((p) => [cfImg(p.before, PAIR_TRANSFORM), cfImg(p.after, PAIR_TRANSFORM)]);
+export const beforeAfterUrls = (kid) => pagePairs(kid).flatMap((p) => [cfImg(p.before, PAIR_TRANSFORM), cfImg(p.after, PAIR_TRANSFORM)]);
 
 export const gap = (px, look = SOARD_LOOK) => `<tr><td bgcolor="${look.paper}" style="background:${look.paper};height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</td></tr>`;
 

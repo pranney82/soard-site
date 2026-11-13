@@ -25,6 +25,7 @@ import { getKidProfileSchema } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
 import { resolveKidVideo } from '../../utils/reveals';
 import RevealInvite from '../../components/live/RevealInvite.astro';
+import { upcomingAtBuild, pastAtBuild } from '../../utils/reveals-copy';
 import { getCollection } from 'astro:content';
 import { isPublished, linkFor, isArchived, outletNameFor } from '../../utils/press';
 
@@ -209,13 +210,43 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 // noindex thin profiles (no bio, few photos, no video) to prevent "Crawled — not indexed"
 const isThinPage = !kid.bio && galleryPhotos.length <= 1 && !hasVideo;
 
-// ── Plans ─────────────────────────────────
-// The design stays off the page until the room is revealed: it first shows on the reveal's own page and
-// starting-soon screen, an hour before (public/admin/reveal-design.js). kid-preview.js keeps the same rule.
-// The admin Preview's template pages (src/pages/admin/kid-template/) pass showDesign: they carry every section to copy.
-const revealed = Astro.props.showDesign === true || kid.status === 'completed';
-const plans = revealed ? kid.plans || [] : [];
+// ── The room's design, by when ────────────
+// Peter, Nov 12 2026: from JobTread's confirmed reveal (as of this build: src/data/upcoming-reveals.json) the page
+// shows every before photo (Photos → Before photos in the admin) and the existing and proposed plans whose address
+// has been seen to; "hold off on putting the design boards on their webpage until after the reveal". From the reveal,
+// every plan and the Transformation. pagePlans / pageBefores in public/admin/reveal-design.js are the same rules
+// (kid-preview.js uses them). The admin Preview's template pages (src/pages/admin/kid-template/) pass showDesign:
+// they carry every section to copy.
+// A reveal whose day has passed counts as revealed, whether or not JobTread has marked the room done yet, unless the room
+// has a reveal still ahead (one put off on the day and moved, or a second makeover): that one's design waits for it
+const revealed = Astro.props.showDesign === true || kid.status === 'completed'
+  || (pastAtBuild().some((r) => r.slug === kid.slug) && !upcomingAtBuild().some((r: any) => r.slug === kid.slug));
+const confirmed = !revealed && upcomingAtBuild().some((r: any) => r.slug === kid.slug && r.confirmed);
+const planKindOf = (p: any) => (p?.type === 'board' ? 'board' : p?.type === 'proposed' ? 'proposed' : 'as-built');
+// Its address painted out, covered, or looked at and found to have none (public/admin/reveal-design.js addressChecked)
+const addressSeenTo = (p: any) => ['wiped', 'covered', 'checked'].includes(p?.addressCheck);
+// From the reveal: every plan, boards too, but a drawing brought in from JobTread only once its address has been seen to
+// (one staff put there themselves is theirs, as it always was); pagePlans' rule
+const plans = Astro.props.showDesign === true ? kid.plans || []
+  : revealed ? (kid.plans || []).filter((p: any) => p?.url && (!p.source || planKindOf(p) === 'board' || addressSeenTo(p)))
+  : confirmed ? ['as-built', 'proposed'].flatMap((k) => (kid.plans || []).filter((p: any) => p?.url && planKindOf(p) === k && addressSeenTo(p)))
+  : [];
 const hasPlans = plans.length > 0;
+// Which plan it is, on the drawing, as the reveal screen says it: a plan the address check has seen is typed reliably
+// (older plans were all stored as one kind, so they carry none)
+const PLAN_BADGE: Record<string, string> = { 'as-built': 'Existing', proposed: 'Proposed', board: '' };
+const planBadge = (p: any) => (addressSeenTo(p) ? PLAN_BADGE[planKindOf(p)] : '');
+// The photo viewer's caption: which plan it is, unless its own caption says so already ("Existing floor plan")
+const planCaption = (p: any) => { const b = planBadge(p); const l = String(p?.label || ''); return b && !l.toLowerCase().includes(b.toLowerCase()) ? [b, l].filter(Boolean).join(' · ') : l; };
+// Every before photo on the page, in the admin's order; the first BEFORES_SHOWN on the page, the rest in the photo
+// viewer. On the page: someone has looked at it (the site's check, or staff) and it isn't kept off (Admin → Kids →
+// Photos → Before photos → On the page; onPage in public/admin/reveal-design.js). One not looked at yet never shows
+const befores = revealed || confirmed ? (kid.beforePhotos || []).filter((p: any) => p?.url && p.looked && !p.offPage) : [];
+const hasBefores = befores.length > 0;
+const BEFORES_SHOWN = 6;
+// The photo viewer's sets, one after another: the gallery (when it shows), the plans, the before photos
+const galleryShown = galleryPhotos.length > 1 ? galleryPhotos.length : 0;
+const beforeStart = galleryShown + plans.length;
 
 /* ── Floor plans: crop the designer's title block ──
    Drawings that follow the Existing/Proposed convention carry a title block
@@ -247,7 +278,10 @@ function planDims(p: any): [number, number] {
 
 // ── Before/After photos ───────────────────
 // Whole pairs only: a before photo can wait on the profile for its after
-const beforeAfterPhotos = revealed ? (kid.beforeAfterPhotos || []).filter((p: any) => p?.before && p?.after) : [];
+// Whole pairs, and never one whose before is a before photo kept off the page or not looked at yet (pagePairs in
+// public/admin/reveal-design.js): a pair takes its before from Before photos, so one kept off there is off here too
+const heldBefores = new Set((kid.beforePhotos || []).filter((p: any) => p?.url && !(p.looked && !p.offPage)).map((p: any) => p.url));
+const beforeAfterPhotos = revealed ? (kid.beforeAfterPhotos || []).filter((p: any) => p?.before && p?.after && !heldBefores.has(p.before)) : [];
 const hasBeforeAfter = beforeAfterPhotos.length > 0;
 
 // ── Gallery — masonry with hero treatment ──
@@ -292,6 +326,7 @@ const statsItems = [
 const chapters = [
   { id: 'chapter-meet', label: 'Meet', icon: 'user', show: true },
   { id: 'chapter-story', label: 'Story', icon: 'book', show: bioParas.length > 0 },
+  { id: 'chapter-before', label: 'Before', icon: 'camera', show: hasBefores },
   { id: 'chapter-design', label: 'Design', icon: 'blueprint', show: hasPlans },
   { id: 'chapter-transform', label: 'Transform', icon: 'compare', show: hasBeforeAfter },
   { id: 'chapter-reveal', label: 'Reveal', icon: 'play', show: !!hasVideo },
@@ -515,6 +550,62 @@ const planOrientation = (() => {
       </section>
     )}
 
+    {/* ═══ The room before: every before photo, each marked Before so nobody takes the old room for the new one ═══ */}
+    {hasBefores && (
+      <section class="befores" id="chapter-before" data-chapter="Before">
+        <div class="container">
+          <h2 class="befores__title">Before</h2>
+          <p class="befores__lede">{kid.name}{/s$/i.test(kid.name || '') ? '’' : '’s'} room before the makeover.</p>
+          <div class="befores__grid">
+            {befores.slice(0, BEFORES_SHOWN).map((photo: any, i: number) => (
+              <button
+                class="befores__item"
+                data-lb-index={beforeStart + i}
+                type="button"
+                aria-label={`View before photo ${i + 1} of ${befores.length}${photo.room ? `, ${photo.room}` : ''}`}
+                style={`--lqip: url('${lqip(photo.url)}')`}
+              >
+                <img
+                  src={_cfUrl(photo.url, { w: 600, h: 450, fit: 'cover', q: 80 })}
+                  srcset={_cfSrcset(photo.url, [400, 600, 900], { fit: 'cover', aspectRatio: 0.75 })}
+                  sizes="(max-width: 768px) 46vw, 330px"
+                  alt={photo.alt || `${kid.name}'s room before the makeover`}
+                  class="befores__img lqip-img"
+                  loading="lazy"
+                  decoding="async"
+                  width="600"
+                  height="450"
+                />
+                <span class="befores__badge" aria-hidden="true">Before{photo.room ? ` · ${photo.room}` : ''}</span>
+              </button>
+            ))}
+          </div>
+
+          {befores.length > BEFORES_SHOWN && (
+            <button class="design__more" id="befores-view-all" data-first-before-index={beforeStart} type="button">
+              View all {befores.length} before photos
+            </button>
+          )}
+
+          <div hidden aria-hidden="true">
+            {befores.map((photo: any, i: number) => (
+              <button
+                class="masonry__item"
+                data-index={beforeStart + i}
+                data-src={_cfUrl(photo.url, { w: LIGHTBOX_WIDTH, q: 85 })}
+                data-srcset={_cfSrcset(photo.url, LIGHTBOX_WIDTHS)}
+                data-alt={photo.alt || `${kid.name}'s room before the makeover`}
+                data-caption={`Before${photo.room ? ` · ${photo.room}` : ''}`}
+                data-before="true"
+                type="button"
+                style={`--lqip: url('${lqip(photo.url)}')`}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
     {/* ═══ 3. The Design ═══ */}
     {hasPlans && (
       <section class="design" id="chapter-design" data-chapter="Design">
@@ -523,7 +614,7 @@ const planOrientation = (() => {
 
           <div class="design__grid">
             {plans.slice(0, 2).map((plan: any, i: number) => {
-              const lbIndex = galleryPhotos.length + i;
+              const lbIndex = galleryShown + i;
               return (
                 <button
                   class="design__item"
@@ -543,13 +634,14 @@ const planOrientation = (() => {
                     width={planDims(plan)[0]}
                     height={planDims(plan)[1]}
                   />
+                  {planBadge(plan) && <span class={`design__badge design__badge--${planKindOf(plan)}`} aria-hidden="true">{planBadge(plan)}</span>}
                 </button>
               );
             })}
           </div>
 
           {plans.length > 2 && (
-            <button class="design__more" id="design-view-all" data-first-plan-index={galleryPhotos.length} type="button">
+            <button class="design__more" id="design-view-all" data-first-plan-index={galleryShown} type="button">
               View all {plans.length} designs
             </button>
           )}
@@ -558,11 +650,11 @@ const planOrientation = (() => {
             {plans.map((plan: any, i: number) => (
               <button
                 class="masonry__item"
-                data-index={galleryPhotos.length + i}
+                data-index={galleryShown + i}
                 data-src={planUrl(plan, LIGHTBOX_WIDTH)}
                 data-srcset={planSrcset(plan, LIGHTBOX_WIDTHS)}
                 data-alt={plan.label || `Plan ${i + 1}`}
-                data-caption={plan.label || ''}
+                data-caption={planCaption(plan)}
                 data-plan="true"
                 type="button"
                 style={`--lqip: url('${lqip(plan.url)}')`}
@@ -932,7 +1024,7 @@ const planOrientation = (() => {
   </article>
 
   {/* ═══ Lightbox ═══ */}
-  <div id="lb-meta" data-gallery-count={galleryPhotos.length} data-plan-count={plans.length} hidden></div>
+  <div id="lb-meta" data-gallery-count={galleryShown} data-plan-count={plans.length} data-before-count={befores.length} hidden></div>
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
     <div class="lightbox__backdrop" data-close aria-hidden="true"></div>
     <button class="lightbox__close" data-close aria-label="Close photo viewer">
@@ -1496,7 +1588,7 @@ const planOrientation = (() => {
       });
     }
 
-    // ═══ Lightbox — unified gallery + plans ═══
+    // ═══ Lightbox — unified gallery + plans + before photos ═══
     const lightbox = document.getElementById('lightbox') as HTMLElement;
     const lbImg = document.getElementById('lb-img') as HTMLImageElement;
     const lbPlaceholder = document.getElementById('lb-placeholder') as HTMLImageElement;
@@ -1520,10 +1612,13 @@ const planOrientation = (() => {
     const lbMeta = document.getElementById('lb-meta');
     const galleryCount = parseInt(lbMeta?.dataset.galleryCount || '0', 10);
     const planCount = parseInt(lbMeta?.dataset.planCount || '0', 10);
+    const beforeCount = parseInt(lbMeta?.dataset.beforeCount || '0', 10);
+    const planEnd = galleryCount + planCount;
+    // The set an index is in (the gallery, the plans, the before photos): the arrows and the counter stay inside it
+    const kindAt = (i: number) => (beforeCount > 0 && i >= planEnd ? 'before' : planCount > 0 && i >= galleryCount ? 'plan' : 'photo');
 
     if (lightbox && galleryItems.length > 0) {
       let currentIndex = 0;
-      let isInPlanGallery = false;
       let previousFocus: HTMLElement | null = null;
       let navGeneration = 0;
       let loaderTimer = 0;
@@ -1687,8 +1782,8 @@ const planOrientation = (() => {
         }
 
         const dataIdx = parseInt(item.dataset.index || '0', 10);
-        const isPlan = item.dataset.plan === 'true' || (planCount > 0 && dataIdx >= galleryCount);
-        isInPlanGallery = isPlan;
+        const kind = item.dataset.before === 'true' ? 'before' : item.dataset.plan === 'true' ? 'plan' : kindAt(dataIdx);
+        const isPlan = kind === 'plan';
         lightbox.classList.toggle('lightbox--plan', isPlan);
 
         // Show caption for plans
@@ -1696,7 +1791,9 @@ const planOrientation = (() => {
         lbCaption.textContent = caption;
         lbCaption.style.display = caption ? '' : 'none';
 
-        if (isPlan) {
+        if (kind === 'before') {
+          lbCounter.textContent = `Before ${dataIdx - planEnd + 1} / ${beforeCount}`;
+        } else if (isPlan) {
           lbCounter.textContent = `${dataIdx - galleryCount + 1} / ${planCount}`;
         } else {
           lbCounter.textContent = galleryCount > 0
@@ -1705,8 +1802,7 @@ const planOrientation = (() => {
         }
 
         // Determine navigation boundaries based on current gallery type
-        const minIndex = isPlan ? galleryCount : 0;
-        const maxIndex = isPlan ? galleryCount + planCount - 1 : (galleryCount > 0 ? galleryCount - 1 : galleryItems.length - 1);
+        const [minIndex, maxIndex] = rangeOf(index);
         lbPrev.style.visibility = index <= minIndex ? 'hidden' : '';
         lbPrev.style.pointerEvents = index <= minIndex ? 'none' : '';
         lbNext.style.visibility = index >= maxIndex ? 'hidden' : '';
@@ -1814,16 +1910,19 @@ const planOrientation = (() => {
         }
       }
 
+      /** The first and last index of the set this one is in */
+      function rangeOf(i: number): [number, number] {
+        const kind = kindAt(i);
+        if (kind === 'before') return [planEnd, planEnd + beforeCount - 1];
+        if (kind === 'plan') return [galleryCount, planEnd - 1];
+        return [0, galleryCount > 0 ? galleryCount - 1 : galleryItems.length - 1];
+      }
       function goNext() {
         galleryItems = sortByDataIndex(document.querySelectorAll<HTMLButtonElement>('.masonry__item'));
-        const maxIndex = isInPlanGallery
-          ? galleryCount + planCount - 1
-          : (galleryCount > 0 ? galleryCount - 1 : galleryItems.length - 1);
-        if (currentIndex < maxIndex) showPhoto(currentIndex + 1, 1);
+        if (currentIndex < rangeOf(currentIndex)[1]) showPhoto(currentIndex + 1, 1);
       }
       function goPrev() {
-        const minIndex = isInPlanGallery ? galleryCount : 0;
-        if (currentIndex > minIndex) showPhoto(currentIndex - 1, -1);
+        if (currentIndex > rangeOf(currentIndex)[0]) showPhoto(currentIndex - 1, -1);
       }
 
       galleryItems.forEach((item, i) => {
@@ -1845,6 +1944,15 @@ const planOrientation = (() => {
           openLightbox(idx);
         });
       });
+
+      // Before photos on the page, and View all: the photo viewer at that one, among the before photos
+      document.querySelectorAll<HTMLButtonElement>('.befores__item[data-lb-index]').forEach(btn => {
+        btn.addEventListener('click', () => openLightbox(parseInt(btn.dataset.lbIndex || '0', 10)));
+      });
+      const beforesAllBtn = document.getElementById('befores-view-all');
+      if (beforesAllBtn) {
+        beforesAllBtn.addEventListener('click', () => openLightbox(parseInt(beforesAllBtn.dataset.firstBeforeIndex || '0', 10)));
+      }
 
       // View All Plans button - opens lightbox at first plan
       const viewAllBtn = document.getElementById('design-view-all');
@@ -3435,6 +3543,85 @@ const planOrientation = (() => {
     outline-offset: 4px;
   }
 
+  /* ═══ The room before ═══ */
+  .befores {
+    padding-block: clamp(80px, 12vw, 120px);
+    background: var(--c-white);
+    border-top: 1px solid var(--c-border);
+  }
+  .befores__title {
+    font-family: var(--font-display);
+    font-size: clamp(2.2rem, 4vw, 3rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    text-align: center;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    margin: 0 0 14px;
+  }
+  .befores__lede {
+    margin: 0 auto clamp(40px, 7vw, 60px);
+    max-width: 40ch;
+    text-align: center;
+    color: var(--c-text-muted);
+    font-size: 1rem;
+  }
+  /* Rows of three, centred, so one, two, four or five photos sit under the heading, not to its left */
+  .befores__grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+    max-width: 1000px;
+    margin-inline: auto;
+  }
+  .befores__item {
+    position: relative;
+    display: block;
+    flex: 0 0 calc((100% - 32px) / 3);
+    width: calc((100% - 32px) / 3);
+    aspect-ratio: 4 / 3;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
+    border-radius: 12px;
+    background-image: var(--lqip);
+    background-size: cover;
+    background-position: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .befores__item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06), 0 16px 40px rgba(0, 0, 0, 0.1);
+  }
+  .befores__item:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 4px; }
+  .befores__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  /* Said on the photo, strongly enough that nobody takes the old room for the finished one (as the reveal screen does) */
+  .befores__badge,
+  .design__badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    max-width: calc(100% - 20px);
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(30, 31, 37, 0.86);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+    color: #fff;
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+  .design__badge--proposed { background: var(--c-yellow); color: var(--c-dark); box-shadow: 0 0 0 1px rgba(30, 31, 37, 0.25); }
+
   /* ═══ 4. Before & After — Premium Slider ═══ */
   .ba-section {
     padding-block: clamp(80px, 12vw, 120px);
@@ -4838,6 +5025,14 @@ const planOrientation = (() => {
     .story__quote::before,
     .story__quote::after { width: 32px; }
     .story__quote-text { font-size: 1.15rem; }
+
+    .befores { padding-block: 56px; }
+    .befores__title { font-size: 1.8rem; }
+    .befores__lede { margin-bottom: 28px; font-size: 0.95rem; }
+    .befores__grid { gap: 10px; }
+    .befores__item { flex-basis: calc((100% - 10px) / 2); width: calc((100% - 10px) / 2); }
+    .befores__item { border-radius: 10px; }
+    .befores__badge, .design__badge { top: 8px; left: 8px; max-width: calc(100% - 16px); padding: 4px 8px; font-size: 0.66rem; }
 
     .design { padding-block: 56px; }
     .design__title { font-size: 1.8rem; text-align: center; margin-bottom: 32px; }

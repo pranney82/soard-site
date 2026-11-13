@@ -470,6 +470,13 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
   const ok = (v) => (v && !v.error ? v : null);
   // The automatic design import: its claim row says when it last ran (_reveal-design-auto.js)
   const designRunAt = await DB.prepare("SELECT updated_at FROM site_config WHERE key = 'reveal-design-auto-next'").first('updated_at').catch(() => null);
+  // ...and its ledger whether the last run failed, and why
+  // (JobTread's trouble and the before-photo check's are kept apart, so one kind of run never clears the other's: both shown)
+  const designError = await DB.prepare("SELECT json_extract(data, '$.error') AS e, json_extract(data, '$.lookError') AS l FROM site_config WHERE key = 'reveal-design-auto'").first()
+    .then((row) => {
+      const both = [row?.e, row?.l].map((x) => { try { return x ? JSON.parse(x) : null; } catch { return null; } }).filter((x) => x?.message);
+      return both.length ? { message: both.map((x) => String(x.message)).join(' '), at: both.map((x) => x.at).filter(Boolean).sort().pop() || null } : null;
+    }).catch(() => null);
   // The tables appear with the first partner logo sweep; until then these settle to an error
   const [logoState, logoWaiting, vendorState, creditsLast] = await Promise.all([
     settle(async () => JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'state'").first('value')) || '{}')),
@@ -498,7 +505,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     invites: inviteFacts(ok(invites), typeof inviteRows === 'number' ? inviteRows : null, ok(guestCheck)),
     revealChecks: revealCheckFacts(ok(checks), ok(synced)),
     liveSchedule: liveScheduleFacts(ok(liveSchedule)),
-    revealDesigns: { lastRunAt: typeof designRunAt === 'string' ? designRunAt : null, browser: !!env.BROWSER, images: !!(env.CF_ACCOUNT_ID && env.CF_IMAGES_TOKEN) },
+    revealDesigns: { lastRunAt: typeof designRunAt === 'string' ? designRunAt : null, browser: !!env.BROWSER, images: !!(env.CF_ACCOUNT_ID && env.CF_IMAGES_TOKEN), ai: !!env.AI, error: designError?.message ? { message: String(designError.message), at: designError.at || null } : null },
     kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
     kidLogos: kidLogoFacts(ok(logoState), typeof logoWaiting === 'number' ? logoWaiting : null),
     vendorAccess: vendorAccessFacts(ok(vendorState)),

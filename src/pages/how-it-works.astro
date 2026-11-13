@@ -66,7 +66,8 @@ const storyExcerpt = bioSentences.slice(0, 3).join(' ');
    Designers upload three kinds of files under "plans": presentation boards
    (PNG), floor plans (PNG, labeled Before/After or Existing/Proposed), and
    site photos from the build app (JPG). Sort them by those conventions. */
-const plans: Array<{ url: string; label: string; type: string }> = k.plans || [];
+// (A drawing brought in from JobTread only once its address has been seen to, as on the kid page: pagePlans' rule)
+const plans: Array<{ url: string; label: string; type: string }> = (k.plans || []).filter((p: any) => p?.url && (!p.source || p.type === 'board' || ['wiped', 'covered', 'checked'].includes(p.addressCheck)));
 const isPng = (p: { url: string }) => /\.png(\/|$)/i.test(p.url);
 const isFloorPlan = (p: { label: string }) => /(before|after|existing|existi|proposed|layout|floor\s*plan)/i.test(p.label || '');
 const floorPlans = plans.filter(isFloorPlan);
@@ -119,8 +120,10 @@ const streamId = k.streamVideoId || null;
 const ytMatch = (k.videoUrl || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
 const ytId = !streamId && ytMatch ? ytMatch[1] : null;
 const hasVideo = !!(streamId || ytId);
-// Whole pairs only (a before photo can wait on the profile for its after)
-const pair = (k.beforeAfterPhotos || []).find((p: any) => p?.before && p?.after) || null;
+// Whole pairs only (a before photo can wait on the profile for its after), and never one whose before is a before
+// photo kept off the page or not looked at yet (pagePairs in public/admin/reveal-design.js)
+const heldBefores = new Set((k.beforePhotos || []).filter((p: any) => p?.url && !(p.looked && !p.offPage)).map((p: any) => p.url));
+const pair = (k.beforeAfterPhotos || []).find((p: any) => p?.before && p?.after && !heldBefores.has(p.before)) || null;
 
 /* ── The application photo ──
    The application chapter shows the space as the family lived in it: a survey

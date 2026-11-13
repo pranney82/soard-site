@@ -79,7 +79,7 @@ function withSampleDesign(kid) {
   const pick = (re) => plans.find((p) => re.test(p.label || ''));
   return {
     ...kid,
-    beforeAfterPhotos: photos.map((p) => ({ before: p.url, after: '', room: '', beforeAlt: '', afterAlt: '' })),
+    beforePhotos: photos.map((p) => ({ url: p.url, alt: '', room: '', looked: 'staff' })),
     plans: [
       { ...pick(/^before$/i), type: 'as-built', label: 'Existing floor plan', addressCheck: 'checked' },
       { ...pick(/^after$/i), type: 'proposed', label: 'Proposed floor plan', addressCheck: 'checked' },

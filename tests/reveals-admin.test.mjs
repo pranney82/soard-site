@@ -61,6 +61,20 @@ test('every matched kid gets a JobTread link, closed jobs included, open job pre
   assert.deepEqual(reveals.map((r) => r.slug), ['max'], 'closed jobs never list a reveal');
 });
 
+test('a kid’s current job: open over closed, then one being built over one that isn’t, then the newer (Peter, Nov 12 2026)', () => {
+  const kids = [{ slug: 'max', name: 'Max', year: 2026 }, { slug: 'ava', name: 'Ava', year: 2026 }];
+  const withStatus = (id, name, status, closedOn = null) => ({ id, name, closedOn, customFieldValues: { nodes: status ? [{ value: status, customField: { id: '22P52qfFub9b' } }] : [] } });
+  const { jobs, statuses } = buildAdminView([
+    withStatus('max-build', 'Max Sample (2026)', 'Build'),
+    withStatus('max-warranty', 'Max Sample (2026)', 'Warranty'),
+    withStatus('max-closed', 'Max Sample (2026)', 'Build', '2026-01-01'),
+    withStatus('ava-old', 'Ava Lee (2026)', 'Design'),
+    withStatus('ava-new', 'Ava Lee (2026)', 'Build'),
+  ], kids, NOW);
+  assert.deepEqual(jobs, { max: 'max-build', ava: 'ava-new' });
+  assert.deepEqual(statuses, { max: 'Build', ava: 'Build' });
+});
+
 test('one reveal per kid, the soonest', () => {
   const { reveals } = buildAdminView([
     job('late', 'Max Sample (2026)', '2026-12-01T20:00:00.000Z', 'Yes'),

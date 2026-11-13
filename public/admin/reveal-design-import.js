@@ -9,9 +9,12 @@
  * to add to the profile. Every page of each plan set is drawn here with the
  * admin's pdf.js, and sorted by its title (./reveal-design-draw.js
  * kindFromSheet): the as-built and proposed floor plans and any design boards
- * are picked to start, from the newest final set, with six before photos
- * spread across the visit, but only the first time: once the profile has
- * anything from JobTread, staff pick.
+ * are picked to start, from the newest final set, and before the reveal every
+ * before photo, but only the first time: once the profile has drawings (or
+ * before photos) from JobTread, staff pick. Before photos go in Photos →
+ * Before photos, never the gallery (Peter, Nov 12 2026: "they should go into
+ * photos, not the before and after section"); the first ones there play on
+ * the reveal screen.
  *
  * The family's address (a hard rule): a picked drawing goes up exactly as it
  * shows here. Wherever the PDF's own words have the address they're painted
@@ -34,7 +37,7 @@
  * to jump to each part (?slide=N; slide 0 is the kid's own photo).
  */
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback } from './vendor.js';
-import { PLAN_KINDS, kindFromText, suggestBefores, addressWords, BEFORE_SHOWN } from './reveal-design.js';
+import { PLAN_KINDS, kindFromText, suggestBefores, freeBeforePlaces, addressWords, BEFORE_SHOWN } from './reveal-design.js';
 import { kindFromSheet, captionOf, coverRects, isDocumentName, drawPdfPage, finishSheet } from './reveal-design-draw.js';
 import { ask } from './ask.js';
 
@@ -53,6 +56,7 @@ const CSS = `
 .rdi-sec__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.75rem; }
 .rdi-sec__head h3 { margin: 0; font-size: var(--fs-md, 1.05rem); }
 .rdi-sec__head p { margin: 0; font-size: var(--fs-xs); color: var(--color-text-muted); }
+.rdi-sec__picks { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; margin-left: auto; }
 .rdi-file { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; margin: 0; font-size: var(--fs-xs); color: var(--color-text-secondary); }
 .rdi-file strong { color: var(--color-text); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .rdi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; list-style: none; margin: 0; padding: 0; }
@@ -415,12 +419,14 @@ const addressDone = (r) => (r?.boxes?.length ? 'covered' : r?.street ? 'wiped' :
 
 /**
  * kid { slug, name, year }, jobId (the kid's JobTread job, if the editor knows it),
- * revealed (the room has been revealed), plans / pairs: the editor's lists,
+ * revealed (the room has been revealed), plans / befores (Photos → Before photos) / pairs: the editor's lists,
  * Dialog: the admin's KdDialogBox, onAdd({ drawings, befores }), onClose().
  *   drawings: [{ file, type, label, source, w, h, addressCheck }]
  *   befores:  [{ file, alt, source }]
  */
-export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pairs = [], Dialog, onAdd, onClose }) {
+// startWith: 'befores' when opened from Photos → Before photos (every one not on the profile is picked, the drawings left
+// to pick), else 'design' (the first-time picks below)
+export function RevealImport({ kid, jobId = '', revealed = false, plans = [], befores: beforeList = [], pairs = [], gallery = [], removed = [], startWith = 'design', Dialog, onAdd, onClose }) {
   useStyles();
   const name = kid?.name || 'This kid';
   const [load, setLoad] = useState({ state: 'loading' }); // loading | ready | failed
@@ -438,10 +444,11 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
   const queue = useRef(Promise.resolve());
   const chosen = useRef({ 'as-built': false, proposed: false, board: null });
 
-  const had = useMemo(() => new Set([...(plans || []).map((p) => p.source), ...(pairs || []).map((p) => p.source)].filter(Boolean)), [plans, pairs]);
+  // (A before photo moved to the gallery keeps its JobTread file: on the profile too)
+  const had = useMemo(() => new Set([...(plans || []), ...(beforeList || []), ...(pairs || []), ...(gallery || [])].map((p) => p.source).filter(Boolean)), [plans, beforeList, pairs, gallery]);
   const fromJt = (x) => String(x?.source || '').startsWith('jt:');
   // Picked to start only the first time: once the profile has drawings (or before photos) from JobTread, staff pick
-  const startDrawings = useRef(!(plans || []).some(fromJt));
+  const startDrawings = useRef(startWith !== 'befores' && !(plans || []).some(fromJt));
   const data = load.state === 'ready' ? load.data : null;
   const words = useMemo(() => (data ? addressWords(data.address) : []), [data]);
   const streetWords = useMemo(() => new Set(data?.address?.street ? addressWords({ street: data.address.street }) : []), [data]);
@@ -465,8 +472,14 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
       if (!alive.current) return;
       if (!d.success) throw new Error(d.error || 'JobTread couldn’t be read');
       setLoad({ state: 'ready', data: d });
-      // Six before photos to start, spread across the visit: only before the reveal, and only the first time
-      if (!revealed && !(pairs || []).some(fromJt)) setBefores(new Set(suggestBefores(d.befores, BEFORE_SHOWN).map((f) => f.id)));
+      // Every before photo to start: only before the reveal, and only the first time; from Before photos, every one not there yet
+      const there = new Set([...(beforeList || []), ...(pairs || []), ...(plans || []), ...(gallery || [])].map((x) => x.source).filter(Boolean));
+      // (One the profile had and staff took out, here or before: shown, not picked, for staff to pick if they mean to)
+      const gone = new Set([...(d.removed || []).map((id) => `jt:${id}`), ...(removed || [])]);
+      const fresh = (f) => !there.has(`jt:${f.id}`) && !gone.has(`jt:${f.id}`);
+      if (startWith === 'befores') setBefores(new Set(d.befores.filter(fresh).map((f) => f.id)));
+      else if (!revealed && ![...(beforeList || []), ...(pairs || [])].some(fromJt)) setBefores(new Set(d.befores.filter(fresh).map((f) => f.id)));
+      if (startWith === 'befores') requestAnimationFrame(() => document.getElementById('rdi-befores')?.scrollIntoView({ block: 'start' }));
     } catch (e) {
       if (alive.current && !abort.current.signal.aborted) setLoad({ state: 'failed', error: e.message });
     }
@@ -575,8 +588,9 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
   const setPick = (key, patch) => { touched.current = true; setPicks((m) => ({ ...m, [key]: { ...m[key], ...patch } })); };
   const setCheck = (key, checked) => { touched.current = true; setReady((m) => ({ ...m, [key]: { ...m[key], checked } })); };
   const flipBefore = (id) => { touched.current = true; setBefores((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }); };
+  const pickBefores = (all) => { touched.current = true; setBefores(new Set(all ? (data?.befores || []).filter((f) => !had.has(`jt:${f.id}`)).map((f) => f.id) : [])); };
 
-  // In the order the reveal screen plays them: as-built, proposed, boards; each by its file, then page
+  // In the order the page has them: as-built, proposed, boards; each by its file, then page
   const placeOf = (key) => { const [, id, n] = key.match(/^jt:([^#]+)(?:#(\d+))?$/) || []; return [Math.max(0, (data?.drawings || []).findIndex((f) => f.id === id)), Number(n) || 0]; };
   const pickedDrawings = Object.entries(picks).filter(([k, p]) => p.on && !had.has(k))
     .sort(([a, pa], [b, pb]) => (KIND_RANK[pa.kind] - KIND_RANK[pb.kind]) || (placeOf(a)[0] - placeOf(b)[0]) || (placeOf(a)[1] - placeOf(b)[1]));
@@ -584,6 +598,7 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
   const failedDrawings = pickedDrawings.filter(([k]) => ready[k]?.state === 'failed');
   const needLook = pickedDrawings.filter(([k]) => ready[k]?.state === 'ready' && !addressDone(ready[k]));
   const pickedBefores = data ? data.befores.filter((f) => befores.has(f.id) && !had.has(`jt:${f.id}`)) : [];
+  const beforesLeft = data ? data.befores.filter((f) => !had.has(`jt:${f.id}`)).length : 0;
   const total = pickedDrawings.length + pickedBefores.length;
 
   const close = async () => {
@@ -610,8 +625,10 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
         // Looked after (wiped, covered or checked): nothing left for the site to crop off
         return { file: new File([r.blob], `${slugOf(label)}-notitle.png`, { type: 'image/png' }), type: p.kind, label, source: key, w: r.w, h: r.h, addressCheck: addressDone(r) };
       });
+      // The reveal screen's places still free go to ones spread across the visit (freeBeforePlaces); the rest as taken
+      const first = suggestBefores(pickedBefores, freeBeforePlaces({ beforePhotos: beforeList }));
       const photos = [];
-      for (const f of pickedBefores) {
+      for (const f of [...first, ...pickedBefores.filter((x) => !first.includes(x))]) {
         const got = await fetchJt(f.big || f.url, abort.current.signal);
         const blob = await readable(got, f.big ? '' : f.name);
         const type = /^image\//.test(blob.type || '') ? blob.type : 'image/jpeg';
@@ -743,12 +760,13 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
       ${data.befores.map((f) => {
         const there = had.has(`jt:${f.id}`);
         const on = befores.has(f.id) && !there;
+        const wasOut = !there && ((data.removed || []).includes(f.id) || (removed || []).includes(`jt:${f.id}`));
         // A browser can't show an iPhone photo itself: JobTread's JPEG of it, or its name until it's added
         const pic = f.thumb || (looksHeic(f.type, f.name) ? null : f.url);
         return html`<li key=${f.id} class=${`rdi-tile${on ? ' is-on' : ''}${there ? ' is-there' : ''}`}>
-          <button type="button" class="rdi-pick" disabled=${there || !!adding} aria-pressed=${on} aria-label=${`${on ? 'Picked: ' : 'Pick '}${f.name}${there ? ', already on the profile' : ''}`} onClick=${() => flipBefore(f.id)}>
+          <button type="button" class="rdi-pick" disabled=${there || !!adding} aria-pressed=${on} aria-label=${`${on ? 'Picked: ' : 'Pick '}${f.name}${there ? ', already on the profile' : wasOut ? ', removed from the profile earlier' : ''}`} onClick=${() => flipBefore(f.id)}>
             ${pic ? html`<img src=${pic} alt="" loading="lazy" />` : html`<span class="rdi-ph">${f.name}<br />iPhone photo</span>`}
-            ${there ? html`<span class="rdi-n">On the profile</span>` : html`<span class="rdi-check" aria-hidden="true">${icon.check}</span>`}
+            ${there ? html`<span class="rdi-n">On the profile</span>` : wasOut && !on ? html`<span class="rdi-n">Removed earlier</span>` : html`<span class="rdi-check" aria-hidden="true">${icon.check}</span>`}
           </button>
         </li>`;
       })}
@@ -766,11 +784,12 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
       ${hasStreet ? html`<p class="notice notice--info">${icon.shield}<span class="notice__body">From <strong>${data.job.name}</strong> in JobTread. We paint out the family’s address wherever its words can be read and cut off the title block. Look over each drawing before adding it: what you see on a picked drawing is exactly what goes up.</span></p>`
         : html`<p class="notice notice--warn">${icon.alert}<span class="notice__body">From <strong>${data.job.name}</strong> in JobTread. JobTread has no address for this job, so the family’s address can’t be found by its words. Look over each drawing you pick, and cover the address or tick that there’s none.</span></p>`}
       <section class="rdi-sec" aria-labelledby="rdi-drawings">
-        <div class="rdi-sec__head"><h3 id="rdi-drawings">Drawings and design boards</h3><p>${pickedDrawings.length ? `${pickedDrawings.length} picked. ` : ''}${revealed ? 'They go in the Design chapter, as-built and proposed plans first.' : 'The as-built plan, the proposed plan and the boards play on the reveal screen in that order.'}</p></div>
+        <div class="rdi-sec__head"><h3 id="rdi-drawings">Drawings and design boards</h3><p>${pickedDrawings.length ? `${pickedDrawings.length} picked. ` : ''}${revealed ? 'They go in the Design chapter, as-built and proposed plans first.' : 'The as-built and proposed plans show on the kid page from the confirmed reveal and play on the reveal screen; design boards wait for the page until after the reveal.'}</p></div>
         ${drawingsSec()}
       </section>
       <section class="rdi-sec" aria-labelledby="rdi-befores">
-        <div class="rdi-sec__head"><h3 id="rdi-befores">Before photos</h3><p>${pickedBefores.length} picked. ${revealed ? 'Each needs its after photo for the Transformation chapter.' : `The first ${BEFORE_SHOWN} on the profile play on the reveal screen; each waits there for its after photo.`}</p></div>
+        <div class="rdi-sec__head"><h3 id="rdi-befores">Before photos</h3><p>${pickedBefores.length} picked. ${revealed ? 'They go in Photos → Before photos, for the Before & after pairs.' : `They go in Photos → Before photos, never the gallery; the first ${BEFORE_SHOWN} on the page there play on the reveal screen.`} Once saved, the site checks each one within minutes and keeps off any with a person, family photos, a screen, papers or a close-up; until then they show nowhere.</p>
+          ${beforesLeft ? html`<span class="rdi-sec__picks">${pickedBefores.length < beforesLeft ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!adding} onClick=${() => pickBefores(true)}>Pick all ${beforesLeft}</button>` : null}${pickedBefores.length ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!adding} onClick=${() => pickBefores(false)}>Pick none</button>` : null}</span>` : null}</div>
         ${beforesSec()}
       </section>`;
   };
@@ -789,14 +808,15 @@ export function RevealImport({ kid, jobId = '', revealed = false, plans = [], pa
   </div>` : html`<button type="button" class="btn btn-secondary" onClick=${close}>Close</button>`;
 
   return html`<${Dialog} title=${`Bring in ${possessive(name)} design from JobTread`}
-    sub=${revealed ? 'Drawings and design boards for the Design chapter, and before photos for the Transformation chapter.' : 'Drawings, design boards and before photos for the reveal screen and, after the reveal, the kid page.'}
+    sub=${revealed ? 'Drawings and design boards for the Design chapter, and before photos for Photos.' : 'Drawings for the kid page and the reveal screen, design boards for the page after the reveal, and before photos for Photos.'}
     onClose=${close} size="lg" className="rdi" footer=${footer}>${body()}<//>`;
 }
 
 // ═══════════════════════════════════════════
 // Preview the reveal screen
 // ═══════════════════════════════════════════
-const STEPS = [['before', 'The room today'], ['as-built', 'Floor plan today'], ['proposed', 'New floor plan'], ['board', 'Design boards']];
+// (No design boards: they never play on the live page or stream; Peter, Nov 12 2026)
+const STEPS = [['before', 'The room today'], ['as-built', 'Floor plan today'], ['proposed', 'New floor plan']];
 /**
  * slug, name, published (a hidden kid has no page of its own yet), kinds (the
  * design's slides in order, as the editor has them), waiting (drawings still

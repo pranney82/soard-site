@@ -204,7 +204,7 @@ export function newKidRecord({ name, slug, year, age = null, types = [], jobId }
     name, slug, status: 'needs-funding', year, age, diagnosis: '',
     roomTypes, childCount: childCountOf(name),
     heroSummary: '', bio: '', quote: '', heroImage: '', accentImage: '', photos: [], photoCount: 0, photographer: '',
-    plans: [], beforeAfterPhotos: [], partnerLogos: [], streamVideoId: '', videoUrl: '', revealVideoUrl: '',
+    plans: [], beforePhotos: [], beforeAfterPhotos: [], partnerLogos: [], streamVideoId: '', videoUrl: '', revealVideoUrl: '',
     fundraisingUrl: '', shortDescription: '', metaDescription: '', publishStatus: 'draft',
     jobtreadJobId: jobId,
   };

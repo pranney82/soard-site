@@ -267,6 +267,11 @@ test('history: what a save changed, in words', () => {
     'Partners: new order, 1 name changed',
   ]);
   assert.deepEqual(KS.describeChanges(a, { ...a, sortOrder: 9 }), [], 'a list position isn’t an edit');
+  // Before photos: the site's look, and staff switching one on or off the page
+  const bp = (n, extra = {}) => ({ url: img(`b${n}`), alt: '', room: '', ...extra });
+  const c = { ...a, beforePhotos: [bp(1), bp(2), bp(3, { looked: 'site', offPage: true, offWhy: 'A person in it' })] };
+  assert.deepEqual(KS.describeChanges(c, { ...c, beforePhotos: [bp(1, { looked: 'site' }), bp(2, { looked: 'site', offPage: true, offWhy: 'Boxes or deliveries' }), bp(3, { looked: 'staff' })] }).map((x) => `${x.label}: ${x.detail}`),
+    ['Before photos: 1 photo kept off the page, 2 photos on the page']);
   const names = { partnerName: (s) => ({ acme: 'Acme Foundation', bright: 'Bright Fund' })[s] };
   assert.deepEqual(KS.describeChanges(a, { ...a, sponsors: ['acme'] }, names).map((c) => `${c.label}: ${c.detail}`), ['Monetary sponsor: Set to Acme Foundation']);
   assert.deepEqual(KS.describeChanges({ ...a, sponsors: ['acme'] }, { ...a, sponsors: ['acme', 'bright'] }, names).map((c) => c.detail), ['Acme Foundation → Acme Foundation & Bright Fund']);

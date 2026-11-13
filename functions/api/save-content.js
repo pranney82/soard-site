@@ -26,6 +26,7 @@ import { HISTORY_TABLES, SITE_COLLECTION, recordVersion as recordContentVersion 
 import { coverOf } from './_job-covers.js';
 import { syncCoverForKid } from './_kid-status.js';
 import { recheckWaiting } from './_kid-partners.js';
+import { wakeRevealDesigns } from './_reveal-design-auto.js';
 
 export async function onRequestPost(context) {
   try {
@@ -199,6 +200,10 @@ export async function onRequestPost(context) {
     // A logo added in Partners (or on a page) reaches the pages waiting for it now, not at the next 10-minute check
     const logoFacts = (d) => (parsed.table === 'partners' ? [d?.logo, d?.name, d?.website] : d?.partnerLogos || []);
     if (['partners', 'kids', 'community'].includes(parsed.table) && JSON.stringify(logoFacts(data)) !== JSON.stringify(logoFacts(oldData))) context.waitUntil(recheckWaiting(context.env));
+    // Before photos nobody has looked at yet (brought in with Bring in from JobTread): the site looks at them now, not at
+    // its next 10-minute run, and they stay off the page until it has (./_reveal-design-auto.js, ./_photo-screen.js)
+    const unlooked = (d) => (d?.beforePhotos || []).filter((p) => p?.url && !p.looked).map((p) => p.url).join('\n');
+    if (parsed.table === 'kids' && unlooked(data) && unlooked(data) !== unlooked(oldData)) context.waitUntil(wakeRevealDesigns(context.env));
 
     return Response.json({
       success: true,

@@ -23,7 +23,7 @@
 import { zeffyKey } from './zeffy-links.js';
 
 // ── Statuses: the order Meet the Kids shows them in ──────────────────
-import { normalizePlanType } from './reveal-design.js';
+import { normalizePlanType, onPage, keptOff } from './reveal-design.js';
 
 export const STATUSES = [
   { id: 'needs-funding', label: 'Awaiting funding', short: 'Awaiting funding',
@@ -301,7 +301,7 @@ const HISTORY_FIELDS = [
   ['name', 'Name'], ['status', 'Status'], ['publishStatus', 'Shown on the site'], ['sponsors', 'Monetary sponsor'], ['designers', 'Designed by'], ['year', 'Year'], ['age', 'Age'],
   ['childCount', 'Kids in the profile'], ['diagnosis', 'Diagnosis'], ['rooms', 'What was built'],
   ['heroSummary', 'Hero summary'], ['bio', 'Story'], ['quote', 'Pull quote'],
-  ['heroImage', 'Main photo'], ['accentImage', 'Accent photo'], ['photos', 'Photos'], ['photographer', 'Photographer'],
+  ['heroImage', 'Main photo'], ['accentImage', 'Accent photo'], ['photos', 'Photos'], ['beforePhotos', 'Before photos'], ['photographer', 'Photographer'],
   ['plans', 'Design plans'], ['beforeAfterPhotos', 'Before & after'], ['video', 'Video'], ['revealVideoUrl', 'Reveal replay'],
   ['partnerLogos', 'Partners'], ['fundraisingUrl', 'Fundraising link'], ['metaDescription', 'Search description'],
   ['shortDescription', 'Card blurb'],
@@ -370,13 +370,18 @@ export function describeChanges(rawBefore, rawAfter, { partnerName = null } = {}
       else if (field === 'bio') detail = words(b) === words(a) ? 'Edited' : `${words(b)} → ${plural(words(a), 'word')}`;
       else if (field === 'age') detail = `${formatAges(b) || 'none'} → ${formatAges(a) || 'none'}`;
       else if (field === 'heroImage' || field === 'accentImage') detail = a ? (b ? 'Changed' : 'Added') : 'Removed';
-      else if (field === 'photos') {
+      else if (field === 'photos' || field === 'beforePhotos') {
         detail = listChange(b || [], a || [], (x) => x.url, (bb, aa) => {
           const before1 = new Map(bb.map((x) => [x.url, x]));
           const both = aa.filter((x) => before1.has(x.url));
           const alt = both.filter((x) => (x.alt || '') !== (before1.get(x.url).alt || '')).length;
           const focus = both.filter((x) => !same(x.focus, before1.get(x.url).focus)).length;
-          return [alt && `alt text on ${plural(alt, 'photo')}`, focus && `focal point on ${plural(focus, 'photo')}`].filter(Boolean);
+          const room = both.filter((x) => (x.room || '') !== (before1.get(x.url).room || '')).length;
+          // A before photo kept off the page, or put on it (by staff, or by the site's look)
+          const off = both.filter((x) => keptOff(x) && !keptOff(before1.get(x.url))).length;
+          const on = both.filter((x) => onPage(x) && !onPage(before1.get(x.url))).length;
+          return [alt && `alt text on ${plural(alt, 'photo')}`, focus && `focal point on ${plural(focus, 'photo')}`, room && `room on ${plural(room, 'photo')}`,
+            off && `${plural(off, 'photo')} kept off the page`, on && `${plural(on, 'photo')} on the page`].filter(Boolean);
         });
       } else if (field === 'partnerLogos') {
         detail = listChange(b || [], a || [], (x) => x.url, (bb, aa) => {
@@ -403,6 +408,12 @@ export function describeChanges(rawBefore, rawAfter, { partnerName = null } = {}
 
 // ── Saving ───────────────────────────────────────────────────────────
 const clean = (arr) => (arr || []).map(({ _tempId, _key, ...p }) => p);
+const beforeRecord = ({ looked, offPage, offWhy, ...p }) => ({
+  ...p, alt: String(p.alt || ''), room: String(p.room || ''),
+  ...(looked ? { looked: String(looked) } : {}),
+  ...(offPage ? { offPage: true } : {}),
+  ...(offPage && offWhy ? { offWhy: String(offWhy) } : {}),
+});
 /** A kid exactly as Save writes it (Preview shows the same record) */
 export function kidRecord(data) {
   // (scheduledPublish: an old editor's schedule that nothing ever read)
@@ -425,7 +436,10 @@ export function kidRecord(data) {
     photos: clean(d.photos).filter((p) => p.url && !/^blob:/.test(p.url)),
     partnerLogos: clean(d.partnerLogos).filter((p) => p.url && !/^blob:/.test(p.url)),
     plans: clean(d.plans).filter((p) => p.url && !/^blob:/.test(p.url)).map((p) => ({ ...p, type: normalizePlanType(p.type) })),
-    // A before photo can wait for its after (it shows on the reveal's starting-soon screen); the page shows whole pairs only
+    // Photos → Before photos: the room before (the first ones on the page play on the reveal screen, ./reveal-design.js);
+    // never in the gallery. Who looked at it, and whether it's kept off the page, only when they say something
+    beforePhotos: clean(d.beforePhotos).filter((p) => p.url && !/^blob:/.test(p.url)).map(beforeRecord),
+    // A pair can wait for its after while it's being made; the page shows whole pairs only
     beforeAfterPhotos: clean(d.beforeAfterPhotos).filter((p) => p.before && !/^blob:/.test(p.before) && !/^blob:/.test(p.after || '')).map((p) => ({ ...p, after: p.after || '' })),
     photoCount: clean(d.photos).filter((p) => p.url && !/^blob:/.test(p.url)).length,
   };

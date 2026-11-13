@@ -19,10 +19,17 @@ const kidFull = {
   revealVideoUrl: 'https://example.com/live/templatestream',
   fundraisingUrl: 'https://example.com/give', heroSummary: '',
   partnerLogos: [{ url: kidImg('partner'), name: 'Template Partner' }],
+  // The first two with their address seen to, so the page's Existing and Proposed badges are there to copy
   plans: [
-    { url: kidImg('plan-1'), label: 'Existing floor plan', type: 'as-built' },
-    { url: kidImg('plan-2'), label: 'Proposed floor plan', type: 'proposed' },
+    { url: kidImg('plan-1'), label: 'Existing floor plan', type: 'as-built', addressCheck: 'wiped' },
+    { url: kidImg('plan-2'), label: 'Proposed floor plan', type: 'proposed', addressCheck: 'checked' },
     { url: kidImg('plan-3'), label: 'Board', type: 'proposed' },
+  ],
+  // Seven, so "View all" is there too
+  // Seven on the page, and one the site's check kept off, which neither the page nor its preview may show
+  beforePhotos: [
+    ...Array.from({ length: 7 }, (_, i) => ({ url: kidImg(`before-${i + 1}`), alt: `Template before ${i + 1}`, room: i === 0 ? 'Bedroom' : '', looked: 'staff' })),
+    { url: kidImg('before-kept-off'), alt: 'Template before kept off', room: '', looked: 'site', offPage: true, offWhy: 'A person in it' },
   ],
   beforeAfterPhotos: [{ before: kidImg('before'), after: kidImg('after'), room: 'Bedroom', beforeAlt: '', afterAlt: '' }],
   roomCount: 2, childCount: 1,

@@ -36,6 +36,18 @@ const kids = defineCollection({
       url: link(),
       alt: z.string().default(''),
     })).max(4).default([]),
+    /** Admin → Kids → Photos → Before photos: the room before the makeover, from the kid's JobTread job once the
+     *  reveal is confirmed (functions/api/_reveal-design-auto.js) or added by staff. Never in the gallery: the first
+     *  six on the page play on the reveal screen (public/admin/reveal-design.js), and a Before & after pair takes its
+     *  before here. Only one someone has looked at (looked: 'site', the site's check; 'staff') and not kept off
+     *  (offPage) is ever shown (onPage in reveal-design.js) */
+    beforePhotos: z.array(z.object({
+      url: link(),
+      alt: z.string().default(''),
+      room: z.string().default(''),
+      looked: z.string().default(''),
+      offPage: z.boolean().default(false),
+    })).default([]),
     plans: z.array(z.object({
       url: link(),
       label: z.string().default(''),
@@ -43,6 +55,12 @@ const kids = defineCollection({
       type: z.enum(['as-built', 'proposed', 'board']),
       w: z.number().optional(),
       h: z.number().optional(),
+      // What was done about the family's address on it: 'wiped' | 'covered' | 'checked' (public/admin/reveal-design.js
+      // ADDRESS_CHECKS). Before the reveal the page shows an existing or proposed plan only once it's one of those
+      addressCheck: z.string().optional(),
+      // The JobTread file it came from ("jt:<id>#<page>"): a drawing brought in from JobTread shows on the page, after the
+      // reveal too, only once its address has been seen to (one staff put there themselves always shows)
+      source: z.string().optional(),
     })).default([]),
     photoCount: z.number().default(0),
     videoUrl: link().nullable().optional(),

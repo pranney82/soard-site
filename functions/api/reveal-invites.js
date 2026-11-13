@@ -4,7 +4,9 @@
  * on that job in the last 15 minutes, and everything is re-read from JobTread
  * before the calendar is touched (see ./_reveal-invites.js), so the body is
  * untrusted. The same wake-up checks the job's demo day invite (./_demo-invites.js:
- * a task checked off, Set Start Date among them, is what sends it). A few
+ * a task checked off, Set Start Date among them, is what sends it), and starts
+ * the design import (./_reveal-design-auto.js: a reveal just confirmed gets its
+ * before photos in the kid's Photos at once, read from JobTread itself). A few
  * verified wake-ups a minute per job do the work; past that the job is owed a
  * look on the next heartbeat (admitWake). The answer is
  * { ok } and nothing more: never guests, addresses, event details or what
@@ -31,6 +33,7 @@ import { verifiedJobEvent, admitWake, oweWake, reconcileJob } from './_reveal-in
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { syncKidStatuses } from './_kid-status.js';
 import { reconcileDemo } from './_demo-invites.js';
+import { wakeRevealDesigns } from './_reveal-design-auto.js';
 import { wakeSecretOk, clientIp } from './_secure.js';
 import { limit, tooMany } from './_rate-limit.js';
 
@@ -61,6 +64,8 @@ export async function onRequestPost(context) {
     context.waitUntil(syncKidStatuses(env, { jobId }));
     // Demo day: Set Start Date checked off sends it (anything it misses, the 5-minute check catches)
     context.waitUntil(reconcileDemo(env, jobId).catch(() => null));
+    // A reveal confirmed: the job's before photos start coming into the kid's Photos now, not at the next run
+    if (body.source !== 'construction') context.waitUntil(wakeRevealDesigns(env));
     const r = await reconcileJob(env, jobId);
     if (r.action === 'busy') await oweWake(env.DB, jobId);
     return Response.json({ ok: r.action !== 'error' });

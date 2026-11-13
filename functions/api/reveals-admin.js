@@ -21,7 +21,7 @@
  */
 
 import {
-  JT_URL, SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
+  JT_URL, SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, BUILDING_STATUSES,
   matchProject, isProject, easternParts, todayEastern,
 } from './_reveals.js';
 import { FIELD_STATUS, loadAllKids, loadAllProjects } from './_kid-status.js';
@@ -63,20 +63,29 @@ export async function fetchAllJobs(grantKey, fetchImpl = fetch, extra = {}) {
   return jobs;
 }
 
-/** Upcoming reveals (confirmed and tentative) plus a kid → job map, and the same for community projects */
+/**
+ * Which of a record's jobs is its current one, as a rank (higher wins; a tie goes to the later job, the newer one in
+ * JobTread's order): an open job over a closed one, and among open ones one being built (Design to Build) over one
+ * that isn't (Peter, Nov 12 2026: "some kids might have more than 1 makeover, it should be active and likely in the
+ * build stage").
+ */
+export const jobRank = (job, status) => (job.closedOn ? 0 : BUILDING_STATUSES.has(String(status || '').trim()) ? 2 : 1);
+
+/** Upcoming reveals (confirmed and tentative) plus a kid → job map (its current job, jobRank), and the same for community projects */
 export function buildAdminView(jobs, kids, now = Date.now(), projects = []) {
   const today = todayEastern(now);
   const records = [...kids, ...projects];
-  const kidSide = { jobs: {}, statuses: {}, reveals: [] };
-  const projectSide = { jobs: {}, statuses: {}, reveals: [] };
+  const kidSide = { jobs: {}, statuses: {}, ranks: {}, reveals: [] };
+  const projectSide = { jobs: {}, statuses: {}, ranks: {}, reveals: [] };
   let unmatched = 0;
   for (const job of jobs) {
     const hit = matchProject(job.name, records, job.id);
     const side = isProject(hit) ? projectSide : kidSide;
-    // A kid can only match a job from their own year; prefer the open one if there are two
+    // A kid can only match a job from their own year; with two, the current one (jobRank)
     const values = {};
     for (const v of job.customFieldValues?.nodes || []) values[v.customField?.id] = v.value;
-    if (hit && (!side.jobs[hit.slug] || !job.closedOn)) { side.jobs[hit.slug] = job.id; side.statuses[hit.slug] = values[FIELD_STATUS] || null; }
+    const rank = jobRank(job, values[FIELD_STATUS]);
+    if (hit && (!side.jobs[hit.slug] || rank >= side.ranks[hit.slug])) { side.jobs[hit.slug] = job.id; side.statuses[hit.slug] = values[FIELD_STATUS] || null; side.ranks[hit.slug] = rank; }
     if (job.closedOn) continue;
 
     const startsAt = values[FIELD_REVEAL_DATE];

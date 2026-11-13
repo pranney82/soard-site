@@ -26,6 +26,7 @@
 import { pave, matchProject, isProject } from './_reveals.js';
 import { loadAllKids, loadAllProjects } from './_kid-status.js';
 import { fetchAllJobs, buildAdminView } from './reveals-admin.js';
+import { tagIds } from './_file-tags.js';
 
 const MAX_FILE_PAGES = 20;
 // Tags, loosely ("Plans" and "plans" are one). Earlier in the list = shown first: the build set, then design boards
@@ -42,13 +43,16 @@ const fail = (error, status = 400, extra = {}) => Response.json({ success: false
 const isPdf = (f) => /pdf/i.test(f?.type || '') || /\.pdf$/i.test(f?.name || '');
 const isImage = (f) => /^image\//i.test(f?.type || '') || /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(f?.name || '');
 
-/** One page of a job's files, with their tags and JobTread's JPEG of each (a photo, or a PDF's first page) */
-const filesQuery = (jobId, page) => ({
+/** One page of a job's files, with their tags and JobTread's JPEG of each (a photo, or a PDF's first page); with tagId, only files carrying that tag */
+const filesQuery = (jobId, page, tagId = null) => ({
   job: {
     $: { id: jobId },
     files: {
       // (Small pages: JobTread answers 413 when one page of files with their tags and pictures asks too much)
-      $: { size: 20, ...(page ? { page } : {}) },
+      $: {
+        size: 20, ...(page ? { page } : {}),
+        ...(tagId ? { with: { tagged: { _: 'fileTags', $: { where: ['id', tagId] }, count: {} } }, where: [['tagged', 'count'], '>', 0] } : {}),
+      },
       nextPage: {},
       nodes: {
         id: {}, name: {}, type: {}, size: {}, createdAt: {}, url: {},
@@ -101,9 +105,10 @@ export function sortFiles(files, sheets = []) {
 /**
  * What a kid's JobTread job holds for their design (the editor's Bring in from JobTread, and the automatic import,
  * ./_reveal-design-auto.js): → { kid, job, address, drawings, befores, sheets }. Throws when JobTread can't be read;
- * kid null when there's no such profile.
+ * kid null when there's no such profile. only: 'befores' asks JobTread for the files tagged Before alone (by the tag's
+ * id, ./_file-tags.js), a few small pages where a whole job is a dozen; drawings come back empty then.
  */
-export async function designSources(env, slug, { askedJob = '', fetchImpl = fetch } = {}) {
+export async function designSources(env, slug, { askedJob = '', fetchImpl = fetch, only = null } = {}) {
   const jt = (query) => pave(env.JOBTREAD_GRANT_KEY, query, fetchImpl);
   const [kids, projects] = await Promise.all([loadAllKids(env.DB), loadAllProjects(env.DB)]);
   const kid = kids.find((k) => k.slug === slug);
@@ -130,13 +135,27 @@ export async function designSources(env, slug, { askedJob = '', fetchImpl = fetc
   const sheets = (detail.plans?.nodes || [])
     .filter((p) => p?.file?.id && Number.isInteger(p.page))
     .map((p) => ({ fileId: p.file.id, page: p.page, name: String(p.name || '').trim() }));
-  const files = [];
-  let page = null;
-  for (let i = 0; i < MAX_FILE_PAGES; i++) {
-    const conn = (await jt(filesQuery(jobId, page)))?.job?.files;
-    files.push(...(conn?.nodes || []));
-    page = conn?.nextPage || null;
-    if (!page) break;
+  // Before photos only: the Before tag's id, as the site keeps it (no id yet: every file, sorted below as always)
+  const tagId = only === 'befores' ? (await tagIds(env.DB).catch(() => new Map())).get('Before') || null : null;
+  const list = async (tag) => {
+    const out = [];
+    let page = null;
+    for (let i = 0; i < MAX_FILE_PAGES; i++) {
+      const conn = (await jt(filesQuery(jobId, page, tag)))?.job?.files;
+      out.push(...(conn?.nodes || []));
+      page = conn?.nextPage || null;
+      if (!page) break;
+    }
+    return out;
+  };
+  // (JobTread turning the tag filter away, should it ever: every file instead, sorted by their tags below as always)
+  let files;
+  try {
+    files = await list(tagId);
+  } catch (e) {
+    if (!tagId) throw e;
+    console.error('[reveal-design] the Before tag filter was turned away, so every file:', e.message);
+    files = await list(null);
   }
   const loc = detail.location || {};
   return {
@@ -146,6 +165,23 @@ export async function designSources(env, slug, { askedJob = '', fetchImpl = fetc
     sheets,
     ...sortFiles(files, sheets),
   };
+}
+
+/**
+ * The JobTread files this profile has had and hasn't now (staff took them out): the automatic import never brings
+ * them back, and the dialog leaves them unpicked. From what it remembers and the profile's History (everHad)
+ */
+async function removedFiles(env, slug) {
+  const { everHad, AUTO_KEY } = await import('./_reveal-design-auto.js');
+  const [row, led] = await Promise.all([
+    env.DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(slug).first(),
+    env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(AUTO_KEY).first(),
+  ]);
+  const kid = row?.data ? JSON.parse(row.data) : {};
+  const b = led?.data ? JSON.parse(led.data)?.kids?.[slug]?.befores || {} : {};
+  const ever = await everHad(env, slug, kid, b);
+  const now = new Set([...(kid.plans || []), ...(kid.beforePhotos || []), ...(kid.beforeAfterPhotos || []), ...(kid.photos || [])].map((x) => String(x?.source || '').match(/^jt:([^#]+)$/)?.[1]).filter(Boolean));
+  return [...ever].filter((id) => !now.has(id));
 }
 
 export async function onRequestGet({ env, request }, { fetchImpl = fetch } = {}) {
@@ -159,7 +195,7 @@ export async function onRequestGet({ env, request }, { fetchImpl = fetch } = {})
   try {
     const got = await designSources(env, slug, { askedJob, fetchImpl });
     if (!got.kid) return fail('No profile with that name', 404);
-    return ok(got);
+    return ok({ ...got, removed: await removedFiles(env, slug).catch(() => []) });
   } catch (e) {
     return fail(e.message || 'JobTread couldn’t be reached', 500);
   }

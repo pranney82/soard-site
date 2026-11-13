@@ -113,7 +113,13 @@ export function kidPhotos(kid) {
   const add = (src, alt = '') => { const id = cfIdOf(src); if (id && !out.some((p) => p.id === id)) out.push({ id, alt }); };
   add(kid.heroImage, kid.altTexts?.hero || '');
   for (const p of kid.photos || []) add(p?.url || p, p?.alt || '');
-  for (const p of kid.beforeAfterPhotos || []) { add(p?.before?.url || p?.before); add(p?.after?.url || p?.after); }
+  // (Never a pair's before that's a before photo kept off the page or not looked at yet: pagePairs in ./reveal-design.js)
+  const held = new Set((kid.beforePhotos || []).filter((p) => p?.url && !(p.looked && !p.offPage)).map((p) => p.url));
+  for (const p of kid.beforeAfterPhotos || []) {
+    const before = p?.before?.url || p?.before;
+    if (!held.has(before)) add(before);
+    add(p?.after?.url || p?.after);
+  }
   return out;
 }
 

@@ -986,12 +986,17 @@
     .toast-container {
       position: fixed; bottom: 1.5rem; right: 1.5rem;
       z-index: 1000;
-      display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;
+      display: flex; flex-direction: column; align-items: flex-end;
       pointer-events: none;
     }
+    /* (While a dialog is open the toasts are placed off it, by placeToasts) The kid editor's own Save bar along a
+       phone's bottom is never under one either */
+    @media (max-width: 768px) { body:has(.kd-footer):not(:has(.modal-overlay)) .toast-container { bottom: calc(1rem + 76px + env(safe-area-inset-bottom, 0px)); } }
     /* One dark toast for every kind; a colored mark says which kind */
     .toast {
       position: relative;
+      /* (Undo's bigger tap area stays inside its toast: never over what's beside it) */
+      overflow: hidden; overflow: clip;
       display: flex; align-items: center; gap: 0.65rem;
       min-width: 260px; max-width: 420px;
       padding: 0.8rem 1.1rem 0.8rem 0.95rem;
@@ -1003,8 +1008,28 @@
       line-height: 1.4;
       box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,0.06);
       animation: slideIn 0.3s var(--ease-out);
-      pointer-events: auto;
+      /* A tap on a toast's words closes it (never what's hidden under it); its buttons do what they say */
+      pointer-events: auto; cursor: default;
     }
+    .toast button, .toast a, .toast-more { pointer-events: auto; }
+    /* Under (or over) an open dialog, as wide as it (placeToasts) */
+    /* The two live regions (polite, then errors) stack as one; an empty one takes no room */
+    .toast-region { display: flex; flex-direction: column; gap: 0.5rem; align-items: inherit; }
+    .toast-container > :not(:empty) ~ :not(:empty) { margin-top: 0.5rem; }
+    .toast-more { align-self: flex-end; }
+    /* Off an open dialog (placeToasts): as wide as the room, or the dialog; only the newest where room is short */
+    .toast-container.is-wide { align-items: center; }
+    .toast-container.is-fit .toast { min-width: 0; max-width: var(--toast-max, 420px); }
+    .toast-container.is-tight .toast:not(.is-newest), .toast-container.is-tight .toast-more { display: none; }
+    .toast-container.is-tight > * { margin-top: 0 !important; }
+    .toast[hidden], .toast-region[hidden] { display: none !important; }
+    /* A short screen (a phone held sideways) shows only the newest: a stack would cover most of it */
+    @media (max-height: 560px) {
+      .toast-container .toast:not(.is-newest), .toast-container .toast-more { display: none; }
+      .toast-container > * { margin-top: 0 !important; }
+    }
+    .toast-container.is-snug .toast { padding: 0.4rem 0.75rem 0.4rem 0.65rem; font-size: var(--fs-xs); line-height: 1.35; gap: 0.5rem; }
+    .toast-container.is-snug .toast::before { width: 18px; height: 18px; }
     .toast::before {
       content: ''; flex: none; width: 18px; height: 18px; border-radius: 50%;
       background: #8A8B91 center / 12px no-repeat;
@@ -1710,11 +1735,15 @@
       display: inline-flex; align-items: center; gap: 0.5rem;
     }
     .toast-undo {
+      position: relative;
       background: none; border: 1px solid rgba(255,255,255,0.4);
       color: #fff; border-radius: 5px; padding: 2px 10px;
       font-size: var(--fs-xs); font-weight: 600; cursor: pointer;
       transition: all 0.15s;
     }
+    /* A tap a little off the button still presses it (the words around it close the toast) */
+    .toast-undo::after { content: ''; position: absolute; inset: -10px -8px; }
+    @media (pointer: coarse) { .toast-undo::after { inset: -14px -12px; } }
     .toast-undo:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
     .toast-more { pointer-events: auto; padding: 0.3rem 0.8rem; border: none; border-radius: 999px; background: rgba(31,32,36,0.85); font-size: var(--fs-2xs); font-weight: 600; color: #fff; box-shadow: var(--shadow-md); }
     .toast-more:hover { background: #1F2024; }
@@ -2928,6 +2957,9 @@
     .card.kd-sec.is-target { animation: kdTarget 1.6s var(--ease-out); }
     @keyframes kdTarget { 0%, 35% { box-shadow: 0 0 0 3px var(--color-primary), var(--shadow-md); } 100% { box-shadow: var(--shadow-xs); } }
     .kd-dropcover { position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: inherit; background: rgba(255,251,234,0.9); font-weight: 700; pointer-events: none; }
+    /* Kept in sight on a section taller than the window */
+    .kd-dropcover__msg { position: sticky; top: 40vh; bottom: 40vh; display: inline-flex; align-items: center; gap: 0.5rem; }
+    .kd-photo__wait { display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.9rem; }
     .kd-grid { display: grid; gap: 0 1.25rem; }
     .kd-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .kd-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -2994,6 +3026,11 @@
     .kd-tile__n { position: absolute; top: 6px; left: 6px; min-width: 22px; padding: 0.05rem 0.35rem; border-radius: 999px; background: rgba(20,21,24,0.6); font-size: var(--fs-2xs); font-weight: 700; color: #fff; text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
     .kd-tile__role { position: absolute; left: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.12rem 0.45rem; border-radius: 999px; background: rgba(255,255,255,0.94); font-size: var(--fs-2xs); font-weight: 700; color: var(--color-text); pointer-events: none; }
     .kd-tile__role.is-hero { background: var(--color-primary); }
+    .kd-tile__role.is-quiet { background: rgba(20,21,24,0.72); color: #fff; max-width: calc(100% - 12px); white-space: nowrap; }
+    .kd-tile__role.is-quiet > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .kd-tile__role.is-quiet svg { flex: none; }
+    .kd-befores__state { display: flex; gap: 0.35rem; align-items: flex-start; }
+    .kd-befores__state svg { flex: none; width: 14px; height: 14px; margin-top: 0.15rem; }
     .kd-tile__role svg { width: 11px; height: 11px; }
     .kd-tile__noalt { position: absolute; right: 6px; bottom: 6px; padding: 0.08rem 0.4rem; border-radius: 999px; background: var(--tone-warn-bg); font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.02em; color: var(--tone-warn-fg); pointer-events: none; }
     .kd-tile__check { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid #fff; border-radius: 50%; background: rgba(20,21,24,0.35); color: #fff; pointer-events: none; }
@@ -3005,6 +3042,12 @@
     .kd-tiles__help { margin-top: 0.75rem; }
     .kd-tiles__help svg { width: 13px; height: 13px; vertical-align: -2px; }
     .form-group.kd-credit { margin: 1.5rem 0 0; max-width: 440px; }
+    /* Photos → Before photos: their own group under the gallery */
+    .kd-befores { position: relative; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--color-border); }
+    .kd-befores__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.6rem 1rem; margin-bottom: 0.9rem; }
+    .kd-befores__head h4 { margin: 0; font-size: var(--fs-sm); font-weight: 700; letter-spacing: -0.01em; }
+    .kd-befores__n { margin-left: 0.4rem; font-weight: 600; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+    .kd-befores .kd-dropcover { border-radius: 12px; }
 
     /* Photo dialog and picker */
     .kd-photo { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 1.5rem; align-items: start; }
@@ -3157,7 +3200,7 @@
     .kd-pair__empty:hover, .kd-pair__empty:focus-within { border-color: var(--color-text); color: var(--color-text); }
     /* A before photo's after, waiting for the room to be done: quieter than a missing photo */
     .kd-pair__empty--waits { aspect-ratio: auto; min-height: 5.5rem; border-style: dotted; border-color: var(--color-border); background: transparent; color: var(--color-text-muted); text-align: center; padding: 0.75rem; }
-    /* What a plan is (as-built, proposed, board): the reveal screen plays them in that order */
+    /* What a plan is (as-built, proposed, board): the reveal screen plays the first two, in that order; a board waits for the kid page after the reveal */
     .kd-plan__kind { align-self: stretch; }
     .kd-plan__kind > [role="radio"] { flex: 1 1 0; justify-content: center; padding-inline: 0.35rem; font-size: var(--fs-xs); }
     .kd-design-when { margin-bottom: 0.9rem; }
@@ -3437,7 +3480,8 @@
       .kd-sec .rte-toolbar { top: calc(var(--top-h) + 52px); }
       .kd-bar { top: var(--top-h); margin: 0 -1.5rem 1rem; padding: 0.45rem 1.5rem; }
       .card.kd-sec { scroll-margin-top: calc(var(--top-h) + 64px); }
-      .kd-selectbar { top: calc(var(--top-h) + 62px); }
+      .kd-selectbar { top: calc(var(--top-h) + 62px); gap: 0.35rem; padding: 0.45rem 0.6rem; }
+      .kd-selectbar .btn { padding-inline: 0.6rem; white-space: nowrap; }
       .kd-photo { grid-template-columns: 1fr; }
       .kd-photo__stage { max-height: 52vh; min-height: 220px; }
       .kd-photo__stage img, .kd-focus { max-height: 52vh; }
@@ -7889,19 +7933,243 @@
     // on its own). Using a toast's action (Undo, Publish) closes it, so what
     // follows replaces it instead of stacking on top
     const TOAST_SHOWN = 3;
+    /**
+     * While a dialog is open, the toasts are never on its controls. In order, wherever there's room: where they
+     * always are (the corner) when that's clear of it; beside it; under or over it (as wide as it, a line or two);
+     * then only the newest (the rest wait, folded, till it closes) under or over it, or in its footer's empty
+     * stretch between its buttons; and only when none of that fits (a phone's dialog, the whole screen) on it, just
+     * above its footer. There a tap on a toast's words closes it (never reaching what's under it), and a wheel or a
+     * swipe on it scrolls the dialog under it. Measured where the dialog ends up, not where it is while it slides or
+     * grows in. Set on the container's style directly (no render), each time the toasts or the page change.
+     */
+    const TOAST_MIN_W = 260;
+    // The dialog's scrolling part given room at its end for a toast on the dialog, so its last controls can be
+    // scrolled clear of it; given back as soon as the toast is placed anywhere else, or gone
+    let toastRoomy = null;
+    // (Where it was scrolled to, kept: the same room given back at once leaves the dialog just where it was)
+    let toastRoomyWas = null;
+    const toastUnroom = () => {
+      if (!toastRoomy) return;
+      toastRoomyWas = { el: toastRoomy, top: toastRoomy.scrollTop };
+      toastRoomy.style.paddingBottom = toastRoomy.dataset.toastPb || '';
+      delete toastRoomy.dataset.toastPb;
+      toastRoomy = null;
+    };
+    function placeToasts(el) {
+      toastRoomyWas = null;
+      toastUnroom();
+      if (!el) return;
+      const st = el.style;
+      const plain = () => { st.top = st.bottom = st.left = st.right = ''; st.removeProperty('--toast-max'); el.classList.remove('is-wide', 'is-fit', 'is-tight', 'is-snug', 'is-on'); };
+      plain();
+      st.zIndex = '';
+      const overlays = [...document.querySelectorAll('.modal-overlay')];
+      const overlay = overlays.at(-1);
+      if (!overlay || !el.querySelector('.toast')) return;
+      // Above every open dialog's dimmed backdrop, however high an area put its own (Site Config's, the asks', 1200+)
+      const topZ = Math.max(...overlays.map((x) => parseInt(getComputedStyle(x).zIndex, 10) || 0));
+      if (topZ >= (parseInt(getComputedStyle(el).zIndex, 10) || 0)) st.zIndex = String(topZ + 1);
+      const box = [...overlay.children].sort((a, b) => b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight)[0];
+      if (!box) return;
+      // Its box as laid out (the overlay holds it), without the transform it comes in with; anything in it, mapped there
+      const o = overlay.getBoundingClientRect();
+      const now = box.getBoundingClientRect();
+      const d = { left: o.left + box.offsetLeft, top: o.top + box.offsetTop, width: box.offsetWidth, height: box.offsetHeight };
+      d.right = d.left + d.width;
+      d.bottom = d.top + d.height;
+      const sx = now.width / (d.width || 1) || 1;
+      const sy = now.height / (d.height || 1) || 1;
+      const settled = (r) => {
+        const left = d.left + (r.left - now.left) / sx;
+        const top = d.top + (r.top - now.top) / sy;
+        return { left, top, right: left + r.width / sx, bottom: top + r.height / sy, width: r.width / sx, height: r.height / sy };
+      };
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const gap = 8;
+      let r = el.getBoundingClientRect();
+      if (!(r.left < d.right && r.right > d.left && r.top < d.bottom && r.bottom > d.top)) return;
+      const fit = (w) => { el.classList.add('is-fit'); st.setProperty('--toast-max', `${Math.floor(w)}px`); };
+      // Beside it, along the bottom as always, as wide as the room there
+      if (vw - d.right >= TOAST_MIN_W + 2 * gap) { fit(vw - d.right - 2 * gap); st.left = `${Math.round(d.right + gap)}px`; st.right = `${gap}px`; return; }
+      if (d.left >= TOAST_MIN_W + 2 * gap) { fit(d.left - 2 * gap); st.left = `${gap}px`; st.right = `${Math.round(vw - d.left + gap)}px`; return; }
+      const offIt = () => {
+        r = el.getBoundingClientRect();
+        const below = vh - d.bottom;
+        if (below >= r.height + 2 * gap) { st.bottom = `${Math.round((below - r.height) / 2)}px`; return true; }
+        if (d.top >= r.height + 2 * gap) { st.bottom = 'auto'; st.top = `${Math.round((d.top - r.height) / 2)}px`; return true; }
+        return false;
+      };
+      if (offIt()) return;
+      const wide = (inset = 0) => { el.classList.add('is-wide'); fit(d.width - 2 * inset); st.left = `${Math.round(d.left + inset)}px`; st.right = `${Math.round(vw - d.right + inset)}px`; };
+      wide();
+      if (offIt()) return;
+      // Only the newest from here on, then snug too (a line or two of smaller words)
+      el.classList.add('is-tight');
+      if (offIt()) return;
+      el.classList.add('is-snug');
+      if (offIt()) return;
+      plain();
+      el.classList.add('is-tight');
+      // Its footer: the buttons along its bottom; never lower than the screen (one whose buttons scroll with it has
+      // them out of sight)
+      const seen = Math.min(d.bottom, vh);
+      const bars = [...box.querySelectorAll('.modal-buttons, footer, [class*="footer"], [class*="__foot"], [class*="actions"]')]
+        .map((x) => [x, settled(x.getBoundingClientRect())]).filter(([, b]) => b.height > 0 && b.bottom >= d.bottom - 32 && b.height < d.height / 2 && b.top < seen);
+      const foot = bars.sort((a, b) => b[1].width - a[1].width)[0];
+      if (foot) {
+        // Its empty stretch between what's in it: its controls, and its words where the words are (a box of words
+        // may stretch across the empty part)
+        const [footEl, f] = foot;
+        const controls = [...footEl.querySelectorAll('button, a[href], input, select, textarea, [role="button"], [tabindex]')].map((x) => x.getBoundingClientRect());
+        const words = [];
+        const walk = document.createTreeWalker(footEl, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          if (!n.textContent.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(n);
+          words.push(range.getBoundingClientRect());
+        }
+        const things = [...controls, ...words].map(settled).filter((b) => b.width > 0 && b.height > 0).sort((a, b) => a.left - b.left);
+        let from = f.left + gap;
+        let best = null;
+        for (const t of [...things, { left: f.right - gap, right: f.right - gap }]) {
+          if (t.left - gap - from > (best ? best.right - best.left : 0)) best = { left: from, right: t.left - gap };
+          from = Math.max(from, t.right + gap);
+        }
+        if (best && best.right - best.left >= TOAST_MIN_W) {
+          // (Snug there: a line or two of smaller words fit a footer's height)
+          el.classList.add('is-snug');
+          fit(best.right - best.left);
+          st.left = `${Math.round(best.left)}px`;
+          st.right = `${Math.round(vw - best.right)}px`;
+          r = el.getBoundingClientRect();
+          if (r.height <= f.height - 4) { st.bottom = `${Math.round(vh - (f.top + f.height / 2) - r.height / 2)}px`; return; }
+          plain();
+          el.classList.add('is-tight');
+        }
+      }
+      // On it: above its footer, or at its bottom edge when it has none (snug, and as wide as it, to hide as little as
+      // can be)
+      wide(gap);
+      el.classList.add('is-on', 'is-snug');
+      const edge = Math.min(seen, foot ? foot[1].top : seen);
+      st.bottom = `${Math.max(gap, Math.round(vh - edge + gap))}px`;
+      // (Room at the end of what scrolls in it, the toast's height: its last controls can be scrolled clear)
+      const tall = d.height / 3;
+      let sc = null;
+      for (const n of [box, ...box.querySelectorAll('*')]) {
+        if (n.clientHeight < tall) continue;
+        const oy = getComputedStyle(n).overflowY;
+        if (oy === 'auto' || oy === 'scroll') { sc = n; break; }
+      }
+      if (sc) {
+        const room = el.getBoundingClientRect().height + 2 * gap;
+        toastRoomy = sc;
+        sc.dataset.toastPb = sc.style.paddingBottom || '';
+        sc.style.paddingBottom = `${(parseFloat(getComputedStyle(sc).paddingBottom) || 0) + room}px`;
+        if (toastRoomyWas?.el === sc) sc.scrollTop = toastRoomyWas.top;
+      }
+    }
+    // Where focus was before a toast's button had it: back there when the button, pressed from the keyboard, leaves it
+    // nowhere (the toast gone with it, an Undo refused), unless the action put it somewhere itself. (A tap or click
+    // needs nothing back, and focusing a field then would open a phone's keyboard)
+    let toastFocusFrom = null;
+    document.addEventListener('focusin', (e) => { if (!e.target.closest?.('.toast-container')) toastFocusFrom = e.target; });
+    const toastFocusBack = () => setTimeout(() => {
+      const a = document.activeElement;
+      if ((!a || a === document.body) && toastFocusFrom?.isConnected) toastFocusFrom.focus({ preventScroll: true });
+    }, 150);
+    // What scrolls under a point, past the toasts (a wheel or a swipe on a toast that's on a dialog scrolls the
+    // dialog). While a dialog is open, only what's in it: never the page behind it (null: nothing to scroll)
+    function scrollerUnder(x, y) {
+      const overlay = [...document.querySelectorAll('.modal-overlay')].at(-1);
+      const under = document.elementsFromPoint(x, y).find((n) => !n.closest('.toast-container'));
+      if (overlay && !overlay.contains(under)) return null;
+      for (let n = under; n && n !== overlay && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+        const oy = getComputedStyle(n).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 1) return n;
+      }
+      return overlay ? null : document.scrollingElement;
+    }
     function ToastContainer({ toasts, onDismiss, pinned = null }) {
       const [all, setAll] = useState(false);
+      const box = useRef(null);
+      const swipe = useRef(null);
       useEffect(() => { if (toasts.length <= TOAST_SHOWN) setAll(false); }, [toasts.length]);
-      const folded = all ? 0 : Math.max(0, toasts.length - TOAST_SHOWN);
-      return html`<div class="toast-container" role="status" aria-live="polite" aria-atomic="true">
-        ${pinned ? html`<div class="toast toast-info toast-pinned"><span class="toast-action"><span>${pinned.msg}</span><button class="toast-undo" onClick=${pinned.fn}>${pinned.label}</button></span></div>` : null}
-        ${folded ? html`<button type="button" class="toast-more" onClick=${() => setAll(true)} aria-label=${`Show ${folded} earlier ${folded === 1 ? 'message' : 'messages'}`}>${folded} more</button>` : null}
-        ${toasts.slice(folded).map(t => html`<div key=${t.id} class="toast toast-${t.type}" role="alert">
+      // Placed as soon as this render is on the page, before it's painted (a microtask), and again as dialogs open,
+      // close or change size while any toast shows
+      queueMicrotask(() => placeToasts(box.current));
+      const showing = toasts.length > 0 || !!pinned;
+      useEffect(() => {
+        if (!showing) return;
+        let frame = 0;
+        const soon = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; placeToasts(box.current); }); };
+        const watch = new MutationObserver(soon);
+        watch.observe(document.body, { childList: true, subtree: true });
+        const moved = ['resize', 'animationend', 'transitionend'];
+        for (const e of moved) window.addEventListener(e, soon, true);
+        return () => { watch.disconnect(); for (const e of moved) window.removeEventListener(e, soon, true); cancelAnimationFrame(frame); };
+      }, [showing]);
+      // The newest TOAST_SHOWN in the live regions, each said as it comes; older ones only once "N more" asks for them,
+      // and then out of the live regions (never said again)
+      // (The newest error is always among the shown, never folded; where only one shows, it leads, before any newer
+      // words; else the newest)
+      const errorId = [...toasts].reverse().find((t) => t.type === 'error')?.id;
+      const keepIds = new Set([...toasts.slice(-TOAST_SHOWN).map((t) => t.id), ...(errorId != null ? [errorId] : [])]);
+      if (keepIds.size > TOAST_SHOWN) keepIds.delete(toasts.find((t) => keepIds.has(t.id) && t.id !== errorId)?.id);
+      const older = toasts.filter((t) => !keepIds.has(t.id));
+      const folded = all ? 0 : older.length;
+      const shown = toasts.filter((t) => keepIds.has(t.id));
+      const lead = errorId ?? toasts.at(-1)?.id;
+      const newest = lead;
+      // (detail 0: pressed with the keyboard, not clicked)
+      const act = (fn, e) => { fn(); if (e?.detail === 0) toastFocusBack(); };
+      // A press on a toast (its words or its button) keeps focus where it is: a field being typed in keeps it, and the
+      // button still does its work. An error's words can be selected, to copy. A tap on the words closes the toast,
+      // never what's under it; a swipe that started on it scrolls instead, and doesn't close it
+      const keep = (e) => { if (!(e.target.closest('.toast-error') && !e.target.closest('button, a'))) e.preventDefault(); };
+      // (An error's words take focus when pressed, to be selectable: closing it puts focus back where it was)
+      const closeOn = (id) => (e) => {
+        if (e.target.closest('button, a') || swipe.current?.moved || String(window.getSelection?.() || '')) return;
+        onDismiss?.(id);
+        if (e.target.closest('.toast-error')) toastFocusBack();
+      };
+      // (A toast only waits for a pointer that came to it: one it slid in under, resting, doesn't hold it)
+      const pointed = (e) => { const t = e.target.closest?.('.toast'); if (t && !t.hasAttribute('data-pointed')) t.setAttribute('data-pointed', ''); };
+      const wheel = (e) => {
+        const s = scrollerUnder(e.clientX, e.clientY);
+        if (s) s.scrollBy({ top: e.deltaY, left: e.deltaX });
+        if (s || document.querySelector('.modal-overlay')) e.preventDefault();
+      };
+      const touchStart = (e) => { const t = e.touches[0]; swipe.current = e.target.closest('button, a') ? null : { y: t.clientY, s: scrollerUnder(t.clientX, t.clientY), moved: false }; };
+      const touchMove = (e) => {
+        const sw = swipe.current;
+        if (!sw) return;
+        if (!sw.s) { if (document.querySelector('.modal-overlay')) e.preventDefault(); return; }
+        const y = e.touches[0].clientY;
+        if (Math.abs(y - sw.y) > 2) sw.moved = true;
+        sw.s.scrollBy(0, sw.y - y);
+        sw.y = y;
+        e.preventDefault();
+      };
+      const toast = (t) => html`<div key=${t.id} class=${`toast toast-${t.type}${t.id === newest ? ' is-newest' : ''}`} onMouseDown=${keep} onClick=${closeOn(t.id)}>
           ${t.action ? html`<span class="toast-action">
             <span>${t.msg}</span>
-            <button class="toast-undo" onClick=${() => { onDismiss?.(t.id); t.action.fn(); }}>${t.action.label}</button>
+            <button class="toast-undo" onClick=${(e) => { onDismiss?.(t.id); act(t.action.fn, e); }} aria-label=${typeof t.msg === 'string' ? `${t.action.label}: ${t.msg}` : null}>${t.action.label}</button>
           </span>` : t.msg}
-        </div>`)}
+        </div>`;
+      // Two live regions: each new message is said once, alone (never all of them again), an error at once
+      return html`<div class="toast-container" ref=${box} onWheel=${wheel} onTouchStart=${touchStart} onTouchMove=${touchMove} onMouseMove=${pointed}>
+        ${folded ? html`<button type="button" class="toast-more" onMouseDown=${keep} onClick=${(e) => { setAll(true); if (e.detail === 0) toastFocusBack(); }} aria-label=${`Show ${folded} earlier ${folded === 1 ? 'message' : 'messages'}`}>${folded} more</button>` : null}
+        ${all && older.length ? html`<div class="toast-region toast-older">${older.map(toast)}</div>` : null}
+        <div class="toast-region" role="status" aria-live="polite" aria-atomic="false" aria-relevant="additions text">
+          ${pinned ? html`<div class=${`toast toast-info toast-pinned${shown.length ? '' : ' is-newest'}`} onMouseDown=${keep}><span class="toast-action"><span>${pinned.msg}</span><button class="toast-undo" onClick=${(e) => act(pinned.fn, e)} aria-label=${typeof pinned.msg === 'string' ? `${pinned.label}: ${pinned.msg}` : null}>${pinned.label}</button></span></div>` : null}
+          ${shown.filter((t) => t.type !== 'error').map(toast)}
+        </div>
+        <div class="toast-region" role="alert" aria-live="assertive" aria-atomic="false" aria-relevant="additions text">
+          ${shown.filter((t) => t.type === 'error').map(toast)}
+        </div>
       </div>`;
     }
 
@@ -9068,6 +9336,7 @@
       grid: _s(html`<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>`, 14),
       next: _s(html`<path d="m9 18 6-6-6-6"/>`, 14),
       edit: _s(html`<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>`, 15),
+      eye: _s(html`<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>`, 15),
       eyeOff: _s(html`<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>`, 14),
     };
 
@@ -9174,6 +9443,9 @@
      *  one begins; once shouldStop() is true, the ones not yet begun are left alone, and
      *  `signal` stops the ones under way (onFail(it, 'Stopped', { stopped: true })). One
      *  stuck past timeoutMs (a dropped connection) gives up, so it never holds the rest */
+    // A random part in a before photo's, a drawing's or a pair's address: Cloudflare Images serves any address to
+    // anyone, so one kept off the page (or a drawing waiting on its address check) is never found by guessing
+    const kdUnguessable = () => (crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')).replace(/-/g, '');
     async function kdUploadAll(items, { idFor, onDone, onFail, onStart, shouldStop, skip, signal, limit = 3, timeoutMs = 5 * 60 * 1000 }) {
       const queue = [...items];
       const worker = async () => {
@@ -9634,10 +9906,10 @@
     function KdDialog(props) {
       return html`<${KdDialogBox} ...${props} />`;
     }
-    function KdDialogBox({ title, sub, onClose, busy = false, size = 'md', className = '', children, footer }) {
+    function KdDialogBox({ title, sub, onClose, busy = false, size = 'md', className = '', children, footer, returnTo = null }) {
       const ref = useRef(null);
       const id = useMemo(() => `kd-dlg-${++kdSeq}`, []);
-      usePplDialog(ref, onClose, busy);
+      usePplDialog(ref, onClose, busy, { returnTo });
       useEffect(() => {
         const el = ref.current?.querySelector('[data-autofocus]');
         if (el) el.focus(); else ref.current?.focus();
@@ -11889,6 +12161,35 @@
       });
     }
     const kdNewKey = () => `new-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    // Undo for a list change made a while ago. kdTaken notes, as it's taken out, what each photo came after, and
+    // whether the other list (the gallery, Before photos) had it too; kdPutBack puts back only what was taken, each
+    // right after the nearest photo still there that came before it, into the list as it is now, so whatever
+    // happened since (an upload landing, another edit, move or Undo) stays. A photo is never put back into one list
+    // while the other now has it (unless it was in both before), so it can't end up in both.
+    function kdTaken(list, keys, other = []) {
+      return list.map((item, at) => ({ item, before: list.slice(0, at).map((x) => x._key), both: other.some((o) => o.url === item.url) }))
+        .filter(({ item }) => keys.includes(item._key) && !kdLocal(item.url));
+    }
+    function kdPutBack(list, taken, other = []) {
+      const out = [...list];
+      for (const { item, before, both } of taken) {
+        // (Nor one the list has again under a new key: it came back meanwhile. Only for a picture, which has a url)
+        if (out.some((x) => x._key === item._key || (item.url && x.url === item.url) || (item.source && x.source === item.source)) || (!both && other.some((o) => o.url === item.url))) continue;
+        let i = -1;
+        for (let j = before.length - 1; j >= 0 && i < 0; j--) i = out.findIndex((x) => x._key === before[j]);
+        out.splice(i + 1, 0, item);
+      }
+      return out;
+    }
+    // After a photo leaves a list: focus the tile now in its place (else the last, else the group's first button)
+    function kdFocusTileSoon(listId, index, fallback) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        // (Never behind an open dialog: an Undo pressed while one is open leaves focus in it)
+        if (document.querySelector('.modal-overlay')) return;
+        const tiles = [...document.querySelectorAll(`#${listId} .kd-tile__open`)];
+        (tiles[Math.min(index, tiles.length - 1)] || document.querySelector(fallback))?.focus();
+      }));
+    }
     const kdDedupeSlug = (base, taken) => {
       if (!base || !taken.includes(base)) return base;
       const withYear = `${base}-${new Date().getFullYear()}`;
@@ -11907,6 +12208,7 @@
         publishStatus: raw.publishStatus === 'draft' ? 'draft' : 'published',
         _ages: KS.formatAges(raw.age),
         photos: kdKeyed(raw.photos),
+        beforePhotos: kdKeyed(raw.beforePhotos),
         plans: kdKeyed(raw.plans),
         beforeAfterPhotos: kdKeyed(raw.beforeAfterPhotos, 'after'),
         // Logos without a name read "Project partner" to screen readers; the directory knows most
@@ -11915,12 +12217,60 @@
     }
     // What Save writes: the room fields follow the counts shown in Basics
     const kdSaveRecord = (data) => KS.kidRecord({ ...data, ...KS.buildFields(KS.buildsOf(data), data) });
+    // The site's check's own fields on a before photo (saveLooks in functions/api/_reveal-design-auto.js)
+    const KD_LOOK_FIELDS = ['looked', 'offPage', 'offWhy'];
+    const kdStable = (v) => (Array.isArray(v) ? `[${v.map(kdStable).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${kdStable(v[k])}`).join(',')}}` : JSON.stringify(v));
+    /**
+     * The server's version is ours (was) but for the site's check on before photos still waiting in ours: the only
+     * change the site makes (it never touches one anybody has looked at). Anything else is someone else's save
+     */
+    function kdOnlySiteLooks(was, server) {
+      const waiting = new Set((was.beforePhotos || []).filter((p) => p?.url && !p.looked).map((p) => p.url));
+      // (Staff's say on one, in another editor, is someone else's save: never taken as the site's)
+      if ((server.beforePhotos || []).some((p) => waiting.has(p?.url) && p.looked && p.looked !== 'site')) return false;
+      const strip = (r) => ({ ...r, beforePhotos: (r.beforePhotos || []).map((p) => (waiting.has(p?.url) ? Object.fromEntries(Object.entries(p).filter(([k]) => !KD_LOOK_FIELDS.includes(k))) : p)) });
+      return kdStable(strip(was)) === kdStable(strip(server));
+    }
+    /**
+     * A kept draft, restored over a newer saved version: the saved version's looks win where the draft has none, and
+     * a person's (staff) say there wins over the site's in the draft; the draft's own staff say stands
+     */
+    const kdRestoreLooks = (list, from) => {
+      const by = new Map((from || []).filter((p) => p?.looked).map((p) => [p.url, p]));
+      return (list || []).map((p) => {
+        const x = by.get(p.url);
+        if (!x || p.looked === 'staff' || (p.looked && x.looked !== 'staff')) return p;
+        const { offPage, offWhy, ...rest } = p;
+        return { ...rest, looked: x.looked, ...(x.offPage ? { offPage: true } : {}), ...(x.offWhy ? { offWhy: x.offWhy } : {}) };
+      });
+    };
+    /**
+     * What an Undo in Photos needs unchanged: which photos are in the gallery, Before photos and the pairs, in what order,
+     * staff's say on each before photo, and the main and accent photo. Not words typed (alt, room), and not the site's
+     * answers landing (they only fill in ones nobody had said anything about)
+     */
+    const kdPhotosPrint = (d) => kdStable({
+      photos: (d.photos || []).map((p) => p._key),
+      befores: (d.beforePhotos || []).map((p) => `${p._key}:${p.looked === 'staff' ? (p.offPage ? 'off' : 'on') : '-'}`),
+      pairs: (d.beforeAfterPhotos || []).map((p) => `${p._key}:${p.before || ''}|${p.after || ''}`),
+      hero: d.heroImage || '', accent: d.accentImage || '',
+    });
+    /** The site's answers (from: before photos it has looked at) onto ones still waiting here; staff's own say stays */
+    const kdTakeLooks = (list, from) => {
+      const by = new Map((from || []).filter((p) => p?.looked).map((p) => [p.url, p]));
+      return (list || []).map((p) => {
+        const x = by.get(p.url);
+        if (p.looked || !x) return p;
+        const { offPage, offWhy, ...rest } = p;
+        return { ...rest, looked: x.looked, ...(x.offPage ? { offPage: true } : {}), ...(x.offWhy ? { offWhy: x.offWhy } : {}) };
+      });
+    };
     // A new profile before anything is filled in
     const kdBlankKid = (over = {}) => ({
       name: '', slug: '', status: 'in-progress', year: new Date().getFullYear(), age: null, diagnosis: '',
       roomTypes: ['Dream Bedroom'], roomCount: 1, bedroomCount: 1, bathroomCount: 0, therapyRoomCount: 0, childCount: 1,
       heroSummary: '', bio: '', quote: '', heroImage: '', accentImage: '', photos: [], photoCount: 0, photographer: '',
-      plans: [], beforeAfterPhotos: [], partnerLogos: [], streamVideoId: '', videoUrl: '', revealVideoUrl: '',
+      plans: [], beforePhotos: [], beforeAfterPhotos: [], partnerLogos: [], streamVideoId: '', videoUrl: '', revealVideoUrl: '',
       fundraisingUrl: '', shortDescription: '', metaDescription: '', publishStatus: 'published', ...over,
     });
     const kdOrdinal = (n) => { const x = ['th', 'st', 'nd', 'rd']; const v = n % 100; return n + (x[(v - 20) % 10] || x[v] || x[0]); };
@@ -11967,11 +12317,23 @@
      *   sub        where it shows ("Large, first in the gallery")
      *   roles      [{ id, on, label, onText, offText, icon, toggle() }] (main photo, …)
      *   crops      the crops the site makes of it, previewed around the focal point
+     *   focal      false: the site never crops it (a before photo), so no focal point or crops
+     *   placeLabel what its place is in ("Place in the gallery")
      *   placeHint  what its place in the order means on the page
+     *   extra      more fields, under the alt text
      */
-    function KdPhotoDialog({ photos, index, sub, roles = [], crops = KD_CROPS, placeHint, onIndex, onClose, onAlt, onWriteAlt, writing, onMove, onRemove, onFocus }) {
+    function KdPhotoDialog({ photos, index, sub, roles = [], crops = KD_CROPS, focal = true, placeLabel = 'Place in the gallery', placeHint, extra = null, returnTo = null, onIndex, onClose, onAlt, onWriteAlt, writing, onMove, onRemove, onFocus }) {
       const p = photos[index];
       const textRef = useRef(null);
+      const prevRef = useRef(null);
+      const nextRef = useRef(null);
+      // Arrowed to the first or last photo: its arrow turns off, so focus goes to the other one rather than the page
+      useEffect(() => {
+        const a = document.activeElement;
+        if (a === prevRef.current && a.disabled) nextRef.current?.focus();
+        else if (a === nextRef.current && a.disabled) prevRef.current?.focus();
+        else if ((!a || a === document.body) && (prevRef.current || nextRef.current)) (nextRef.current?.disabled ? prevRef.current : nextRef.current)?.focus();
+      }, [index]);
       // A focal point being dragged; it's saved to the photo when you let go
       const [dragFocus, setDragFocus] = useState(null);
       const frameRef = useRef(null);
@@ -12028,20 +12390,22 @@
       if (!p) return null;
       const shownFocus = dragFocus || p.focus || null;
       const alt = p.alt || '';
+      // Still uploading: its alt text can be written now; its place, roles and removal wait until it's up
+      const uploading = kdLocal(p.url);
       const footer = html`
-        <button type="button" class="btn btn-ghost kd-danger-quiet" onClick=${() => onRemove(p._key)}>Remove photo</button>
+        <button type="button" class="btn btn-ghost kd-danger-quiet" disabled=${uploading} onClick=${() => onRemove(p._key)}>Remove photo</button>
         <span class="ppl-spacer"></span>
         <button type="button" class="btn btn-primary" onClick=${onClose}>Done</button>`;
-      return html`<${KdDialog} title=${`Photo ${index + 1} of ${photos.length}`} sub=${sub} size="xl" className="kd-photo-dlg" onClose=${onClose} footer=${footer}>
+      return html`<${KdDialog} title=${`Photo ${index + 1} of ${photos.length}`} sub=${sub} size="xl" className="kd-photo-dlg" onClose=${onClose} footer=${footer} returnTo=${returnTo}>
         <div class="kd-photo">
           <div class="kd-photo__stage">
-            <div class=${`kd-focus${dragFocus ? ' is-dragging' : ''}`} ref=${frameRef} onPointerDown=${focusDown} onKeyDown=${focusKey} tabindex="0"
+            ${focal ? html`<div class=${`kd-focus${dragFocus ? ' is-dragging' : ''}`} ref=${frameRef} onPointerDown=${focusDown} onKeyDown=${focusKey} tabindex="0"
               role="group" aria-label=${`Focal point: ${shownFocus ? `${Math.round(shownFocus.x * 100)}% across, ${Math.round(shownFocus.y * 100)}% down` : 'automatic, on faces'}. Click the photo, or use the arrow keys, to set it.`}>
               <img src=${kdImg(p.url, 'w=1600,q=85')} alt=${alt} draggable=${false} />
               ${shownFocus ? html`<span class="kd-focus__mark" style=${`left:${shownFocus.x * 100}%;top:${shownFocus.y * 100}%`} aria-hidden="true"></span>` : null}
-            </div>
-            <button type="button" class="kd-photo__nav is-prev" aria-label="Previous photo" disabled=${index === 0} onClick=${() => onIndex(index - 1)}>${kdIcon.left}</button>
-            <button type="button" class="kd-photo__nav is-next" aria-label="Next photo" disabled=${index === photos.length - 1} onClick=${() => onIndex(index + 1)}>${kdIcon.right}</button>
+            </div>` : html`<img src=${kdImg(p.url, 'w=1600,q=85')} alt=${alt} draggable=${false} />`}
+            <button type="button" class="kd-photo__nav is-prev" ref=${prevRef} aria-label="Previous photo" disabled=${index === 0} onClick=${() => onIndex(index - 1)}>${kdIcon.left}</button>
+            <button type="button" class="kd-photo__nav is-next" ref=${nextRef} aria-label="Next photo" disabled=${index === photos.length - 1} onClick=${() => onIndex(index + 1)}>${kdIcon.right}</button>
           </div>
           <div class="kd-photo__side">
             <div class="form-group">
@@ -12054,11 +12418,13 @@
                   ${writing ? html`<span class="spinner spinner-14" />` : kdIcon.sparkle} ${alt ? 'Rewrite' : 'Write it'}</button>
               </div>
             </div>
+            ${extra}
+            ${uploading ? html`<p class="form-hint kd-photo__wait"><span class="spinner spinner-14" /> Still uploading. Its place and the rest can change once it’s up.</p>` : null}
             ${roles.length ? html`<div class="kd-photo__roles">
-              ${roles.map((r) => html`<button type="button" key=${r.id} class=${`kd-role${r.on ? ' is-on' : ''}`} aria-pressed=${r.on} onClick=${r.toggle}>
+              ${roles.map((r) => html`<button type="button" key=${r.id} class=${`kd-role${r.on ? ' is-on' : ''}`} aria-pressed=${r.action ? null : r.on} disabled=${uploading} onClick=${r.toggle}>
                 ${r.icon}<span><strong>${r.label}</strong><small>${r.on ? r.onText : r.offText}</small></span></button>`)}
             </div>` : null}
-            <div class="kd-photo__focus">
+            ${focal ? html`<div class="kd-photo__focus">
               <div class="kd-label-row">
                 <span class="form-label">Focal point</span>
                 ${p.focus ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onFocus(p._key, null)}>Back to automatic</button>` : null}
@@ -12071,13 +12437,13 @@
                   <figcaption>${c.label}</figcaption>
                 </figure>`)}
               </div>
-            </div>
+            </div>` : null}
             <div class="kd-photo__move">
-              <span class="form-label">Place in the gallery</span>
+              <span class="form-label">${placeLabel}</span>
               <div class="kd-btnrow">
-                <button type="button" class="btn btn-ghost btn-sm" disabled=${index === 0} onClick=${() => onMove(p._key, 0)}>${kdIcon.front} First</button>
-                <button type="button" class="btn btn-ghost btn-sm" disabled=${index === 0} onClick=${() => onMove(p._key, index - 1)}>Earlier</button>
-                <button type="button" class="btn btn-ghost btn-sm" disabled=${index === photos.length - 1} onClick=${() => onMove(p._key, index + 1)}>Later</button>
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${uploading || index === 0} onClick=${() => onMove(p._key, 0)}>${kdIcon.front} First</button>
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${uploading || index === 0} onClick=${() => onMove(p._key, index - 1)}>Earlier</button>
+                <button type="button" class="btn btn-ghost btn-sm" disabled=${uploading || index === photos.length - 1} onClick=${() => onMove(p._key, index + 1)}>Later</button>
               </div>
               ${placeHint ? html`<p class="form-hint">${placeHint}</p>` : null}
             </div>
@@ -12085,32 +12451,79 @@
         </div>
       <//>`;
     }
-    /** A kid's photo: its zone in the gallery, main and accent photo */
-    function KidPhotoDialog({ kid, index, onHero, onAccent, ...rest }) {
+    /** A kid's photo: its zone in the gallery, main and accent photo, or a before photo after all */
+    function KidPhotoDialog({ kid, index, onHero, onAccent, onBefore, ...rest }) {
       const p = kid.photos[index];
       if (!p) return null;
       const isHero = p.url === kid.heroImage;
       const isAccent = p.url === kid.accentImage;
       return html`<${KdPhotoDialog} photos=${kid.photos} index=${index} sub=${KS.ZONES[KS.photoZone(index)].label}
+        returnTo="#kd-gallery-tiles .kd-tile__open, #kd-sec-photos .kd-sec__actions .btn"
         placeHint=${`The first two show large; the gallery shows the first ${KS.GALLERY_MAX}.`}
         roles=${[
           { id: 'hero', on: isHero, label: 'Main photo', onText: 'Top of the page and the grid card', offText: 'Use at the top of the page and on the grid card', icon: kdIcon.star, toggle: () => onHero(isHero ? null : p.url) },
           { id: 'accent', on: isAccent, label: 'Accent photo', onText: 'The smaller photo beside the main one', offText: 'Show smaller, beside the main photo', icon: kdIcon.image, toggle: () => onAccent(isAccent ? '' : p.url) },
+          { id: 'before', on: false, action: true, label: 'A before photo', onText: '', offText: 'The room before the makeover: move it out of the gallery, to Before photos', icon: kdIcon.eyeOff, toggle: () => onBefore(p._key) },
+        ]} ...${rest} />`;
+    }
+    /**
+     * A before photo (Photos → Before photos): never in the gallery. Only one on the page (RD.onPage: the site's check,
+     * or staff, has looked at it, and it isn't kept off) is ever public; before the reveal the first RD.BEFORE_SHOWN of
+     * those play on the reveal screen, so its place says whether it does; its room is said under it there
+     */
+    function KidBeforeDialog({ kid, index, revealed, confirmed = true, onReveal, onPage, onGallery, onRoom, ...rest }) {
+      const p = kid.beforePhotos[index];
+      if (!p) return null;
+      const state = RD.pageState(p);
+      const shownCount = kid.beforePhotos.filter(RD.onPage).length;
+      const place = RD.revealPlaces(kid.beforePhotos)[index];
+      const shown = !revealed && place !== null;
+      // With RD.BEFORE_SHOWN or fewer on the page, every one plays: there's nothing to switch
+      const choice = !revealed && state === 'on' && shownCount > RD.BEFORE_SHOWN;
+      // (The page shows before photos from the confirmed reveal, and only on a profile that's shown)
+      const once = [!confirmed && !revealed ? 'once the reveal is confirmed' : '', kid.publishStatus === 'draft' ? 'once the profile is shown' : ''].filter(Boolean).map((x) => `, ${x}`).join('');
+      const name = String(kid.name || '').trim();
+      const why = p.offWhy ? p.offWhy.charAt(0).toLowerCase() + p.offWhy.slice(1) : '';
+      const offLine = state === 'off' ? (p.looked === 'site' && why ? `kept off the page by the site’s check (${why})` : 'kept off the page') : 'not checked yet';
+      // A Before & after pair that takes its before from this one is on or off the page with it (RD.pagePairs)
+      const paired = (kid.beforeAfterPhotos || []).some((x) => x.before === p.url);
+      const pairNote = paired ? ' A Before & after pair uses it, so the pair is on or off the page with it.' : '';
+      return html`<${KdPhotoDialog} photos=${kid.beforePhotos} index=${index} focal=${false} placeLabel="Place in Before photos"
+        returnTo="#kd-before-tiles .kd-tile__open, #kd-befores .kd-sec__actions .btn"
+        sub=${revealed ? (state === 'on' ? 'A before photo: in the Before section of the page, and for the Before & after pairs' : `A before photo, ${offLine}`)
+          : state !== 'on' ? `Not on the reveal screen: ${offLine}`
+          : !choice ? `On the reveal screen${once}, ${kdOrdinal(place + 1)} of ${shownCount}: every before photo on the page plays while there are ${RD.BEFORE_SHOWN} or fewer`
+          : shown ? `On the reveal screen${once}, ${kdOrdinal(place + 1)} of ${RD.BEFORE_SHOWN}` : `Not on the reveal screen: it plays the first ${RD.BEFORE_SHOWN} on the page`}
+        placeHint=${revealed ? 'Never in the gallery. A Before & after pair takes its before from here.' : `The first ${RD.BEFORE_SHOWN} on the page play on the reveal screen. Never in the gallery.`}
+        extra=${html`<div class="form-group">
+          <label class="form-label" for="kd-before-room">Room <span class="form-optional">optional</span></label>
+          <input id="kd-before-room" class="form-input" value=${p.room || ''} maxlength="60" placeholder="e.g. Bathroom" onInput=${(e) => onRoom(p._key, e.target.value)} />
+          <p class="form-hint">On its Before label on the page, and under it on the reveal screen. Without it, the screen says “${name ? kdPoss(name) : 'The'} room ${revealed ? 'before' : 'today'}”.</p>
+        </div>`}
+        roles=${[
+          { id: 'page', on: state === 'on', label: 'On the page', icon: state === 'on' ? kdIcon.eye : kdIcon.eyeOff,
+            onText: `${p.looked === 'site' ? 'The site checked it and found nothing to keep it off. ' : ''}${revealed ? 'Shows in the Before section of the page' : `Shows in the Before section of the page${once}, and can play on the reveal screen`}. Turn off to keep it off.${pairNote}`,
+            offText: state === 'off' ? `${p.looked === 'site' && why ? `The site kept it off: ${why}` : revealed ? 'Kept off the page' : 'Kept off the page and the reveal screen'}. Turn on if it’s fine to show.${pairNote}`
+              : `Not checked yet: the site looks at each before photo from JobTread within minutes of saving, and it shows nowhere until then. Turn on to show it now.${pairNote}`,
+            toggle: () => onPage(p._key, state !== 'on') },
+          ...(!choice ? [] : [{ id: 'reveal', on: shown, label: 'On the reveal screen', onText: `Plays ${kdOrdinal(place + 1)} of ${RD.BEFORE_SHOWN}. Turn off to let the next one play`, offText: `Play it, in place of the ${kdOrdinal(RD.BEFORE_SHOWN)}`, icon: kdIcon.play, toggle: () => onReveal(p._key, shown) }]),
+          // (Only one on the page: the gallery is on the page too, so one kept off is switched on first, on purpose)
+          ...(state !== 'on' ? [] : [{ id: 'gallery', on: false, action: true, label: 'Move to the gallery', onText: '', offText: 'Show it in the gallery with the other photos instead', icon: kdIcon.image, toggle: () => onGallery(p._key) }]),
         ]} ...${rest} />`;
     }
 
-    /** Pick one photo from the gallery (main, accent, a before or after) */
-    function KidPhotoPicker({ title, photos, current, onPick, onClose }) {
+    /** Pick one photo: from the gallery (main, accent, an after) or from Before photos (a pair's before) */
+    function KidPhotoPicker({ title, photos, current, onPick, onClose, empty = 'Add photos to the gallery first.', nameOf = null }) {
       const ready = photos.filter((p) => !kdLocal(p.url));
       return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
         ${ready.length ? html`<ul class="kd-pick">
           ${ready.map((p, i) => html`<li key=${p._key}>
             <button type="button" class=${`kd-pick__btn${p.url === current ? ' is-on' : ''}`} aria-pressed=${p.url === current} data-autofocus=${i === 0 ? '' : null}
-              aria-label=${`Photo ${i + 1}${p.alt ? `: ${p.alt}` : ''}`} onClick=${() => onPick(p.url)}>
+              aria-label=${`${nameOf ? nameOf(p) : `Photo ${i + 1}`}${p.alt ? `: ${p.alt}` : ''}`} onClick=${() => onPick(p.url)}>
               <img src=${kdImg(p.url, 'w=320,h=320,fit=cover,q=75')} alt="" loading="lazy" />
               ${p.url === current ? html`<span class="kd-pick__on">${kdIcon.check}</span>` : null}
             </button></li>`)}
-        </ul>` : html`<p class="text-muted">Add photos to the gallery first.</p>`}
+        </ul>` : html`<p class="text-muted">${empty}</p>`}
       <//>`;
     }
 
@@ -12147,14 +12560,14 @@
     function kdDesignWhen(name, reveal, hidden = false) {
       const who = name || 'this kid';
       // A hidden profile has no live page or reveal screen of its own (/api/reveal-design answers nothing for it)
-      if (hidden) return html`${kdPoss(who)} profile is hidden, so the design doesn’t show anywhere: not on the live page or the stream. Show the profile on the site and it plays from an hour before the reveal.`;
+      if (hidden) return html`${kdPoss(who)} profile is hidden, so the design doesn’t show anywhere: not on the page, the live page or the stream. Show the profile on the site and the existing and proposed plans show on the page once the reveal is confirmed, and play from an hour before it.`;
       if (reveal?.confirmed && reveal.startsAt) {
         const at = new Date(Date.parse(reveal.startsAt) - RD.DESIGN_LEAD_MS);
         const time = at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
         const day = at.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/New_York' });
-        return html`They stay off ${kdPoss(who)} page until the reveal. They show on ${kdPoss(who)} live page and stream from <strong>${time}, ${day}</strong>, an hour before.`;
+        return html`The reveal is confirmed, so the existing and proposed plans show on ${kdPoss(who)} page (each once its address is seen to). They play on ${kdPoss(who)} live page and stream from <strong>${time}, ${day}</strong>, an hour before. Design boards stay off until after the reveal.`;
       }
-      return html`They stay off ${kdPoss(who)} page until the reveal. They show on ${kdPoss(who)} live page and stream an hour before the reveal, once it has a confirmed time.`;
+      return html`The existing and proposed plans show on ${kdPoss(who)} page once JobTread confirms the reveal, and play on the live page and stream from an hour before it. Design boards stay off until after the reveal.`;
     }
 
     /** One plan: what it is (as-built, proposed, board), the page's crop (floor plans lose the address block), caption, place */
@@ -12170,15 +12583,16 @@
       const group = e.currentTarget.closest('[role="radiogroup"]');
       requestAnimationFrame(() => group?.querySelectorAll('[role="radio"]')[next]?.focus());
     }
-    function KdPlanTile({ plan, index, drag, onLabel, onKind, onRemove, onCover, onNoAddress, busy, broken, onBroken, revealed = true }) {
+    function KdPlanTile({ plan, index, drag, onLabel, onKind, onRemove, onCover, onNoAddress, busy, broken, onBroken, revealed = true, shownAt = index }) {
       const [ratio, setRatio] = useState(null);
       const trimmed = RD.isTrimmed(plan.url);
       const floor = KS.isFloorPlan(plan) && !trimmed;
       const fileName = KS.looksLikeFileName(plan.label);
       const kind = RD.planKind(plan);
       const check = plan.addressCheck;
-      // Before the reveal, an as-built or proposed drawing plays on the reveal screen only once someone has seen to the address on it
-      const needsCheck = !revealed && kind !== 'board' && !RD.addressChecked(plan) && !kdLocal(plan.url);
+      // Before the reveal, an as-built or proposed drawing shows on the kid page and the reveal screen only once someone
+      // has seen to the address on it; after it too, one brought in from JobTread (pagePlans): the buttons stay for it
+      const needsCheck = kind !== 'board' && !RD.addressChecked(plan) && !kdLocal(plan.url) && (!revealed || !!plan.source);
       const kindIds = RD.PLAN_KINDS.map((k) => k.id);
       // What's true about the family's address on it (a board is shown whole, unless its caption makes it a floor plan)
       const chip = kind === 'board' && !floor ? null
@@ -12206,7 +12620,7 @@
           <input class="form-input" value=${plan.label || ''} list="kd-plan-captions" placeholder="Caption, e.g. Floor plan, after" aria-label=${`Caption for plan ${index + 1}`}
             onInput=${(e) => onLabel(plan._key, e.target.value)} />
           ${needsCheck ? html`<div class="kd-plan__check">
-            <p>It plays on the reveal screen once the family’s address on it is covered, or someone has checked there’s none.</p>
+            <p>${revealed ? 'It shows on the kid page once the family’s address on it is covered, or someone has checked there’s none.' : 'It shows on the kid page and plays on the reveal screen once the family’s address on it is covered, or someone has checked there’s none.'}</p>
             <span class="kd-btnrow">
               <button type="button" class="btn btn-secondary btn-sm" onClick=${() => onCover(plan._key)}>Cover the address</button>
               <button type="button" class="btn btn-ghost btn-sm" onClick=${() => onNoAddress(plan._key)}>No address on it</button>
@@ -12215,7 +12629,7 @@
           <div class="kd-plan__meta">
             ${chip}
             ${fileName ? html`<span class="kd-chip kd-chip--warn" title="Captions show when someone opens a plan">${kdIcon.alert} Needs a real caption</span>` : null}
-            ${revealed ? html`<span class="kd-plan__where">${index < KS.PLANS_SHOWN ? 'On the page' : 'Under “View all designs”'}</span>` : null}
+            ${revealed ? html`<span class="kd-plan__where">${shownAt < 0 ? 'Not on the page yet' : shownAt < KS.PLANS_SHOWN ? 'On the page' : 'Under “View all designs”'}</span>` : null}
             <button type="button" class="btn btn-ghost btn-sm kd-danger-quiet" onClick=${() => onRemove(plan._key)}>Remove</button>
           </div>
         </div>
@@ -12952,9 +13366,13 @@
       const [uploads, setUploads] = useState({});
       const [altBusy, setAltBusy] = useState(new Set());
       const [photoOpen, setPhotoOpen] = useState(null);
-      const [picker, setPicker] = useState(null); // { title, current, onPick }
+      const [beforeOpen, setBeforeOpen] = useState(null); // a before photo open in its dialog (its key)
+      const [picker, setPicker] = useState(null); // { title, current, onPick, photos?, empty? }
       const [selecting, setSelecting] = useState(false);
       const [selected, setSelected] = useState(new Set());
+      const [beforeSelecting, setBeforeSelecting] = useState(false);
+      const [beforeSelected, setBeforeSelected] = useState(new Set());
+      const [beforeArranging, setBeforeArranging] = useState(false);
       const [dropping, setDropping] = useState(null);
       const [streamPick, setStreamPick] = useState(null);
       const [video, setVideo] = useState({ busy: false, pct: 0 });
@@ -12991,7 +13409,7 @@
       const barRef = useRef(null);
       const photoInput = useRef(null);
       const planInput = useRef(null);
-      const beforeInput = useRef(null);
+      const beforeInput = useRef(null); // Add before photos (Photos → Before photos)
       const logoInput = useRef(null);
       const logoFor = useRef(null); // the JobTread company an upload is for (named after them, so the site knows it's theirs)
       const videoInput = useRef(null);
@@ -13037,21 +13455,96 @@
           const s = JSON.parse(localStorage.getItem(draftKey) || 'null');
           if (!s?.data) return;
           if (JSON.stringify(s.data) === JSON.stringify(kdSaveRecord(d))) { localStorage.removeItem(draftKey); return; }
-          setDraft({ ...s, stale: !!(s.sha && loadedSha && s.sha !== loadedSha) });
+          // (Saved since, but only the site's check on before photos that waited: Restore keeps those, nothing is replaced)
+          const onlyLooks = !!s.base && kdOnlySiteLooks(kdSaveRecord(kdForEditing(JSON.parse(s.base), ix, slug)), kdSaveRecord(d));
+          setDraft({ ...s, stale: !!(s.sha && loadedSha && s.sha !== loadedSha) && !onlyLooks });
         } catch {}
       };
       useEffect(() => {
-        if (!dirty || loading) return undefined;
-        const t = setTimeout(() => { try { localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), sha, data: record, ages: data._ages })); } catch {} }, 1200);
+        // (Not over kept changes still waiting on Restore or Discard: they'd be lost)
+        if (!dirty || loading || draft) return undefined;
+        const t = setTimeout(() => { try { localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), sha, base, data: record, ages: data._ages })); } catch {} }, 1200);
         return () => clearTimeout(t);
-      }, [record, dirty, loading]);
+      }, [record, dirty, loading, draft]);
+      // Kept changes after a save someone else's beat: the page goes to them, wherever it was scrolled
+      const draftNoteRef = useRef(null);
+      useEffect(() => { if (draft?.stale) requestAnimationFrame(() => draftNoteRef.current?.scrollIntoView({ block: 'center' })); }, [draft]);
       const restoreDraft = () => {
         const d = kdForEditing(draft.data, ix, slug);
-        setData({ ...d, _ages: draft.ages ?? d._ages });
+        // The site's check may have landed since the draft was kept: its answers stand on photos still waiting in it
+        const befores = kdRestoreLooks(d.beforePhotos, dataRef.current.beforePhotos);
+        // Before photos and drawings the site brought in from JobTread since the draft was kept (in neither it nor what
+        // it started from): added at the end, so Save keeps them (they'd never be brought in again). Ones taken out in
+        // the draft stay out
+        // A draft kept without what it started from (by the admin before this) adds nothing: it can't tell new from
+        // taken out
+        let base = null;
+        try { base = draft.base ? JSON.parse(draft.base) : null; } catch {}
+        // (Known: anything the draft or its start had anywhere, a pair's photos and the gallery too, by address or
+        // JobTread file)
+        const all = (r) => [...(r?.beforePhotos || []), ...(r?.plans || []), ...(r?.photos || []), ...(r?.beforeAfterPhotos || []).flatMap((x) => [{ url: x?.before, source: x?.source }, { url: x?.after }])];
+        const known = new Set([...all(base), ...all(d)].flatMap((p) => [p?.url, p?.source].filter(Boolean)));
+        const since = (now) => (base ? (now || []).filter((p) => p?.url && !known.has(p.url) && !(p.source && known.has(p.source))).map((p) => ({ ...p, _key: kdNewKey() })) : []);
+        setData({ ...d,
+          beforePhotos: [...befores, ...since(dataRef.current.beforePhotos)],
+          plans: [...(d.plans || []), ...since(dataRef.current.plans)],
+          _ages: draft.ages ?? d._ages });
         setDraft(null);
         addToast('Your unsaved changes are back. Save to keep them.', 'success');
       };
       const discardDraft = () => { try { localStorage.removeItem(draftKey); } catch {} setDraft(null); };
+
+      // ── The site's check, as it lands ──
+      // Saving before photos nobody has looked at wakes the site's check (functions/api/save-content.js); its answers
+      // land on the profile within minutes. They're taken in here as they do (who looked, kept off, why, on photos
+      // still waiting here), so the next Save isn't turned away as someone else's and nothing typed meanwhile is lost.
+      // Any other change on the server is someone else's save, left to the usual Reload.
+      // (shaRef, below with the other in-editor writes, follows the saved version too)
+      const savingRef = useRef(false);
+      // JobTread files of before photos removed while editing (Bring in from JobTread leaves them unpicked)
+      const removedHere = useRef(new Set());
+      const baseRef = useRef(base);
+      baseRef.current = base;
+      // → the editor's data with the site's answers taken in, or null when the server has anything else new
+      const takeSiteLooks = async () => {
+        if (!slug) return null;
+        const r = await api.readContent(`src/content/kids/${slug}.json`).catch(() => null);
+        if (!r?.success || !r.sha || r.sha === shaRef.current) return null;
+        const server = kdSaveRecord(kdForEditing(typeof r.content === 'string' ? JSON.parse(r.content) : r.content, ix, slug));
+        const was = kdSaveRecord(kdForEditing(JSON.parse(baseRef.current || '{}'), ix, slug));
+        if (!kdOnlySiteLooks(was, server)) return null;
+        const next = { ...dataRef.current, beforePhotos: kdTakeLooks(dataRef.current.beforePhotos, server.beforePhotos) };
+        dataRef.current = next;
+        // (onto whatever is there by then, so a keystroke in the same moment stays)
+        setData((d) => ({ ...d, beforePhotos: kdTakeLooks(d.beforePhotos, server.beforePhotos) }));
+        const b = JSON.stringify(server);
+        baseRef.current = b;
+        setBase(b);
+        shaRef.current = r.sha;
+        setSha(r.sha);
+        return next;
+      };
+      // A photo put back as not checked yet takes the site's answer if it landed meanwhile (it's on the saved version)
+      // (Only the site's: staff's own say saved a moment ago is what an Undo is taking back)
+      const kdWithSavedLooks = (list) => { try { return kdTakeLooks(list, (JSON.parse(baseRef.current || '{}').beforePhotos || []).filter((p) => p?.looked === 'site')); } catch { return list; } };
+      const awaitingLook = useMemo(() => { try { return (JSON.parse(base || '{}').beforePhotos || []).some((p) => p?.url && !p.looked); } catch { return false; } }, [base]);
+      useEffect(() => {
+        if (!slug || loading || !awaitingLook) return undefined;
+        let stop = false;
+        let timer = null;
+        let tries = 0;
+        const tick = async () => {
+          if (stop) return;
+          // (Not while a save is going: it takes them in itself if it's turned away for them)
+          if (savingRef.current) { timer = setTimeout(tick, 2000); return; }
+          tries += 1;
+          // (Taken in: the saved version changes, and this starts again while any still wait)
+          if (await takeSiteLooks()) return;
+          if (!stop && tries < 40) timer = setTimeout(tick, 8000);
+        };
+        timer = setTimeout(tick, 5000);
+        return () => { stop = true; clearTimeout(timer); };
+      }, [slug, loading, awaitingLook, base]);
       // Back to the last saved version, with Undo
       const discard = () => {
         const prev = dataRef.current;
@@ -13077,7 +13570,7 @@
       const quote = KS.quoteState(record);
       const issues = KS.kidIssues(record);
       const brokenCount = {
-        photos: (data.photos || []).filter((x) => broken.has(x.url)).length,
+        photos: [...(data.photos || []), ...(data.beforePhotos || [])].filter((x) => broken.has(x.url)).length,
         plans: (data.plans || []).filter((x) => broken.has(x.url)).length,
         transform: (data.beforeAfterPhotos || []).reduce((n, x) => n + (broken.has(x.before) ? 1 : 0) + (broken.has(x.after) ? 1 : 0), 0),
         partners: (data.partnerLogos || []).filter((x) => broken.has(x.url)).length,
@@ -13092,7 +13585,7 @@
       const plays = streamUid && (streamState === 'playable' || (streamState === 'unknown' && !ytId)) ? 'stream' : ytId ? 'youtube' : null;
       const reveal = slug ? kdRevealOf(reveals, slug) : null;
       const jobId = slug ? jobs[slug] : null;
-      // A room that's been revealed has its design on the kid page; before that, only on the reveal screen (./reveal-design.js)
+      // A room that's been revealed has all its design on the kid page; before that, from the confirmed reveal, its before photos and existing and proposed plans (./reveal-design.js pagePlans)
       const revealed = RD.isRevealed(data);
       // A kid with a JobTread job takes its status from there (functions/api/_kid-status.js)
       const jtStatus = jobId ? statuses[slug] || null : null;
@@ -13121,7 +13614,8 @@
         photos.splice(Math.max(0, Math.min(photos.length - 1, to)), 0, photos.splice(from, 1)[0]);
         return { photos };
       });
-      const writeAlt = async (only) => {
+      // field: 'photos' (the gallery), or 'beforePhotos' for one before photo's Write it
+      const writeAlt = async (only, field = 'photos') => {
         const list = (only || dataRef.current.photos.slice(0, KS.GALLERY_MAX)).filter((p) => p.url && !kdLocal(p.url) && (only || KS.needsAlt(p)));
         if (!list.length) { addToast('Every photo in the gallery has alt text', 'info'); return; }
         setAltBusy((s) => new Set([...s, ...list.map((p) => p.url)]));
@@ -13136,7 +13630,7 @@
             batch.forEach((p, j) => { if (g.altTexts[j]) m.set(p.url, g.altTexts[j]); });
             wrote += m.size;
             // A rewrite replaces; otherwise only empty alt text is filled
-            set((d) => ({ photos: d.photos.map((p) => (m.has(p.url) && (only || !String(p.alt || '').trim()) ? { ...p, alt: m.get(p.url) } : p)) }));
+            set((d) => ({ [field]: d[field].map((p) => (m.has(p.url) && (only || !String(p.alt || '').trim()) ? { ...p, alt: m.get(p.url) } : p)) }));
           } else failed = g.error || 'no text came back';
           setAltBusy((s) => { const n = new Set(s); batch.forEach((p) => n.delete(p.url)); return n; });
         }
@@ -13169,30 +13663,265 @@
         items.forEach((it) => URL.revokeObjectURL(it.local));
         if (failed.length) addToast(`${kdPlural(failed.length, 'photo')} didn’t upload. ${failed[0]}`, 'error');
         if (landed.length) {
-          addToast(`Added ${kdPlural(landed.length, 'photo')}. Writing their alt text…`, 'success');
+          addToast(`Added ${kdPlural(landed.length, 'photo')}. Writing ${landed.length === 1 ? 'its' : 'their'} alt text…`, 'success');
           writeAlt(dataRef.current.photos.filter((p) => landed.includes(p.url)));
         }
       };
       // Removed images stay in Cloudflare: the live page uses them until the next
       // publish, and deleting them now would break it in the meantime
+      // The gallery without these photos: a main photo among them gives way to the first one left, an accent photo to none
+      const withoutInGallery = (d, urls) => {
+        const photos = d.photos.filter((x) => !urls.includes(x.url));
+        return {
+          photos,
+          heroImage: urls.includes(d.heroImage) ? photos.find((x) => !kdLocal(x.url))?.url || '' : d.heroImage,
+          accentImage: urls.includes(d.accentImage) ? '' : d.accentImage,
+        };
+      };
+      // Undo for the main and accent photo: back to what they were, unless someone chose another meanwhile
+      const rolesBack = (d, prev, after) => ({
+        heroImage: d.heroImage === after.heroImage ? prev.heroImage : d.heroImage,
+        accentImage: d.accentImage === after.accentImage ? prev.accentImage : d.accentImage,
+      });
       const removePhotos = (removeKeys) => {
         const prev = dataRef.current;
-        const gone = prev.photos.filter((p) => removeKeys.includes(p._key));
-        if (!gone.length) return;
-        const heroGone = gone.some((p) => p.url === prev.heroImage);
-        set((d) => {
-          const photos = d.photos.filter((p) => !removeKeys.includes(p._key));
-          return {
-            photos,
-            heroImage: heroGone ? photos.find((p) => !kdLocal(p.url))?.url || '' : d.heroImage,
-            accentImage: gone.some((p) => p.url === d.accentImage) ? '' : d.accentImage,
-          };
-        });
+        // (A photo still uploading can't be picked out, so it's never among them)
+        const taken = kdTaken(prev.photos, removeKeys, prev.beforePhotos);
+        if (!taken.length) return;
+        const at = prev.photos.findIndex((p) => p._key === taken[0].item._key);
+        const after = withoutInGallery(prev, taken.map((t) => t.item.url));
+        const heroGone = after.heroImage !== prev.heroImage;
+        const print = photosAct((d) => withoutInGallery(d, taken.map((t) => t.item.url)));
+        // (One that came from JobTread, moved here from Before photos: Bring in from JobTread doesn't pick it again by itself)
+        for (const t of taken) if (t.item.source) removedHere.current.add(t.item.source);
         setPhotoOpen(null);
         setSelected(new Set());
-        addToast(`${gone.length === 1 ? 'Photo' : kdPlural(gone.length, 'photo')} removed${heroGone ? '. The first photo is the main photo now' : ''}.`, 'info', {
-          label: 'Undo', fn: () => set({ photos: prev.photos, heroImage: prev.heroImage, accentImage: prev.accentImage }),
+        kdFocusTileSoon('kd-gallery-tiles', at, '#kd-sec-photos .kd-sec__actions .btn');
+        addToast(`${taken.length === 1 ? 'Photo' : kdPlural(taken.length, 'photo')} removed${heroGone ? '. The first photo is the main photo now' : ''}.`, 'info', {
+          label: 'Undo', fn: undoWhile(print, () => {
+            for (const t of taken) if (t.item.source) removedHere.current.delete(t.item.source);
+            set((d) => ({ photos: kdPutBack(d.photos, taken, d.beforePhotos), ...rolesBack(d, prev, after) }));
+          }),
         });
+      };
+
+      // A gallery photo that's really the room before: it moves to Before photos, off the page
+      const photoToBefores = (key) => {
+        const prev = dataRef.current;
+        const at = prev.photos.findIndex((x) => x._key === key);
+        const p = prev.photos[at];
+        if (!p || kdLocal(p.url)) return;
+        const taken = kdTaken(prev.photos, [key], prev.beforePhotos);
+        // (A gallery photo is on the page already, so staff have looked at it)
+        const added = prev.beforePhotos.some((b) => b.url === p.url) ? null : { url: p.url, alt: p.alt || '', room: '', looked: 'staff', ...(p.source ? { source: p.source } : {}), _key: kdNewKey() };
+        const after = withoutInGallery(prev, [p.url]);
+        const heroGone = after.heroImage !== prev.heroImage;
+        const print = photosAct((d) => ({ ...withoutInGallery(d, [p.url]), beforePhotos: added && !d.beforePhotos.some((b) => b.url === p.url) ? [...d.beforePhotos, added] : d.beforePhotos }));
+        setPhotoOpen(null);
+        kdFocusTileSoon('kd-gallery-tiles', at, '#kd-sec-photos .kd-sec__actions .btn');
+        addToast(`${added ? 'Moved to Before photos' : 'It was in Before photos already, so it’s only there now'}${heroGone ? '. The first photo is the main photo now' : ''}.`, 'info', {
+          label: 'Undo', fn: undoWhile(print, () => set((d) => {
+            const beforePhotos = added ? d.beforePhotos.filter((b) => b._key !== added._key) : d.beforePhotos;
+            return { photos: kdPutBack(d.photos, taken, beforePhotos), beforePhotos, ...rolesBack(d, prev, after) };
+          })),
+        });
+      };
+
+      // ── Before photos (Photos → Before photos): the room before the makeover, from JobTread once the reveal is
+      // confirmed (functions/api/_reveal-design-auto.js) or added here. Never in the gallery; before the reveal the
+      // first RD.BEFORE_SHOWN play on the reveal screen; a Before & after pair takes its before from here ──
+      const beforeDrag = useKdReorder({
+        keys: data.beforePhotos.map((p) => p._key), grid: true, disabled: beforeSelecting,
+        nameOf: (k) => `Before photo ${dataRef.current.beforePhotos.findIndex((p) => p._key === k) + 1}`,
+        // Where it is, and whether that plays on the reveal screen (the first RD.BEFORE_SHOWN on the page)
+        placeOf: (o, k) => {
+          const byKey = new Map(dataRef.current.beforePhotos.map((p) => [p._key, p]));
+          const list = o.map((x) => byKey.get(x));
+          const at = o.indexOf(k);
+          const once = dataRef.current.publishStatus === 'draft' ? ' once the profile is shown' : '';
+          const screen = revealed || !RD.onPage(list[at]) ? '' : RD.revealPlaces(list)[at] !== null ? `, on the reveal screen${once}` : ', not on the reveal screen';
+          return `position ${at + 1} of ${o.length}${screen}`;
+        },
+        onDrop: (next) => set((d) => { const m = new Map(d.beforePhotos.map((p) => [p._key, p])); return { beforePhotos: next.map((k) => m.get(k)).filter(Boolean) }; }),
+      });
+      const moveBefore = (key, to) => set((d) => {
+        const list = [...d.beforePhotos];
+        const from = list.findIndex((p) => p._key === key);
+        if (from < 0) return {};
+        list.splice(Math.max(0, Math.min(list.length - 1, to)), 0, list.splice(from, 1)[0]);
+        return { beforePhotos: list };
+      });
+      const setBefore = (key, patch) => set((d) => ({ beforePhotos: d.beforePhotos.map((p) => (p._key === key ? { ...p, ...patch } : p)) }));
+      // On the page or kept off, by staff: theirs from now on (the site never looks at it again)
+      const pagePatch = (on) => (on ? { looked: 'staff', offPage: false, offWhy: '' } : { looked: 'staff', offPage: true, offWhy: '' });
+      const setPage = (key, on) => setBefore(key, pagePatch(on));
+      // ── Undo in Photos ──
+      // An action's Undo puts back what it changed while Photos is as the action left it (kdPhotosPrint), so Undos
+      // pressed newest first, each in turn, always work, and one pressed after something else changed in Photos says so
+      // instead of guessing. photosAct(patchOf) → Photos' print right after the change
+      const photosAct = (patchOf) => {
+        let print = null;
+        set((d) => { const patch = patchOf(d); print = kdPhotosPrint({ ...d, ...patch }); return patch; });
+        return print;
+      };
+      // (A Photos Undo pressed after the profile was closed: it says so, never silently nothing)
+      const openRef = useRef(true);
+      useEffect(() => () => { openRef.current = false; }, []);
+      const undoWhile = (print, fn) => () => {
+        if (!openRef.current) { addToast(`That can’t be undone now: ${dataRef.current?.name ? `${kdPoss(dataRef.current.name)} profile` : 'the profile'} is closed.`, 'info'); return; }
+        if (!print || kdPhotosPrint(dataRef.current) !== print) { addToast('Photos changed since, so that can’t be undone now.', 'info'); return; }
+        fn();
+      };
+      // Before photos coming back, with the site's answer if it landed meanwhile; focus on the first of them
+      const putBackBefores = (list, taken, other) => kdWithSavedLooks(kdPutBack(list, taken, other));
+      const focusBefore = (key) => requestAnimationFrame(() => kdFocusTileSoon('kd-before-tiles', Math.max(0, dataRef.current.beforePhotos.findIndex((p) => p._key === key)), '#kd-befores .kd-sec__actions .btn'));
+      // (Numbers as the tiles show them: "Before photo 3", "Before photos 2 and 5")
+      const beforeNumbers = (list, keys) => {
+        const n = keys.map((k) => list.findIndex((p) => p._key === k) + 1).filter((x) => x > 0).sort((a, b) => a - b);
+        return n.length === 1 ? `Before photo ${n[0]}` : `Before photos ${n.slice(0, -1).join(', ')} and ${n.at(-1)}`;
+      };
+      // Why ones a move left in Before photos stayed, each as it is (kept off, or not checked yet), numbered as the
+      // tiles show them (list: as it is now): "Before photo 2 is kept off the page, and Before photo 4 isn’t checked yet"
+      const whyStayed = (list, keys) => {
+        const off = keys.filter((k) => RD.keptOff(list.find((p) => p._key === k)));
+        const waiting = keys.filter((k) => !off.includes(k));
+        // (The lowest-numbered first)
+        const first = (ks) => Math.min(...ks.map((k) => list.findIndex((p) => p._key === k)));
+        return [[off, off.length ? `${beforeNumbers(list, off)} ${off.length === 1 ? 'is' : 'are'} kept off the page` : ''],
+          [waiting, waiting.length ? `${beforeNumbers(list, waiting)} ${waiting.length === 1 ? 'isn’t' : 'aren’t'} checked yet` : '']]
+          .filter(([ks]) => ks.length).sort((a, b) => first(a[0]) - first(b[0])).map(([, said]) => said).join(', and ');
+      };
+      const setPageMany = (keys, on) => {
+        const prev = dataRef.current.beforePhotos;
+        const was = new Map(prev.filter((p) => keys.includes(p._key)).map((p) => [p._key, { looked: p.looked || '', offPage: !!p.offPage, offWhy: p.offWhy || '' }]));
+        if (!was.size) return;
+        // (Already so: on the page, or kept off; one not checked yet switched off is a change)
+        const changing = prev.filter((p) => was.has(p._key) && (on ? !RD.onPage(p) : !RD.keptOff(p))).length;
+        const one = was.size === 1;
+        if (!changing) { setBeforeSelected(new Set()); addToast(`${one ? 'It was' : 'They were'} ${on ? 'on the page' : 'kept off the page'} already.`, 'info'); return; }
+        const print = photosAct((d) => ({ beforePhotos: d.beforePhotos.map((p) => (was.has(p._key) ? { ...p, ...pagePatch(on) } : p)) }));
+        setBeforeSelected(new Set());
+        kdFocusTileSoon('kd-before-tiles', prev.findIndex((p) => was.has(p._key)), '#kd-befores .kd-sec__actions .btn');
+        const shownNow = dataRef.current.publishStatus !== 'draft' && (revealed || reveal?.confirmed);
+        const then = !on ? `${one ? 'It shows' : 'They show'} nowhere once saved and published.`
+          : shownNow ? `${one ? 'It shows' : 'They show'} once saved and published.`
+          : dataRef.current.publishStatus === 'draft' ? `${one ? 'It shows' : 'They show'} once the profile is shown.`
+          : `${one ? 'It shows' : 'They show'} once the reveal is confirmed.`;
+        const what = one ? (on ? 'On the page' : 'Kept off the page') : `${kdPlural(was.size, 'before photo')} ${on ? 'on the page' : 'kept off the page'}`;
+        addToast(`${what}${changing < was.size ? ` (${was.size - changing} ${was.size - changing === 1 ? 'was' : 'were'} already)` : ''}. ${then}`, 'info', {
+          label: 'Undo', fn: undoWhile(print, () => {
+            set((d) => ({ beforePhotos: kdWithSavedLooks(d.beforePhotos.map((p) => {
+              if (!was.has(p._key)) return p;
+              const { looked, offPage, offWhy, ...rest } = p;
+              const w = was.get(p._key);
+              return { ...rest, ...(w.looked ? { looked: w.looked } : {}), ...(w.offPage ? { offPage: true } : {}), ...(w.offWhy ? { offWhy: w.offWhy } : {}) };
+            })) }));
+            focusBefore([...was.keys()][0]);
+          }),
+        });
+      };
+      // Picked here, dropped on the group, or from Bring in from JobTread. list: Files, or { file, alt, source }
+      const addBeforePhotos = async (list) => {
+        const all = [...list].map((x) => (x instanceof File ? { file: x } : x)).filter((x) => x?.file);
+        const isPic = (f) => /^image\//.test(f.type || '') || /\.(jpe?g|png|webp|gif|hei[cf])$/i.test(f.name || '');
+        const left = all.filter((x) => !isPic(x.file));
+        if (left.length) addToast(`Left out ${left.length === 1 ? `“${left[0].file.name}”: it isn’t a picture` : `${left.length} files that aren’t pictures`}.`, 'info');
+        const items = all.filter((x) => isPic(x.file)).map((x) => ({ ...x, key: kdNewKey(), local: URL.createObjectURL(x.file) }));
+        if (!items.length) return;
+        const alt = `${kdPoss(String(dataRef.current.name || '').trim() || 'The child')} room before the makeover`;
+        // Staff's own pictures are theirs to show; JobTread's wait for the site's check (RD.onPage)
+        set((d) => ({ beforePhotos: [...d.beforePhotos, ...items.map((it) => ({ url: it.local, alt: it.alt || alt, room: '', ...(it.source ? { source: it.source } : { looked: 'staff' }), _tempId: it.key, _key: it.key }))] }));
+        setUploads((u) => ({ ...u, ...Object.fromEntries(items.map((it) => [it.key, true])) }));
+        const failed = [];
+        let landed = 0;
+        const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
+        await kdUploadAll(items, {
+          idFor: (f) => `kids/${folder}/before-${Date.now()}-${kdUnguessable()}-${f.name.replace(/[^a-z0-9.]/gi, '-')}`,
+          onDone: (it, url) => {
+            landed++;
+            set((d) => ({ beforePhotos: d.beforePhotos.map((p) => { if (p._key !== it.key) return p; const { _tempId, ...rest } = p; return { ...rest, url }; }) }));
+            setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; });
+          },
+          onFail: (it, err) => {
+            failed.push(`${it.file.name}: ${err}`);
+            set((d) => ({ beforePhotos: d.beforePhotos.filter((p) => p._key !== it.key) }));
+            setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; });
+          },
+        });
+        items.forEach((it) => URL.revokeObjectURL(it.local));
+        if (failed.length) addToast(`${kdPlural(failed.length, 'before photo')} didn’t upload. ${failed[0]}`, 'error');
+      };
+      // Removed images stay in Cloudflare (the live page may use them until the next publish), and JobTread keeps its own
+      const removeBefores = (all) => {
+        // (A photo still uploading can't be picked out, so it's never among them)
+        const prev = dataRef.current;
+        // A Before & after pair takes its before from here: one kept off (or not checked yet) that a pair uses stays,
+        // or the pair would show it once it's no longer here to say it's kept off (RD.pagePairs)
+        // (Any a pair uses: while it's here, whether it's on the page holds the pair too)
+        const used = (p) => p && prev.beforeAfterPhotos.some((x) => x.before === p.url);
+        const paired = all.filter((k) => used(prev.beforePhotos.find((p) => p._key === k)));
+        const keys = all.filter((k) => !paired.includes(k));
+        if (!keys.length) { if (paired.length) addToast(`${paired.length === 1 ? 'A Before & after pair uses it, so it stays. Change the pair’s before first.' : 'Before & after pairs use them, so they stay. Change those pairs’ befores first.'}`, 'info'); return; }
+        const taken = kdTaken(prev.beforePhotos, keys, prev.photos);
+        if (!taken.length) return;
+        const at = prev.beforePhotos.findIndex((p) => p._key === taken[0].item._key);
+        const print = photosAct((d) => ({ beforePhotos: d.beforePhotos.filter((p) => !taken.some((t) => t.item._key === p._key)) }));
+        // (Bring in from JobTread doesn't pick these again by itself)
+        for (const t of taken) if (t.item.source) removedHere.current.add(t.item.source);
+        setBeforeOpen(null);
+        setBeforeSelected(new Set());
+        kdFocusTileSoon('kd-before-tiles', at, '#kd-befores .kd-sec__actions .btn');
+        const jt = taken.filter((t) => String(t.item.source || '').startsWith('jt:')).length;
+        // (Numbered as the tiles show them now, with the others gone)
+        const kept = paired.length ? ` ${beforeNumbers(prev.beforePhotos.filter((p) => !taken.some((t) => t.item._key === p._key)), paired)} stayed: ${paired.length === 1 ? 'a Before & after pair uses it. Change the pair’s before first.' : 'Before & after pairs use them. Change those pairs’ befores first.'}` : '';
+        addToast(`${taken.length === 1 ? 'Before photo' : kdPlural(taken.length, 'before photo')} removed${jt ? `. JobTread keeps ${jt === 1 ? 'its copy' : 'their copies'}, and the site won’t bring ${jt === 1 ? 'it' : 'them'} in again on its own` : ''}.${kept}`, 'info', {
+          label: 'Undo', fn: undoWhile(print, () => {
+            for (const t of taken) if (t.item.source) removedHere.current.delete(t.item.source);
+            set((d) => ({ beforePhotos: putBackBefores(d.beforePhotos, taken, d.photos) }));
+            focusBefore(taken[0].item._key);
+          }),
+        });
+      };
+      // Into the gallery, at its end: they show on the kid page once saved and published
+      const beforesToGallery = (all) => {
+        const prev = dataRef.current;
+        // The gallery is on the page: one kept off, or not checked yet, stays here until it's switched on, on purpose
+        const keys = all.filter((k) => RD.onPage(prev.beforePhotos.find((p) => p._key === k)));
+        const held = all.length - keys.length;
+        if (!keys.length) { if (held) addToast(`${whyStayed(prev.beforePhotos, all)}, so ${held === 1 ? 'it stays' : 'they stay'} here. Switch ${held === 1 ? 'it' : 'them'} on first to show ${held === 1 ? 'it' : 'them'} in the gallery.`, 'info'); return; }
+        const taken = kdTaken(prev.beforePhotos, keys, prev.photos);
+        if (!taken.length) return;
+        const at = prev.beforePhotos.findIndex((p) => p._key === taken[0].item._key);
+        // One already in the gallery only leaves here
+        // (Its JobTread file goes with it, so Bring in from JobTread knows it's on the profile)
+        const fresh = taken.filter(({ item }) => !prev.photos.some((p) => p.url === item.url)).map(({ item }) => ({ url: item.url, alt: item.alt || '', ...(item.source ? { source: item.source } : {}), _key: kdNewKey() }));
+        const print = photosAct((d) => ({
+          beforePhotos: d.beforePhotos.filter((p) => !taken.some((t) => t.item._key === p._key)),
+          photos: [...d.photos, ...fresh.filter((f) => !d.photos.some((p) => p.url === f.url))],
+        }));
+        setBeforeOpen(null);
+        setBeforeSelected(new Set());
+        kdFocusTileSoon('kd-before-tiles', at, '#kd-befores .kd-sec__actions .btn');
+        const there = taken.length - fresh.length;
+        const heldKeys = all.filter((k) => !keys.includes(k));
+        // (Numbered as the tiles show them now, with the others moved)
+        const hidNote = held ? ` ${whyStayed(prev.beforePhotos.filter((p) => !taken.some((t) => t.item._key === p._key)), heldKeys)}, so ${held === 1 ? 'it stayed' : 'they stayed'} in Before photos.` : '';
+        addToast(!fresh.length ? `${taken.length === 1 ? 'It was' : 'They were'} in the gallery already, so ${taken.length === 1 ? 'it’s' : 'they’re'} only there now.`
+          : `${fresh.length === 1 ? 'Moved to the gallery' : `Moved ${kdPlural(fresh.length, 'photo')} to the gallery`}, at the end${there ? ` (${there} ${there === 1 ? 'was' : 'were'} in it already)` : ''}. ${fresh.length === 1 ? 'It shows' : 'They show'} on the page once ${dataRef.current.publishStatus === 'draft' ? 'the profile is shown' : 'saved and published'}.${hidNote}`, 'info', {
+          label: 'Undo', fn: undoWhile(print, () => {
+            set((d) => {
+              const back = withoutInGallery(d, fresh.filter((f) => d.photos.some((p) => p._key === f._key)).map((f) => f.url));
+              return { ...back, beforePhotos: putBackBefores(d.beforePhotos, taken, back.photos) };
+            });
+            focusBefore(taken[0].item._key);
+          }),
+        });
+      };
+      // On the reveal screen or not: in as the last of the first ones on the page (whose last steps off), or out just past them
+      const setOnScreen = (key, shown) => {
+        const list = dataRef.current.beforePhotos;
+        const from = list.findIndex((p) => p._key === key);
+        if (from >= 0) moveBefore(key, RD.revealMoveTo(list, from, !shown));
       };
 
       // ── Plans ──
@@ -13227,7 +13956,7 @@
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
         // A caption or kind changed while it uploaded stays: only the address of the picture changes when it lands
         await kdUploadAll(items, {
-          idFor: (file) => `kids/${folder}/plan-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
+          idFor: (file) => `kids/${folder}/plan-${Date.now()}-${kdUnguessable()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
           onDone: (it, url) => { set((d) => ({ plans: d.plans.map((p) => { if (p._key !== it.key) return p; const { _tempId, ...rest } = p; return { ...rest, url }; }) })); setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; }); },
           onFail: (it, err) => { addToast(`${it.plan?.label ? `“${it.plan.label}”` : 'A drawing'} didn’t upload. ${err}`, 'error'); set((d) => ({ plans: d.plans.filter((p) => p._key !== it.key) })); setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; }); },
         });
@@ -13238,7 +13967,7 @@
       // each going up into its section; the bar says Unsaved changes while they do
       const addFromJobTread = ({ drawings = [], befores = [] }) => {
         if (drawings.length) uploadPlans(drawings.map((dr) => ({ file: dr.file, key: kdNewKey(), local: URL.createObjectURL(dr.file), plan: { label: dr.label, type: dr.type, source: dr.source, w: dr.w, h: dr.h, ...(dr.addressCheck ? { addressCheck: dr.addressCheck } : {}) } })));
-        if (befores.length) addBefores(befores);
+        if (befores.length) addBeforePhotos(befores);
       };
       // The family's address on a drawing already here: someone looked and there's none, or a covered copy goes up in its place
       const noAddress = (key) => set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, addressCheck: 'checked' } : x)) }));
@@ -13252,7 +13981,7 @@
         setUploads((u) => ({ ...u, [key]: true }));
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
         await kdUploadAll([{ file, key }], {
-          idFor: (f) => `kids/${folder}/plan-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, '-')}`,
+          idFor: (f) => `kids/${folder}/plan-${Date.now()}-${kdUnguessable()}-${f.name.replace(/[^a-z0-9.]/gi, '-')}`,
           onDone: (_, url) => set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, url } : x)) })),
           onFail: (_, err) => {
             addToast(`The covered copy of ${plan.label ? `“${plan.label}”` : 'the drawing'} didn’t upload. ${err}`, 'error');
@@ -13263,37 +13992,15 @@
         URL.revokeObjectURL(local);
       };
       const removePlan = (key) => {
-        const prev = dataRef.current.plans;
+        // (Undo puts back only that plan, where it was: a caption typed since, or a drawing the site brought in, stays)
+        const taken = kdTaken(dataRef.current.plans, [key]);
         set((d) => ({ plans: d.plans.filter((p) => p._key !== key) }));
-        addToast('Plan removed.', 'info', { label: 'Undo', fn: () => set({ plans: prev }) });
+        addToast('Plan removed.', 'info', { label: 'Undo', fn: () => set((d) => ({ plans: kdPutBack(d.plans, taken) })) });
       };
 
       // ── Before & after ──
       const setPair = (key, patch) => set((d) => ({ beforeAfterPhotos: d.beforeAfterPhotos.map((p) => (p._key === key ? { ...p, ...patch } : p)) }));
       const addPair = () => set((d) => ({ beforeAfterPhotos: [...d.beforeAfterPhotos, { before: '', after: '', room: '', beforeAlt: '', afterAlt: '', _key: kdNewKey() }] }));
-      // Before photos on their own (picked here, or from JobTread): each is a pair waiting for its after.
-      // list: Files, or { file, alt, source }
-      const addBefores = async (list) => {
-        const all = [...list].map((x) => (x instanceof File ? { file: x } : x)).filter((x) => x?.file);
-        const isPic = (f) => /^image\//.test(f.type || '') || /\.(jpe?g|png|webp|gif|hei[cf])$/i.test(f.name || '');
-        const left = all.filter((x) => !isPic(x.file));
-        if (left.length) addToast(`Left out ${left.length === 1 ? `“${left[0].file.name}”: it isn’t a picture` : `${left.length} files that aren’t pictures`}.`, 'info');
-        const items = all.filter((x) => isPic(x.file)).map((x) => ({ ...x, key: kdNewKey(), local: URL.createObjectURL(x.file) }));
-        if (!items.length) return;
-        set((d) => ({ beforeAfterPhotos: [...d.beforeAfterPhotos, ...items.map((it) => ({ before: it.local, after: '', room: '', beforeAlt: it.alt || '', afterAlt: '', ...(it.source ? { source: it.source } : {}), _key: it.key }))] }));
-        setUploads((u) => ({ ...u, ...Object.fromEntries(items.map((it) => [`${it.key}:before`, true])) }));
-        const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
-        await kdUploadAll(items.map((it) => ({ ...it, key: `${it.key}:before` })), {
-          idFor: (f) => `kids/${folder}/ba-before-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, '-')}`,
-          onDone: (it, url) => { setPair(it.key.slice(0, -7), { before: url }); setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; }); },
-          onFail: (it, err) => {
-            addToast(`A before photo didn’t upload. ${err}`, 'error');
-            set((d) => ({ beforeAfterPhotos: d.beforeAfterPhotos.filter((p) => p._key !== it.key.slice(0, -7)) }));
-            setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; });
-          },
-        });
-        items.forEach((it) => URL.revokeObjectURL(it.local));
-      };
       const movePair = (key, by) => set((d) => {
         const list = [...d.beforeAfterPhotos];
         const i = list.findIndex((p) => p._key === key);
@@ -13303,9 +14010,18 @@
         return { beforeAfterPhotos: list };
       });
       const removePair = (key) => {
-        const prev = dataRef.current.beforeAfterPhotos;
-        set((d) => ({ beforeAfterPhotos: d.beforeAfterPhotos.filter((p) => p._key !== key) }));
-        addToast('Pair removed.', 'info', { label: 'Undo', fn: () => set({ beforeAfterPhotos: prev }) });
+        const d0 = dataRef.current;
+        const taken = kdTaken(d0.beforeAfterPhotos, [key]);
+        if (!taken.length) return;
+        // (Its before photo can't have changed since: the Undo only works while Photos is as this left it)
+        const print = photosAct((d) => ({ beforeAfterPhotos: d.beforeAfterPhotos.filter((p) => p._key !== key) }));
+        for (const t of taken) if (t.item.source) removedHere.current.add(t.item.source);
+        addToast('Pair removed.', 'info', {
+          label: 'Undo', fn: undoWhile(print, () => {
+            for (const t of taken) if (t.item.source) removedHere.current.delete(t.item.source);
+            set((d) => ({ beforeAfterPhotos: kdPutBack(d.beforeAfterPhotos, taken) }));
+          }),
+        });
       };
       const uploadPairSide = async (key, side, file) => {
         if (!file) return;
@@ -13315,7 +14031,7 @@
         setUploads((u) => ({ ...u, [tk]: true }));
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
         await kdUploadAll([{ file, key: tk }], {
-          idFor: (f) => `kids/${folder}/ba-${side}-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, '-')}`,
+          idFor: (f) => `kids/${folder}/ba-${side}-${Date.now()}-${kdUnguessable()}-${f.name.replace(/[^a-z0-9.]/gi, '-')}`,
           onDone: (_, url) => setPair(key, { [side]: url }),
           onFail: (_, err) => { addToast(`Upload failed: ${err}`, 'error'); setPair(key, { [side]: '' }); },
         });
@@ -13440,14 +14156,24 @@
         const wasNew = !slug;
         const rec = kdSaveRecord(dataRef.current);
         const slugToSave = rec.slug || kdDedupeSlug(slugify(rec.name), existingSlugs);
-        const out = { ...rec, slug: slugToSave };
+        let out = { ...rec, slug: slugToSave };
         setSaving(true);
-        const res = await api.saveContent(`src/content/kids/${slugToSave}.json`, JSON.stringify(out, null, 2),
-          `${wasNew ? 'Add' : 'Update'} kid: ${out.name}`, sha || undefined).catch((e) => ({ success: false, error: e.message }));
+        savingRef.current = true;
+        const sentSha = shaRef.current;
+        const write = () => api.saveContent(`src/content/kids/${slugToSave}.json`, JSON.stringify(out, null, 2),
+          `${wasNew ? 'Add' : 'Update'} kid: ${out.name}`, shaRef.current || undefined).catch((e) => ({ success: false, error: e.message }));
+        let res = await write();
+        // Turned away only because the site's check landed meanwhile: its answers are taken in (or already were, by
+        // the editor's own look a moment before), and it saves again
+        if (!res.success && !wasNew && /conflict|changed since/i.test(res.error || '')) {
+          const took = (await takeSiteLooks()) || (shaRef.current !== sentSha ? dataRef.current : null);
+          if (took) { out = { ...kdSaveRecord(took), slug: slugToSave }; res = await write(); }
+        }
+        savingRef.current = false;
         setSaving(false);
         if (!res.success) {
           if (/conflict|changed since/i.test(res.error || '')) {
-            try { localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), sha, data: out, ages: dataRef.current._ages })); } catch {}
+            try { localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), sha: shaRef.current, base: baseRef.current, data: out, ages: dataRef.current._ages })); } catch {}
             addToast('Someone saved this profile after you opened it. Reload to see their version; your changes are kept to restore.', 'error', { label: 'Reload', fn: () => load() });
           } else addToast(`Couldn’t save: ${res.error}`, 'error');
           return;
@@ -13588,7 +14314,7 @@
         </header>
         ${issuesIn(id).length ? html`<ul class="kd-sec__issues">${issuesIn(id).map((i) => html`<li key=${i.id} class=${`kd-chip kd-chip--${i.tone}`} title=${i.tip}>${i.tone === 'warn' ? kdIcon.alert : null}${i.label}</li>`)}</ul>` : null}
         ${body}
-        ${dropping === id ? html`<div class="kd-dropcover" aria-hidden="true">${kdIcon.upload} Drop to add</div>` : null}
+        ${dropping === id ? html`<div class="kd-dropcover" aria-hidden="true"><span class="kd-dropcover__msg">${kdIcon.upload} ${id === 'photos' ? 'Drop to add to the gallery' : id === 'plans' ? 'Drop to add plans' : id === 'partners' ? 'Drop to add logos' : 'Drop to add'}</span></div>` : null}
       </section>`;
 
       const photoTile = (key) => {
@@ -13601,9 +14327,9 @@
         const isSel = selected.has(key);
         return html`<li key=${key} ref=${photoDrag.itemRef(key)}
           class=${`kd-tile${photoDrag.lifted?.key === key ? ' is-lifted' : ''}${isSel ? ' is-selected' : ''}${KS.photoZone(i) === 'off' ? ' is-off' : ''}`}
-          onPointerDown=${(e) => { if (!selecting && !e.target.closest('[data-kd-grip]')) photoDrag.tileDown(e, key); }}>
+          onPointerDown=${(e) => { if (!selecting && !uploads[p._key] && !e.target.closest('[data-kd-grip]')) photoDrag.tileDown(e, key); }}>
           <button type="button" class="kd-tile__open" aria-pressed=${selecting ? isSel : null}
-            aria-label=${`${selecting ? (isSel ? 'Deselect' : 'Select') : 'Open'} photo ${i + 1} (${KS.ZONES[KS.photoZone(i)].short.toLowerCase()})${isHero ? ', main photo' : ''}${isAccent ? ', accent photo' : ''}${KS.needsAlt(p) ? ', no alt text' : `: ${p.alt}`}`}
+            aria-label=${`${selecting ? 'Select' : 'Open'} photo ${i + 1} (${KS.ZONES[KS.photoZone(i)].short.toLowerCase()})${isHero ? ', main photo' : ''}${isAccent ? ', accent photo' : ''}${KS.needsAlt(p) ? ', no alt text' : `: ${p.alt}`}`}
             onClick=${() => {
               if (photoDrag.justDragged() || uploads[p._key]) return;
               if (selecting) setSelected((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -13623,6 +14349,101 @@
       const zoneLabel = (i) => (i === 0 || (i === KS.GALLERY_LARGE) || i === KS.GALLERY_FIRST || i === KS.GALLERY_MAX)
         ? html`<li class="kd-zone" key=${`zone-${i}`} aria-hidden="true"><span>${KS.ZONES[KS.photoZone(i)].label}</span></li>` : null;
 
+      // Photos → Before photos: a group of its own under the gallery, never in it (the Before photos handlers above)
+      const befores = data.beforePhotos;
+      const beforeOrder = beforeDrag.order;
+      const beforeByKey = new Map(befores.map((p) => [p._key, p]));
+      // Each one's place on the reveal screen, in the order shown (while dragging too): only ones on the page play
+      const beforePlaces = RD.revealPlaces(beforeOrder.map((k) => beforeByKey.get(k)));
+      const beforeCounts = { on: befores.filter(RD.onPage).length, off: befores.filter(RD.keptOff).length };
+      beforeCounts.waiting = befores.length - beforeCounts.on - beforeCounts.off;
+      const beforeTile = (key) => {
+        const p = beforeByKey.get(key);
+        if (!p) return null;
+        const i = beforeOrder.indexOf(key);
+        const busy = uploads[p._key] || altBusy.has(p.url);
+        const onScreen = !revealed && beforePlaces[i] !== null;
+        const state = RD.pageState(p);
+        const isSel = beforeSelected.has(key);
+        return html`<li key=${key} ref=${beforeDrag.itemRef(key)}
+          class=${`kd-tile${beforeDrag.lifted?.key === key ? ' is-lifted' : ''}${isSel ? ' is-selected' : ''}${state !== 'on' ? ' is-off' : ''}`}
+          onPointerDown=${(e) => { if (!beforeSelecting && !uploads[p._key] && !e.target.closest('[data-kd-grip]')) beforeDrag.tileDown(e, key); }}>
+          <button type="button" class="kd-tile__open" aria-pressed=${beforeSelecting ? isSel : null}
+            aria-label=${`${beforeSelecting ? 'Select' : 'Open'} before photo ${i + 1}${onScreen ? `, on the reveal screen${hiddenKid ? ' once the profile is shown' : ''}` : ''}${state === 'off' ? `, kept off the page${p.looked === 'site' && p.offWhy ? `: ${p.offWhy.charAt(0).toLowerCase() + p.offWhy.slice(1)}` : ''}` : state === 'waiting' && !uploads[p._key] ? ', not checked yet' : ''}${p.room ? `, ${p.room}` : ''}`}
+            onClick=${() => {
+              if (beforeDrag.justDragged() || uploads[p._key]) return;
+              if (beforeSelecting) setBeforeSelected((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+              else setBeforeOpen(key);
+            }}>
+            <img src=${kdImg(p.url, 'w=360,h=360,fit=cover,q=75')} alt="" loading="lazy" decoding="async" draggable=${false} onError=${() => markBroken(p.url)} />
+          </button>
+          <span class="kd-tile__n" aria-hidden="true">${i + 1}</span>
+          ${broken.has(p.url) ? html`<span class="kd-tile__broken">${kdIcon.alert} Missing</span>` : null}
+          ${state !== 'on' && !uploads[p._key] ? html`<span class="kd-tile__role is-quiet" aria-hidden="true" title=${state === 'off' && p.offWhy ? p.offWhy : null}>${state === 'off' ? kdIcon.eyeOff : null}<span>${state === 'off' ? 'Kept off' : 'Not checked'}</span></span>` : null}
+          ${beforeSelecting ? html`<span class=${`kd-tile__check${isSel ? ' is-on' : ''}`} aria-hidden="true">${isSel ? kdIcon.check : null}</span>`
+            : uploads[p._key] || (coarse && !beforeArranging) ? null : html`<button type="button" class="kd-grip kd-grip--tile" ...${beforeDrag.handleProps(key, `Move before photo ${i + 1}`)}>${kdIcon.grip}</button>`}
+          ${busy ? html`<span class="kd-tile__busy"><span class="spinner" /></span>` : null}
+        </li>`;
+      };
+      const hiddenKid = data.publishStatus === 'draft';
+      // The reveal screen plays the first RD.BEFORE_SHOWN on the page: its zone starts the list, the rest's starts just past the last of them
+      // (from the first one on the page: the ones kept off before it never play)
+      const firstPlace = beforePlaces.indexOf(0);
+      const lastPlace = beforePlaces.indexOf(RD.BEFORE_SHOWN - 1);
+      const beforeCut = lastPlace >= 0 && lastPlace < beforeOrder.length - 1 ? lastPlace + 1 : -1;
+      const beforeZone = (i) => (!revealed && ((i === firstPlace && firstPlace >= 0) || i === beforeCut)
+        ? html`<li class="kd-zone" key=${`bzone-${i}`} aria-hidden="true"><span>${i === firstPlace ? `On the reveal screen${hiddenKid ? ', once the profile is shown' : ''}` : 'Not on the reveal screen'}</span></li>` : null);
+      const beforeSub = revealed ? `The room before the makeover, each one on the page in the Before section of ${kdPoss(data.name || 'this kid')} page. Never in the gallery; a Before & after pair takes its before from here.`
+        : `The room before the makeover, from JobTread ${reveal?.confirmed ? 'now that the reveal is confirmed' : 'once the reveal is confirmed'}. ${hiddenKid
+          ? `They show nowhere while ${kdPoss(data.name || 'this kid')} profile is hidden.`
+          : `${reveal?.confirmed ? 'Each one on the page shows' : 'From then each one on the page shows'} in the Before section of ${kdPoss(data.name || 'this kid')} page, and the first ${RD.BEFORE_SHOWN} play on the live reveal page; ${coarse ? 'tap Reorder, then drag,' : 'drag'} to choose which.`} Never in the gallery.`;
+      // The site's check: what it kept off, and what it hasn't looked at yet
+      // Why, each with how many, the commonest first; staff's own say counted as theirs
+      const whyCount = new Map();
+      for (const p of befores.filter(RD.keptOff)) { const w = p.looked === 'site' && p.offWhy ? p.offWhy.charAt(0).toLowerCase() + p.offWhy.slice(1) : 'by staff'; whyCount.set(w, (whyCount.get(w) || 0) + 1); }
+      const beforeWhy = [...whyCount].sort((a, b) => b[1] - a[1]).map(([w, n]) => (n > 1 ? `${w} (${n})` : w));
+      const beforeState = beforeCounts.off || beforeCounts.waiting ? `${beforeCounts.on} on the page${beforeCounts.off ? `, ${beforeCounts.off} kept off` : ''}${beforeCounts.waiting ? `, ${beforeCounts.waiting} not checked yet` : ''}.${beforeCounts.off ? ` Kept off: ${beforeWhy.slice(0, 3).join(', ')}${beforeWhy.length > 3 ? '…' : ''}.` : ''} The site checks each photo from JobTread before it can show; open one to switch it on or off.` : '';
+      const beforeGroup = html`<div class=${`kd-befores${dropping === 'befores' ? ' is-dropping' : ''}`} id="kd-befores" role="group" aria-labelledby="kd-befores-h"
+          onDragOver=${(e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); e.stopPropagation(); setDropping('befores'); } }}
+          onDragLeave=${(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropping(null); }}
+          onDrop=${(e) => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); e.stopPropagation(); setDropping(null); addBeforePhotos([...e.dataTransfer.files]); }}>
+        <header class="kd-befores__head">
+          <div>
+            <h4 id="kd-befores-h" aria-label=${befores.length ? `Before photos, ${befores.length}` : null}>Before photos${befores.length ? html`<span class="kd-befores__n" aria-hidden="true">${befores.length}</span>` : null}</h4>
+            <p class="kd-sec__sub">${beforeSub}</p>
+            ${beforeState ? html`<p class="kd-sec__sub kd-befores__state">${kdIcon.eyeOff} ${beforeState}</p>` : null}
+          </div>
+          <div class="kd-sec__actions">
+            ${coarse && befores.length > 1 ? html`<button type="button" class=${`btn btn-ghost btn-sm${beforeArranging ? ' is-on' : ''}`} aria-pressed=${beforeArranging} onClick=${() => { setBeforeArranging((v) => !v); setBeforeSelecting(false); setBeforeSelected(new Set()); }}>${kdIcon.grip} ${beforeArranging ? 'Done' : 'Reorder'}</button>` : null}
+            ${befores.length ? html`<button type="button" class=${`btn btn-ghost btn-sm${beforeSelecting ? ' is-on' : ''}`} aria-pressed=${beforeSelecting} onClick=${() => { setBeforeSelecting((v) => !v); setBeforeArranging(false); setBeforeSelected(new Set()); }}>${kdIcon.select} ${beforeSelecting ? 'Done selecting' : 'Select'}</button>` : null}
+            ${slug ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('import-befores')}>Bring in from JobTread</button>` : null}
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => beforeInput.current?.click()}>${kdIcon.upload} Add before photos</button>
+            <input type="file" accept="image/*,.heic,.heif" multiple hidden ref=${beforeInput} onChange=${(e) => { addBeforePhotos([...e.target.files]); e.target.value = ''; }} />
+          </div>
+        </header>
+        ${beforeSelecting ? html`<div class="kd-selectbar" role="toolbar" aria-label="Selected before photos">
+          <strong aria-live="polite">${beforeSelected.size ? `${beforeSelected.size} selected` : `${coarse ? 'Tap' : 'Click'} photos to select them`}</strong>
+          <span class="ppl-spacer"></span>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${!beforeSelected.size} aria-label="Move to the front" onClick=${() => set((d) => ({ beforePhotos: [...d.beforePhotos.filter((p) => beforeSelected.has(p._key)), ...d.beforePhotos.filter((p) => !beforeSelected.has(p._key))] }))}>${kdIcon.front} ${coarse ? 'To the front' : 'Move to the front'}</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${!beforeSelected.size} aria-label="Show on the page" onClick=${() => setPageMany([...beforeSelected], true)}>${kdIcon.eye} ${coarse ? 'Show' : 'Show on the page'}</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${!beforeSelected.size} aria-label="Keep off the page" onClick=${() => setPageMany([...beforeSelected], false)}>${kdIcon.eyeOff} ${coarse ? 'Keep off' : 'Keep off the page'}</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${!beforeSelected.size} aria-label="Move to the gallery" onClick=${() => beforesToGallery([...beforeSelected])}>${kdIcon.image} ${coarse ? 'To the gallery' : 'Move to the gallery'}</button>
+          <button type="button" class="btn btn-ghost btn-sm kd-danger-quiet" disabled=${!beforeSelected.size} onClick=${() => removeBefores([...beforeSelected])}>Remove</button>
+        </div>` : null}
+        ${befores.length ? html`
+          <ul class=${`kd-tiles${beforeSelecting ? ' is-selecting' : ''}`} id="kd-before-tiles">
+            ${beforeOrder.flatMap((key, i) => [beforeZone(i), beforeTile(key)]).filter(Boolean)}
+          </ul>
+          <p class="form-hint kd-tiles__help">${coarse
+            ? (beforeArranging ? html`Drag ${kdIcon.grip} to move a photo, then tap Done.` : 'Tap a photo for its room, its place, and whether it’s on the page. Tap Reorder to move photos.')
+            : html`Click a photo for its room, its place, and whether it’s on the page. Drag a photo to reorder it; with the keyboard, focus ${kdIcon.grip} and press Space.`}</p>
+          <div class="sr-only" aria-live="assertive">${beforeDrag.announce}</div>`
+          : html`<p class="kd-empty-line">${revealed ? 'None. Add them here, or bring them in from JobTread, to make Before & after pairs.'
+            : reveal?.confirmed ? 'None yet. The site brings in the job’s Before photos from JobTread on its own, and looks again every few hours; or add them here.'
+            : `None yet. They come in from JobTread by themselves once ${kdPoss(nameFirst)} reveal is confirmed, or add them here.`}</p>`}
+        ${dropping === 'befores' ? html`<div class="kd-dropcover" aria-hidden="true"><span class="kd-dropcover__msg">${kdIcon.upload} Drop to add before photos</span></div>` : null}
+      </div>`;
+
 
       return html`
         ${confirmDelete ? html`<${ConfirmModal}
@@ -13634,14 +14455,19 @@
           onIndex=${(i) => setPhotoOpen(photos[i]?._key || null)} onClose=${() => setPhotoOpen(null)}
           onAlt=${(key, alt) => set((d) => ({ photos: d.photos.map((p) => (p._key === key ? { ...p, alt } : p)) }))}
           onWriteAlt=${(p) => writeAlt([p])} writing=${altBusy.has(photoByKey.get(photoOpen)?.url)}
-          onHero=${(url) => set({ heroImage: url || '' })} onAccent=${(url) => set({ accentImage: url })}
+          onHero=${(url) => set({ heroImage: url || '' })} onAccent=${(url) => set({ accentImage: url })} onBefore=${photoToBefores}
           onMove=${movePhoto} onRemove=${(key) => removePhotos([key])}
           onFocus=${(key, focus) => set((d) => ({ photos: d.photos.map((x) => { if (x._key !== key) return x; const { focus: _f, ...rest } = x; return focus ? { ...rest, focus } : rest; }) }))} />` : null}
+        ${beforeOpen && data.beforePhotos.some((p) => p._key === beforeOpen) ? html`<${KidBeforeDialog} kid=${data} confirmed=${!!reveal?.confirmed} index=${data.beforePhotos.findIndex((p) => p._key === beforeOpen)} revealed=${revealed}
+          onIndex=${(i) => setBeforeOpen(data.beforePhotos[i]?._key || null)} onClose=${() => setBeforeOpen(null)}
+          onAlt=${(key, alt) => setBefore(key, { alt })} onRoom=${(key, room) => setBefore(key, { room })}
+          onWriteAlt=${(p) => writeAlt([p], 'beforePhotos')} writing=${altBusy.has(data.beforePhotos.find((p) => p._key === beforeOpen)?.url)}
+          onMove=${moveBefore} onRemove=${(key) => removeBefores([key])} onReveal=${setOnScreen} onPage=${setPage} onGallery=${(key) => beforesToGallery([key])} onFocus=${() => {}} />` : null}
         ${credit.dialogs}
         ${historyOpen !== undefined ? html`<${KdHistoryDialog} name=${data.name} history=${history} current=${record} dirty=${dirty}
           startId=${historyOpen} onRestore=${restoreVersion} onClose=${() => setHistoryOpen(undefined)} />` : null}
-        ${design ? html`<${KdRevealLazy} part=${design} kid=${{ slug: data.slug || slug, name: data.name, year: data.year }} jobId=${jobId || ''} revealed=${revealed}
-          plans=${data.plans} pairs=${data.beforeAfterPhotos} slug=${data.slug || slug} name=${data.name} published=${!!slug && data.publishStatus !== 'draft'}
+        ${design ? html`<${KdRevealLazy} part=${design === 'import-befores' ? 'import' : design} startWith=${design === 'import-befores' ? 'befores' : 'design'} kid=${{ slug: data.slug || slug, name: data.name, year: data.year }} jobId=${jobId || ''} revealed=${revealed}
+          plans=${data.plans} befores=${data.beforePhotos} pairs=${data.beforeAfterPhotos} gallery=${data.photos} removed=${[...removedHere.current]} slug=${data.slug || slug} name=${data.name} published=${!!slug && data.publishStatus !== 'draft'}
           photo=${String(data.heroImage || '').replace(/^https:\/\/imagedelivery\.net\/[^/]+\//, '').replace(/\/(public|[^/]*=[^/]*)$/, '')}
           kinds=${RD.revealSlides(record).map((x) => x.kind)}
           waiting=${revealed ? 0 : data.plans.filter((x) => !kdLocal(x.url) && !RD.addressChecked(x)).length}
@@ -13650,7 +14476,7 @@
         ${coverKey && data.plans.find((x) => x._key === coverKey) ? (() => { const cp = data.plans.find((x) => x._key === coverKey); return html`<${KdRevealLazy} part="cover"
           src=${kdImg(cp.url, 'w=2400,q=95')} label=${cp.label || RD.PLAN_KINDS.find((k) => k.id === RD.planKind(cp))?.long || 'Drawing'}
           onDone=${(out) => coverPlan(coverKey, out)} onClose=${() => setCoverKey(null)} />`; })() : null}
-        ${picker ? html`<${KidPhotoPicker} title=${picker.title} photos=${photos} current=${picker.current}
+        ${picker ? html`<${KidPhotoPicker} title=${picker.title} photos=${picker.photos || photos} empty=${picker.empty} nameOf=${picker.nameOf || null} current=${picker.current}
           onClose=${() => setPicker(null)} onPick=${(url) => { picker.onPick(url); setPicker(null); }} />` : null}
         ${streamPick ? html`<${StreamPicker}
           title=${streamPick === 'reveal' ? 'Choose the live reveal replay' : 'Choose the reveal video'}
@@ -13658,7 +14484,7 @@
           onClose=${() => setStreamPick(null)}
           onPick=${(v) => { set(streamPick === 'reveal' ? { revealVideoUrl: v.watch } : { streamVideoId: v.uid }); setStreamPick(null); }} />` : null}
         ${showPreview ? html`<${PagePreview} kind="kid" item=${record} slug=${slug} dirty=${dirty}
-          otherSlugs=${existingSlugs} onClose=${() => setShowPreview(false)} />` : null}
+          otherSlugs=${existingSlugs} buildOpts=${{ confirmed: !!reveal?.confirmed }} onClose=${() => setShowPreview(false)} />` : null}
         <datalist id="kd-plan-captions">${KD_PLAN_CAPTIONS.map((c) => html`<option value=${c} />`)}</datalist>
 
         <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -13710,10 +14536,10 @@
           </div>
         </div>
 
-        ${draft ? html`<div class="kd-note kd-note--draft" role="status">
+        ${draft ? html`<div class="kd-note kd-note--draft" role="status" ref=${draftNoteRef}>
           <span>${kdIcon.alert}</span>
           <p><strong>Unsaved changes from ${new Date(draft.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.</strong>
-            ${draft.stale ? ' The profile was saved since then, so restoring replaces those newer changes.' : ' They were never saved.'}</p>
+            ${draft.stale ? ' The profile was saved since then: restoring puts your changes back over that save (before photos and drawings the site brought in since stay).' : ' They were never saved.'}</p>
           <button type="button" class="btn btn-primary btn-sm" onClick=${restoreDraft}>Restore</button>
           <button type="button" class="btn btn-ghost btn-sm" onClick=${discardDraft}>Discard</button>
         </div>` : null}
@@ -13917,8 +14743,8 @@
             <button type="button" class="btn btn-ghost btn-sm kd-danger-quiet" disabled=${!selected.size} onClick=${() => removePhotos([...selected])}>Remove</button>
           </div>` : null}
           ${photos.length ? html`
-            <ul class=${`kd-tiles${selecting ? ' is-selecting' : ''}`}>
-              ${zoneOrder.map((key, i) => [zoneLabel(i), photoTile(key)])}
+            <ul class=${`kd-tiles${selecting ? ' is-selecting' : ''}`} id="kd-gallery-tiles">
+              ${zoneOrder.flatMap((key, i) => [zoneLabel(i), photoTile(key)]).filter(Boolean)}
             </ul>
             <p class="form-hint kd-tiles__help">${coarse
               ? (arranging ? html`Drag ${kdIcon.grip} to move a photo, then tap Done.` : 'Tap a photo for its alt text and place. Tap Reorder to move photos.')
@@ -13929,9 +14755,12 @@
             <label class="form-label" for="kd-photographer">Photographer <span class="form-optional">optional</span></label>
             <input id="kd-photographer" class="form-input" value=${data.photographer || ''} placeholder="Name, for “Photos by” under the gallery" onInput=${(e) => set({ photographer: e.target.value })} />
           </div>
+          ${beforeGroup}
         `)}
 
-        ${sec('plans', 'Design plans', data.plans.length ? `The first ${KS.PLANS_SHOWN} show on the page; the rest open from “View all designs”. The reveal screen plays the as-built plan, the proposed plan, then the boards.` : 'Floor plans and design boards, for the Design chapter and the reveal screen.',
+        ${sec('plans', 'Design plans', !data.plans.length ? 'Floor plans for the Design chapter and the reveal screen, and design boards for the page after the reveal.'
+            : revealed ? `The first ${KS.PLANS_SHOWN} show on the page; the rest open from “View all designs”.`
+            : 'Before the reveal the page shows the as-built plan, then the proposed one, from the confirm, and the reveal screen plays them; design boards wait for the page until after the reveal.',
           html`${slug ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('import')}>Bring in from JobTread</button>` : null}
             <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('live')}>${kdIcon.play} Preview the live page</button>
             <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('preview')}>${kdIcon.play} Preview the stream</button>
@@ -13940,7 +14769,7 @@
           html`
           ${!revealed ? html`<div class=${`notice ${data.publishStatus === 'draft' ? 'notice--warn' : 'notice--info'} kd-design-when`}>${kdIcon.calendar}<div class="notice__body">${kdDesignWhen(data.name, reveal, data.publishStatus === 'draft')}</div></div>` : null}
           ${data.plans.length ? html`<ul class="kd-plans">
-            ${(showAllPlans ? planDrag.order : planDrag.order.slice(0, KD_PLANS_FIRST)).map((k, i) => { const p = data.plans.find((x) => x._key === k); return p ? html`<${KdPlanTile} key=${k} revealed=${data.status === 'completed'} plan=${p} index=${i} drag=${planDrag} busy=${!!uploads[k]}
+            ${(showAllPlans ? planDrag.order : planDrag.order.slice(0, KD_PLANS_FIRST)).map((k, i) => { const p = data.plans.find((x) => x._key === k); return p ? html`<${KdPlanTile} key=${k} revealed=${data.status === 'completed'} shownAt=${data.status === 'completed' ? RD.pagePlans(data, { revealed: true }).indexOf(p) : i} plan=${p} index=${i} drag=${planDrag} busy=${!!uploads[k]}
               broken=${broken.has(p.url)} onBroken=${() => markBroken(p.url)} onKind=${setPlanKind} revealed=${revealed}
               onCover=${setCoverKey} onNoAddress=${noAddress}
               onLabel=${(key, label) => set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, label } : x)) }))} onRemove=${removePlan} />` : null; })}
@@ -13951,17 +14780,12 @@
           <p class="form-hint">A caption with Before, After, Existing, Proposed, Layout or Floor plan crops the bottom ${Math.round(KS.TITLE_BLOCK * 100)}% of the drawing on the site, so the family’s address in the title block never shows there. Each drawing says what was done about the address on it. Captions appear when someone opens a plan.</p>
         `)}
 
-        ${sec('transform', 'Before & after', revealed ? 'Pairs for the comparison slider in the Transform chapter.' : `Before photos for the reveal screen now (the first ${RD.BEFORE_SHOWN} play there); each gets its after once the room is done, for the Transform chapter.`,
-          html`${slug ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('import')}>Bring in from JobTread</button>` : null}
-            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => beforeInput.current?.click()}>${kdIcon.upload} Add before photos</button>
-            <input type="file" accept="image/*" multiple hidden ref=${beforeInput} onChange=${(e) => { addBefores([...e.target.files]); e.target.value = ''; }} />
-            <button type="button" class="btn btn-ghost btn-sm" onClick=${addPair}>${kdIcon.plus} Add a pair</button>`,
+        ${sec('transform', 'Before & after', revealed ? 'Pairs for the comparison slider in the Transform chapter. Each takes its before from Photos → Before photos.' : 'Pairs for the comparison slider in the Transform chapter, shown once the room is revealed. The before photos for the reveal screen are in Photos.',
+          html`<button type="button" class="btn btn-ghost btn-sm" onClick=${addPair}>${kdIcon.plus} Add a pair</button>`,
           html`
-          ${!revealed ? html`<p class="form-hint kd-design-short">${data.publishStatus === 'draft' ? `Like the drawings, they show nowhere while ${kdPoss(data.name || 'this kid')} profile is hidden.` : `They stay off ${kdPoss(data.name || 'this kid')} page until the reveal, and play on the reveal screen with the drawings (see Design plans).`}</p>` : null}
           ${data.beforeAfterPhotos.length ? html`<ol class="kd-pairs">
             ${data.beforeAfterPhotos.map((pair, i) => {
               const done = pair.before && pair.after && !kdLocal(pair.before) && !kdLocal(pair.after);
-              const onScreen = !!pair.before && data.beforeAfterPhotos.filter((x) => x.before).indexOf(pair) < RD.BEFORE_SHOWN;
               const side = (which) => {
                 const url = pair[which];
                 const busy = uploads[`${pair._key}:${which}`];
@@ -13975,11 +14799,13 @@
                         ${kdIcon.upload}<span>${waits ? 'Add the after once the room is done' : 'Upload'}</span>
                         <input type="file" accept="image/*" class="sr-only" aria-label=${`Upload the ${which} photo${pair.room ? ` for ${pair.room}` : ` for pair ${i + 1}`}`} onChange=${(e) => { uploadPairSide(pair._key, which, e.target.files[0]); e.target.value = ''; }} />
                       </label>`}
-                  ${!url && !waits && photos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPicker({ title: `Choose the ${which} photo`, current: '', onPick: (u) => setPair(pair._key, { [which]: u }) })}>From the gallery</button>` : null}
+                  ${!url && !waits && which === 'before' && befores.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPicker({ title: 'Choose the before photo', photos: befores.filter(RD.onPage), nameOf: (b) => `Before photo ${befores.indexOf(b) + 1}`, empty: befores.some(RD.onPage) ? 'The before photos are still uploading.' : 'None of the before photos is on the page. Switch one on in Before photos first: a pair shows on the page.', current: '', onPick: (u) => { const b = befores.find((x) => x.url === u); setPair(pair._key, { before: u, ...(b?.alt && !pair.beforeAlt ? { beforeAlt: b.alt } : {}), ...(b?.room && !pair.room ? { room: b.room } : {}) }); } })}>From the before photos</button>` : null}
+                  ${!url && !waits && which === 'after' && photos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPicker({ title: 'Choose the after photo', current: '', onPick: (u) => setPair(pair._key, { after: u }) })}>From the gallery</button>` : null}
                   ${waits ? null : html`<input class="form-input kd-small-input" value=${pair[`${which}Alt`] || ''} placeholder=${`${which === 'before' ? 'Before' : 'After'}: what it shows`} aria-label=${`Alt text, ${which} photo`}
                     onInput=${(e) => setPair(pair._key, { [`${which}Alt`]: e.target.value })} />`}
                 </div>`;
               };
+              const heldBefore = befores.find((b) => b.url === pair.before && !RD.onPage(b));
               return html`<li key=${pair._key} class="kd-pair">
                 <header class="kd-pair__head">
                   <input class="form-input kd-pair__room" value=${pair.room || ''} placeholder="Room, e.g. Bathroom" aria-label=${`Room for pair ${i + 1}`} onInput=${(e) => setPair(pair._key, { room: e.target.value })} />
@@ -13991,11 +14817,12 @@
                 </header>
                 <div class="kd-pair__body">
                   ${side('before')}${side('after')}
-                  ${done ? html`<div class="kd-pair__preview"><span class="kd-pair__label">On the page</span><${KdCompare} before=${pair.before} after=${pair.after} label=${pair.room} /></div>` : null}
+                  ${done && !heldBefore ? html`<div class="kd-pair__preview"><span class="kd-pair__label">On the page</span><${KdCompare} before=${pair.before} after=${pair.after} label=${pair.room} /></div>` : null}
                 </div>
                 ${!pair.before ? html`<p class="form-hint kd-warn-text">Add the before photo; a pair without one isn’t saved.</p>`
-                  : !revealed && !onScreen ? html`<p class="form-hint">Not on the reveal screen: the first ${RD.BEFORE_SHOWN} before photos play there. Move it up to show it.</p>`
-                  : revealed && !pair.after ? html`<p class="form-hint">The Transform chapter shows it once it has its after photo.</p>` : null}
+                  : heldBefore ? html`<p class="form-hint kd-warn-text">${RD.pageState(heldBefore) === 'waiting' ? 'Its before isn’t checked yet in Before photos, so this pair doesn’t show until it’s on the page there. Switch it on there, or pick another.'
+                    : `Its before is kept off the page in Before photos${heldBefore.looked === 'site' && heldBefore.offWhy ? ` (${heldBefore.offWhy.charAt(0).toLowerCase() + heldBefore.offWhy.slice(1)})` : ''}, so this pair doesn’t show. Switch it on there, or pick another.`}</p>`
+                  : !pair.after ? html`<p class="form-hint">The Transform chapter shows it once it has its after photo.</p>` : null}
               </li>`;
             })}
           </ol>` : html`<p class="kd-empty-line">No pairs yet. A before and an after of the same view makes the strongest slider.</p>`}
@@ -21746,7 +22573,7 @@ ${sections || '<p>No one yet.</p>'}
         items.forEach((it) => URL.revokeObjectURL(it.local));
         if (failed.length) addToast(`${kdPlural(failed.length, 'photo')} didn’t upload. ${failed[0]}`, 'error');
         if (landed.length) {
-          addToast(`Added ${kdPlural(landed.length, 'photo')}. Writing their alt text…`, 'success');
+          addToast(`Added ${kdPlural(landed.length, 'photo')}. Writing ${landed.length === 1 ? 'its' : 'their'} alt text…`, 'success');
           writeAlt(dataRef.current.photos.filter((p) => landed.includes(p.url)));
         }
       };
@@ -22045,7 +22872,7 @@ ${sections || '<p>No one yet.</p>'}
           class=${`kd-tile${photoDrag.lifted?.key === key ? ' is-lifted' : ''}${isSel ? ' is-selected' : ''}`}
           onPointerDown=${(e) => { if (!selecting && !e.target.closest('[data-kd-grip]')) photoDrag.tileDown(e, key); }}>
           <button type="button" class="kd-tile__open" aria-pressed=${selecting ? isSel : null}
-            aria-label=${`${selecting ? (isSel ? 'Deselect' : 'Select') : 'Open'} photo ${i + 1}${isHero ? ', main photo' : ''}${CS.needsAlt(p) ? ', no alt text' : `: ${p.alt}`}`}
+            aria-label=${`${selecting ? 'Select' : 'Open'} photo ${i + 1}${isHero ? ', main photo' : ''}${CS.needsAlt(p) ? ', no alt text' : `: ${p.alt}`}`}
             onClick=${() => {
               if (photoDrag.justDragged() || uploads[p._key]) return;
               if (selecting) setSelected((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -25695,7 +26522,13 @@ ${sections || '<p>No one yet.</p>'}
         }
         const id = ++toastId;
         setToasts(t => [...t, { id, msg, type, action }]);
-        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), action ? 8000 : 4000);
+        // (Not while it's pointed at, or a toast's button has focus: it goes once let go of)
+        const expire = () => {
+          const c = document.querySelector('.toast-container');
+          if (c && (c.querySelector('.toast[data-pointed]:hover') || c.contains(document.activeElement))) { setTimeout(expire, 1000); return; }
+          setToasts(t => t.filter(x => x.id !== id));
+        };
+        setTimeout(expire, action ? 8000 : 4000);
       };
 
       // Which collections failed to load — lists render an error card (with

@@ -8,27 +8,33 @@
  * not on the site, so it goes to everyone watching.
  *
  * What it is: the kid's own profile in Admin → Kids, nothing kept anywhere else.
- *   - Before photos: the "before" half of each Before & after pair. A pair can
- *     wait for its "after" until the room is done; the kid page only ever
- *     shows whole pairs.
+ *   - Before photos: Photos → Before photos (kid.beforePhotos), the first
+ *     BEFORE_SHOWN on the page (onPage) in their order. Peter, Nov 12 2026: once JobTread confirms
+ *     the reveal, the job's before photos come into Photos, "not the before
+ *     and after section" (functions/api/_reveal-design-auto.js). They are
+ *     never in the gallery or an email; a Before & after pair takes its
+ *     before from them, and the kid page only ever shows whole pairs.
  *   - Drawings: Design plans, each an as-built drawing, a proposed drawing or
- *     a design board (plans[i].type).
+ *     a design board (plans[i].type). Boards never play here (Peter, Nov 12
+ *     2026: "no design boards on the live page"); they wait for the kid page,
+ *     after the reveal.
  *
  * When: from DESIGN_LEAD_MS before the reveal (JobTread's confirmed time, or
- * the broadcast's own), through the reveal and after it. Until then none of
- * it is public: the kid page leaves out its Design and Transformation
- * chapters until the room is revealed, and /api/reveal-design says only when
- * it opens.
+ * the broadcast's own), through the reveal and after it. Until then the live
+ * page has none of it (/api/reveal-design says only when it opens); the kid
+ * page shows the before photos and the existing and proposed plans from the
+ * confirmed reveal, its boards and Transformation from the reveal (pagePlans,
+ * pageBefores).
  *
  * Shared by functions/api/reveal-design.js (who sees it, when), the kid
- * editor (Admin → Kids) and its JobTread import, and tests. The kid page,
- * How It Works and kid-preview.js keep the same hold (isRevealed, whole
- * pairs) in their own words.
+ * editor (Admin → Kids) and its JobTread import, and tests. What the kid
+ * page shows before and after the reveal: pagePlans and pageBefores below;
+ * How It Works shows whole pairs of revealed rooms only.
  */
 
 /** The design opens this long before the reveal starts */
 export const DESIGN_LEAD_MS = 60 * 60 * 1000;
-/** Before photos on the starting-soon screen (Peter: "about 4-6") */
+/** Before photos on the starting-soon screen (Peter: "about 4-6"): the first ones in Photos → Before photos */
 export const BEFORE_SHOWN = 6;
 export const BEFORE_SUGGESTED = 6;
 
@@ -82,6 +88,59 @@ export const addressChecked = (p) => planKind(p) === 'board' || ADDRESS_CHECKS.i
 const usable = (u) => typeof u === 'string' && !!u.trim() && !/^(blob|data):/.test(u);
 const possessive = (name) => (/s$/i.test(name || '') ? `${name}’` : `${name}’s`);
 
+// ── Which before photos may be seen ──────────────────────────────────
+// Peter, Nov 12 2026: "you can review those photos and leave off the ones you think arent good to publish? is there a
+// way to keep a photo from publishing?" Each before photo says who looked at it (looked: 'site', the site's check in
+// functions/api/_photo-screen.js; 'staff', a person: one they added or moved here, or one they switched) and whether
+// it's kept off the page (offPage, and offWhy: what the site saw). Only a photo someone has looked at, and that isn't
+// kept off, is ever public: the kid page, the reveal screen and the live page. One nobody has looked at yet (just in
+// from JobTread) waits off them, so anything new is off until it's been seen.
+
+/** Someone has looked at this before photo and it isn't kept off: it may show on the page and the reveal screen */
+export const onPage = (p) => !!p?.looked && !p?.offPage;
+/** Kept off for good (until someone switches it on): looked at, and kept off */
+export const keptOff = (p) => !!p?.looked && !!p?.offPage;
+/** Where a before photo stands, in a few words for staff: 'on', 'off' (kept off), 'waiting' (not looked at yet) */
+export const pageState = (p) => (onPage(p) ? 'on' : keptOff(p) ? 'off' : 'waiting');
+
+/**
+ * Each before photo's place on the reveal screen, in the list's order: 0 to BEFORE_SHOWN - 1 for the ones that play
+ * (the first BEFORE_SHOWN on the page), null for the rest (past them, kept off, or not looked at yet)
+ */
+export function revealPlaces(list) {
+  let n = 0;
+  return (list || []).map((p) => (usable(p?.url) && onPage(p) && n < BEFORE_SHOWN ? n++ : null));
+}
+
+/**
+ * Where to move before photo `from` in `list` so it plays on the reveal screen (shown: as the last of the first
+ * BEFORE_SHOWN, whose last steps off) or doesn't (just past them) → the index to put it at, once taken out
+ */
+export function revealMoveTo(list, from, shown) {
+  const rest = (list || []).filter((_, i) => i !== from);
+  const at = rest.map((p, i) => (usable(p?.url) && onPage(p) ? i : -1)).filter((i) => i >= 0);
+  if (shown) return at.length >= BEFORE_SHOWN ? at[BEFORE_SHOWN - 1] : rest.length;
+  return at.length >= BEFORE_SHOWN ? at[BEFORE_SHOWN - 1] + 1 : rest.length;
+}
+
+/**
+ * A kid's before photos that may be seen, in their order, as { url, alt, room }: the first BEFORE_SHOWN play on the
+ * reveal screen. Photos → Before photos, the ones on the page (onPage). A room revealed before that list existed
+ * (Nov 12 2026) has only its Before & after pairs, so its replay plays their befores, as it always did (they were on
+ * its page already); a room not yet revealed only ever its Before photos.
+ */
+export function beforePhotosOf(kid) {
+  const own = (kid?.beforePhotos || []).filter((p) => usable(p?.url) && onPage(p));
+  if ((kid?.beforePhotos || []).length || !isRevealed(kid)) return own;
+  return (kid?.beforeAfterPhotos || []).filter((p) => usable(p?.before)).map((p) => ({ url: p.before, alt: p.beforeAlt || '', room: p.room || '' }));
+}
+
+/**
+ * Where new before photos go first: the reveal screen's places still free, filled with ones spread across the visit.
+ * One kept off takes no place; one not looked at yet does, as it may well be fine
+ */
+export const freeBeforePlaces = (kid) => Math.max(0, BEFORE_SHOWN - (kid?.beforePhotos || []).filter((p) => !keptOff(p)).length);
+
 /**
  * What the reveal shows, in the order the story goes: the room today, its
  * floor plan, the new plan, then the look. Each slide:
@@ -92,12 +151,11 @@ const possessive = (name) => (/s$/i.test(name || '') ? `${name}’` : `${name}�
 export function revealSlides(kid, { after = false } = {}) {
   const name = String(kid?.name || '').trim();
   const room = name ? `${possessive(name)} room ${after ? 'before' : 'today'}` : `The room ${after ? 'before' : 'today'}`;
-  const befores = (kid?.beforeAfterPhotos || [])
-    .filter((p) => usable(p?.before))
+  const befores = beforePhotosOf(kid)
     .slice(0, BEFORE_SHOWN)
     .map((p) => ({
-      kind: 'before', url: p.before, crop: false,
-      alt: String(p.beforeAlt || '').trim() || `${name ? possessive(name) : 'The'} room before the makeover`,
+      kind: 'before', url: p.url, crop: false,
+      alt: String(p.alt || '').trim() || `${name ? possessive(name) : 'The'} room before the makeover`,
       badge: BEFORE_BADGE, kicker: 'Before', caption: String(p.room || '').trim() || room,
     }));
   const plans = (kid?.plans || []).filter((p) => usable(p?.url) && addressChecked(p));
@@ -113,8 +171,43 @@ export function revealSlides(kid, { after = false } = {}) {
       ...(Number(p.w) > 0 && Number(p.h) > 0 ? { w: Math.round(p.w), h: Math.round(p.h) } : {}),
     };
   });
-  return [...befores, ...drawings('as-built'), ...drawings('proposed'), ...drawings('board')];
+  // No design boards on the live page (Peter, Nov 12 2026): they wait for the kid page, after the reveal (pagePlans)
+  return [...befores, ...drawings('as-built'), ...drawings('proposed')];
 }
+
+// ── The kid page ─────────────────────────────────────────────────────
+// Peter, Nov 12 2026: "all before photos can show in admin to be displayed on their website page, the curated before
+// is for the live reveal page, you can also put the asbuilt and proposed drawings on their page too. hold off on
+// putting the design boards on their webpage until after the reveal". From JobTread's confirmed reveal (as the page
+// is built: src/data/upcoming-reveals.json), a kid's page shows every before photo and the existing and proposed
+// plans whose address has been seen to; from the reveal, all of it, boards too. src/pages/kids/[slug].astro keeps
+// these rules in its own words; kid-preview.js uses these.
+
+/**
+ * The plans a kid's page shows: from the confirmed reveal the existing, then the proposed, address seen to; from the
+ * reveal every one, boards too, but a drawing brought in from JobTread only once its address has been seen to (one
+ * staff put there themselves is theirs, as it always was)
+ */
+export function pagePlans(kid, { confirmed = false, revealed = isRevealed(kid) } = {}) {
+  const plans = (kid?.plans || []).filter((p) => usable(p?.url));
+  if (revealed) return plans.filter((p) => !p.source || planKind(p) === 'board' || addressChecked(p));
+  if (!confirmed) return [];
+  const ok = plans.filter((p) => planKind(p) !== 'board' && addressChecked(p));
+  return [...ok.filter((p) => planKind(p) === 'as-built'), ...ok.filter((p) => planKind(p) === 'proposed')];
+}
+
+/**
+ * The Before & after pairs a page may show (the kid page, How It Works, the reveal email): whole pairs whose before
+ * isn't one of the before photos kept off the page or not looked at yet. A pair takes its before from Before photos,
+ * so one kept off there is off here too; a pair whose before was never one of them (uploaded for the pair) stands
+ */
+export function pagePairs(kid) {
+  const held = new Set((kid?.beforePhotos || []).filter((p) => p?.url && !onPage(p)).map((p) => p.url));
+  return completePairs(kid?.beforeAfterPhotos).filter((p) => !held.has(p.before));
+}
+
+/** The before photos a kid's page shows, every one on the page (onPage) in its order: from the confirmed reveal on */
+export const pageBefores = (kid, { confirmed = false } = {}) => (isRevealed(kid) || confirmed ? (kid?.beforePhotos || []).filter((p) => usable(p?.url) && onPage(p)) : []);
 
 /** A caption that is really a file name ("CompanyCam 2445", "IMG_0042", "Plan Set_093026.pdf") */
 export const looksLikeFileName = (s) => /^\s*(?:companycam|img|dsc|pxl|screenshot|scan|photo|image|untitled)[\s_-]*\d/i.test(String(s || ''))
@@ -169,7 +262,9 @@ export function kindFromText(text) {
 /** The before photos to start with: up to n, spread across the visit in the order they were taken */
 export function suggestBefores(photos, n = BEFORE_SUGGESTED) {
   const list = [...(photos || [])];
+  if (n <= 0) return [];
   if (list.length <= n) return list;
+  if (n === 1) return [list[Math.floor((list.length - 1) / 2)]];
   const out = [];
   for (let i = 0; i < n; i++) out.push(list[Math.round((i * (list.length - 1)) / (n - 1))]);
   return [...new Set(out)];

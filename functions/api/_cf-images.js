@@ -21,14 +21,17 @@ export const imagesApi = (env) => `https://api.cloudflare.com/client/v4/accounts
  * Upload a picture (a File or Blob, or bytes with their type and a file name),
  * with its location taken out, under `id` when given → Cloudflare's JSON answer
  */
-export async function uploadImage(env, { file = null, bytes = null, type = '', filename = '', id = '' } = {}, fetchImpl = fetch) {
+export async function uploadImage(env, { file = null, bytes = null, type = '', filename = '', id = '', signal = undefined } = {}, fetchImpl = fetch) {
   const raw = bytes ?? await file.arrayBuffer();
   const clean = stripLocation(raw).bytes;
   const form = new FormData();
   form.append('file', new Blob([clean], { type: type || file?.type || 'application/octet-stream' }), filename || file?.name || 'photo');
   if (id) form.append('id', id);
-  const res = await fetchImpl(imagesApi(env), { method: 'POST', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` }, body: form });
-  return res.json().catch(() => ({ success: false, errors: [{ message: `Cloudflare Images answered ${res.status}` }] }));
+  const res = await fetchImpl(imagesApi(env), { method: 'POST', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` }, body: form, ...(signal ? { signal } : {}) });
+  // (An answer cut off by the caller's own time limit is no answer: thrown, never read as Cloudflare's)
+  const j = await res.json().catch((e) => { if (signal?.aborted) throw e; return { success: false, errors: [{ message: `Cloudflare Images answered ${res.status}` }] }; });
+  // (status: whether a refusal was the picture's, 4xx, or Cloudflare's, 5xx; ./_reveal-design-auto.js tells them apart)
+  return { ...j, status: res.status };
 }
 
 /** An uploaded picture's /public address, from Cloudflare's `result` */

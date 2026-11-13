@@ -9,7 +9,7 @@ import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { COLLECTION_MAP, isSiteDocKey, withoutScriptLinks } from '../functions/api/_collections.js';
 import { SETTINGS_DEFAULTS } from './settings-defaults.js';
-import { stillAhead, todayEastern } from '../functions/api/_reveals.js';
+import { stillAhead, todayEastern, carryPast } from '../functions/api/_reveals.js';
 
 export const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(__dirname, '..');
@@ -238,8 +238,12 @@ export const UPCOMING_FILE = join(ROOT, 'src', 'data', 'upcoming-reveals.json');
 export function writeUpcomingReveals(siteRows, now = Date.now()) {
   const row = siteRows.find((r) => r.key === 'reveals');
   const copy = row ? safeParse(row.data) : null;
-  const upcoming = Array.isArray(copy?.upcoming) ? copy.upcoming.filter(stillAhead(todayEastern(now))) : [];
-  const json = JSON.stringify({ upcoming, updatedAt: copy?.updatedAt || null }, null, 2) + '\n';
+  const today = todayEastern(now);
+  const upcoming = Array.isArray(copy?.upcoming) ? copy.upcoming.filter(stillAhead(today)) : [];
+  // Confirmed reveals whose day has passed (the last few months): a kid page shows the whole design from then,
+  // whether or not JobTread has marked the room done yet (src/pages/kids/[slug].astro)
+  const past = copy ? carryPast(copy, today).map((r) => ({ slug: r.slug, date: r.date })) : [];
+  const json = JSON.stringify({ upcoming, past, updatedAt: copy?.updatedAt || null }, null, 2) + '\n';
   // Unchanged: leave the file alone (no rebuild in dev)
   if (existsSync(UPCOMING_FILE) && readFileSync(UPCOMING_FILE, 'utf8') === json) return;
   ensureDir(join(ROOT, 'src', 'data'));

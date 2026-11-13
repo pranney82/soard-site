@@ -24,6 +24,7 @@ import {
 } from './page-preview.js';
 
 import { youTubeId, splitBio, heroHookOf, TITLE_BLOCK, isFloorPlan, focusCss } from './kids-shared.js';
+import { pagePlans, pageBefores, pagePairs, planKind, addressChecked } from './reveal-design.js';
 
 export { cfId, youTubeId };
 
@@ -86,7 +87,7 @@ export function loadKit() {
 // ── Page model (mirrors the frontmatter of src/pages/kids/[slug].astro) ──
 // (the bio split, hero hook and plan crop rules live in kids-shared.js)
 
-/** Every image whose size the page needs (hero, gallery, plans, before/after) */
+/** Every image whose size the page needs (hero, gallery, plans, before/after; before photos are drawn at a set size) */
 function sizedImages(kid) {
   const ids = [kid.heroImage, ...(kid.photos || []).slice(0, 30).map((p) => p.url), ...(kid.plans || []).map((p) => p.url),
     ...(kid.beforeAfterPhotos || []).flatMap((p) => [p.before, p.after])];
@@ -97,7 +98,8 @@ function sizedImages(kid) {
  * Everything the page shows, worked out from the draft. Async because new
  * photos are measured and a Stream video is checked, like the build does.
  */
-export async function buildModel(kid, kit, { measure: measureNew = true, video: forcedVideo, showDesign = false } = {}) {
+// confirmed: JobTread has confirmed this kid's reveal (the page then shows its before photos and plans, pagePlans)
+export async function buildModel(kid, kit, { measure: measureNew = true, video: forcedVideo, showDesign = false, confirmed = false } = {}) {
   const dims = { ...kit.dims };
   // (measureNew: false matches a dev server, whose pages use [4, 3] for photos the manifest lacks)
   await Promise.all(sizedImages(kid).filter((id) => measureNew && !dims[id]).map(async (id) => {
@@ -107,10 +109,10 @@ export async function buildModel(kid, kit, { measure: measureNew = true, video: 
   // (forcedVideo: the template pages' fixed player, for the accuracy test)
   const video = forcedVideo ? { ...forcedVideo, note: null } : await resolveVideo(kid);
   const blobs = await checkBlobs([kid.heroImage, kid.accentImage, ...(kid.photos || []).map((p) => p.url), ...(kid.plans || []).map((p) => p.url),
-    ...(kid.beforeAfterPhotos || []).flatMap((p) => [p.before, p.after]), ...(kid.partnerLogos || []).map((p) => p.url)]);
+    ...(kid.beforeAfterPhotos || []).flatMap((p) => [p.before, p.after]), ...(kid.beforePhotos || []).map((p) => p.url), ...(kid.partnerLogos || []).map((p) => p.url)]);
   const notes = [video?.note, ...blobs.notes].filter(Boolean);
   const alive = blobs.alive;
-  return { kid, dims, lqip: kit.lqip, video, notes, liveBlobs: alive, templates: kit.templates, showDesign };
+  return { kid, dims, lqip: kit.lqip, video, notes, liveBlobs: alive, templates: kit.templates, showDesign, confirmed };
 }
 
 // ── Patch ─────────────────────────────────────────────────────────────
@@ -135,11 +137,20 @@ export function patchKidPage(doc, win, model) {
   const introPara = bioParas[0] || '';
   const pullQuote = kid.quote && kid.quote !== kid.bio && kid.quote !== introPara ? kid.quote : null;
   const galleryPhotos = photos.slice(0, 30);
-  // As the page has it: the design waits for the reveal, and only whole before & after pairs show
+  // As the page has it: from the confirmed reveal, every before photo and the existing and proposed plans whose address
+  // was seen to; from the reveal, every plan and the whole before & after pairs (./reveal-design.js pagePlans)
   // (showDesign: a template page, which carries every section, as src/pages/admin/kid-template/ renders it)
   const revealed = model.showDesign === true || kid.status === 'completed';
-  const plans = revealed ? kid.plans || [] : [];
-  const pairs = revealed ? (kid.beforeAfterPhotos || []).filter((p) => p?.before && p?.after) : [];
+  const confirmed = !revealed && model.confirmed === true;
+  const plans = model.showDesign === true ? kid.plans || [] : pagePlans(kid, { confirmed, revealed });
+  // (only the ones on the page: looked at, and not kept off)
+  const befores = pageBefores(kid, { confirmed: revealed || confirmed });
+  const pairs = revealed ? pagePairs(kid) : [];
+  // The photo viewer's sets: the gallery (when it shows), the plans, the before photos
+  const galleryShown = galleryPhotos.length > 1 ? galleryPhotos.length : 0;
+  const beforeStart = galleryShown + plans.length;
+  const BEFORES_SHOWN = 6;
+  const planBadge = (p) => (addressChecked(p) && p?.addressCheck ? { 'as-built': 'Existing', proposed: 'Proposed' }[planKind(p)] || '' : '');
   const partnerLogos = kid.partnerLogos || [];
   const accentPhoto = kid.accentImage || null;
   const heroDims = kid.heroImage ? dimsOf(kid.heroImage) : [3, 4];
@@ -227,6 +238,7 @@ export function patchKidPage(doc, win, model) {
   const chapters = {
     'chapter-meet': true,
     'chapter-story': bioParas.length > 0,
+    'chapter-before': befores.length > 0,
     'chapter-design': plans.length > 0,
     'chapter-transform': pairs.length > 0,
     'chapter-reveal': hasVideo,
@@ -268,15 +280,64 @@ export function patchKidPage(doc, win, model) {
     }
   }
 
+  // ── The room before ──
+  let beforeSec = null;
+  if (befores.length) {
+    beforeSec = take('full', 'section.befores');
+    textSwap(beforeSec.querySelector('.befores__lede'), 'Template’s', /s$/i.test(name) ? `${name}’` : `${name}’s`);
+    const grid = beforeSec.querySelector('.befores__grid');
+    const proto = grid.querySelector('.befores__item');
+    grid.replaceChildren(...befores.slice(0, BEFORES_SHOWN).map((photo, i) => {
+      const b = proto.cloneNode(true);
+      b.dataset.lbIndex = String(beforeStart + i);
+      b.setAttribute('aria-label', `View before photo ${i + 1} of ${befores.length}${photo.room ? `, ${photo.room}` : ''}`);
+      b.setAttribute('style', `--lqip: ${lqipVar(photo.url)}`);
+      const img = b.querySelector('img');
+      img.src = cfUrl(photo.url, { w: 600, h: 450, fit: 'cover', q: 80 });
+      img.setAttribute('srcset', cfSrcset(photo.url, [400, 600, 900], { fit: 'cover', aspectRatio: 0.75 }));
+      img.alt = photo.alt || `${name}'s room before the makeover`;
+      b.querySelector('.befores__badge').textContent = `Before${photo.room ? ` · ${photo.room}` : ''}`;
+      return b;
+    }));
+    const more = beforeSec.querySelector('#befores-view-all');
+    if (befores.length > BEFORES_SHOWN) {
+      more.dataset.firstBeforeIndex = String(beforeStart);
+      more.textContent = `View all ${befores.length} before photos`;
+    } else drop(more);
+    const hidden = beforeSec.querySelector('div[hidden]');
+    const lbProto = hidden.querySelector('.masonry__item');
+    hidden.replaceChildren(...befores.map((photo, i) => {
+      const b = lbProto.cloneNode(true);
+      b.dataset.index = String(beforeStart + i);
+      b.dataset.src = cfUrl(photo.url, { w: 1600, q: 85 });
+      b.dataset.srcset = cfSrcset(photo.url, [800, 1200, 1600, 2400]);
+      b.dataset.alt = photo.alt || `${name}'s room before the makeover`;
+      b.dataset.caption = `Before${photo.room ? ` · ${photo.room}` : ''}`;
+      b.setAttribute('style', `--lqip: ${lqipVar(photo.url)}`);
+      return b;
+    }));
+  }
+
   // ── Design ──
   let design = null;
   if (plans.length) {
     design = take('full', 'section.design');
     const grid = design.querySelector('.design__grid');
     const itemProto = grid.querySelector('.design__item');
+    // The badge on a plan ("Existing", "Proposed"), from the template's
+    const badgeProto = grid.querySelector('.design__badge');
+    itemProto.querySelector('.design__badge')?.remove();
     grid.replaceChildren(...plans.slice(0, 2).map((plan, i) => {
       const b = itemProto.cloneNode(true);
-      b.dataset.lbIndex = String(galleryPhotos.length + i);
+      const badge = planBadge(plan);
+      if (badge && badgeProto) {
+        const tag = badgeProto.cloneNode(true);
+        tag.classList.remove('design__badge--as-built', 'design__badge--proposed');
+        tag.classList.add(`design__badge--${planKind(plan)}`);
+        tag.textContent = badge;
+        b.append(tag);
+      }
+      b.dataset.lbIndex = String(galleryShown + i);
       b.setAttribute('aria-label', `View ${plan.label || 'design plan'}`);
       b.setAttribute('style', `--lqip: ${lqipVar(plan.url)}`);
       const img = b.querySelector('img');
@@ -289,18 +350,21 @@ export function patchKidPage(doc, win, model) {
     }));
     const moreBtn = design.querySelector('#design-view-all');
     if (plans.length > 2) {
-      moreBtn.dataset.firstPlanIndex = String(galleryPhotos.length);
+      moreBtn.dataset.firstPlanIndex = String(galleryShown);
       textSwap(moreBtn, 'View all 3 designs', `View all ${plans.length} designs`);
     } else drop(moreBtn);
     const hidden = design.querySelector('div[hidden]');
     const lbProto = hidden.querySelector('.masonry__item');
     hidden.replaceChildren(...plans.map((plan, i) => {
       const b = lbProto.cloneNode(true);
-      b.dataset.index = String(galleryPhotos.length + i);
+      b.dataset.index = String(galleryShown + i);
       b.dataset.src = planUrl(plan, 1600);
       b.dataset.srcset = planSrcset(plan, [800, 1200, 1600, 2400]);
       b.dataset.alt = plan.label || `Plan ${i + 1}`;
-      b.dataset.caption = plan.label || '';
+      // Which plan it is, unless its own caption says so already (as the page has it)
+      const tag = planBadge(plan);
+      const label = String(plan.label || '');
+      b.dataset.caption = tag && !label.toLowerCase().includes(tag.toLowerCase()) ? [tag, label].filter(Boolean).join(' · ') : label;
       b.setAttribute('style', `--lqip: ${lqipVar(plan.url)}`);
       return b;
     }));
@@ -421,10 +485,10 @@ export function patchKidPage(doc, win, model) {
   // linked in Admin → Press) and "More Stories" stay the page's ──
   const news = article.querySelector('.kid-news');
   const strip = article.querySelector('.kids-strip');
-  article.replaceChildren(...[hero, modal, nav, story, design, transform, reveal, gallery, village, news, strip, cta].filter(Boolean));
+  article.replaceChildren(...[hero, modal, nav, story, beforeSec, design, transform, reveal, gallery, village, news, strip, cta].filter(Boolean));
 
   const meta = doc.getElementById('lb-meta');
-  if (meta) { meta.dataset.galleryCount = String(galleryPhotos.length); meta.dataset.planCount = String(plans.length); }
+  if (meta) { meta.dataset.galleryCount = String(galleryShown); meta.dataset.planCount = String(plans.length); meta.dataset.beforeCount = String(befores.length); }
   doc.querySelectorAll('link[rel="preload"][as="image"][imagesrcset]').forEach((l) => {
     if (!kid.heroImage || isLocal(kid.heroImage)) return l.remove();
     const mobile = l.media.includes('max-width');
