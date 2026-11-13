@@ -542,7 +542,8 @@ export function yearSaid(lines, kit, now = Date.now()) {
   const parts = [
     gifts.length ? `${plural(gifts.length, 'gift')} (${usd(cents)})` : 'no gifts',
     mail.length ? `${plural(mail.length, 'email')} with the team, the last ${shortDate(Math.max(...mail.map((x) => x.at)))}` : null,
-    phone.length ? `${plural(n(['call']).length, 'call')} and ${plural(n(['text']).reduce((t, x) => t + (x.count || 1), 0), 'text')}` : null,
+    // Calls and texts, each only when there were some ("3 calls", never "and 0 texts")
+    phone.length ? [n(['call']).length, n(['text']).reduce((t, x) => t + (x.count || 1), 0)].map((k, i) => (k ? plural(k, i ? 'text' : 'call') : null)).filter(Boolean).join(' and ') : null,
     meet.length ? plural(meet.length, 'meeting') : null,
     kit && kit.sent ? `opened ${kit.opened} of ${plural(kit.sent, 'newsletter')}` : null,
   ].filter(Boolean);

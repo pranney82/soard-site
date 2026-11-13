@@ -32,11 +32,13 @@
  * GET ?timeline=<ref>&mailbox=&thread=     → { success, mailbox, thread, messages, hidden }   a conversation they're on (logged)
  * GET ?timeline=<ref>&call=<id>            → { success, status, dialogue }   a call's words (Quo; logged)
  * GET ?timeline=<ref>&sent=<id>            → { success, subject, at, html } | { success, gone, why }   a website email
+ * GET ?signals=<ref>        → { success, state, signals?, note? }   what Kit Signals knows about a person (./_donor-signals.js)
  */
 import { listView, needsView, thanksView, personView, orgView, orgSummary, orgsList, findNames, findPeople, giftOwner, act } from './_donor-crm.js';
 import { kitFindSubscribers, kitConfigured } from './_kit.js';
 import { checksFacts } from './_check-gifts.js';
 import { timelineView, olderView, mailThread, callTranscript, sentEmail } from './_donor-timeline.js';
+import { signalsFor } from './_donor-signals.js';
 
 const ok = (body = {}) => Response.json({ success: true, ...body });
 const fail = (error, status = 400) => Response.json({ success: false, error }, { status });
@@ -58,6 +60,10 @@ export async function onRequestGet({ env, request, data }) {
       const v = await orgView(env, q.get('org'));
       if (v?.moved) return ok({ org: v.moved });
       return v ? ok(v) : fail('No organization by that link. It may have been taken out, or merged into another partner.', 404);
+    }
+    // Kit Signals on a person's page (./_donor-signals.js)
+    if (q.get('signals')) {
+      try { return ok(await signalsFor(env, q.get('signals'))); } catch (e) { if (e.status && e.status !== 500) return fail(e.message, e.status); throw e; }
     }
     // A donor's timeline (./_donor-timeline.js): ref is a page's address (a contact id, g:<payment>, p:/o: an organization)
     if (q.get('timeline')) {

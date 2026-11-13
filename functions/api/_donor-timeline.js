@@ -146,6 +146,7 @@ export function queue(n = AT_ONCE) {
 // ─── Who the donor is, and what may be searched for them ─────────────
 
 /** Google's accounts as the staff sign-in check last read them: every one, active or not, with its aliases */
+export async function staffDirectory(DB) { return directory(DB); }
 async function directory(DB) {
   try {
     const row = await DB.prepare("SELECT data FROM staff_state WHERE key = 'directory'").first();

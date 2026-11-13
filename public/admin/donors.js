@@ -30,6 +30,7 @@ import { AreaTabs, setChecksWaiting } from './donor-tabs.js';
 import { ask } from './ask.js';
 import { useDialog } from './dialog.js';
 import { Timeline } from './donor-timeline.js';
+import { SignalsCard } from './donor-signals.js';
 
 const html = htm.bind(h);
 const API = '/api/donors-admin';
@@ -772,6 +773,7 @@ function DonorPage({ donor, gift, fromList = false, ctx, onBack, onDonor, onOrg 
               if (r.ref && r.ref !== donor) onDonor(r.ref); else await load();
             }}>Not the same person</button></li>`)}</ul>` : null}
         </section>
+        <${SignalsCard} refOf=${v.ref} name=${d.name} />
         <${KeepAnonymous} subject=${v.key} on=${!!v.keepAnonymous} why=${v.keptWhy} name=${d.name} ctx=${ctx} onDone=${load} />
         <section class="kd-card dn-card--late" aria-labelledby="dn-orgs-h">
           <h3 id="dn-orgs-h">Organizations</h3>
