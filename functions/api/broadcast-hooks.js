@@ -155,7 +155,7 @@ export async function onRequestPost(context) {
     // Every 30 minutes: Resend reports on each email the site sent (it registers its own webhook), and any missed report is caught up (see _email-log.js)
     context.waitUntil(maybeTrackEmails(env, { alert: async (e, card) => alertAdmins(e, await readConfig(e.DB), card) }));
     // Job costs every 2 minutes: Mercury charges the webhook missed, new JobTread bills paired with their charges,
-    // notes back to Mercury; every job's ledger every 15 minutes; the weekday morning receipts card (see _spend.js)
+    // notes back to Mercury; every job's ledger every 15 minutes (see _spend.js)
     context.waitUntil(maybeRunSpend(env));
     // A check deposited in Mercury becomes its Zeffy record (one check a run)
     context.waitUntil(maybeRunChecks(env));

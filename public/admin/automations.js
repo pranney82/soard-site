@@ -1754,9 +1754,9 @@ const MAP = { t: 'SOARD', children: [
             return ON(`The Receipt Processor last asked ${stamp(j.agentUsedAt)}.`, j.agentUsedAt);
           } },
         { t: 'Budget alerts', s: 'live', k: 'schedule',
-          when: 'Each job’s costs are rebuilt when a charge or bill lands, and every job every 15 minutes; weekdays at 8 AM for the receipts card.',
-          does: 'Posts once in Slack (threaded per job) when a job’s forecast reaches 80% and 100% of its budget, and when a cost code goes over its own line. Weekday mornings, one card lists charges with no receipt after 2 days and charges nobody has sorted.',
-          touches: ['Slack', 'JobTread', 'D1'], where: 'functions/api/_job-ledger.js (thresholds), _spend.js (morningCard)',
+          when: 'Each job’s costs are rebuilt when a charge or bill lands, and every job every 15 minutes.',
+          does: 'Posts once in Slack (threaded per job) when a job’s forecast reaches 80% and 100% of its budget, and when a cost code goes over its own line.',
+          touches: ['Slack', 'JobTread', 'D1'], where: 'functions/api/_job-ledger.js (thresholds), _spend.js (rebuildJob)',
           live: (f) => {
             const j = f.jobCosts;
             if (!j || !env(f) || j.error) return null;

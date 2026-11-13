@@ -307,7 +307,7 @@ export const MONEY = {
       { t: 'A receipt in anyone’s inbox goes onto its card charge without being forwarded', autos: ['Receipts from inboxes'] },
       { t: 'Each receipt becomes a paid JobTread bill, one line per cost code', autos: ['Receipts → JobTread bills'] },
       { t: 'A JobTread bill’s receipt goes onto its Mercury card charge', autos: ['Bill receipts onto Mercury charges'] },
-      { t: 'Charges still without a receipt after 2 days are listed each weekday morning', autos: ['Budget alerts'] },
+      { t: 'Charges still without a receipt are on their cardholder’s Monday email', autos: ['Receipts from inboxes'] },
     ]},
     { t: 'Vendor papers', policy: ['IRS Form 1099'], items: [
       { t: 'Every vendor on a job is asked for a current W-9 and insurance, and their papers are checked', autos: ['W-9s and insurance', 'Vendors on their JobTread jobs'] },

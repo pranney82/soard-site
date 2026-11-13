@@ -33,14 +33,14 @@
  * Env: MERCURY_API_TOKEN, JOBTREAD_GRANT_KEY, SLACK_BOT_TOKEN (alerts).
  */
 
-import { SOARD_ORG_ID, pave, TZ } from './_reveals.js';
-import { slackIssue, slackPost, SITE_ORIGIN } from './_broadcast-notify.js';
+import { SOARD_ORG_ID, pave } from './_reveals.js';
+import { slackIssue, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import {
   mercuryConfigured, readState, writeState, getTransaction, listTransactions, updateTransaction,
   cardholders, setCardLimit, ensureWebhook, webhookSecret, verifySignature, listCategories, WEBHOOK_KEY,
 } from './_mercury.js';
-import { chargeOf, guessJob, bucketOf, ruleFor, pairBills, vendorKey, dollars, LIVE_STATUSES, BUCKETS } from './_spend-match.js';
+import { chargeOf, guessJob, bucketOf, ruleFor, pairBills, vendorKey, LIVE_STATUSES, BUCKETS } from './_spend-match.js';
 import {
   computeLedger, thresholds, activeJobs, jobCostSources, costCodes, readLedgers, writeLedger, dropLedgersExcept,
 } from './_job-ledger.js';
@@ -58,7 +58,6 @@ const REBUILD_EVERY_MS = 15 * MIN;
 const CARDS_EVERY_MS = 60 * MIN;
 const CAPS_EVERY_MS = 6 * 60 * MIN;
 const WEBHOOK_CHECK_EVERY_MS = 60 * MIN;
-const RECEIPT_GRACE_MS = 48 * 60 * MIN;
 const FIRST_LOOK_BACK_MS = 30 * 24 * 60 * MIN;
 const BILL_LOOK_BACK_DAYS = 45;
 const MAX_BODY = 256 * 1024;
@@ -469,31 +468,6 @@ export async function rebuildAll(env, { now = Date.now() } = {}) {
   return { jobs: jobs.length, done };
 }
 
-// ─── The morning card ───────────────────────────────────────────────
-
-/**
- * One Slack card a weekday morning, only when there's something: makeover
- * charges 2+ days old with no JobTread bill yet (the receipt never reached
- * ap@), store and operating card charges with no receipt in Mercury, and
- * charges nobody has sorted.
- */
-export async function morningCard(env, { now = Date.now() } = {}) {
-  const since = new Date(now - 30 * 24 * 60 * MIN).toISOString();
-  const all = (await readCharges(env.DB, { sinceIso: since, limit: 2000 })).filter((c) => LIVE_STATUSES.has(c.status) && c.cents > 0);
-  const old = (c) => now - Date.parse(c.createdAt) > RECEIPT_GRACE_MS;
-  const noReceipt = all.filter((c) => /Card/.test(c.kind || '') && old(c)
-    && (c.bucket === 'job' ? !c.billId : (c.bucket === 'store' || c.bucket === 'operating') && !c.hasReceipt));
-  const noJob = all.filter((c) => !c.bucket && !c.billId);
-  if (!noReceipt.length && !noJob.length) return null;
-  const line = (c) => `${dollars(c.cents)} · ${c.vendor} · ${new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: TZ })}${c.email ? ` · ${c.email.split('@')[0]}` : ''}`;
-  const lead = [
-    noReceipt.length ? `*No receipt yet* (makeovers: forward it to ap@soardcharity.com · store and operating: add it to the charge in Mercury):\n${noReceipt.slice(0, 8).map(line).join('\n')}${noReceipt.length > 8 ? `\n…and ${noReceipt.length - 8} more` : ''}` : null,
-    noJob.length ? `*Not sorted* (a job, the store or operating? Pick in the admin):\n${noJob.slice(0, 8).map(line).join('\n')}${noJob.length > 8 ? `\n…and ${noJob.length - 8} more` : ''}` : null,
-  ].filter(Boolean).join('\n\n');
-  const card = slackCard({ icon: '🧾', title: `Receipts and charges to sort (${noReceipt.length + noJob.length})`, lead, buttons: [{ label: 'Open job costs', url: `${ADMIN_URL}/charges` }] });
-  return slackPost(env, card, { kind: 'attention', area: 'finance' });
-}
-
 // ─── Card limits ────────────────────────────────────────────────────
 
 /**
@@ -551,8 +525,6 @@ export async function catchUp(env, { now = Date.now() } = {}) {
   return { read: txns.length, kept, jobs: [...touched] };
 }
 
-const easternHour = (now) => Number(new Date(now).toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: TZ }));
-const easternDay = (now) => new Date(now).toLocaleDateString('en-CA', { timeZone: TZ });
 
 /** The heartbeat's wake-up. Each part keeps its own clock; never throws. */
 export async function maybeRunSpend(env, { now = Date.now() } = {}) {
@@ -610,14 +582,6 @@ export async function maybeRunSpend(env, { now = Date.now() } = {}) {
       }
     } else {
       for (const j of touched) await rebuildJob(env, j, { now }).catch(() => null);
-    }
-
-    // Weekdays at 8 AM Eastern, once
-    const day = easternDay(now);
-    const wd = new Date(now).toLocaleDateString('en-US', { weekday: 'short', timeZone: TZ });
-    if (easternHour(now) >= 8 && cfg.morningDay !== day && !['Sat', 'Sun'].includes(wd)) {
-      await writeConfig(env.DB, { morningDay: day });
-      if (env.SLACK_BOT_TOKEN) await morningCard(env, { now }).catch(() => null);
     }
 
     if (mercuryConfigured(env) && cfg.caps === 'on' && now - Date.parse(cfg.lastCaps?.at || 0) > CAPS_EVERY_MS) {
