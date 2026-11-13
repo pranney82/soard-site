@@ -66,7 +66,8 @@ import { fetchAllJobs, buildAdminView } from './reveals-admin.js';
 import { loadAllKids, loadAllProjects, FIELD_STATUS, requestDeploy } from './_kid-status.js';
 import { designSources } from './reveal-design-admin.js';
 import { readConfig } from './_broadcast.js';
-import { alertAdmins, adminCard, slackPost, SITE_ORIGIN } from './_broadcast-notify.js';
+import { alertAdmins, adminCard, slackPost, sendEmails, emailConfigured, SITE_ORIGIN } from './_broadcast-notify.js';
+import { emailShell, button, esc } from './_email-shell.js';
 import { recordVersion } from './_content-history.js';
 import { logAudit } from './_audit.js';
 import { uploadImage, publicUrl } from './_cf-images.js';
@@ -111,6 +112,9 @@ const LOOK_POST_MS = 2_000;                     // the looks stop this long befo
 const LOOK_REST_MS = 15 * 60_000;               // a photo whose look couldn't happen (a service down) rests this long
 const LOOK_OUTS = 8;                            // ...and this many of those in a row count as one failed look
 const BY = 'Automatic design import';
+// Who's emailed to look over a reveal's before photos once they're in and checked (Peter, Nov 13 2026: "when the
+// befores are imported, can you send an email to linzi to go review them?")
+export const BEFORE_REVIEWERS = ['linzi@soardcharity.com'];
 const KIND = Object.fromEntries(PLAN_KINDS.map((k) => [k.id, k]));
 const DRAWING_PARTS = ['as-built', 'proposed', 'board'];
 
@@ -424,7 +428,8 @@ async function lookAtBefores(env, kid, looks, fetchImpl, now, until, clock, rece
   // service: nothing counted, they wait, and the whole look rests, saying why (Site → Automations)
   const refused = [];
   let i = 0;
-  for (; i < due.length && !out.outage && !out.capped; i += LOOKS_AT_ONCE) {
+  // (One picture that wouldn't load doesn't stop the others: only the service's trouble, or the cap, ends the look)
+  for (; i < due.length && !out.widely && !out.capped; i += LOOKS_AT_ONCE) {
     if (until - clock() < LOOK_FETCH_MS + LOOK_TRY_MS) break;
     const batch = due.slice(i, i + LOOKS_AT_ONCE);
     const down = new Set();
@@ -817,8 +822,7 @@ export function standing(kid) {
  * Where a kid's before photos stand, once nothing is left to bring this time and the site has looked at each one
  * (tellWhenIn): n came since the last note, waiting are to be tried again later, gaveUp were left out (each said
  * once). How many are on the page and play on the reveal screen, and what was kept off and why, for staff to look
- * over. To Needs attention when photos were left out, or when fewer than the reveal screen's BEFORE_SHOWN are on the
- * page while some are kept off.
+ * over. By email to the reviewer (BEFORE_REVIEWERS: Linzi), with a button to the profile.
  */
 async function tellBefores(env, job, kid, { n, waiting, gaveUp, unchecked = 0, looks }) {
   const list = kid?.beforePhotos || [];
@@ -857,7 +861,21 @@ async function tellBefores(env, job, kid, { n, waiting, gaveUp, unchecked = 0, l
   const title = !n && unchecked && !gaveUp.length ? `${possessive(job.name)} before photos: ${plural(unchecked, 'photo')} couldn’t be checked`
     : !n ? `${possessive(job.name)} before photos: ${plural(gaveUp.length, 'photo')} left out`
     : low ? `${possessive(job.name)} before photos are in: ${on} on the page, look over the rest` : `${possessive(job.name)} before photos are in`;
-  await slackPost(env, adminCard({ level: short ? 'warn' : 'info', icon: '📷', title, detail: lines.join(' '), url: adminLink(job.slug), urlLabel: `Open ${possessive(job.name)} profile` }), { kind: short ? 'attention' : 'news' }).catch(() => {});
+  // An email to the reviewer (Linzi), and nothing else: a task for one person goes to their inbox, not a channel
+  if (!emailConfigured(env)) return;
+  const link = adminLink(job.slug);
+  const label = `Review ${possessive(job.name)} before photos`;
+  const html = emailShell({
+    preheader: lines[0] || title,
+    eyebrow: 'Before photos',
+    heading: title,
+    intro: esc(lines[0] || ''),
+    bodyHtml: lines.slice(1).map((l) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;">${esc(l)}</p>`).join('')
+      + `<div style="margin:18px 0 6px;">${button(label, link)}</div>`,
+    footerHtml: `Sent by the website when a reveal’s before photos are in from JobTread and checked. <a href="${esc(link)}" style="color:inherit;">Open the profile in the admin</a>`,
+  });
+  const text = [title, '', ...lines, '', `${label}: ${link}`].join('\n');
+  await sendEmails(env, { to: BEFORE_REVIEWERS, subject: title, html, text, tags: [{ name: 'category', value: 'before-photos-review' }] }).catch(() => null);
 }
 
 /**
@@ -1076,7 +1094,8 @@ export async function runRevealDesigns(env, ctx = {}) {
       else if (retrying > 0 && !got.seen.length) problem = `The site couldn’t look at ${plural(retrying, 'before photo')} of ${possessive(name)} (${got.lastError}). Each is tried again later, and stays off the page until then.`;
       // More to look at, or all looked at now: the next run a minute on (the note and the publish need JobTread). Not
       // saved (the profile kept changing): the same ones are due again
-      soon = !got.capped && !got.outage && (got.seen.length > 0 || got.gaveUp.length > 0 || dueLooks(after, b.looks, now).length > 0);
+      // (One picture that wouldn't load keeps the pace: it rests on its own, and the rest go on a minute later)
+      soon = !got.capped && !got.widely && (got.seen.length > 0 || got.gaveUp.length > 0 || dueLooks(after, b.looks, now).length > 0);
       // (The look's trouble is kept apart from JobTread's, so neither kind of run clears what the other said)
       if (problem) ledger.lookError = { message: problem, at: new Date(now).toISOString() };
       else delete ledger.lookError;

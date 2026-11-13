@@ -138,6 +138,8 @@ globalThis.fetch = async (input, init) => {
   return origFetch(input, init);
 };
 
+// The before-photos review emails (to Linzi), each as its subject, its words and who it went to
+const beforeNotes = (since = 0) => calls.emails.slice(since).flat().filter((m) => (m.tags || []).some((x) => x.value === 'before-photos-review')).map((m) => `${m.subject}\n${m.text}\nto: ${m.to.join(',')}`);
 const photo = (id, extra = {}) => ({ id, name: `CompanyCam ${id}.jpg`, type: 'image/jpeg', url: `https://jt.test/${id}.jpg`, big: `https://jt.test/${id}-big.jpg`, createdAt: `2026-08-01T00:00:${id.slice(1).padStart(2, '0')}Z`, ...extra });
 // Dylan's job: 20 before photos; B7 an iPhone photo JobTread has no JPEG of; B9's JPEG never loads
 const DYLAN_BEFORES = Array.from({ length: 20 }, (_, i) => photo(`B${i}`,
@@ -196,7 +198,7 @@ const AI = {
 
 before(async () => {
   const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
-  env = { DB, AI, JOBTREAD_GRANT_KEY: 'k', CF_ACCOUNT_ID: 'acc', CF_IMAGES_TOKEN: 't', SLACK_WEBHOOK_URL: 'https://hooks.slack.test/x' };
+  env = { DB, AI, JOBTREAD_GRANT_KEY: 'k', CF_ACCOUNT_ID: 'acc', CF_IMAGES_TOKEN: 't', SLACK_WEBHOOK_URL: 'https://hooks.slack.test/x', RESEND_API_KEY: 're_test' };
   await putKid('dylan-2026', { name: 'Dylan', plans: [], beforeAfterPhotos: [] });
   // Max: two before photos waiting in Before & after from before Nov 12 (one from JobTread, one a staff upload), and a whole pair
   await putKid('max', { name: 'Max', plans: [], beforeAfterPhotos: [
@@ -307,10 +309,14 @@ test('a minute on the site looks at those, then the rest come in and are looked 
   assert.equal(byType.proposed.addressCheck, undefined, 'street not found: held off the reveal screen');
   assert.equal(byType.board.source, 'jt:BRD');
   const posts = calls.slack.map((p) => JSON.stringify(p));
-  assert.equal(posts.length, 2);
+  assert.equal(posts.length, 1, 'the design note in Slack; the before photos go to Linzi by email, not Slack');
   assert.ok(posts.some((p) => /Dylan’s design is in/.test(p)));
-  const note = posts.find((p) => /before photos are in/.test(p));
-  assert.match(note, /Dylan’s before photos are in/);
+  assert.ok(!posts.some((p) => /before photos/.test(p)));
+  assert.equal(beforeNotes().length, 1);
+  const note = beforeNotes()[0];
+  assert.match(note, /^Dylan’s before photos are in/);
+  assert.match(note, /to: linzi@soardcharity\.com$/);
+  assert.match(note, /Review Dylan’s before photos: https:\/\/sunshineonaranneyday\.com\/admin\/#kids\/dylan-2026/);
   assert.match(note, /18 before photos from JobTread/);
   assert.match(note, /Photos → Before photos/);
   assert.match(note, /After the site’s check: 16 on the page, 2 kept off \(a person in it, boxes or deliveries\)/);
@@ -334,8 +340,8 @@ test('JobTread’s confirm wakes a run at once (unless one may still be going); 
   // Max, 40 days out: his drawings are looked for at once (his job has none yet), and Slack hears of his before photos
   const m2 = await run(t + 2 * MIN, { wake: true });
   assert.deepEqual([m2.did.slug, m2.did.work, m2.did.missing.join()], ['max', 'drawings', 'as-built,proposed,board']);
-  assert.match(JSON.stringify(calls.slack.at(-1)), /3 more before photos, 5 in all,/);
-  assert.match(JSON.stringify(calls.slack.at(-1)), /After the site’s check: all are on the page/);
+  assert.match(beforeNotes().at(-1), /3 more before photos, 5 in all,/);
+  assert.match(beforeNotes().at(-1), /After the site’s check: all are on the page/);
   assert.equal((await run(t + 3 * MIN, { wake: true })).did, null, 'nothing left to do');
 });
 
@@ -360,7 +366,7 @@ test('what staff take out stays out, what is tagged Before later comes in at the
   assert.equal(calls.ai.length, before + 1);
   assert.equal((await kid('dylan-2026')).beforePhotos.at(-1).looked, 'site');
   await run(NOW + 7 * 3600e3 + 2 * MIN);
-  assert.match(JSON.stringify(calls.slack.at(-1)), /1 more before photo, 18 in all,/);
+  assert.match(beforeNotes().at(-1), /1 more before photo, 18 in all,/);
 });
 
 test('a run stops at its time budget, and the rest come a minute later', async () => {
@@ -438,18 +444,18 @@ test('a photo JobTread never gives is tried again over hours, then left out and 
   // Third try 3 hours after the second (7 h), fourth 12 hours after that: then it's left out
   await run(NOW + 12 * 3600e3);
   assert.equal((await ledger()).kids['dylan-2026'].befores.failed.B9.n, 3);
-  const before = calls.slack.length;
+  const before = calls.emails.length;
   await run(NOW + 24 * 3600e3 + MIN);
   const l = await ledger();
   assert.equal(l.kids['dylan-2026'].befores.failed.B9.n, 4);
   assert.equal(l.kids['dylan-2026'].befores.retryAt, null, 'nothing left to try');
-  const posts = calls.slack.slice(before).map((p) => JSON.stringify(p));
+  const posts = beforeNotes(before);
   assert.equal(posts.length, 1);
   assert.match(posts[0], /Dylan’s before photos: 1 photo left out/);
   assert.match(posts[0], /couldn’t be brought in after several tries \(CompanyCam B9\.jpg\)/);
   // Said once
   await run(NOW + 30 * 3600e3);
-  assert.equal(calls.slack.length, before + 1);
+  assert.equal(beforeNotes(before).length, 1);
 });
 
 test('one taken out after Bring in from JobTread added it never comes back: History remembers it', async () => {
@@ -696,7 +702,7 @@ test('Workers AI at its spending cap: nothing counted, the looks rest, Automatio
   assert.match((await ledger()).kids.vic.page, /\|3\|0$/, 'and published again with them, the run after');
 });
 
-test('a photo the model can’t answer for, or Cloudflare no longer has, is tried again over a day, off the page meanwhile, then kept off as couldn’t be checked, and Slack says so; Cloudflare down counts against none and holds nothing up', async () => {
+test('a photo the model can’t answer for, or Cloudflare no longer has, is tried again over a day, off the page meanwhile, then kept off as couldn’t be checked, and Linzi hears by email; Cloudflare down counts against none and holds nothing up', async () => {
   await onlyDue();
   await putKid('wes', { name: 'Wes', plans: [], beforePhotos: [] });
   SOURCES.wes = { ...SOURCES.max, kid: { slug: 'wes', name: 'Wes' }, job: { id: 'JOB16', name: 'Wes (2026)' }, befores: ['W0', 'W1', 'W2'].map((id) => photo(id)) };
@@ -707,7 +713,7 @@ test('a photo the model can’t answer for, or Cloudflare no longer has, is trie
   sees = (picture) => (/companycam-w1\./.test(picture) ? null : /companycam-w2\./.test(picture) ? { ...NO, person: true } : NO);
   try {
     await run(T, { reveals });
-    const before = calls.slack.length;
+    const before = calls.emails.length;
     // Cloudflare Images down for the look: nothing counted, each rests a quarter hour, Automations says so, no note yet
     const down = async (input, init) => ((typeof input === 'string' ? input : input.url).startsWith('https://imagedelivery.net/') ? new Response('busy', { status: 503 }) : fetchImpl(input, init));
     const r = await run(T + MIN + 1000, { reveals, fetchImpl: down });
@@ -716,7 +722,7 @@ test('a photo the model can’t answer for, or Cloudflare no longer has, is trie
     assert.ok(Object.values(l.kids.wes.befores.looks).every((x) => !x.outs && !x.n && x.wait === T + MIN + 1000 + 30 * MIN), `the service’s trouble counts against none, not even a rest, and they wait out the look’s rest and a quarter hour (other photos first): ${JSON.stringify(l.kids.wes.befores.looks)}`);
     assert.match(l.lookError.message, /Wes’ before photos are waiting to be looked at: Cloudflare Images answered 503/);
     assert.equal(l.lookRest, T + MIN + 1000 + 15 * MIN, 'every picture refused: the service’s trouble, so the whole look rests');
-    assert.equal(calls.slack.length, before, 'no note while none has really been looked at');
+    assert.equal(beforeNotes(before).length, 0, 'no note while none has really been looked at');
     // Resting: the run's other work goes on meanwhile
     assert.equal((await run(T + 12 * MIN, { reveals })).did.work, 'drawings');
     const r2 = await run(T + 32 * MIN, { reveals });
@@ -729,8 +735,8 @@ test('a photo the model can’t answer for, or Cloudflare no longer has, is trie
     assert.deepEqual([l.kids.wes.befores.looks[w1.url].n, l.kids.wes.befores.looks[w1.url].outs], [1, undefined]);
     // The note goes with the run after (it reads JobTread)
     await run(T + 33 * MIN, { reveals });
-    let post = JSON.stringify(calls.slack.slice(before));
-    assert.equal(calls.slack.length, before + 1);
+    let post = beforeNotes(before).join('\n');
+    assert.equal(beforeNotes(before).length, 1);
     assert.match(post, /Wes’ before photos are in: 1 on the page, look over the rest/);
     assert.match(post, /After the site’s check \(2 of 3 looked at\): 1 on the page, 1 kept off \(a person in it\)/);
     assert.match(post, /1 photo couldn’t be looked at, so it stays off the page while the site tries again over the next day/);
@@ -747,12 +753,12 @@ test('a photo the model can’t answer for, or Cloudflare no longer has, is trie
     assert.deepEqual([w1b.looked, w1b.offPage, w1b.offWhy], ['site', true, 'Couldn’t be checked'], 'kept off for good, with why, for staff to switch on');
     assert.equal((await ledger()).kids.wes.befores.looks[w1.url], undefined);
     await run(gave.at + MIN, { reveals });
-    post = JSON.stringify(calls.slack.at(-1));
-    assert.equal(calls.slack.length, before + 2);
+    post = beforeNotes(before).at(-1);
+    assert.equal(beforeNotes(before).length, 2);
     assert.match(post, /Wes’ before photos: 1 photo couldn’t be checked/);
     assert.match(post, /The site couldn’t check 1 photo after a day of tries, so it’s kept off the page/);
     assert.notEqual((await run(T + 40 * 3600e3, { reveals })).did?.work, 'look', 'nothing left to look at');
-    assert.equal(calls.slack.length, before + 2, 'said once');
+    assert.equal(beforeNotes(before).length, 2, 'said once');
   } finally { sees = was; }
   // A picture Cloudflare no longer has is that photo's own: counted, and the run goes on
   await putKid('yan', { name: 'Yan', plans: [], beforePhotos: [{ url: pic('yan', 'y0-gone'), alt: '', room: '' }, { url: pic('yan', 'y1'), alt: '', room: '' }] });
@@ -842,14 +848,14 @@ test('one JobTread file that keeps failing never holds the page or the note: the
     const reveals = [{ slug: 'fay', name: 'Fay', startsAt: new Date(T + 4 * DAY).toISOString(), confirmed: true, jobId: 'JOB23' }];
     const bad = async (input, init) => ((typeof input === 'string' ? input : input.url).includes('/F0-big') ? new Response('oops', { status: 502 }) : fetchImpl(input, init));
     const go = (t) => runRevealDesigns(env2, { fetchImpl: bad, now: t, clock: () => 0, reveals, sources: async (slug) => SOURCES[slug], browser: fakeBrowser, keepBrowser: true, readAsset: async () => '' });
-    const before = calls.slack.length;
+    const before = calls.emails.length;
     // Within the hour: the others in and looked at, the page published and Slack told, F0 waiting
     for (let i = 0, t = T; i < 6; i++, t += 16 * MIN) await go(t);
     assert.deepEqual((await kid('fay')).beforePhotos.map((p) => [p.source, p.looked]).sort(), [['jt:F1', 'site'], ['jt:F2', 'site']]);
     const l = await ledger();
     assert.deepEqual([l.kids.fay.befores.owed, l.kids.fay.befores.waiting], [0, 1]);
     assert.ok(hooks.length >= 1, 'published, not held for F0');
-    assert.match(JSON.stringify(calls.slack.slice(before)), /Fay’s before photos are in.*1 more couldn’t be brought in yet/);
+    assert.match(beforeNotes(before).join('\n'), /Fay’s before photos are in[\s\S]*1 more couldn’t be brought in yet/);
   } finally {
     globalThis.fetch = was;
   }
@@ -1355,4 +1361,24 @@ test('JobTread’s reveals read a few minutes ago aren’t read again (the run�
   assert.equal(woke.skipped, 'not yet', 'a run is still going');
   await go(T + 10 * MIN);
   assert.ok(reads > before, 'the next run reads them fresh');
+});
+
+test('one picture that won’t load in a look stops nothing: the photos after it are looked at in the same run, and the next run comes a minute on', async () => {
+  await onlyDue();
+  await putKid('kai', { name: 'Kai', plans: [], beforePhotos: ['k0-stuck', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6'].map((n) => ({ url: pic('kai', n), alt: '', room: '' })) });
+  const T = NOW + 510 * 3600e3;
+  const l0 = await ledger();
+  delete l0.lastDown;
+  delete l0.lookRest;
+  delete l0.yieldLook;
+  await env.DB.prepare('UPDATE site_config SET data = ? WHERE key = ?').bind(JSON.stringify(l0), AUTO_KEY).run();
+  // Cloudflare's resizer chokes on the first one (a 503 for it alone)
+  const stuck = async (input, init) => ((typeof input === 'string' ? input : input.url).includes('k0-stuck') ? new Response('busy', { status: 503 }) : fetchImpl(input, init));
+  const r = await runRevealDesigns(env, { fetchImpl: stuck, now: T, clock: () => 0, reveals: [], sources: async (slug) => SOURCES[slug], browser: fakeBrowser, keepBrowser: true, readAsset: async () => '', force: true });
+  assert.deepEqual([r.did.slug, r.did.work, r.did.looked], ['kai', 'look', 6], 'the six after it, all in the same run');
+  const k = await kid('kai');
+  assert.deepEqual(k.beforePhotos.map((p) => !!p.looked).join(), 'false,true,true,true,true,true,true');
+  const l = await ledger();
+  assert.equal(l.kids.kai.befores.looks[pic('kai', 'k0-stuck')].outs, 1, 'it rests on its own');
+  assert.ok(!(l.lookRest > T), 'the look as a whole doesn’t rest');
 });
