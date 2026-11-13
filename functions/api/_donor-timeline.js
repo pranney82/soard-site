@@ -597,10 +597,12 @@ async function readQuo(env, subject, { fetchImpl, now, run, after = null }) {
       reads.push(run(() => quoGet(env, `/messages?${new URLSearchParams({ to: p, limit: '50' })}`, fetchImpl)));
     }
     const [c, ...m] = await Promise.all(reads);
-    const lines = [
-      ...(c?.data || []).map((x) => callLine(x, { users: dir.users, numbers: dir.numbers, phones })),
-      ...textLines(m.flatMap((x) => x?.data || []), { users: dir.users }),
-    ];
+    // Only what involves their numbers, whatever Quo answered (were it ever to ignore the filter, another person's call
+    // and Quo's summary of it would be on this page)
+    const theirs = (n) => phones.includes(typeof n === 'string' ? n : n?.phoneNumber);
+    const theirCalls = (c?.data || []).filter((x) => (x.participants || []).some(theirs));
+    const theirTexts = m.flatMap((x) => x?.data || []).filter((x) => theirs(x.from) || [].concat(x.to || []).some(theirs));
+    const lines = [...theirCalls.map((x) => callLine(x, { users: dir.users, numbers: dir.numbers, phones })), ...textLines(theirTexts, { users: dir.users })];
     return { state: 'ok', phones, lines, next: c?.nextCursor || null, ...(partly ? { note: partly } : {}) };
   } catch (e) {
     return { state: 'error', note: e.message, lines: [] };

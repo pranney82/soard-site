@@ -285,14 +285,16 @@ function fakeWorld({ gmailDown = null, quo = true } = {}) {
       if (u.pathname === '/phone-numbers') return Response.json({ data: [{ id: 'PN1', name: 'Main line', number: '+14045550100' }], nextCursor: null });
       if (u.pathname === '/calls') {
         if (u.searchParams.get('participant[in]') !== '+14045550123') return Response.json({ data: [], nextCursor: null });
-        return Response.json({ data: [{ id: 'AC1234567', direction: 'outgoing', status: 'completed', answeredAt: new Date(NOW - 4 * DAY).toISOString(), initiatedBy: 'US1', phoneNumberId: 'PN1', createdAt: new Date(NOW - 4 * DAY).toISOString(), duration: 180,
+        return Response.json({ data: [{ id: 'AC9999999', direction: 'incoming', status: 'completed', createdAt: new Date(NOW - 4 * DAY).toISOString(), duration: 60, participants: [{ phoneNumber: '+19995550000' }, { phoneNumber: '+14045550100' }], summary: { summary: ['Someone else’s call'] } }, { id: 'AC1234567', direction: 'outgoing', status: 'completed', answeredAt: new Date(NOW - 4 * DAY).toISOString(), initiatedBy: 'US1', phoneNumberId: 'PN1', createdAt: new Date(NOW - 4 * DAY).toISOString(), duration: 180,
           participants: [{ phoneNumber: '+14045550100' }, { phoneNumber: '+14045550123' }] }], nextCursor: null });
       }
       if (u.pathname === '/calls/AC1234567') return Response.json({ data: { id: 'AC1234567', participants: [{ phoneNumber: '+14045550100' }, { phoneNumber: '+14045550123' }] } });
       if (u.pathname === '/calls/AC0404040') return Response.json({ message: 'Not found' }, { status: 404 });
       if (u.pathname === '/calls/AC7654321') return Response.json({ data: { id: 'AC7654321', participants: [{ phoneNumber: '+14045550100' }, { phoneNumber: '+17705550199' }] } });
       if (u.pathname === '/calls/AC1234567/transcripts') return Response.json({ data: [{ status: 'completed', dialogue: [{ content: 'Hi Jane', actorId: 'US1', identifier: '+14045550100', start: 0, end: 1 }, { content: 'Hi!', actorId: null, identifier: '+14045550123', start: 1, end: 2 }] }], nextCursor: null });
-      if (u.pathname === '/messages') return Response.json({ data: u.searchParams.get('from') ? [{ id: 'MS1', conversationId: 'CN1', direction: 'incoming', text: 'Thank you!', createdAt: new Date(NOW - 6 * DAY).toISOString() }] : [], nextCursor: null });
+      // A text of someone else's in the answer too: the site keeps only theirs, whatever Quo sends
+      if (u.pathname === '/messages') return Response.json({ data: u.searchParams.get('from') ? [{ id: 'MS1', conversationId: 'CN1', direction: 'incoming', from: '+14045550123', to: ['+14045550100'], text: 'Thank you!', createdAt: new Date(NOW - 6 * DAY).toISOString() },
+        { id: 'MS9', conversationId: 'CN9', direction: 'incoming', from: '+19995550000', to: ['+14045550100'], text: 'Someone else', createdAt: new Date(NOW - 6 * DAY).toISOString() }] : [], nextCursor: null });
     }
     if (url.startsWith('https://api.resend.com/emails/')) return Response.json({ id: 'x', html: '<p>Save the date</p>' });
     throw new Error(`unexpected fetch ${url}`);
@@ -338,7 +340,8 @@ test('a person’s timeline: email with the team (once each), meetings, calls an
   assert.deepEqual(by('email').map((x) => x.title).sort(), ['Our gift', 'Thank you'], 'Pat’s email in two mailboxes is one line; the email that isn’t hers isn’t there');
   assert.equal(by('email').find((x) => x.title === 'Thank you').mailbox, 'pat@soardcharity.com', 'opened from the sender’s copy');
   assert.deepEqual(by('meeting').map((x) => x.title).sort(), ['Coffee with Jane', 'Long ago', 'Site visit'], 'every page of the calendar');
-  assert.equal(by('call').length, 1);
+  assert.equal(by('call').length, 1, 'another person’s call in Quo’s answer isn’t theirs');
+  assert.ok(!v.items.some((x) => /Someone else/.test(`${x.detail || ''} ${(x.summary || []).join(' ')}`)), 'nor another person’s text');
   assert.equal(by('call')[0].by, 'Pat Lee');
   assert.equal(by('text').length, 1);
   assert.deepEqual(by('site').map((x) => x.title), ['Save the date: Ava’s reveal'], 'a staff alert to her address isn’t one of hers; another person’s email isn’t');
