@@ -12,7 +12,7 @@ import {
   changeTask, addTask, fileName, CONNECT_URL, CALLBACK,
 } from '../functions/api/_field.js';
 import { TOOLS, callTool } from '../functions/api/_mcp-tools.js';
-import { readResource } from '../functions/api/_mcp/guide.js';
+import { readResource, complete, PROMPTS } from '../functions/api/_mcp/guide.js';
 import { PHOTO_URI, SCHEDULE_URI } from '../functions/api/_mcp/field.js';
 import { groups, groupOf, dayLabel, spanLabel, changeWords, undoOf, weekOf } from '../public/mcp-app/schedule-1.js';
 import * as fieldAdmin from '../functions/api/field-admin.js';
@@ -396,6 +396,24 @@ test('the schedule window says a change in plain words, and its Undo puts back o
   assert.deepEqual(undoOf(t, { taskId: t.id, startDate: '2026-11-20', endDate: '2026-11-22' }), { taskId: t.id, startDate: '2026-11-16', endDate: '2026-11-18' });
   assert.deepEqual(undoOf(t, { taskId: t.id, done: true }), { taskId: t.id, done: false });
   assert.equal(undoOf({ ...t, start: null, end: null }, { taskId: t.id, startDate: '2026-11-20' }), null, 'JobTread can’t take dates away from here');
+});
+
+test('the + menu’s field shortcuts: tap one, say the job; the job is suggested from their own JobTread', async () => {
+  const by = Object.fromEntries(PROMPTS.map((p) => [p.name, p]));
+  assert.deepEqual(['field_photos', 'field_log', 'field_tasks', 'field_connect'].map((n) => by[n].title), ['Add photos to a job', 'Write today’s daily log', 'A job’s schedule', 'Connect my JobTread']);
+  const said = (n, a) => by[n].get(a).messages[0].content.text;
+  assert.equal(said('field_photos', { job: 'Lizzie' }), 'Open the photo box for my daily log on Lizzie today.');
+  assert.equal(said('field_log', { job: 'Lizzie', what: 'Hung drywall in the bathroom.' }), 'Save this as my daily log on Lizzie today, in my words: Hung drywall in the bathroom.');
+  assert.match(said('field_log', { job: 'Lizzie' }), /Ask me what happened/);
+  assert.equal(said('field_tasks', { job: 'Lizzie' }), 'Show me Lizzie’s schedule.');
+  assert.ok(PROMPTS.every((p) => !/schedule/.test(p.name)));
+  const ask = (value) => complete(env, { ref: { type: 'ref/prompt', name: 'field_photos' }, argument: { name: 'job', value } }, ME);
+  assert.deepEqual(await ask('liz'), [], 'not connected: nothing suggested');
+  await connectChristian();
+  assert.deepEqual(await ask('liz'), ['Lizzie Francis (2026)']);
+  assert.deepEqual(await ask('max'), ['Max Daniel (2026)', 'Maxwell Stone (2026)']);
+  assert.deepEqual(await ask('max d'), ['Max Daniel (2026)']);
+  assert.equal((await ask('')).length, 4, 'every open job');
 });
 
 // ─── The admin side ───

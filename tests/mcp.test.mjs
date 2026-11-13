@@ -276,7 +276,7 @@ test('a 2026 request’s headers must match its body; an unknown method is a 404
 test('prompts: the + menu’s starting points, each only telling Claude what to do with the tools', async () => {
   const list = await rpc('prompts/list');
   const names = list.body.result.prompts.map((p) => p.name);
-  assert.deepEqual(names, ['event_recap', 'monthly_impact', 'new_email', 'reveal_prep', 'thank_donors', 'this_week', 'update_page']);
+  assert.deepEqual(names, ['event_recap', 'monthly_impact', 'new_email', 'reveal_prep', 'thank_donors', 'this_week', 'field_photos', 'field_log', 'field_tasks', 'field_connect', 'update_page']);
   for (const p of list.body.result.prompts) { assert.ok(p.title && p.description, p.name); assert.ok(Array.isArray(p.arguments), p.name); }
   const got = await rpc('prompts/get', { name: 'event_recap', arguments: { event: 'gala' } });
   const said = got.body.result.messages[0].content.text;

@@ -13,6 +13,7 @@ import { kidName, tidy, stripHtml, roomNames } from '../_reveal-invite-email.js'
 import { PREVIEW_URI, APP_MIME, PREVIEW_CSP, previewHtml } from './preview.js';
 import { PHOTO_URI, PHOTO_CSP, photoBoxHtml, SCHEDULE_URI, SCHEDULE_CSP, scheduleHtml } from './field.js';
 import { SITE_URL, SLUG } from './core.js';
+import { asPerson, openJobs } from '../_field.js';
 
 export const VOICE = [
   '# How SOARD writes',
@@ -52,6 +53,8 @@ const ask = (t) => ({ messages: [{ role: 'user', content: text(t) }] });
 
 // ── Prompts ───────────────────────────────────────────────────────────────
 
+const JOB_ARG = Object.freeze({ name: 'job', description: 'The job: the kid’s name (“Lizzie”)', required: true });
+
 export const PROMPTS = Object.freeze([
   { name: 'event_recap', title: 'An event’s recap email', description: 'Write the recap email for an event, in its own colors, from its photos and numbers.',
     arguments: [{ name: 'event', description: 'The event (part of its name or its page name)', required: true }],
@@ -74,6 +77,19 @@ export const PROMPTS = Object.freeze([
   { name: 'this_week', title: 'This week at SOARD', description: 'A short briefing: reveals ahead, gifts, checks and families waiting, papers expiring, what isn’t published.',
     arguments: [],
     get: () => ask('Give me a short briefing on this week at SOARD: upcoming_reveals (the next two weeks), recent_gifts (last 7 days, the total and the biggest), checks_waiting, find_families (anyone who replied and is waiting on us), vendor_papers (missing or expiring), changes_not_live, automations (anything that needs a look), and recent_changes (the last 2 days). Headlines first, one line each, then anything that needs someone today. Don’t change anything.') },
+  // Field work: tap one, say the job, done (Peter, Nov 13: "i need like super easy prompts")
+  { name: 'field_photos', title: 'Add photos to a job', description: 'The photo box for a job’s daily log today: take or pick photos, and they go onto your log in JobTread under your name.',
+    arguments: [JOB_ARG],
+    get: ({ job }) => ask(`Open the photo box for my daily log on ${job} today.`) },
+  { name: 'field_log', title: 'Write today’s daily log', description: 'Say what happened on a job today: it goes onto your daily log in JobTread in your words, and the photo box opens for photos.',
+    arguments: [JOB_ARG, { name: 'what', description: 'What happened (leave it out and Claude asks)', required: false }],
+    get: ({ job, what }) => ask(what ? `Save this as my daily log on ${job} today, in my words: ${what}` : `I want to write today’s daily log on ${job}. Ask me what happened, then save it in my words.`) },
+  { name: 'field_tasks', title: 'A job’s schedule', description: 'What’s late and coming up on a job, in a window: tap a task to move it, mark it done or change who it’s on, then Save.',
+    arguments: [JOB_ARG],
+    get: ({ job }) => ask(`Show me ${job}’s schedule.`) },
+  { name: 'field_connect', title: 'Connect my JobTread', description: 'Connect your own JobTread once, so your logs, photos and schedule changes show your name.',
+    arguments: [],
+    get: () => ask('Is my JobTread connected? If it isn’t, give me the link to connect it.') },
   { name: 'update_page', title: 'Update a page’s words', description: 'Change the words on a kid’s page, an event, an article or a partner.',
     arguments: [{ name: 'page', description: 'Which page (part of its name)', required: true }, { name: 'change', description: 'What to change', required: false }],
     get: ({ page, change }) => ask(`Find the page “${page}” with find_pages and read it with get_page.${change ? ` I want to: ${change}.` : ''} Suggest the new words in SOARD’s voice and show me exactly what changes, field by field. Save with edit_page only after I say so, and remind me it goes live when someone presses Publish in the admin.`) },
@@ -138,9 +154,16 @@ export async function readResource(env, uri) {
   return t === null ? null : [{ uri, mimeType: 'text/markdown', text: t }];
 }
 
-/** completion/complete: page names for a prompt's kid or event, and the resource templates' slug */
-export async function complete(env, { ref, argument }) {
+/** completion/complete: page names for a prompt's kid or event, the resource templates' slug, and a job (from the person's own JobTread) */
+export async function complete(env, { ref, argument }, email = '') {
   const value = String(argument?.value || '').toLowerCase();
+  if (argument?.name === 'job') {
+    // Their own JobTread's open jobs; not connected yet: no suggestions, and the name they type still works
+    const p = await asPerson(env, email).catch(() => null);
+    if (!p) return [];
+    const words = value.split(/\s+/).filter(Boolean);
+    return (await openJobs(p)).map((j) => j.name).filter((n) => words.every((w) => n.toLowerCase().split(/[^a-z0-9]+/).some((x) => x.startsWith(w)))).slice(0, 100);
+  }
   const which = ref?.type === 'ref/resource' ? (String(ref.uri || '').startsWith('soard://events/') ? 'event' : 'kid')
     : argument?.name === 'event' ? 'event' : argument?.name === 'kid' || argument?.name === 'page' ? 'kid' : null;
   if (argument?.name === 'month') {

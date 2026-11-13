@@ -134,7 +134,7 @@ export async function answer(msg, env, email, now = Date.now(), { waitUntil } = 
       return cached({ contents });
     }
     case 'completion/complete': {
-      const values = await complete(env, params).catch(() => []);
+      const values = await complete(env, params, email).catch(() => []);
       return ok({ completion: { values: values.slice(0, 100), total: values.length, hasMore: values.length > 100 } });
     }
     default:
