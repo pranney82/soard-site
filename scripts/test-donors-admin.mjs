@@ -171,6 +171,11 @@ async function showShot(page, name, height = 1000) {
   await wait(200);
 }
 const textOf = (page, sel) => page.$eval(sel, (e) => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
+// The timeline's lines of one kind (a page's gifts, notes, the team's changes), as one text
+const linesText = (page, kinds) => page.$$eval(kinds.map((k) => `.dn-tl__item[data-kind="${k}"]`).join(', '), (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()).join(' | ')).catch(() => '');
+const giftsText = (page) => linesText(page, ['gift']);
+const notesText = (page) => linesText(page, ['note']);
+const teamText = (page) => linesText(page, ['team', 'thanks']);
 const rowNames = (page) => page.$$eval('.dn-table tbody .dn-name', (els) => els.map((e) => e.textContent.trim()));
 async function axe(page, label) {
   await wait(300);
@@ -222,18 +227,38 @@ try {
 
   console.log('A donor');
   await page.evaluate(() => [...document.querySelectorAll('.dn-name')].find((b) => b.textContent.trim() === 'Jane Doe')?.click());
-  await page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   ok((await page.evaluate(() => location.hash)) === '#donors/ct_jane', 'her page has an address of its own: her Zeffy contact');
   const tiles = await page.$$eval('.dn-tile', (t) => t.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
   ok(tiles.some((t) => /^Largest gift\s*\$10,000/.test(t)) && tiles.some((t) => /^Years in a row\s*3$/.test(t)), `the $10,000 taken in three charges is one gift; three years in a row (${tiles.join(' | ')})`);
-  const gifts = await textOf(page, '.dn-gifts');
+  const gifts = await giftsText(page);
   ok(/in 3 charges/.test(gifts) && !/Acme/.test(gifts) && /through Fidelity Charitable/.test(gifts) && /Makeovers/.test(gifts) && !/Kyle/.test(gifts), 'each gift says how it came; a kid’s campaign reads Makeovers; the Acme gift is Acme’s');
   ok(/Gave \$12,000 for Acme Builders/.test(await textOf(page, '.kd-rail')), 'what she gave for Acme shows on her page, counted for them');
-  const links = await page.$$eval('.dn-gifts a', (a) => a.map((x) => [x.textContent.trim(), x.getAttribute('href')]));
+  const links = await page.$$eval('.dn-tl__item[data-kind="gift"] a', (a) => a.map((x) => [x.textContent.trim(), x.getAttribute('href')]));
   ok(links.filter(([t]) => t === 'Open in Zeffy').every(([, h]) => /\/o\/all-payments\?transactionId=jane_/.test(h)) && links.filter(([t]) => t === 'Open in Zeffy').length === 5, 'every gift opens its own record in Zeffy');
   ok(links.some(([t, h]) => t === 'See the check in Mercury' && h === 'https://app.mercury.com/transactions/t1'), 'the check links its deposit in Mercury');
   ok(await page.$eval('.kd-rail a.btn', (a) => a.getAttribute('href')).then((h) => /\/o\/crm\/contacts\?contactId=ct_jane$/.test(h)).catch(() => false), 'Open in Zeffy opens her contact');
   ok(/Kit isn’t connected/.test(await textOf(page, '.kd-rail')), 'the newsletter line says when Kit can’t be asked');
+  // The timeline: in place of Gifts, Notes and History
+  ok(!(await page.$('.kd-card--history')) && !(await page.$('#dn-gifts-h')) && /^Timeline/.test(await textOf(page, '.dn-tl__head')), 'one Timeline in place of Gifts, Notes and History');
+  await page.waitForFunction(() => /Read /.test(document.querySelector('.dn-tl__state')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+  ok(/Gmail, Google Calendar, Quo, Kit aren’t connected yet/.test(await textOf(page, '.dn-tl__notices')), `what can’t be read here says so, rather than the timeline looking quiet (${await textOf(page, '.dn-tl__notices')})`);
+  const tlPills = await page.$$eval('.dn-tl__filters .pill', (b) => b.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
+  ok(tlPills[0].startsWith('Everything') && tlPills.some((p) => /^Gifts \d+$/.test(p)), `filters with counts (${tlPills.join(' · ')})`);
+  ok(/In the last 12 months: \d+ gifts? \(\$[\d,]+\)/.test(await textOf(page, '.dn-gl__said')) && !!(await page.$('.dn-gl__svg')), `At a glance: the year in a sentence, and the strip (${await textOf(page, '.dn-gl__said')})`);
+  await page.evaluate(() => document.querySelector('.dn-gl__svg')?.focus());
+  await page.keyboard.press('End');
+  await wait(100);
+  const dayWords = await textOf(page, '.dn-gl__day');
+  ok(/\d{4}: /.test(dayWords) && /Show in the list/.test(dayWords), `the strip by keys: End is the latest day, said in words (${dayWords})`);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.dn-tl__item.is-flash', { timeout: 3000 }).catch(() => {});
+  ok(!!(await page.$('.dn-tl__item.is-flash')), 'Enter shows that day in the list, marked');
+  await page.evaluate(() => [...document.querySelectorAll('.dn-tl__filters .pill')].find((b) => b.textContent.trim().startsWith('Gifts'))?.click());
+  await wait(150);
+  ok(await page.$$eval('.dn-tl__item', (els) => els.length > 0 && els.every((e) => ['gift', 'thanks'].includes(e.dataset.kind))), 'Gifts: only the gifts (and their thank-yous)');
+  await page.evaluate(() => [...document.querySelectorAll('.dn-tl__filters .pill')].find((b) => b.textContent.trim().startsWith('Everything'))?.click());
+  await wait(150);
   await page.screenshot({ path: join(OUT, 'donor.png'), fullPage: true });
   await page.evaluate(() => window.scrollTo(0, 0));
   await showShot(page, '4-a-person', 1100);
@@ -253,7 +278,7 @@ try {
   const scrollBefore = await page.evaluate(() => window.scrollY);
   await page.evaluate((n) => [...document.querySelectorAll('.dn-name')].find((b) => b.textContent.trim() === n)?.focus(), far);
   await page.keyboard.press('Enter');
-  await page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   await wait(300);
   ok(await page.evaluate((n) => document.activeElement?.tagName === 'H2' && document.activeElement.textContent.startsWith(n), far), 'opening a donor puts the focus on their name');
   await page.evaluate(() => document.querySelector('.dn-back')?.click());
@@ -265,7 +290,7 @@ try {
 
   console.log('Links in');
   await page.goto(`${origin}/admin/#donors/gift/jane_split_b`, { waitUntil: 'networkidle2' });
-  await page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   ok((await page.evaluate(() => location.hash)) === '#donors/ct_jane', 'a link to one charge of a gift opens its donor, at her own address');
   ok(await page.evaluate(() => !!document.querySelector('[data-gifts~="jane_split_b"]')), 'the gift it named is on the page');
   await page.goto(`${origin}/admin/#donors`, { waitUntil: 'networkidle2' });
@@ -274,10 +299,10 @@ try {
   await page.keyboard.type('sam lee');
   await wait(200);
   await page.evaluate(() => document.querySelector('.dn-name')?.click());
-  await page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   ok((await page.evaluate(() => location.hash)) === '#donors/gift/sam_1', 'a donor Zeffy has no contact for is addressed by a gift, never their email');
   await wait(300);
-  ok(await page.evaluate(() => document.activeElement?.tagName === 'H2' && /Sam Lee/.test(document.activeElement.textContent) && !document.querySelector('.dn-gift.is-flash')), 'opened from the list: the focus on their name, no gift flashed');
+  ok(await page.evaluate(() => document.activeElement?.tagName === 'H2' && /Sam Lee/.test(document.activeElement.textContent) && !document.querySelector('.dn-tl__item.is-flash')), 'opened from the list: the focus on their name, no gift flashed');
   ok(!calls.some((c) => /%40|@/.test(c)), 'no email ever goes in a request to the site');
   ok(/Zeffy has no contact for these gifts/.test(await textOf(page, '.kd-rail')), 'and their page says Zeffy has no contact');
   await page.goto(`${origin}/admin/#job-costs/checks`, { waitUntil: 'networkidle2' });
@@ -288,13 +313,13 @@ try {
   ok((await page.evaluate(() => location.hash)) === '#donors/org/p%3Aacme', 'a gift link from Slack for a gift that counts for Acme opens Acme');
 
   console.log('An organization');
-  await page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   ok(/Acme Builders/.test(await textOf(page, '.dn-head h2')) && /Friend partner/.test(await textOf(page, '.dn-head h2')), 'its name and where it is on the website');
   await page.waitForFunction(() => document.activeElement?.tagName === 'H2', { timeout: 3000 }).catch(() => {});
   ok(await page.evaluate(() => document.activeElement?.tagName === 'H2'), 'the focus on its name');
   const names = await textOf(page, '[aria-labelledby="dn-names-h"]');
   ok(/Acme Builders/.test(names) && /the same name, linked by itself/.test(names), `the Zeffy names it gives under, and why (${names.slice(0, 120)})`);
-  ok(/Jane Doe/.test(await textOf(page, '[aria-labelledby="dn-people-h"]')) && /from Jane Doe/.test(await textOf(page, '.dn-gifts')), 'who gave for it, on the page and on each gift');
+  ok(/Jane Doe/.test(await textOf(page, '[aria-labelledby="dn-people-h"]')) && /from Jane Doe/.test(await giftsText(page)), 'who gave for it, on the page and on each gift');
   ok(/Gave \$12,000 in the last 12 months/.test(await textOf(page, '.dn-suggest')), 'a Funding partner giving $10,000 in 12 months: Champion is suggested');
   await page.screenshot({ path: join(OUT, 'org.png'), fullPage: true });
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -350,7 +375,7 @@ try {
 
   console.log('Put on the website');
   await page.evaluate(() => [...document.querySelectorAll('.dn-name')].find((b) => b.textContent.trim() === 'Ivers Foundation')?.click());
-  await page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   ok(/Not on the website/.test(await textOf(page, '.dn-head h2')), 'kept here, not on the website');
   await page.waitForFunction(() => document.activeElement?.tagName === 'H2', { timeout: 3000 }).catch(() => {});
   ok(await page.evaluate(() => document.activeElement?.tagName === 'H2' && /Ivers/.test(document.activeElement.textContent)), 'opened from the list: the focus on its name');
@@ -369,7 +394,7 @@ try {
 
   console.log('Rename and take out');
   await page.goto(`${origin}/admin/#donors/ct_lee`, { waitUntil: 'networkidle2' });
-  await page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   ok(/Gave \$800 for Pella/.test(await textOf(page, '.kd-rail')) && /Gave \$300 for Sample Builders/.test(await textOf(page, '.kd-rail')), 'Lee: what counts for Pella, and a company name not linked yet');
   // Link to…: every organization, read from the site (the ones kept here too)
   await page.evaluate(() => [...document.querySelectorAll('.kd-rail button')].find((b) => /Link to/.test(b.textContent))?.click());
@@ -384,7 +409,7 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => /Sample Builders is an organization here/.test(t.textContent)), { timeout: 6000 }).catch(() => {});
   await page.evaluate(() => [...document.querySelectorAll('.toast')].filter((t) => /Sample Builders is an organization here/.test(t.textContent)).at(-1)?.querySelectorAll('button').forEach((b) => { if (b.textContent.trim() === 'Open') b.click(); }));
   await page.waitForFunction(() => /Sample Builders/.test(document.querySelector('.dn-head h2')?.textContent || ''), { timeout: 8000 }).catch(() => {});
-  await page.waitForFunction(() => /Sample Builders/.test(document.querySelector('.dn-head h2')?.textContent || '') && !!document.querySelector('.dn-gifts'), { timeout: 8000 }).catch(() => {});
+  await page.waitForFunction(() => /Sample Builders/.test(document.querySelector('.dn-head h2')?.textContent || '') && !!document.querySelector('.dn-tl__list'), { timeout: 8000 }).catch(() => {});
   await page.evaluate(() => [...document.querySelectorAll('.kd-rail button')].find((b) => b.textContent.trim() === 'Rename')?.click());
   await page.waitForSelector('#dn-rename-input', { timeout: 4000 });
   await wait(150);
@@ -414,7 +439,7 @@ try {
   ok((await page.evaluate(() => location.hash)) === '#donors', 'and Donors brings it back');
   console.log('Same person as…');
   await page.goto(`${origin}/admin/#donors/ct_fill_120`, { waitUntil: 'networkidle2' });
-  await page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   await page.evaluate(() => [...document.querySelectorAll('.kd-rail button')].find((b) => /Same person as another donor/.test(b.textContent))?.click());
   await page.waitForSelector('.dn-picker', { timeout: 4000 });
   await wait(150);
@@ -482,48 +507,48 @@ try {
   await page.waitForFunction(() => location.hash === '#donors/ct_tom', { timeout: 6000 }).catch(() => {});
   ok((await page.evaluate(() => location.hash)) === '#donors/ct_tom', 'Open goes to his page, at his own address');
   ok(/To thank 1/.test(await textOf(page, '.dn-thank')) && /\$2,000/.test(await textOf(page, '.dn-thank')), 'his page says what to thank him for, at the top');
-  ok(/To thank/.test(await textOf(page, '.dn-gifts')), 'and the gift says so too');
+  ok(/To thank/.test(await giftsText(page)), 'and the gift says so too');
   // Owner
   const ownerOptions = await page.$$eval('#dn-owner-pick option', (o) => o.map((x) => x.textContent.trim()));
   ok(JSON.stringify(ownerOptions) === JSON.stringify(['No one yet', 'Alex Rivera', 'Jordan Hale']), `the team to pick from, not the site’s own account (${ownerOptions.join(', ')})`);
   await page.select('#dn-owner-pick', 'alex@soardcharity.com');
-  await page.waitForFunction(() => /Looked after by Alex Rivera/.test(document.querySelector('.kd-card--history')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+  await page.waitForFunction(() => /Looked after by Alex Rivera/.test([...document.querySelectorAll('.dn-tl__item[data-kind="team"], .dn-tl__item[data-kind="thanks"]')].map((e) => e.textContent).join(' ')), { timeout: 8000 }).catch(() => {});
   ok(await page.$eval('#dn-owner-pick', (s) => s.value) === 'alex@soardcharity.com', 'Owner: Alex looks after him');
-  ok(/Looked after by Alex Rivera/.test(await textOf(page, '.kd-card--history')), 'History says who did what, and when');
+  ok(/Looked after by Alex Rivera/.test(await teamText(page)), 'the timeline says who did what, at once (no reading again)');
   // Notes
   await page.click('#dn-note-text');
   await page.keyboard.type('Called to say thank you. He wants to see a reveal.');
   await page.keyboard.down('Control');
   await page.keyboard.press('Enter');
   await page.keyboard.up('Control');
-  await page.waitForFunction(() => document.querySelectorAll('.dn-note').length === 1, { timeout: 8000 }).catch(() => {});
-  ok(/Called to say thank you\. He wants to see a reveal\./.test(await textOf(page, '.dn-notes')) && /Alex Rivera · just now/.test(await textOf(page, '.dn-notes')), 'a note, saved with Ctrl+Enter, with who and when');
+  await page.waitForFunction(() => document.querySelectorAll('.dn-tl__item[data-kind="note"]').length === 1, { timeout: 8000 }).catch(() => {});
+  ok(/Called to say thank you\. He wants to see a reveal\./.test(await notesText(page)) && /Alex Rivera wrote a note/.test(await notesText(page)), 'a note, saved with Ctrl+Enter, with who and when');
   ok(await page.$eval('#dn-note-text', (t) => t.value === '' && document.activeElement === t), 'the box empties and keeps the focus for the next one');
-  await page.evaluate(() => [...document.querySelectorAll('.dn-note button')].find((b) => b.textContent.trim() === 'Change')?.click());
-  await page.waitForSelector('.dn-note textarea', { timeout: 4000 });
-  await page.$eval('.dn-note textarea', (t) => { t.value = 'Called to thank him. He wants to see a reveal in March.'; t.dispatchEvent(new Event('input', { bubbles: true })); });
-  await page.evaluate(() => [...document.querySelectorAll('.dn-note button')].find((b) => b.textContent.trim() === 'Save')?.click());
-  await page.waitForFunction(() => /in March/.test(document.querySelector('.dn-notes')?.textContent || '') && !document.querySelector('.dn-note textarea'), { timeout: 8000 }).catch(() => {});
-  ok(/in March/.test(await textOf(page, '.dn-notes')) && /changed/.test(await textOf(page, '.dn-notes')), 'Change: the new words, marked changed');
+  await page.evaluate(() => [...document.querySelectorAll('.dn-tl__item[data-kind="note"] button')].find((b) => b.textContent.trim() === 'Change')?.click());
+  await page.waitForSelector('.dn-tl__item[data-kind="note"] textarea', { timeout: 4000 });
+  await page.$eval('.dn-tl__item[data-kind="note"] textarea', (t) => { t.value = 'Called to thank him. He wants to see a reveal in March.'; t.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.evaluate(() => [...document.querySelectorAll('.dn-tl__item[data-kind="note"] button')].find((b) => b.textContent.trim() === 'Save')?.click());
+  await page.waitForFunction(() => /in March/.test([...document.querySelectorAll('.dn-tl__item[data-kind="note"]')].map((e) => e.textContent).join(' ')) && !document.querySelector('.dn-tl__item[data-kind="note"] textarea'), { timeout: 8000 }).catch(() => {});
+  ok(/in March/.test(await notesText(page)) && /changed/.test(await notesText(page)), 'Change: the new words, marked changed');
   // The mark on the gift the link opened at goes by itself, changes on the page or not
-  await page.waitForFunction(() => !document.querySelector('.dn-gift.is-flash'), { timeout: 5000 }).catch(() => {});
-  const jump = await page.evaluate(() => ({ flash: !!document.querySelector('.dn-gift.is-flash'), note: Math.round(document.querySelector('.dn-note')?.getBoundingClientRect().top), gift: Math.round(document.querySelector('.dn-gift')?.getBoundingClientRect().top), h: window.innerHeight, y: Math.round(window.scrollY) }));
+  await page.waitForFunction(() => !document.querySelector('.dn-tl__item.is-flash'), { timeout: 5000 }).catch(() => {});
+  const jump = await page.evaluate(() => ({ flash: !!document.querySelector('.dn-tl__item.is-flash'), note: Math.round(document.querySelector('.dn-tl__item[data-kind="note"]')?.getBoundingClientRect().top), gift: Math.round(document.querySelector('.dn-tl__item[data-kind="gift"]')?.getBoundingClientRect().top), h: window.innerHeight, y: Math.round(window.scrollY) }));
   ok(!jump.flash && jump.note >= 0 && jump.note < jump.h, `a change never jumps the page back to the gift the link opened at (${JSON.stringify(jump)})`);
-  ok(!/in March/.test(await textOf(page, '.kd-card--history')) && /Note changed/.test(await textOf(page, '.kd-card--history')), 'History has the change, never the words');
+  ok(!/in March/.test(await teamText(page)) && !/Note (added|changed)/.test(await teamText(page)), 'the team’s changes never repeat a note: the note is on the timeline as itself');
   await page.evaluate(() => window.scrollTo(0, 0));
   await showShot(page, '8-a-donor-to-thank-owner-notes', 1250);
   await axe(page, 'a donor with an owner, a note and a gift to thank');
   // Thanked on his page
   await page.evaluate(() => document.querySelector('.dn-thank .btn-primary')?.click());
   await page.waitForFunction(() => !document.querySelector('.dn-thank'), { timeout: 8000 }).catch(() => {});
-  ok(!(await page.$('.dn-thank')) && /thanked [A-Z][a-z]{2} \d+ by Alex/.test(await textOf(page, '.dn-gifts')), 'Thanked on his page: the box goes, the gift says when and by whom');
-  ok(/Thanked: \$2,000 from Tom Banks/.test(await textOf(page, '.kd-card--history')), 'and History has it');
+  ok(!(await page.$('.dn-thank')) && /Thanked by Alex/.test(await giftsText(page)), 'Thanked on his page: the box goes, the gift says when and by whom');
+  ok(/Thanked: \$2,000 from Tom Banks/.test(await teamText(page)), 'and the timeline has it, said by whom and when');
   // Delete the note, after asking
-  await page.evaluate(() => [...document.querySelectorAll('.dn-note button')].find((b) => b.textContent.trim() === 'Delete')?.click());
+  await page.evaluate(() => [...document.querySelectorAll('.dn-tl__item[data-kind="note"] button')].find((b) => b.textContent.trim() === 'Delete')?.click());
   await page.waitForSelector('.ask-overlay', { timeout: 4000 });
   await page.evaluate(() => document.querySelector('.ask-overlay [data-ask="yes"]')?.click());
-  await page.waitForFunction(() => !document.querySelector('.dn-note'), { timeout: 8000 }).catch(() => {});
-  ok(!(await page.$('.dn-note')), 'Delete, after asking: the note is gone');
+  await page.waitForFunction(() => !document.querySelector('.dn-tl__item[data-kind="note"]'), { timeout: 8000 }).catch(() => {});
+  ok(!(await page.$('.dn-tl__item[data-kind="note"]')), 'Delete, after asking: the note is gone');
   // The list by owner
   await page.evaluate(() => document.querySelector('.dn-back')?.click());
   await page.waitForSelector('.dn-table', { timeout: 8000 });
@@ -542,16 +567,16 @@ try {
   await ph.page.waitForSelector('.dn-table', { timeout: 15000 });
   await phoneChecks(ph.page, 'People, phone');
   await ph.page.goto(`${origin}/admin/#donors/ct_jane`, { waitUntil: 'networkidle2' });
-  await ph.page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await ph.page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   await phoneChecks(ph.page, 'A donor, phone');
   await ph.page.screenshot({ path: join(OUT, 'donor-phone.png'), fullPage: true });
   await ph.page.goto(`${origin}/admin/#donors/org/p%3Aacme`, { waitUntil: 'networkidle2' });
-  await ph.page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await ph.page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   await phoneChecks(ph.page, 'An organization, phone');
   await ph.page.screenshot({ path: join(OUT, 'org-phone.png'), fullPage: true });
   await showShot(ph.page, '6-an-organization-phone', 844);
   await ph.page.goto(`${origin}/admin/#donors/ct_tom`, { waitUntil: 'networkidle2' });
-  await ph.page.waitForSelector('.dn-gifts', { timeout: 8000 });
+  await ph.page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   await phoneChecks(ph.page, 'A donor with an owner, phone');
   await showShot(ph.page, '10-a-donor-phone', 844);
   await ph.page.goto(`${origin}/admin/#donors/thanks`, { waitUntil: 'networkidle2' });

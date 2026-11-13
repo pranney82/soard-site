@@ -29,6 +29,7 @@ import { zeffyPaymentUrl, zeffyContactUrl } from './zeffy-links.js';
 import { AreaTabs, setChecksWaiting } from './donor-tabs.js';
 import { ask } from './ask.js';
 import { useDialog } from './dialog.js';
+import { Timeline } from './donor-timeline.js';
 
 const html = htm.bind(h);
 const API = '/api/donors-admin';
@@ -72,27 +73,14 @@ const STYLE = `
 .dn-years li { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; align-items: center; gap: .6rem; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .dn-bar { height: 8px; border-radius: 4px; background: var(--color-bg-secondary); overflow: hidden; }
 .dn-bar > span { display: block; height: 100%; border-radius: 4px; background: var(--color-text); }
-.dn-gifts { display: grid; margin: 0; padding: 0; list-style: none; }
-.dn-gift { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: start; padding: .75rem 0; border-bottom: 1px solid var(--color-border); }
-.dn-gift:last-child { border-bottom: none; }
-.dn-gift.is-flash { background: var(--tone-warn-surface, #FFF9DB); border-radius: 8px; }
-.dn-gift__day { font-size: var(--fs-xs); color: var(--color-text-muted); padding-top: .15rem; }
-.dn-gift__what { min-width: 0; display: grid; gap: .15rem; }
-.dn-gift__what strong { overflow-wrap: anywhere; }
-.dn-gift__meta { font-size: var(--fs-xs); color: var(--color-text-secondary); overflow-wrap: anywhere; }
-.dn-gift__amt { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-.dn-gift__links { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: .25rem .9rem; font-size: var(--fs-xs); }
 .dn-facts { display: grid; gap: .5rem; margin: 0; }
 .dn-facts dt { font-size: var(--fs-xs); color: var(--color-text-muted); }
 .dn-facts dd { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 @media (max-width: 720px) {
   .dn-table .dn-hide-sm { display: none; }
   .dn-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dn-gift { grid-template-columns: minmax(0, 1fr) auto; }
-  .dn-gift__day { grid-column: 1 / -1; }
-  .dn-gift__links { grid-column: 1 / -1; }
 }
-@media (pointer: coarse) { .dn-name, .dn-back, .dn-gift__links a { min-height: 44px; display: inline-flex; align-items: center; } }
+@media (pointer: coarse) { .dn-name, .dn-back { min-height: 44px; display: inline-flex; align-items: center; } }
 
 .dn-tag--site { background: var(--color-bg-secondary); color: var(--color-text); }
 .dn-needs-pill[aria-pressed="false"] { border-color: var(--tone-warn-border, #E9C46A); }
@@ -138,15 +126,8 @@ const STYLE = `
 .dn-thank__one { display: grid; gap: .2rem; padding: .7rem 0; border-top: 1px solid var(--color-border); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .dn-thank__one:first-child { border-top: none; padding-top: 0; }
 .dn-note-new { display: grid; gap: .5rem; }
-.dn-note-new textarea, .dn-note textarea { width: 100%; min-height: 4.5rem; resize: vertical; font: inherit; }
+.dn-note-new textarea, .dn-tl__body textarea { width: 100%; min-height: 4.5rem; resize: vertical; font: inherit; }
 .dn-note-new__do { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem .75rem; }
-.dn-notes { display: grid; margin: .75rem 0 0; padding: 0; list-style: none; }
-.dn-note { display: grid; gap: .3rem; padding: .75rem 0; border-top: 1px solid var(--color-border); min-width: 0; }
-.dn-note__body { margin: 0; font-size: var(--fs-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.dn-note__meta { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .75rem; font-size: var(--fs-xs); color: var(--color-text-muted); }
-.dn-history__row { cursor: default; }
-.dn-history__row:hover { background: none; }
-.dn-history__what { font-size: var(--fs-xs); color: var(--color-text-secondary); overflow-wrap: anywhere; }
 @media (max-width: 720px) { .dn-same { grid-template-columns: minmax(0, 1fr); } }
 @media (pointer: coarse) { .dn-linkbtn, .dn-plain a, .dn-need__do a { min-height: 44px; display: inline-flex; align-items: center; } }
 `;
@@ -188,21 +169,6 @@ const fullName = (email, staff = []) => {
   return f ? f[0].toUpperCase() + f.slice(1) : String(email);
 };
 const firstName = (email, staff = []) => fullName(email, staff).split(' ')[0];
-/** When something was said: "just now", "today, 2:10 PM", "Oct 23, 2:10 PM" (the year when it isn't this one) */
-const when = (iso) => {
-  const t = Date.parse(iso);
-  if (!t) return '';
-  const d = new Date(t);
-  const mins = Math.round((Date.now() - t) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const start = new Date(); start.setHours(0, 0, 0, 0);
-  if (t >= start.getTime()) return `today, ${time}`;
-  if (t >= start.getTime() - 864e5) return `yesterday, ${time}`;
-  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) })}, ${time}`;
-};
-const shortDay = (iso) => { const t = Date.parse(iso); return t ? new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(new Date(t).getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : ''; };
 const amountOf = (g) => (g.inKind ? `${usd(g.inKind)} in kind` : usd(g.cents));
 /** Who looks after a donor, as the Owner filter has it: '' anyone, 'none' no one, else their address */
 const ownerOk = (filter, owner) => !filter || (filter === 'none' ? !owner : owner === filter);
@@ -630,25 +596,6 @@ function GivingTiles({ d }) {
     ${d.years.length > 1 ? html`<ul class="dn-years" aria-label="Giving by year">${d.years.map((y) => html`<li key=${y.year}><span>${y.year}</span><span class="dn-bar" aria-hidden="true"><span style=${`width:${Math.max(2, Math.round((y.cents / most) * 100))}%`}></span></span><span>${usd(y.cents)}</span></li>`)}</ul>` : null}`;
 }
 
-/** A gift's thank-you, in a few words */
-const thankWords = (t, staff) => (!t ? null : t.state === 'todo' ? html`<span class="tag dn-tag--thank">To thank</span>`
-  : t.state === 'thanked' ? `thanked${t.at ? ` ${shortDay(t.at)}` : ''}${t.by ? ` by ${firstName(t.by, staff)}` : ''}`
-  : t.state === 'skipped' ? `no thank-you needed${t.by ? ` (${firstName(t.by, staff)})` : ''}` : null);
-
-function GiftList({ gifts, byWho = false, staff = [] }) {
-  if (!gifts.length) return html`<p class="dn-sub">No gifts of their own.</p>`;
-  return html`<ul class="dn-gifts">${gifts.map((g) => html`<li key=${g.id} class="dn-gift" data-gift=${g.id} data-gifts=${g.ids.join(' ')}>
-    <span class="dn-gift__day">${day(g.at)}</span>
-    <span class="dn-gift__what"><strong>${g.campaign || 'A gift'}</strong>
-      <span class="dn-gift__meta">${[byWho && g.by ? `from ${g.by}` : null, g.how, g.every ? (g.every[0].toUpperCase() + g.every.slice(1)) : null, g.parts > 1 ? `in ${g.parts} charges` : null, !byWho && g.forCompany ? `for ${g.forCompany}` : null, g.through ? `through ${g.through}` : null, g.anonymous ? 'anonymous' : null, g.refunded ? 'refunded in full' : null, g.sold ? 'a ticket or purchase, not counted as giving' : null].filter(Boolean).join(' · ')}${(() => { const t = thankWords(g.thanks, staff); return !t ? null : typeof t === 'string' ? ` · ${t}` : html` ${t}`; })()}</span></span>
-    <span class="dn-gift__amt">${g.inKind ? html`${usd(g.inKind)}<span class="dn-sub">in kind</span>` : g.sold || g.refunded ? '–' : usd(g.cents)}</span>
-    <span class="dn-gift__links">
-      <a class="link" href=${zeffyPaymentUrl(g.id)} target="_blank" rel="noopener" aria-label=${`Open in Zeffy: ${g.campaign || 'gift'}, ${day(g.at)}`}>Open in Zeffy</a>
-      ${g.mercury ? html`<a class="link" href=${g.mercury} target="_blank" rel="noopener" aria-label=${`See the check in Mercury: ${day(g.at)}`}>See the check in Mercury</a>` : null}
-    </span>
-  </li>`)}</ul>`;
-}
-
 /** Who on the team looks after a donor */
 function OwnerCard({ subject, owner, staff = [], name, ctx, onDone }) {
   const [busy, setBusy] = useState(false);
@@ -693,82 +640,6 @@ function ThankBox({ gifts, name, ctx, onDone }) {
         <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => doIt(g, 'skipped')}>${busy === `${g.id}:skipped` ? html`<span class="spinner spinner-14" />` : null}Not needed</button>
       </span></li>`)}</ul>
     <p class="kd-card__note">Zeffy thanks online givers by email. These it doesn’t, or they’re big enough for a call or a note from the team.</p>
-  </section>`;
-}
-
-/** The team's notes: newest first, anyone on the team can add, change or delete one */
-function Notes({ subject, notes = [], staff = [], name, zeffy = false, ctx, onDone }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [draft, setDraft] = useState('');
-  const box = useRef(null);
-  const add = async (e) => {
-    e?.preventDefault();
-    const t = text.trim();
-    if (!t || busy) return;
-    setBusy(true);
-    const r = await change({ act: 'note-add', key: subject, body: t });
-    setBusy(false);
-    if (!r.success) { ctx.addToast(r.error, 'error'); return; }
-    setText('');
-    await onDone();
-    box.current?.focus();
-  };
-  const save = async (n) => {
-    const t = draft.trim();
-    if (!t) return;
-    if (t === n.body) { setEditing(null); return; }
-    setBusy(true);
-    const r = await change({ act: 'note-edit', id: n.id, body: t });
-    setBusy(false);
-    if (!r.success) { ctx.addToast(r.error, 'error'); return; }
-    setEditing(null);
-    await onDone();
-  };
-  const del = async (n) => {
-    if (!(await ask({ title: 'Delete this note?', text: 'It’s gone for everyone, and can’t be brought back.', yes: 'Delete', danger: true }))) return;
-    setBusy(true);
-    const r = await change({ act: 'note-delete', id: n.id });
-    setBusy(false);
-    if (!r.success) { ctx.addToast(r.error, 'error'); return; }
-    ctx.addToast('Note deleted', 'success');
-    await onDone();
-  };
-  // ⌘/Ctrl + Enter saves, as in a message
-  const keys = (fn) => (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); fn(); } };
-  return html`<section class="card kd-sec" aria-labelledby="dn-notes-h">
-    <header class="kd-sec__head"><h3 id="dn-notes-h">Notes ${notes.length ? html`<span class="count">${notes.length}</span>` : null}</h3></header>
-    <form class="dn-note-new" onSubmit=${add}>
-      <textarea id="dn-note-text" aria-label=${`A note about ${name}`} ref=${box} class="form-input" rows="3" maxlength="4000" placeholder=${`A note about ${name}: a call, a visit, what they care about`} value=${text} disabled=${busy}
-        onInput=${(e) => setText(e.target.value)} onKeyDown=${keys(add)}></textarea>
-      <div class="dn-note-new__do"><span class="dn-sub">Only the team sees notes.${zeffy ? ' Notes written in Zeffy before stay there.' : ''}</span>
-        <button type="submit" class="btn btn-primary btn-sm" disabled=${busy || !text.trim()}>Add note</button></div>
-    </form>
-    ${notes.length ? html`<ul class="dn-notes">${notes.map((n) => html`<li key=${n.id} class="dn-note">
-      ${editing === n.id ? html`<textarea id=${`dn-note-${n.id}`} aria-label="Change the note" class="form-input" rows="3" maxlength="4000" value=${draft} disabled=${busy} onInput=${(e) => setDraft(e.target.value)} onKeyDown=${keys(() => save(n))}
-          ref=${(el) => { if (el && !el.dataset.focused) { el.dataset.focused = '1'; el.focus(); } }}></textarea>
-        <span class="dn-row-do"><button type="button" class="btn btn-primary btn-sm" disabled=${busy || !draft.trim()} onClick=${() => save(n)}>Save</button>
-          <button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${() => setEditing(null)}>Cancel</button></span>`
-      : html`<p class="dn-note__body">${n.body}</p>`}
-      <span class="dn-note__meta"><span>${n.by ? fullName(n.by, staff) : 'Someone'} · ${when(n.at)}${n.editedAt ? ` · changed${n.editedBy && n.editedBy !== n.by ? ` by ${firstName(n.editedBy, staff)}` : ''} ${when(n.editedAt)}` : ''}</span>
-        ${editing === n.id ? null : html`<button type="button" class="link dn-linkbtn" disabled=${busy} onClick=${() => { setDraft(n.body); setEditing(n.id); }}>Change</button>
-        <button type="button" class="link dn-linkbtn" disabled=${busy} onClick=${() => del(n)}>Delete</button>`}</span>
-    </li>`)}</ul>` : null}
-  </section>`;
-}
-
-/** What the team did about a donor, newest first */
-function HistoryCard({ history = [], staff = [] }) {
-  const [all, setAll] = useState(false);
-  const list = all ? history : history.slice(0, 4);
-  return html`<section class="kd-card kd-card--history" aria-labelledby="dn-history-h">
-    <h3 id="dn-history-h">History ${history.length ? html`<span class="kd-card__count">${history.length >= 25 ? 'latest 25' : plural(history.length, 'change')}</span>` : null}</h3>
-    ${!history.length ? html`<p class="kd-card__note">What the team says here (an owner, a note, a thank-you, an organization, Keep anonymous) is kept, with who and when.</p>`
-      : html`<ol class="kd-history">${list.map((h, i) => html`<li key=${i}><div class="kd-history__row dn-history__row">
-          <span class="kd-history__top"><strong>${h.by ? fullName(h.by, staff) : 'The site'}</strong><span>${when(h.at)}</span></span>
-          <span class="dn-history__what">${h.what}</span></div></li>`)}</ol>
-        ${history.length > 4 ? html`<button type="button" class="btn btn-ghost btn-sm kd-history__all" onClick=${() => setAll(!all)}>${all ? 'Show fewer' : `Show all ${history.length}`}</button>` : null}`}
   </section>`;
 }
 
@@ -915,7 +786,6 @@ function DonorPage({ donor, gift, fromList = false, ctx, onBack, onDonor, onOrg 
           ${!v.gaveFor?.length && !v.companies?.length ? html`<p class="kd-card__note">None. When they give for a company, it shows here.</p>` : null}
           ${d.contact ? html`<p class="kd-card__note">Is this an organization’s own record in Zeffy? <button type="button" class="link dn-linkbtn" onClick=${() => setPicking({ kind: 'contact', subject: d.contact, label: d.name })}>Count it for an organization…</button></p>` : null}
         </section>
-        <${HistoryCard} history=${v.history} staff=${v.staff} />
       </aside>
       <div class="kd-main" style="display:grid;gap:1rem">
         <${ThankBox} gifts=${v.gifts} name=${d.name} ctx=${ctx} onDone=${load} />
@@ -923,11 +793,7 @@ function DonorPage({ donor, gift, fromList = false, ctx, onBack, onDonor, onOrg 
           <header class="kd-sec__head"><h3 id="dn-giving-h">Giving</h3></header>
           <${GivingTiles} d=${d} />
         </section>
-        <${Notes} subject=${v.key} notes=${v.notes} staff=${v.staff} name=${d.name} zeffy=${!!d.contact} ctx=${ctx} onDone=${load} />
-        <section class="card kd-sec" aria-labelledby="dn-gifts-h">
-          <header class="kd-sec__head"><h3 id="dn-gifts-h">Gifts <span class="count">${v.gifts.length}</span></h3></header>
-          <${GiftList} gifts=${v.gifts} staff=${v.staff} />
-        </section>
+        <${Timeline} subject=${v.key} refOf=${v.ref} name=${d.name} gifts=${v.gifts} notes=${v.notes} staff=${v.staff} zeffy=${!!d.contact} ctx=${ctx} onChanged=${load} focusGift=${gift || null} />
       </div>
     </div></div>
     ${picking ? html`<${Picker} title=${picking.kind === 'company' ? `Which organization is “${picking.label}”?` : `Which organization is ${picking.label}?`}
@@ -1047,7 +913,6 @@ function OrgPage({ orgKey, ctx, onBack }) {
           <p class="kd-card__note">Giving in the last 12 months: ${usd(v.cents12)}.</p>
         </section>
         <${KeepAnonymous} subject=${v.key} on=${!!v.keepAnonymous} names=${v.keptNames || []} name=${v.name} ctx=${ctx} onDone=${load} />
-        <${HistoryCard} history=${v.history} staff=${v.staff} />
       </aside>
       <div class="kd-main" style="display:grid;gap:1rem">
         <${ThankBox} gifts=${v.gifts} name=${v.name} ctx=${ctx} onDone=${load} />
@@ -1055,7 +920,6 @@ function OrgPage({ orgKey, ctx, onBack }) {
           <header class="kd-sec__head"><h3 id="dn-giving-h">Giving</h3></header>
           <${GivingTiles} d=${d} />
         </section>
-        <${Notes} subject=${v.key} notes=${v.notes} staff=${v.staff} name=${v.name} ctx=${ctx} onDone=${load} />
         <section class="card kd-sec" aria-labelledby="dn-names-h">
           <header class="kd-sec__head"><h3 id="dn-names-h">Names it gives under</h3>
             <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setAdding(true)}>Add a Zeffy name</button></header>
@@ -1072,10 +936,7 @@ function OrgPage({ orgKey, ctx, onBack }) {
           <header class="kd-sec__head"><h3 id="dn-people-h">Who gave for it</h3></header>
           <ul class="dn-plain">${v.people.map((p) => html`<li key=${p.key}><a class="link" href=${`#donors/${p.ref.startsWith('g:') ? `gift/${encodeURIComponent(p.ref.slice(2))}` : encodeURIComponent(p.ref)}`}>${p.name}</a> <span class="dn-sub">${usd(p.cents)}, ${plural(p.gifts, 'gift')}</span></li>`)}</ul>
         </section>` : null}
-        <section class="card kd-sec" aria-labelledby="dn-gifts-h">
-          <header class="kd-sec__head"><h3 id="dn-gifts-h">Gifts <span class="count">${v.gifts.length}</span></h3></header>
-          <${GiftList} gifts=${v.gifts} byWho=${true} staff=${v.staff} />
-        </section>
+        <${Timeline} subject=${v.key} refOf=${v.key} org=${true} name=${v.name} gifts=${v.gifts} notes=${v.notes} staff=${v.staff} ctx=${ctx} onChanged=${load} />
       </div>
     </div></div>
     ${adding ? html`<${Picker} title=${`Add a Zeffy name to ${v.name}`} sub="A company name its gifts carry, or the Zeffy contact it gives as. Every gift under it counts here." placeholder="Name or email in Zeffy"
