@@ -165,7 +165,7 @@ test('every tool says what it does, takes an object, and says whether it changes
   }
   const writes = TOOLS.filter((t) => !t.annotations.readOnlyHint).map((t) => t.name);
   // Field work (daily logs, photos, the schedule) writes to JobTread as the person (tests/field.test.mjs)
-  assert.deepEqual(writes, ['save_written_email', 'set_email_words', 'send_me_a_test', 'draft_in_kit', 'edit_page', 'create_page', 'daily_log', 'photo_slots', 'photos_done', 'change_task', 'add_task']);
+  assert.deepEqual(writes, ['save_written_email', 'set_email_words', 'send_me_a_test', 'draft_in_kit', 'edit_page', 'create_page', 'daily_log', 'photo_slots', 'photos_done', 'change_task', 'task_changes', 'add_task']);
 });
 
 // ─── The tools ───

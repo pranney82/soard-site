@@ -11,7 +11,7 @@ import { monthlyKey, monthBefore } from '../_newsletter-drafts.js';
 import { dayIn } from '../../../public/admin/events-shared.js';
 import { kidName, tidy, stripHtml, roomNames } from '../_reveal-invite-email.js';
 import { PREVIEW_URI, APP_MIME, PREVIEW_CSP, previewHtml } from './preview.js';
-import { PHOTO_URI, PHOTO_CSP, photoBoxHtml } from './field.js';
+import { PHOTO_URI, PHOTO_CSP, photoBoxHtml, SCHEDULE_URI, SCHEDULE_CSP, scheduleHtml } from './field.js';
 import { SITE_URL, SLUG } from './core.js';
 
 export const VOICE = [
@@ -129,6 +129,7 @@ async function eventText(env, slug) {
 export async function readResource(env, uri) {
   if (uri === PREVIEW_URI) return [{ uri, mimeType: APP_MIME, text: previewHtml(), _meta: { ui: { csp: PREVIEW_CSP, prefersBorder: false } } }];
   if (uri === PHOTO_URI) return [{ uri, mimeType: APP_MIME, text: photoBoxHtml(), _meta: { ui: { csp: PHOTO_CSP, prefersBorder: true } } }];
+  if (uri === SCHEDULE_URI) return [{ uri, mimeType: APP_MIME, text: scheduleHtml(), _meta: { ui: { csp: SCHEDULE_CSP, prefersBorder: true } } }];
   const fixed = RESOURCES.find((r) => r.uri === uri);
   if (fixed) return [{ uri, mimeType: fixed.mimeType, text: await fixed.read(env) }];
   const m = /^soard:\/\/(kids|events)\/([a-z0-9][a-z0-9-]{0,120})$/.exec(uri);

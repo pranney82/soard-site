@@ -13,7 +13,8 @@ import {
 } from '../functions/api/_field.js';
 import { TOOLS, callTool } from '../functions/api/_mcp-tools.js';
 import { readResource } from '../functions/api/_mcp/guide.js';
-import { PHOTO_URI } from '../functions/api/_mcp/field.js';
+import { PHOTO_URI, SCHEDULE_URI } from '../functions/api/_mcp/field.js';
+import { groups, groupOf, dayLabel, spanLabel, changeWords, undoOf, weekOf } from '../public/mcp-app/schedule-1.js';
 import * as fieldAdmin from '../functions/api/field-admin.js';
 import * as callback from '../functions/api/jobtread-callback.js';
 
@@ -79,7 +80,7 @@ function fakeJobTread() {
       else if (k === 'organization') {
         const o = {};
         if (v.jobs) o.jobs = { nextPage: null, nodes: w.jobs.filter((j) => !j.closedOn).map((j) => jobOut(j, v.jobs.nodes)) };
-        if (v.memberships) o.memberships = { nodes: [CHRISTIAN, CLAREECE, GRACIE].map((u) => ({ id: u.membership, user: { name: u.name } })) };
+        if (v.memberships) o.memberships = { nodes: [CHRISTIAN, CLAREECE, GRACIE].map((u) => ({ id: u.membership, user: { name: u.name, emailAddress: u.emailAddress } })) };
         if (v.dailyLogs) { const [[, , a], [, , b]] = v.dailyLogs.$.where.and; o.dailyLogs = { nodes: w.logs.filter((l) => l.date >= a && l.date <= b).map(logOut) }; }
         out.organization = o;
       } else if (k === 'job') { const j = w.jobs.find((x) => x.id === v.$.id); out.job = j ? jobOut(j, v) : null; }
@@ -313,6 +314,88 @@ test('the photo box: drawn by the chat under daily_log and add_photos; its two t
   assert.deepEqual(res._meta.ui.csp.connectDomains, ['https://storage.googleapis.com']);
   assert.ok(res.text.includes('/mcp-app/photo-box-1.js'));
   assert.ok(res.text.includes('/mcp-app/ext-apps-1.7.5.js'));
+});
+
+// ─── The schedule window ───
+
+test('the schedule window: drawn by the chat under job_tasks, change_task and add_task; its Save is the window’s alone; it loads only from the site', async () => {
+  const by = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+  for (const n of ['job_tasks', 'change_task', 'add_task']) assert.equal(by[n]._meta.ui.resourceUri, SCHEDULE_URI, n);
+  assert.deepEqual(by.task_changes._meta.ui.visibility, ['app']);
+  assert.ok(!/schedule/.test(TOOLS.map((t) => t.name).join(' ')), 'no tool name says “schedule”');
+  const [res] = await readResource(env, SCHEDULE_URI);
+  assert.equal(res.mimeType, 'text/html;profile=mcp-app');
+  assert.deepEqual(res._meta.ui.csp, { resourceDomains: ['https://sunshineonaranneyday.com'] });
+  assert.ok(res.text.includes('/mcp-app/schedule-1.js') && res.text.includes('/mcp-app/ext-apps-1.7.5.js'));
+  assert.ok(res.text.includes("call('task_changes'") && res.text.includes('updateModelContext'));
+});
+
+test('the schedule window: what it draws, its team without the website’s login, and Save as them, on this job only', async () => {
+  await connectChristian();
+  const s = data(await callTool(env, 'job_tasks', { job: 'Lizzie' }, ME));
+  assert.equal(s.job.name, 'Lizzie Francis (2026)');
+  assert.equal(s.job.schedule, 'https://app.jobtread.com/jobs/22PRvFGCAdMM/schedule');
+  assert.equal(s.as, 'Christian Nielsen');
+  assert.deepEqual(s.team, ['Christian Nielsen', 'Clareece Cunningham'], 'never Agent Gracie');
+  assert.match(s.said, /window/);
+  jt.w.tasks.push({ id: '22TaskRaish01', jobId: '22PRvFFCCvET', name: 'Paint', startDate: '2026-11-20', endDate: '2026-11-20', progress: null, isToDo: false, assignees: [] });
+  const r = data(await callTool(env, 'task_changes', { jobId: '22PRvFGCAdMM', changes: [
+    { taskId: '22TaskFrame01', done: true },
+    { taskId: '22TaskTile001', startDate: '2026-11-19', endDate: '2026-11-21', assignees: ['Christian Nielsen', 'Clareece Cunningham'] },
+    { taskId: '22TaskRaish01', done: true },
+    { taskId: '22TaskDone001', startDate: '2026-11-20', endDate: '2026-11-19' },
+  ] }, ME));
+  assert.deepEqual(r.results.map((x) => x.ok), [true, true, false, false]);
+  assert.equal(r.results[2].problem, 'That task isn’t on this job');
+  assert.match(r.results[3].problem, /can’t end before it starts/);
+  assert.equal(jt.w.tasks.find((t) => t.id === '22TaskRaish01').progress, null, 'another job’s task is left alone');
+  assert.deepEqual([r.results[1].before.start, r.results[1].after.start, r.results[1].after.end], ['2026-11-16', '2026-11-19', '2026-11-21']);
+  assert.ok(jt.w.calls.filter((c) => c.k === 'updateTask').every((c) => c.as === 'Christian Nielsen'));
+  const tile = r.view.tasks.find((t) => t.id === '22TaskTile001');
+  assert.deepEqual(tile.who, ['Christian Nielsen', 'Clareece Cunningham']);
+  assert.equal(r.view.tasks.find((t) => t.id === '22TaskFrame01').done, true);
+  // Changed from the chat: the window opens again on the result
+  const c = data(await callTool(env, 'change_task', { taskId: '22TaskTile001', done: true }, ME));
+  assert.deepEqual(c.changed, ['22TaskTile001']);
+  assert.equal(c.view.tasks.find((t) => t.id === '22TaskTile001').done, true);
+  const a = data(await callTool(env, 'add_task', { job: '22PRvFGCAdMM', name: 'Order the Pella pane', startDate: '2026-11-17' }, ME));
+  assert.ok(a.view.tasks.some((t) => t.id === a.task.id && t.start === '2026-11-17'));
+  assert.deepEqual(a.changed, [a.task.id]);
+});
+
+test('the schedule window’s groups on a real-shaped job: late first, week by week, no date yet, done last', () => {
+  const today = '2026-11-13';
+  const T = (name, start, end, extra = {}) => ({ id: `22T${name.replace(/\W/g, '').slice(0, 9).padEnd(9, '0')}`, name, start, end, done: false, who: [], kind: 'schedule', ...extra });
+  const tasks = [
+    T('Bench Install', '2026-05-06', '2026-05-06'), T('Framing Inspection', '2026-04-24', '2026-04-24'), T('Schluter Order', '2026-10-27', '2026-10-27'),
+    T('Framing', '2026-11-12', '2026-11-13'), T('Long one', '2026-11-03', '2026-11-20'),
+    T('Plumbing Rough In', '2026-11-17', '2026-11-17'), T('Rough In Inspections', '2026-11-19', '2026-11-19'),
+    T('Tile Floor & Wall Install', '2026-11-26', '2026-11-30'), T('Paint Walls', '2026-12-01', '2026-12-02'),
+    T('Wallpaper Install', null, null), T('Furniture Build', null, null),
+    T('Dumpster Delivery', '2026-11-10', '2026-11-10', { done: true }), T('Porta John Delivery', '2026-11-10', '2026-11-10', { done: true }),
+  ];
+  const g = groups({ today, tasks });
+  assert.deepEqual(g.map((x) => x.label), ['Late', 'This week', 'Next week', 'Week of Mon Nov 23', 'Week of Mon Nov 30', 'No date yet', 'Done']);
+  assert.deepEqual(g[0].tasks.map((t) => t.name), ['Framing Inspection', 'Bench Install', 'Schluter Order'], 'the oldest first');
+  assert.deepEqual(g[1].tasks.map((t) => t.name), ['Long one', 'Framing'], 'started earlier and still going: this week');
+  assert.equal(g[1].sub, 'Nov 9 to 15');
+  assert.equal(g[4].sub, 'Nov 30 to Dec 6');
+  assert.equal(groupOf(T('x', '2026-11-13', '2026-11-13'), today), weekOf(today));
+  assert.equal(dayLabel('2026-05-06', today), 'Wed May 6');
+  assert.equal(dayLabel('2027-01-04', today), 'Mon Jan 4, 2027');
+  assert.equal(spanLabel('2026-11-26', '2026-11-30', today), 'Thu Nov 26 to Mon Nov 30');
+  assert.equal(spanLabel(null, '2026-11-17', today), 'Tue Nov 17');
+});
+
+test('the schedule window says a change in plain words, and its Undo puts back only what changed', () => {
+  const t = { id: '22TaskTile001', name: 'Tile', start: '2026-11-16', end: '2026-11-18', done: false, who: ['Christian Nielsen'] };
+  assert.equal(changeWords(t, { startDate: '2026-11-20', endDate: '2026-11-22', assignees: ['Christian Nielsen', 'Clareece Cunningham'] }, '2026-11-13'),
+    'moves to Fri Nov 20 to Sun Nov 22, on Christian Nielsen and Clareece Cunningham');
+  assert.equal(changeWords(t, { done: true }), 'done');
+  assert.equal(changeWords({ ...t, start: null, end: null }, { startDate: '2026-11-20', endDate: '2026-11-20' }, '2026-11-13'), 'gets the date Fri Nov 20');
+  assert.deepEqual(undoOf(t, { taskId: t.id, startDate: '2026-11-20', endDate: '2026-11-22' }), { taskId: t.id, startDate: '2026-11-16', endDate: '2026-11-18' });
+  assert.deepEqual(undoOf(t, { taskId: t.id, done: true }), { taskId: t.id, done: false });
+  assert.equal(undoOf({ ...t, start: null, end: null }, { taskId: t.id, startDate: '2026-11-20' }), null, 'JobTread can’t take dates away from here');
 });
 
 // ─── The admin side ───

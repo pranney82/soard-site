@@ -411,10 +411,12 @@ export async function jobTasks(p, jobId, { from, to } = {}, now = Date.now()) {
   return { job: { id: jobId, name }, from: start, to: end, tasks };
 }
 
-/** SOARD's team in JobTread → [{ membershipId, name }] */
+/** SOARD's team in JobTread → [{ membershipId, name }]; never the website's own login (Agent Gracie), which no task is for */
 async function team(p) {
-  const r = await p.q({ organization: { $: { id: SOARD_ORG_ID }, memberships: { $: { size: 50, where: ['isInternal', '=', true] }, nodes: { id: {}, user: { name: {} } } } } });
-  return (r?.organization?.memberships?.nodes || []).map((m) => ({ membershipId: m.id, name: m.user?.name || '' })).filter((m) => m.name);
+  const r = await p.q({ organization: { $: { id: SOARD_ORG_ID }, memberships: { $: { size: 50, where: ['isInternal', '=', true] }, nodes: { id: {}, user: { name: {}, emailAddress: {} } } } } });
+  return (r?.organization?.memberships?.nodes || [])
+    .filter((m) => String(m.user?.emailAddress || '').toLowerCase() !== SITE_LOGIN)
+    .map((m) => ({ membershipId: m.id, name: m.user?.name || '' })).filter((m) => m.name);
 }
 
 /** Names ("Christian", "Clareece Cunningham", "me") → their memberships, or a plain reason none matched */
@@ -441,11 +443,12 @@ const daysBetween = (a, b) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.pa
  * Change one task: its dates (a new start alone keeps its length; JobTread moves the tasks linked after it, as in
  * the app), done or not, how far along, who it's on, its name. → { before, after }
  */
-export async function changeTask(p, { taskId, startDate, endDate, done, progress, assignees, name }, now = Date.now()) {
+export async function changeTask(p, { taskId, startDate, endDate, done, progress, assignees, name, onJob }, now = Date.now()) {
   if (!JT_ID.test(String(taskId || ''))) throw new Error('That isn’t a task’s id. Get it from the job’s schedule.');
   const r = await p.q({ task: { $: { id: taskId }, ...TASK } });
   const t = r?.task;
   if (!t?.job?.id) throw new Error('That task isn’t on one of SOARD’s jobs');
+  if (onJob && t.job.id !== onJob) throw new Error('That task isn’t on this job');
   const day = today(now);
   const $ = { id: taskId };
   if (startDate !== undefined) $.startDate = checkDay(startDate, now);
@@ -465,6 +468,21 @@ export async function changeTask(p, { taskId, startDate, endDate, done, progress
   await p.q({ updateTask: { $ } });
   const after = (await p.q({ task: { $: { id: taskId }, ...TASK } }))?.task || { ...t, ...$ };
   return { job: { id: t.job.id, name: t.job.name }, before: shapeTask(t, day), after: shapeTask(after, day) };
+}
+
+/**
+ * Everything the schedule window draws for a job (./_mcp/field.js, public/mcp-app/schedule-1.js): its tasks (as
+ * jobTasks), today, who's signed in and SOARD's team (the names a task can be put on).
+ * → { job: { id, name, schedule }, as, today, from, to, team: [name], tasks }
+ */
+export async function scheduleView(p, jobId, { from, to } = {}, now = Date.now()) {
+  const [s, people] = await Promise.all([
+    jobTasks(p, jobId, { from, to }, now),
+    // Without the team the window still works: only who's on a task already can be kept
+    team(p).catch((err) => { if (err?.code === 'LINK') throw err; return []; }),
+  ]);
+  const names = [...new Set(people.map((m) => m.name))].sort((a, b) => a.localeCompare(b));
+  return { job: { id: jobId, name: s.job.name, schedule: scheduleUrl(jobId) }, as: p.name, today: today(now), from: s.from, to: s.to, team: names, tasks: s.tasks };
 }
 
 /** A new task on a job's schedule, or a to-do → the task */
