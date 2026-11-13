@@ -146,9 +146,26 @@ export async function checkServiceArea(address, area, fetchImpl = fetch, { esri 
   }
 }
 
-/** Who found the house, in a sentence: "Esri", "the Census", "OpenStreetMap" (older checks: the Census) */
+/** Who found the house, in a sentence: "Esri", "the Census", "OpenStreetMap", staff (older checks: the Census) */
 export function sourceName(area) {
+  if (area?.source === 'staff') return area.by ? `${area.by} (on the map)` : 'staff (on the map)';
   return { esri: 'Esri', census: 'the Census', openstreetmap: 'OpenStreetMap' }[area?.source] || 'the Census';
+}
+
+/**
+ * A stored check with no map point: no map service found the house (or none could be asked), so the
+ * family's own answer isn't taken for it and the application waits for staff to place the home on the
+ * map (Applicants → the family's Home card) before it can be approved
+ */
+export const homeUnplaced = (area) => !!area && !(area.lat != null && area.lng != null && Number.isFinite(Number(area.lat)) && Number.isFinite(Number(area.lng)));
+
+/** The county a map point is in, by the Census's map ("Walton"); null outside any county. Throws when the Census can't be asked. */
+export async function countyAt(lat, lng, fetchImpl = fetch) {
+  const url = `https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=${encodeURIComponent(lng)}&y=${encodeURIComponent(lat)}&benchmark=Public_AR_Current&vintage=Current_Current&layers=Counties&format=json`;
+  const res = await fetchImpl(url, { signal: AbortSignal.timeout(10000), headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`The Census map returned ${res.status}`);
+  const c = (await res.json().catch(() => null))?.result?.geographies?.Counties?.[0];
+  return String(c?.BASENAME || c?.NAME || '').replace(/\s+County$/i, '').trim() || null;
 }
 
 /** The band of a stored check (older checks only said inside / outside) */

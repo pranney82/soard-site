@@ -1580,7 +1580,7 @@ function FlagBadges({ a, picked = null }) {
     ${a.deletedAt && html`<span class="badge badge-gray" title=${`Deleted ${dayText(a.deletedAt)}${a.deletedBy ? ` by ${a.deletedBy}` : ''}`}>Deleted</span>`}
     ${(f.lang || a.lang) === 'es' && html`<span class="badge badge-gray" title="Answered in Spanish">Spanish</span>`}
     ${f.area?.status === 'outside' && html`<span class="badge badge-yellow" title=${f.area.text || ''}>${f.area.miles != null ? `${f.area.miles} mi outside` : 'Outside area'}</span>`}
-    ${f.area?.status === 'unknown' && html`<span class="badge badge-gray" title=${f.area.text || 'The address lookup couldn’t find this house'}>Address not found</span>`}
+    ${f.area?.status === 'unknown' && html`<span class="badge badge-yellow" title="No map service found this home, so it waits: place it in Applicants (its Home card) before approving">Home not placed</span>`}
     ${cm && html`<span class="badge badge-yellow" title=${`The family picked ${cm.picked}; the address lookup says ${cm.census}`}>County mismatch</span>`}
     ${f.repeat?.length > 0 && html`<span class="badge badge-yellow" title=${f.repeat.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}`).join(', ')}>Possible repeat</span>`}`;
 }

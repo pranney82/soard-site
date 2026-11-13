@@ -191,6 +191,12 @@ export function fakeApplicantWorld() {
           out.createLocation = { createdLocation: { id } };
           break;
         }
+        case 'updateLocation': {
+          const loc = Object.values(world.accounts).flatMap(a => a.locations).find(l => l.id === input.id);
+          if (!loc) throw Object.assign(new Error('no location'), { status: 400 });
+          if (input.customFieldValues) loc.customFieldValues = { ...(loc.customFieldValues || {}), ...input.customFieldValues };
+          break;
+        }
         case 'createUploadRequest': {
           const id = nextId('upl');
           world.uploadRequests[id] = { id, size: input.size, type: input.type, fromUrl: input.url || null, uploaded: !!input.url, used: false };
@@ -357,6 +363,8 @@ export function fakeApplicantWorld() {
     if (url.host === 'geocoding.geo.census.gov') {
       world.censusCalls = (world.censusCalls || 0) + 1;
       if (world.censusDown) return new Response('down', { status: 500 });
+      // A map point's county: world.countyAt (a name), else none
+      if (url.pathname.endsWith('/geographies/coordinates')) return json({ result: { geographies: { Counties: world.countyAt ? [{ BASENAME: world.countyAt, NAME: `${world.countyAt} County` }] : [] } } });
       const q = String(url.searchParams.get('address') || '').toLowerCase();
       const m = Object.entries(world.census || {}).find(([k]) => q.includes(k.toLowerCase()))?.[1];
       return json({ result: { addressMatches: m ? [{ coordinates: { x: m.lng, y: m.lat }, matchedAddress: m.matched || q.toUpperCase(), geographies: { Counties: m.county ? [{ BASENAME: m.county }] : [] } }] : [] } });

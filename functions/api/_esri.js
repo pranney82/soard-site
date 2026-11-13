@@ -18,7 +18,8 @@
  * Esri can't be asked, the Census and OpenStreetMap carry on (./_geo.js), for the house typed only.
  */
 import { sameHouse } from '../../public/admin/area-shared.js';
-import { sendEmails } from './_broadcast-notify.js';
+import { sendEmails, slackIssue, slackResolved, slackOpenPost, SITE_ORIGIN } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 import { ALERT_EMAILS } from './_applications.js';
 
 const TOKEN_URL = 'https://www.arcgis.com/sharing/rest/oauth2/token';
@@ -140,8 +141,10 @@ export function esriLocator(env, fetchImpl = fetch) {
   return async (oneLine, notes = {}) => {
     const q = String(oneLine || '').trim().slice(0, 300);
     if (!q) return null;
-    // Every answer and every refusal is noted, so a refusing Esri shows on Site → Automations
-    // instead of every home quietly falling back to the Census
+    // (the month's limit isn't Esri refusing: Peter has its emails, and Automations shows the count)
+    if (!(await roomLeft(env))) throw new Error('This month’s Esri lookups are used');
+    // Every answer and every refusal is noted, so a refusing Esri shows on Site → Automations and in
+    // Slack instead of every home quietly falling back to the Census
     try {
       const out = await lookUp(env, fetchImpl, q, notes);
       await noteHealth(env, null);
@@ -155,7 +158,6 @@ export function esriLocator(env, fetchImpl = fetch) {
 
 /** One lookup of the house typed (see esriLocator) */
 async function lookUp(env, fetchImpl, q, notes) {
-  if (!(await roomLeft(env))) throw new Error('This month’s Esri lookups are used');
   const ask = async (token) => {
     const u = new URL(GEOCODE_URL);
     u.search = new URLSearchParams({
@@ -195,16 +197,40 @@ async function lookUp(env, fetchImpl, q, notes) {
   };
 }
 
-/** Note Esri's last answer (err null) or refusal; a failed note never stops the lookup */
+export const ESRI_ISSUE = 'esri-refusing';
+/**
+ * Note Esri's answer (err null) or refusal; a failed note never stops the lookup. Staff hear in Slack when
+ * Esri starts refusing: at once when Esri itself said no (a pass it won't take, a permission or billing
+ * setting), else on the second refusal in a row (one dropped connection isn't trouble); and once more,
+ * ✅, when it answers again.
+ */
 async function noteHealth(env, err, now = Date.now()) {
   if (!env?.DB) return;
   try {
     await tables(env.DB);
+    const was = await env.DB.prepare("SELECT ok_at, err_at FROM esri_health WHERE id = 'last'").first();
+    const refusing = !!(was?.err_at && (!was.ok_at || Number(was.err_at) > Number(was.ok_at)));
     await (err
       ? env.DB.prepare("INSERT INTO esri_health (id, err_at, err) VALUES ('last', ?, ?) ON CONFLICT(id) DO UPDATE SET err_at = excluded.err_at, err = excluded.err").bind(now, String(err).slice(0, 240))
       : env.DB.prepare("INSERT INTO esri_health (id, ok_at) VALUES ('last', ?) ON CONFLICT(id) DO UPDATE SET ok_at = excluded.ok_at").bind(now)
     ).run();
+    if (err && (refusing || /^Esri(?: sign-in failed)?:/.test(String(err))) && !(await slackOpenPost(env, ESRI_ISSUE))) {
+      await slackIssue(env, ESRI_ISSUE, refusingCard(String(err)), { title: 'Esri wasn’t finding homes', kind: 'attention', area: 'applications' });
+    } else if (!err && refusing) {
+      await slackResolved(env, ESRI_ISSUE, slackCard({ icon: '✅', title: 'Esri is finding homes again', lead: 'Families’ homes are found by Esri again. Nothing to do.' }));
+    }
   } catch { /* the family's answer matters more than the note */ }
+}
+
+/** The Slack post when Esri starts refusing: its words, what families get meanwhile, what each of its usual words has meant */
+export function refusingCard(err) {
+  return slackCard({
+    icon: '⚠️',
+    title: 'Esri isn’t finding homes',
+    lead: `Esri turned down the website’s lookup of a family’s home: “${err}”. Until it answers again, the Census finds where homes are, and it misses some houses.`,
+    fix: 'Esri’s words say what to fix. “Invalid Token”: the keys or the credential’s website address (Referrer URLs) in ArcGIS changed. “User does not have permissions to store geocoding results”: pay-as-you-go or the credential’s stored-geocoding privilege is off in ArcGIS. Anything else, a dropped connection, usually clears by itself. This post turns ✅ when Esri answers again.',
+    buttons: [{ label: 'Open Automations', url: `${SITE_ORIGIN}/admin/#automations` }],
+  });
 }
 
 /**

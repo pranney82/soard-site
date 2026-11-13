@@ -42,7 +42,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback, Sortable } from './vendor.js';
-import { bandChanges, nearRing } from './area-shared.js';
+import { bandChanges, nearRing, placeHome } from './area-shared.js';
 import { STATUS_COLOR, AREA_INK, loadLeaflet, takeDown, dressMap, areaShape, closeRing, pinIcon, MapLegend } from './family-map.js';
 import { applicationParts, photoLabel } from './application-files.js';
 import { openViewer, viewerLink, warmFiles, kindOf, kindIcon, sizeText, extOf, VideoTile } from './file-viewer.js';
@@ -336,6 +336,13 @@ const CSS = `
 .apl-homemap .leaflet-control-attribution { font-size: var(--fs-2xs); }
 .apl-gap { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; background: #fff; color: ${AREA_INK}; border: 1.5px solid ${AREA_INK}; border-radius: 999px; padding: .05rem .45rem; font-size: var(--fs-2xs); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 .apl-home-links { display: flex; gap: .9rem; text-transform: none; letter-spacing: 0; }
+/* A home no map service found: staff click where it is */
+.apl-place { display: grid; gap: .6rem; }
+.apl-place-lead { margin: 0; font-size: var(--fs-sm); line-height: 1.5; }
+.apl-place-lead a { color: var(--color-info); font-weight: 600; }
+.apl-placemap { cursor: crosshair; aspect-ratio: 4 / 3; max-height: 340px; }
+.apl-place-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem .75rem; font-size: var(--fs-sm); }
+.apl-place-done { margin: .4rem 0 0; font-size: var(--fs-xs); color: var(--color-text-muted); }
 /* Leaflet's own CSS lands after this, so these need the extra class to win */
 @media (pointer: coarse) { .apl-homemap.leaflet-container .leaflet-control-zoom a { width: 40px; height: 40px; line-height: 40px; } .apl-home-links .apl-more { min-height: 44px; display: inline-flex; align-items: center; } }
 
@@ -863,7 +870,8 @@ const isTestFamily = (a) => !!a.isTest || /^TEST\b/.test(a.name || '');
 
 function Flags({ a, compact = false }) {
   const out = [];
-  if (a.area === 'outside') out.push(html`<span class="tag tag--warn apl-tag is-out" title="Home is outside the service-area boundary">${a.areaMiles != null ? `${a.areaMiles} mi outside` : 'Outside area'}</span>`);
+  if (a.homeHeld) out.push(html`<span class="tag tag--warn apl-tag is-warn" title="No map service found this home: place it in its Home card before approving">Home not placed</span>`);
+  else if (a.area === 'outside') out.push(html`<span class="tag tag--warn apl-tag is-out" title="Home is outside the service-area boundary">${a.areaMiles != null ? `${a.areaMiles} mi outside` : 'Outside area'}</span>`);
   if (a.repeat?.length) out.push(html`<span class="tag tag--warn apl-tag is-warn" title=${`Possible repeat of ${a.repeat.join(', ')}`}>Possible repeat</span>`);
   if (a.lang === 'es' || a.fields?.language === 'Spanish') out.push(html`<span class="tag tag--info apl-tag is-es" title="The family reads Spanish: their emails go in Spanish">Spanish</span>`);
   if (isTestFamily(a)) out.push(html`<span class="tag apl-tag is-test">Test</span>`);
@@ -1638,6 +1646,74 @@ function HomeMap({ a, boundary }) {
   return html`<div class="apl-homemap" ref=${box} role="region" aria-label=${`Map of ${a.address || 'the home'}${a.area === 'outside' ? `, ${a.areaMiles} miles outside the service area` : a.area === 'inside' ? ', inside the service area' : ''}`}></div>`;
 }
 
+/** Where a placed spot sits, for the line under the map */
+function spotWords(w, nearMiles) {
+  if (w.band === 'inside') return 'Inside the service area';
+  return `About ${w.miles} ${w.miles === 1 ? 'mile' : 'miles'} outside the service area${w.band === 'near' ? ' (close to it)' : `, farther than its ${nearMiles} close miles`}`;
+}
+
+/**
+ * A home no map service found: the family's own answer isn't taken, so staff find the home and click the map
+ * where it is. Saving checks it like any home, sets its county, and lets the family be approved.
+ */
+function PlaceHome({ a, boundary, onPlaced, addToast }) {
+  const box = useRef(null);
+  const st = useRef({});
+  const [L, setL] = useState(null);
+  const [err, setErr] = useState(null);
+  const [spot, setSpot] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { loadLeaflet().then(setL).catch(e => setErr(e.message)); }, []);
+  const poly = boundary?.live || [];
+  const nearMiles = boundary?.nearMiles ?? 15;
+  useEffect(() => {
+    if (!L || !box.current || st.current.map) return;
+    const map = L.map(box.current, { zoomControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile }); // dressMap adds the zoom buttons
+    dressMap(L, map);
+    if (poly.length >= 3) {
+      closeRing(L, poly, nearMiles)?.addTo(map);
+      areaShape(L, poly, { fill: true }).addTo(map);
+    }
+    const frame = () => (poly.length >= 3 ? map.fitBounds(L.latLngBounds(poly), { padding: [16, 16] }) : map.setView([33.85, -84.4], 9));
+    map.on('click', (e) => setSpot([e.latlng.lat, e.latlng.lng]));
+    let width = 0;
+    const ro = new ResizeObserver(() => {
+      const w = box.current?.offsetWidth || 0;
+      map.invalidateSize();
+      if (w && !width) frame();
+      width = w;
+    });
+    ro.observe(box.current);
+    st.current = { map };
+    return () => { ro.disconnect(); takeDown(map); st.current = {}; };
+  }, [L]);
+  useEffect(() => {
+    const s = st.current;
+    if (!L || !s.map) return;
+    s.pin?.remove();
+    s.pin = spot ? L.marker(spot, { icon: pinIcon(L, STATUS_COLOR[a.status || ''], 'is-focus'), draggable: true, title: 'The home', keyboard: false })
+      .on('dragend', (e) => { const p = e.target.getLatLng(); setSpot([p.lat, p.lng]); }).addTo(s.map) : null;
+  }, [L, spot]);
+  const where = spot && poly.length >= 3 ? placeHome(spot[0], spot[1], { polygon: poly, nearMiles }) : null;
+  const save = async () => {
+    setBusy(true);
+    const j = await call(API, { placeHome: { id: a.id, lat: spot[0], lng: spot[1] } });
+    setBusy(false);
+    if (!j.success) { addToast(j.error || 'Not saved', 'error'); return; }
+    addToast(`Home placed: ${spotWords(j.area, j.area.nearMiles ?? nearMiles)}${j.area.county ? `, ${j.area.county} County` : ''}. ${a.name} can be approved now.`, 'success');
+    onPlaced(j.applicant);
+  };
+  const look = a.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.address)}` : null;
+  return html`<div class="apl-place">
+    <p class="apl-place-lead"><strong>No map service could find this home.</strong> So the family’s own answer about the service area isn’t taken, and ${a.name} can’t be approved until someone places the home. Find it${look ? html` (<a href=${look} target="_blank" rel="noopener">look it up in Google Maps</a>)` : ''}, then click this map where it is.</p>
+    ${err ? html`<p class="apl-card-sub">The map didn’t load: ${err}</p>` : html`<div class="apl-homemap apl-placemap" ref=${box} role="region" aria-label="Map of the service area: click where the home is"></div>`}
+    <div class="apl-place-foot" aria-live="polite">
+      ${where && where.band !== 'unknown' ? html`<span>${spotWords(where, nearMiles)}</span>` : html`<span class="apl-card-sub">Click the map where the home is. Drag the pin to move it.</span>`}
+      <button class="btn btn-primary btn-sm" disabled=${!spot || busy} onClick=${save}>${busy ? 'Saving…' : 'Save where the home is'}</button>
+    </div>
+  </div>`;
+}
+
 function MapView({ list, boundary, focus, ask: asked = null, startEditing = false, onEditDone, onOpen, addToast, onSaved }) {
   const box = useRef(null);
   const st = useRef({});
@@ -1922,7 +1998,9 @@ function Drawer({ id, replyLink = null, fields, boundary, summary, initialPane =
             <span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Status</span>
             <select value=${a.status || ''} onChange=${e => { const v = e.target.value; e.target.value = a.status || ''; onStatus(a, v); }}>
               ${!a.status && html`<option value="">No status</option>`}
-              ${STATUS_ORDER.map(s => html`<option value=${s}>${s}</option>`)}
+              ${STATUS_ORDER.map(s => (s === 'Approved' && a.homeHeld && a.status !== 'Approved'
+                ? html`<option value=${s} disabled>Approved (place the home first)</option>`
+                : html`<option value=${s}>${s}</option>`))}
             </select>
           </label>
           <a class="btn btn-ghost btn-sm" href=${a.jobtreadUrl} target="_blank" rel="noopener">JobTread ${Icon.ext()}</a>
@@ -2551,6 +2629,7 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
         ${a.lat != null && html`<button class="apl-more" onClick=${() => onShowOnMap(a)}>Show on map</button>`}
       </span></h3>
       ${a.address ? html`<div style="font-size: var(--fs-sm)">${a.address}</div>` : html`<p class="apl-card-sub">No home address in JobTread.</p>`}
+      ${a.homeHeld ? html`<${PlaceHome} key=${a.id} a=${a} boundary=${boundary} onPlaced=${onSaved} addToast=${addToast} />` : html`
       <div class="apl-tags">
         ${a.county && html`<span class="apl-tag">${a.county} County</span>`}
         ${a.area === 'inside' && html`<span class="tag tag--success apl-tag is-in">Inside the service area</span>`}
@@ -2558,6 +2637,7 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
       </div>
       ${a.lat != null && a.lng != null ? html`<${HomeMap} a=${a} boundary=${boundary} />`
         : a.address && html`<p class="apl-card-sub">JobTread has no map point for this address, so it can't be checked against the service area.</p>`}
+      ${a.placed && html`<p class="apl-place-done">No map service found this home. ${a.placed.by || 'Staff'} placed it on the map${a.placed.at ? ` on ${shortDate(a.placed.at)}` : ''}.</p>`}`}
     </div>
 
     ${shown.length > 0 && html`<div class="apl-panel apl-files-panel">

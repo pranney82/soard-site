@@ -38,7 +38,7 @@ import {
   FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE, familyRecipients, greetingNames, accountKindFor, formKindOf, ensureCommunityProjectType,
 } from './_applicant-comms.js';
 import { noteStatus, changeInfo, dontSend, sendNow as sendNowNotify, whenWouldSend, notifyMap, notifyFor, ensureNotifySchema } from './_applicant-notify.js';
-import { insidePolygon, milesToEdge } from './_geo.js';
+import { insidePolygon, milesToEdge, homeUnplaced } from './_geo.js';
 import { alertFamilyReplies, waitingReplies } from './_applicant-replies.js';
 import { getLiveForm } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA, toE164, kindOf } from './_application-form.js';
@@ -777,6 +777,7 @@ export async function listApplicants(DB, { archived = false } = {}) {
       a.isTest = !!app.is_test;
       a.submittedAt = app.submitted_at;
       a.repeat = (st.repeat?.matches || []).map(m => m.name).slice(0, 3);
+      withFormHome(a, st);
       // The child's photo from the form, through the admin's file proxy, until JobTread has it too
       // (an organization's: the space's first photo)
       const photoField = ['photoChild', 'photoSpace1'].find((f) => parse(app.files, {})?.[f]?.thumbKey);
@@ -791,6 +792,7 @@ export async function getApplicantRow(DB, id) {
   await ensureApplicantSchema(DB);
   const row = applicantFromRow(await DB.prepare(`${LIST_SQL} WHERE a.account_id = ?`).bind(id).first());
   if (row) {
+    withFormHome(row, await formStateOf(DB, id));
     const kind = await formKindOf(DB, id);
     if (kind) row.kind = accountKindFor({ types: row.types, formKind: kind });
     await pagePhotos(DB, [row]);
@@ -799,6 +801,38 @@ export async function getApplicantRow(DB, id) {
 }
 
 /** The site's applications that reached JobTread (their kind once that column exists) */
+/**
+ * The home as the website's check has it: held when no map service found it (the family's answer isn't taken,
+ * and it can't be approved until staff place it), or where staff placed it, which stands over JobTread's point
+ */
+function withFormHome(a, st) {
+  const area = st?.area;
+  // Always said, so a family placed a moment ago doesn't stay held in a copy merged over an older one
+  a.homeHeld = homeUnplaced(area);
+  if (a.homeHeld) return a;
+  if (area?.source === 'staff') {
+    a.lat = Number(area.lat);
+    a.lng = Number(area.lng);
+    a.area = area.status === 'inside' ? 'inside' : 'outside';
+    a.areaMiles = area.status === 'inside' ? 0 : area.miles;
+    if (area.county) a.county = area.county;
+    a.placed = { by: area.by || null, at: area.at || null };
+  }
+  return a;
+}
+/** The website application's state for an account (its newest), or null */
+async function formStateOf(DB, accountId) {
+  try {
+    const row = await DB.prepare('SELECT jt_state FROM applications WHERE jt_account_id = ? AND deleted_at IS NULL ORDER BY submitted_at DESC LIMIT 1').bind(accountId).first();
+    return row ? parse(row.jt_state, {}) : null;
+  } catch { return null; } // no applications table yet
+}
+export const HELD_APPROVAL = 'No map service found this family’s home, so where it is hasn’t been checked. Place the home on the map in its Home card first, then approve.';
+/** Approving waits while the home is held */
+async function refuseHeldApproval(DB, accountId, status) {
+  if (status === 'Approved' && homeUnplaced((await formStateOf(DB, accountId))?.area)) throw new Error(HELD_APPROVAL);
+}
+
 async function formApplications(DB) {
   const cols = 'id, jt_account_id, lang, jt_state, files, is_test, submitted_at';
   const where = 'WHERE jt_account_id IS NOT NULL AND deleted_at IS NULL';
@@ -980,6 +1014,7 @@ export async function updateApplicantFields(env, accountId, changes, { user = 'a
 /** What changing to `status` would send, for the admin to look at first */
 export async function previewStatus(env, accountId, status, { fetchImpl = fetch } = {}) {
   if (!STATUSES.includes(status)) throw new Error('Unknown status');
+  await refuseHeldApproval(env.DB, accountId, status);
   const applicant = await readApplicant(env, accountId, fetchImpl);
   if (!applicant) throw new Error('That account isn’t a SOARD customer in JobTread');
   const previous = applicant.status || '';
@@ -999,6 +1034,7 @@ export async function previewStatus(env, accountId, status, { fetchImpl = fetch 
  */
 export async function setApplicantStatus(env, accountId, status, { notify = true, emailNow = false, denialReason = null, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
   if (!STATUSES.includes(status)) throw new Error('Unknown status');
+  await refuseHeldApproval(env.DB, accountId, status);
   const before = await readApplicant(env, accountId, fetchImpl);
   if (!before) throw new Error('That account isn’t a SOARD customer in JobTread');
   const previous = before.status || '';

@@ -16,6 +16,7 @@
  * POST { fields: { id, changes: { key: value } } }
  * POST { message: { id, subject, message, replyTo? } }    → JobTread emails everyone on the account (replyTo: in that thread)
  * POST { archive: { id, archive } }
+ * POST { placeHome: { id, lat, lng } }                   → where a home no map service found is (it can be approved then)
  * POST { sync: true }                                     → re-read everything now ("Check JobTread now")
  * POST { sync: 'catchup' }                                → just the changes since the last look
  *
@@ -38,9 +39,9 @@
 import {
   ensureApplicantSchema, listApplicants, applicantDetail, recentActivity, previewStatus, setApplicantStatus,
   updateApplicantFields, messageFamily, archiveApplicant, markReplyHandled, maybeSyncApplicants, syncState,
-  isAccountId, STATUSES, FIELDS, fieldMax, replaceBoundary,
+  isAccountId, STATUSES, FIELDS, fieldMax, replaceBoundary, getApplicantRow,
 } from './_applicants.js';
-import { applicationSettings, cleanYear } from './_applications.js';
+import { applicationSettings, cleanYear, placeHomeByStaff } from './_applications.js';
 import { getLiveForm, getFormRules, saveFormRules } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA } from './_application-form.js';
 import { logAudit } from './_audit.js';
@@ -205,6 +206,12 @@ export async function onRequestPost(context) {
       const out = await setApplicantStatus(env, id, String(body.status.status || ''), { notify: body.status.notify !== false, emailNow: !!body.status.emailNow, denialReason: body.status.denialReason ?? null, user });
       await audit('status', id, { from: out.previous, to: out.status, email: out.email });
       return ok(out);
+    }
+    if (body.placeHome) {
+      const id = target(body.placeHome);
+      const out = await placeHomeByStaff(env, id, { lat: body.placeHome.lat, lng: body.placeHome.lng, by: adminNameOf(user) });
+      await audit('place home', id, { band: out.area.band, miles: out.area.miles, county: out.area.county });
+      return ok({ ...out, applicant: await getApplicantRow(env.DB, id) });
     }
     if (body.fields) {
       const id = target(body.fields);

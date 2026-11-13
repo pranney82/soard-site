@@ -52,6 +52,7 @@ import { fakeApplicantWorld, ORG } from '../tests/lib/fake-applicant-world.mjs';
 import * as api from '../functions/api/applicants-admin.js';
 import * as formsApi from '../functions/api/applications-admin.js';
 import { FIELDS } from '../functions/api/_applicants.js';
+import { ensureSchema as ensureApplicationsSchema } from '../functions/api/_applications.js';
 import { clearFormCache, getDraftForm, getLiveForm } from '../functions/api/_application-forms.js';
 import { axeScan, axeText } from './lib/axe.mjs';
 import { saveScorecard, familyScores, capacities } from '../functions/api/_applicant-scores.js';
@@ -2449,6 +2450,44 @@ const toldOf = (pg, re) => pg.evaluate((src) => window.__toasts.filter(t => new 
   await sleep(500);
   ok(reading && reading !== leaver && await text(mp, '.apl-drawer h2') === reading && await mp.evaluate(told, leaver), `a family leaving after you've moved on keeps the drawer on the next family (${leaver} → ${reading})`);
   await mp.close();
+}
+
+// A home no map service found: held. Approving waits, and staff click the map where the home is.
+{
+  // Any family still on the board by now, In Review, with a home (earlier checks move and rename some)
+  const noah = Object.values(w.world.accounts).find((a) => a.fields?.[F.status] === 'In Review' && a.locations?.length && !a.archivedAt && !/^TEST/.test(a.name));
+  await ensureApplicationsSchema(DB);
+  await DB.prepare(`INSERT INTO applications (id, draft_id, year, child_name, parent_name, parent_email, makeover_types, answers, files, is_test, jt_state, status, attempts, next_try_at, submitted_at, updated_at, form_version, lang, kind, jt_account_id)
+    VALUES ('app-held-1', 'd-held-1', '2027', ?, 'Erin Pence', 'erin@example.com', '[]', '{}', '{}', 0, ?, 'done', 0, 0, ?, ?, 0, 'en', 'family', ?)`)
+    .bind(noah.name, JSON.stringify({ area: { status: 'unknown', band: 'unknown', reason: 'no-match' }, location: { id: noah.locations[0].id } }), day(40), day(40), noah.id).run();
+  const hp = await open(1440, 1000);
+  await openFamily(hp, noah.name);
+  await hp.waitForSelector('.apl-place', { timeout: 8000 }).catch(() => null);
+  const lead = await text(hp, '.apl-place-lead');
+  ok(/No map service could find this home\..*can’t be approved until someone places the home/.test(lead), `a home no map service found says it's held and why (${lead.slice(0, 90)})`);
+  ok(await hp.$eval('.apl-status-select select', (el) => [...el.options].find((o) => o.value === 'Approved')?.disabled === true), 'Approved can’t be picked until the home is placed');
+  ok(/Approved \(place the home first\)/.test(await hp.$eval('.apl-status-select select', (el) => [...el.options].map((o) => o.textContent).join('|'))), 'and the choice says why');
+  ok(!(await hp.$('.apl-side .apl-tag.is-in, .apl-side .apl-tag.is-out')), 'JobTread’s own point isn’t shown as the answer');
+  ok(await hp.$eval('.apl-place button.btn-primary', (b) => b.disabled), 'Save waits for a spot on the map');
+  await hp.waitForFunction(() => document.querySelectorAll('.apl-placemap .leaflet-overlay-pane path').length > 0, { timeout: 8000 }).catch(() => null);
+  await hp.$eval('.apl-placemap', (el) => el.scrollIntoView({ block: 'center' }));
+  await sleep(400);
+  const r = await hp.$eval('.apl-placemap', (el) => { const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
+  await hp.mouse.click(r.x, r.y);
+  await hp.waitForFunction(() => /service area/.test(document.querySelector('.apl-place-foot span')?.textContent || ''), { timeout: 4000 }).catch(() => null);
+  const where = await text(hp, '.apl-place-foot span');
+  ok(/^(Inside the service area|About [\d.]+ miles? outside the service area)/.test(where), `clicking the map shows where that is (${where})`);
+  ok(!!(await hp.$('.apl-placemap .apl-pin, .apl-placemap .leaflet-marker-icon')), 'with a pin there');
+  ok(await hp.$$eval('.apl-placemap .leaflet-control-zoom', (els) => els.length) === 1, 'one set of zoom buttons');
+  await shot(hp, 'desktop-place-home');
+  await hp.click('.apl-place button.btn-primary');
+  await hp.waitForFunction(() => !document.querySelector('.apl-place'), { timeout: 10000 }).catch(() => null);
+  ok(!(await hp.$('.apl-place')), 'saved: no longer held');
+  ok(/placed it on the map/.test(await text(hp, '.apl-place-done')), `the Home card says who placed it (${await text(hp, '.apl-place-done')})`);
+  ok(await hp.$eval('.apl-status-select select', (el) => [...el.options].find((o) => o.value === 'Approved')?.disabled === false), 'Approved can be picked now');
+  ok(await toldOf(hp, /^Home placed: .*can be approved now/) === 1, 'a toast says it’s placed');
+  ok(noah.comments.some((c) => c.name === 'Service area check (placed by staff)'), 'JobTread gets a note on the account');
+  await hp.close();
 }
 
 ok(consoleErrors.length === 0, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 3).join(' | ')}` : ''}`);

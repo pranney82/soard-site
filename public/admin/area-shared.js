@@ -165,16 +165,42 @@ export function nearRing(polygon, miles, steps = 144) {
 // Map services answer with their nearest guess for a street they don't know; the server keeps a
 // place only when it's the house that was typed, and the form says which house it found.
 
-// "Lawrence Street Northeast" and "Lawrence St NE" are the same street
+// The Postal Service's street types (Publication 28, appendix C1): each standard abbreviation, then the
+// ways it's written. "Gold Valley Crossing" and "Gold Valley Xing" are the same street.
+const STREET_TYPES = 'aly alley allee ally|anx anex annex annx|arc arcade|ave avenue av aven avenu avn avnue|byu bayou bayoo|bch beach|bnd bend|blf bluff bluf|blfs bluffs|btm bottom bot bottm|blvd boulevard boul boulv|br branch brnch|brg bridge brdge|brk brook|brks brooks|bg burg|bgs burgs|byp bypass bypa bypas byps|cp camp cmp|cyn canyon canyn cnyn|cpe cape|cswy causeway causwa|ctr center cen cent centr centre cnter cntr|ctrs centers|cir circle circ circl crcl crcle|cirs circles|clf cliff|clfs cliffs|clb club|cmn common|cmns commons|cor corner|cors corners|crse course|ct court crt|cts courts|cv cove|cvs coves|crk creek|cres crescent crsent crsnt|crst crest|xing crossing crssng|xrd crossroad|xrds crossroads|curv curve|dl dale|dm dam|dv divide div dvd|dr drive driv drv|drs drives|est estate|ests estates|expy expressway exp expr express expw|ext extension extn extnsn|exts extensions|fls falls|fry ferry frry|fld field|flds fields|flt flat|flts flats|frd ford|frds fords|frst forest forests|frg forge forg|frgs forges|frk fork|frks forks|ft fort frt|fwy freeway freewy frway frwy|gdn garden gardn grden grdn|gdns gardens grdns|gtwy gateway gatewy gatway gtway|gln glen|glns glens|grn green|grns greens|grv grove grov|grvs groves|hbr harbor harb harbr hrbor|hbrs harbors|hvn haven|hts heights ht|hwy highway highwy hiway hiwy hway|hl hill|hls hills|holw hollow hllw hollows holws|inlt inlet|is island islnd|iss islands islnds|jct junction jction jctn junctn juncton|jcts junctions jctns|ky key|kys keys|knl knoll knol|knls knolls|lk lake|lks lakes|lndg landing lndng|ln lane|lgt light|lgts lights|lf loaf|lck lock|lcks locks|ldg lodge ldge lodg|mnr manor|mnrs manors|mdw meadow|mdws meadows medows|ml mill|mls mills|msn mission missn mssn|mtwy motorway|mt mount mnt|mtn mountain mntain mntn mountin mtin|mtns mountains mntns|nck neck|orch orchard orchrd|opas overpass|park parks|pkwy parkway parkwy pkway pky parkways pkwys|psge passage|pne pine|pnes pines|pl place|pln plain|plns plains|plz plaza plza|pt point|pts points|prt port|prts ports|pr prairie prr|radl radial rad radiel|rnch ranch ranches rnchs|rpd rapid|rpds rapids|rst rest|rdg ridge rdge|rdgs ridges|riv river rvr rivr|rd road|rds roads|rte route|shl shoal|shls shoals|shr shore shoar|shrs shores shoars|skwy skyway|spg spring spng sprng|spgs springs spngs sprngs|sq square sqr sqre squ|sqs squares sqrs|sta station statn stn|stra stravenue strav straven stravn strvn strvnue|strm stream streme|st street strt str|sts streets|smt summit sumit sumitt|ter terrace terr|trwy throughway|trce trace traces|trak track tracks trk trks|trfy trafficway|trl trail trails trls|trlr trailer trlrs|tunl tunnel tunel tunls tunnels tunnl|tpke turnpike trnpk turnpk|upas underpass|un union|uns unions|vly valley vally vlly|vlys valleys|via viaduct vdct viadct|vw view|vws views|vlg village vill villag villg villiage|vlgs villages|vl ville|vis vista vist vst vsta|way|ways|wl well|wls wells|loop loops|mall|mews|oval|pass|path paths|pike pikes|ramp|row|rue|run|spur spurs|walk walks|wall|land|isle isles|fall';
 const WORDS = {
-  street: 'st', avenue: 'ave', road: 'rd', drive: 'dr', lane: 'ln', court: 'ct', circle: 'cir', boulevard: 'blvd', parkway: 'pkwy',
-  place: 'pl', trail: 'trl', highway: 'hwy', terrace: 'ter', northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw',
-  north: 'n', south: 's', east: 'e', west: 'w',
+  northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', north: 'n', south: 's', east: 'e', west: 'w',
+  saint: 'st',
 };
-export const streetKey = (s) => String(s || '').toLowerCase().replace(/[.,#]/g, ' ').split(/\s+/).filter(Boolean).map(w => WORDS[w] || w).join(' ');
-// A street's kind and its direction, which a map service may write, drop or spell out
-const KINDS_OF_STREET = new Set(['st', 'ave', 'rd', 'dr', 'ln', 'ct', 'cir', 'blvd', 'pkwy', 'pl', 'trl', 'hwy', 'ter', 'way', 'run', 'xing', 'pt', 'cv', 'loop', 'sq', 'path', 'walk', 'row', 'pass', 'bnd', 'cres', 'crk', 'gln', 'hl', 'holw', 'lndg', 'mdw', 'rdg', 'vw', 'vis', 'aly', 'byp', 'cswy', 'ctr', 'expy', 'fwy', 'grn', 'plz', 'tpke', 'trce', 'tunl', 'xrd', 'spur', 'pike', 'circle', 'cove', 'point', 'crossing']);
+const KINDS_OF_STREET = new Set();
+for (const group of STREET_TYPES.split('|')) {
+  const [abbr, ...ways] = group.split(' ');
+  KINDS_OF_STREET.add(abbr);
+  for (const w of ways) WORDS[w] ??= abbr;
+}
+/** "Lawrence Street Northeast" → "lawrence st ne"; "GA-20" → "ga 20" */
+export const streetKey = (s) => String(s || '').toLowerCase().replace(/([a-z])-(\d)/g, '$1 $2').replace(/[.,#]/g, ' ')
+  .split(/\s+/).filter(Boolean).map(w => WORDS[w] || w).join(' ');
 const DIRECTIONS = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']);
+// The apartment or unit on the street line (Publication 28, appendix C2), never part of the street:
+// "Pkwy #328", "Dr Apt 4B", "Rd Unit C", "Ln Bldg 2 Ste 100", "St Rear"
+const UNIT_WITH_ID = /\s*(?:#|\b(?:apt|apartment|unit|ste|suite|bldg|building|fl|floor|rm|room|lot|spc|space|trlr|dept|hngr|slip|pier|stop|key)\b\.?\s*#?)\s*(?:[a-z]?\d[\w-]*|[a-z])\s*$/i;
+const UNIT_ALONE = /\s+\b(?:rear|frnt|front|lowr|lower|uppr|upper|bsmt|basement|ofc|office|ph|penthouse|lbby|lobby|side)\.?\s*$/i;
+function withoutUnit(line) {
+  let s = String(line || '').trim();
+  for (let i = 0; i < 3; i++) {
+    const t = s.replace(UNIT_WITH_ID, '').replace(UNIT_ALONE, '').trim();
+    if (t === s) break;
+    s = t;
+  }
+  return s;
+}
+// A numbered highway however it's written: "Highway 20", "Hwy 20", "GA-20", "State Route 20", "SR 20", "US Hwy 19"
+const ROUTE = /^(?:(?:ga|us|state|st)\s+)?(?:hwy|rte|rt|sr|state\s+(?:rte|hwy))?\s*(\d+[a-z]?)$/;
+const routeOf = (name) => {
+  const m = ROUTE.exec(name);
+  return m && /\b(?:ga|us|state|hwy|rte|rt|sr)\b/.test(name) ? m[1] : null;
+};
 /** Fewest one-letter changes from a to b */
 function editDistance(a, b) {
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -185,28 +211,42 @@ function editDistance(a, b) {
   }
   return prev[b.length];
 }
-/** "420 Copper Ridge Dr" → { number: '420', name: 'copper ridge', kind: 'dr', dir: '' } */
+/** "420 Copper Ridge Dr #3" → { number: '420', words: ['copper', 'rdg', 'dr'], dir: '' } */
 function houseParts(line) {
-  const words = streetKey(line).split(' ').filter(Boolean);
+  const words = streetKey(withoutUnit(line)).split(' ').filter(Boolean);
   const number = /^\d+[a-z]?$/.test(words[0] || '') ? words.shift() : '';
   const dirs = words.filter((w, i) => DIRECTIONS.has(w) && (i === 0 || i === words.length - 1));
   const rest = words.filter((w, i) => !(DIRECTIONS.has(w) && (i === 0 || i === words.length - 1)));
-  const kind = rest.length > 1 && KINDS_OF_STREET.has(rest[rest.length - 1]) ? rest.pop() : '';
-  return { number, name: rest.join(' '), kind, dir: dirs.join(' ') };
+  return { number, words: rest, dir: dirs.join(' ') };
 }
 /**
- * Is `found` (a map service's first line) the house `typed`? The same number on the same street: its kind
- * and direction may be left off ("175 Summer Lake Dr" for 175 Summer Lake Dr SW), and its name a letter or
- * two apart ("Holcomb Wood Pkwy" for Holcomb Woods Pkwy), but never another street ("420 Cooper Rd" for
- * 420 Copper Ridge Dr) or another house on it.
+ * Is `found` (a map service's first line) the house `typed`? The same number on the same street: the
+ * street's type and direction may be written another way or left off ("175 Summer Lake Dr" for 175
+ * Summer Lake Dr SW, "210 Gold Valley Xing" for 210 Gold Valley Crossing), an apartment or unit doesn't
+ * count, and its name may be a letter or two apart ("Holcomb Wood Pkwy" for Holcomb Woods Pkwy), but
+ * never another street ("420 Cooper Rd" for 420 Copper Ridge Dr) or another house on it.
  */
 export function sameHouse(typed, found) {
   const a = houseParts(typed);
   const b = houseParts(found);
-  if (!a.number || a.number !== b.number || !a.name || !b.name) return false;
-  if (a.kind && b.kind && a.kind !== b.kind) return false;
+  if (!a.number || a.number !== b.number || !a.words.length || !b.words.length) return false;
   if (a.dir && b.dir && a.dir !== b.dir) return false;
-  if (a.name === b.name) return true;
-  const longer = Math.max(a.name.length, b.name.length);
-  return longer >= 6 && editDistance(a.name, b.name) <= (longer >= 12 ? 2 : 1);
+  const all = (p) => p.words.join(' ');
+  if (all(a) === all(b)) return true;
+  const kindOf = (p) => (p.words.length > 1 && KINDS_OF_STREET.has(p.words.at(-1)) ? p.words.at(-1) : '');
+  const nameOf = (p) => (kindOf(p) ? p.words.slice(0, -1) : p.words).join(' ');
+  const ka = kindOf(a);
+  const kb = kindOf(b);
+  const ra = routeOf(nameOf(a)) || routeOf(all(a));
+  const rb = routeOf(nameOf(b)) || routeOf(all(b));
+  if (ra || rb) return ra === rb && (!ka || !kb || ka === kb);
+  // Two types: the same street only when one side's last word is really part of the name, its type
+  // left off ("123 Lake Forest" for 123 Lake Forest Dr), never Dr for Ct
+  if (ka && kb && ka !== kb) return all(a) === nameOf(b) || nameOf(a) === all(b);
+  // The same type, or one side's left off: the names, a letter or two apart at most
+  const na = ka ? nameOf(a) : all(a);
+  const nb = kb ? nameOf(b) : all(b);
+  if (na === nb) return true;
+  const longer = Math.max(na.length, nb.length);
+  return longer >= 6 && editDistance(na, nb) <= (longer >= 12 ? 2 : 1);
 }

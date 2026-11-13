@@ -20,6 +20,9 @@ import {
 import { saveFormRules, formFor, clearFormCache } from '../functions/api/_application-forms.js';
 import { esriLocator, resetEsri, spendEsri, esriFacts, ESRI_MONTHLY } from '../functions/api/_esri.js';
 import { entries, applyFacts } from '../public/admin/automations.js';
+import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
+import { placeHomeByStaff, staffEmail, staffSlack, JT_FIELDS, forgetCountyChoices } from '../functions/api/_applications.js';
+import { listApplicants, getApplicantRow, setApplicantStatus, previewStatus, ensureApplicantSchema, HELD_APPROVAL } from '../functions/api/_applicants.js';
 import { checkServiceArea, sameHouse } from '../functions/api/_geo.js';
 import { ALERT_EMAILS } from '../functions/api/_applications.js';
 
@@ -96,6 +99,23 @@ test('the same house: the same number on the same street, however a map service 
   assert.equal(sameHouse('250 Hembree Park Drive', '250 HEMBREE PARK DR'), true, 'Drive is Dr');
   assert.equal(sameHouse('12 Main St', '12 MAIN AVE'), false, 'a street of another kind');
   assert.equal(sameHouse('5 Peachtree Rd NE', '5 PEACHTREE RD NW'), false, 'the other side of town');
+  // Three real homes Esri had, turned away until the street's type and the unit were read the Postal Service's way
+  assert.equal(sameHouse('210 Gold Valley Crossing', '210 Gold Valley Xing'), true, 'Crossing is Xing');
+  assert.equal(sameHouse('345 Burdock Trce', '345 Burdock Trace'), true, 'Trce is Trace');
+  assert.equal(sameHouse('1000 Holcomb Woods Pkwy #328', '1000 Holcomb Woods Pkwy'), true, 'an apartment is the same building');
+  assert.equal(sameHouse('9 Main St Apt 4B', '9 MAIN ST'), true);
+  assert.equal(sameHouse('9 Main St Rear', '9 Main St'), true);
+  assert.equal(sameHouse('9 Lot Ln', '9 Lot Ln'), true, 'a street named like a unit is still the street');
+  assert.equal(sameHouse('12 Saint Andrews Ct', '12 St Andrews Ct'), true);
+  assert.equal(sameHouse('12 Oak Mountain Rd', '12 Oak Mtn Rd'), true);
+  assert.equal(sameHouse('123 Lake Forest', '123 Lake Forest Dr'), true, 'the type left off, its name ending in a type word');
+  assert.equal(sameHouse('123 Copper Ridge Dr', '123 Copper Ridge Ct'), false, 'Dr is never Ct');
+  assert.equal(sameHouse('55 Highway 20', '55 State Route 20'), true, 'a numbered highway however it is written');
+  assert.equal(sameHouse('55 GA-20', '55 Hwy 20'), true);
+  assert.equal(sameHouse('55 Hwy 20', '55 Hwy 9'), false);
+  assert.equal(sameHouse('55 Hwy 9', '55 Old Hwy 9'), false, 'the old road is another road');
+  assert.equal(sameHouse('12 Elm St', '12 Elk St'), false, 'short names must match exactly');
+  assert.equal(sameHouse('500 N Main St', '500 S Main St'), false);
 });
 
 test('Copper Ridge Dr: Esri has the house, 19.6 miles out, so a 10-mile stop stops it; the address is never changed', async () => {
@@ -218,6 +238,58 @@ test('Esri refusing shows on Site → Automations in its own words, until it ans
   await checkServiceArea(LAWRENCE, f.serviceArea, fetch, { esri: esriLocator(env) });
   applyFacts({ env: {}, esri: await esriFacts(env) });
   assert.equal(entry.es, 'live');
+  // The month's lookups all used: the Census finds homes, and that's not Esri refusing
+  await env.DB.prepare('UPDATE esri_usage SET n = ?').bind(ESRI_MONTHLY).run();
+  await checkServiceArea(LAWRENCE, f.serviceArea, fetch, { esri: esriLocator(env) });
+  facts = await esriFacts(env);
+  assert.ok(Date.parse(facts.okAt) > Date.parse(facts.errAt), 'the limit isn’t noted as a refusal');
+  applyFacts({ env: {}, esri: facts });
+  assert.equal(entry.es, 'attn');
+  assert.match(entry.probe.why, /All 1000 of this month’s Esri lookups are used/);
+});
+
+test('staff hear in Slack when Esri starts refusing, once, and ✅ when it answers again', async () => {
+  const f = await form();
+  env.SLACK_BOT_TOKEN = 'xoxb-test';
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)').run();
+  await writeSlackConfig(env.DB, { channel: { id: 'CNEWS', name: 'team' }, attention: { id: 'CATT', name: 'website-alerts' } });
+  const LAWRENCE = '205 Lawrence St NE, Marietta, GA 30060';
+  const posts = () => w.world.slack.filter((p) => JSON.stringify(p).includes('Esri'));
+  const good = point(-84.55, 33.95, { Addr_type: 'PointAddress', StAddr: '205 Lawrence St NE', Subregion: 'Cobb County', Match_addr: '205 Lawrence St NE, Marietta, Georgia, 30060' });
+  const look = () => checkServiceArea(LAWRENCE, f.serviceArea, fetch, { esri: esriLocator(env) });
+  const tick = () => new Promise((r) => setTimeout(r, 3));
+  // One dropped connection isn't trouble; a second in a row is
+  esri = 503;
+  await look();
+  assert.equal(posts().length, 0, 'one hiccup: no post');
+  await tick();
+  esri = good;
+  await look();
+  await tick();
+  esri = 503;
+  await look();
+  assert.equal(posts().length, 0, 'answered in between: still no post');
+  await tick();
+  await look();
+  assert.equal(posts().length, 1, 'two refusals in a row: one post');
+  assert.equal(posts()[0].channel, 'CATT', 'with the website’s problems');
+  assert.match(JSON.stringify(posts()[0]), /Esri isn’t finding homes.*Esri returned 503/);
+  await tick();
+  await look();
+  assert.equal(posts().length, 1, 'still refusing: no more posts');
+  await tick();
+  esri = good;
+  await look();
+  assert.equal(posts().length, 2);
+  assert.match(JSON.stringify(posts()[1]), /Esri is finding homes again/);
+  assert.ok((w.world.slackEdits || []).some((e) => JSON.stringify(e).includes('Resolved: Esri wasn’t finding homes')), 'the first post turns ✅');
+  // Esri itself saying no (a pass it won't take): at once
+  await tick();
+  esri = { error: { code: 403, message: 'User does not have permissions to store geocoding results.' } };
+  await look();
+  assert.equal(posts().length, 3);
+  assert.match(JSON.stringify(posts()[2]), /permissions to store geocoding results/);
+  assert.doesNotMatch(JSON.stringify(posts()), /—/, 'no em dashes');
 });
 
 test('the two-week pass: kept and reused, renewed by itself when Esri stops taking it', async () => {
@@ -311,6 +383,66 @@ test('intake: staff see who found the house and the county comes from it', async
   assert.match(note.message, /About 19\.6 miles outside the service area/);
   assert.match(note.message, /Found by Esri: 420 COPPER RIDGE DR, LOGANVILLE, GEORGIA, 30052/);
   assert.doesNotMatch(note.message, /Census/);
+});
+
+test('a home no map service finds is held: the family’s answer isn’t taken, and approving waits until staff place it', async () => {
+  const f = await form({ beyond: 'stop' });
+  esri = { candidates: [] }; // a brand-new street: Esri, the Census and OpenStreetMap don't have it
+  const NEW_STREET = addr('77 Brand New Ln', 'Loganville', '30052');
+  const sub = await submitDraft(env, await readyDraft({ ...answersAt(NEW_STREET), boundary: AREA_VALUES.near }));
+  assert.equal(sub.ok, true, 'the family can still apply');
+  await processApplication(env, sub.id, { fetchImpl: fetch });
+  let app = await getApplication(env.DB, sub.id);
+  assert.equal(app.jt_state.area.band, 'unknown');
+  const acct = app.jt_account_id;
+  const note = w.account(acct).comments.find(c => c.name === 'Service area check (automatic)');
+  assert.match(note.message, /The family's answer: No, but it is close to it/);
+  assert.match(note.message, /Held: no map service found this home, so the family’s answer isn’t taken for it\. Before approving, place the home on the map/);
+  assert.match(staffEmail(app, acct).html, /Not found on any map: place the home in Applicants/);
+  assert.match(JSON.stringify(staffSlack(app, acct)), /No map service found the home, so it waits/);
+  // Applicants: held, and Approved waits (JobTread's own point for it doesn't count)
+  await ensureApplicantSchema(env.DB);
+  await env.DB.prepare("INSERT INTO applicants (account_id, name, status, year, types, fields, lat, lng, area, area_miles, created_at, synced_at) VALUES (?, 'Avery Stone', 'In Review', '2027', '[]', '{}', 33.95, -84.0, 'inside', 0, ?, ?)")
+    .bind(acct, new Date().toISOString(), new Date().toISOString()).run();
+  let row = (await listApplicants(env.DB)).find(a => a.id === acct);
+  assert.equal(row.homeHeld, true);
+  assert.equal((await getApplicantRow(env.DB, acct)).homeHeld, true, 'the drawer too');
+  await assert.rejects(setApplicantStatus(env, acct, 'Approved', { user: 'linzi@soardcharity.com' }), (e) => e.message === HELD_APPROVAL);
+  await assert.rejects(previewStatus(env, acct, 'Approved'), (e) => e.message === HELD_APPROVAL, 'the confirm sheet says why');
+  assert.match(HELD_APPROVAL, /Place the home on the map/);
+  // Staff place it: 19.6 miles out, Walton County, from the Census's map
+  w.world.countyAt = 'Walton';
+  w.world.customFields = [{ id: JT_FIELDS.county, targetType: 'location', options: ['Cobb', 'Gwinnett', 'Walton'] }]; // JobTread's County choices
+  forgetCountyChoices();
+  await assert.rejects(placeHomeByStaff(env, acct, { lat: 40.7, lng: -74 }), /isn’t in Georgia/);
+  const out = await placeHomeByStaff(env, acct, { lat: COPPER_HOUSE.y, lng: COPPER_HOUSE.x, by: 'Linzi' });
+  assert.equal(out.area.band, 'far');
+  assert.equal(out.area.miles, 19.6);
+  assert.equal(out.area.county, 'Walton');
+  assert.equal(out.area.source, 'staff');
+  app = await getApplication(env.DB, sub.id);
+  assert.equal(app.jt_state.area.by, 'Linzi');
+  const loc = w.account(acct).locations[0];
+  assert.equal(Object.values(loc.customFieldValues).includes('Walton'), true, 'JobTread’s County field from where the home is');
+  const placed = w.account(acct).comments.find(c => c.name === 'Service area check (placed by staff)');
+  assert.match(placed.message, /Linzi placed the home on the map: About 19\.6 miles outside the service area\./);
+  assert.match(placed.message, /farther out than Settings → Service area allows/);
+  assert.doesNotMatch(placed.message + note.message, /—/, 'no em dashes');
+  row = (await listApplicants(env.DB)).find(a => a.id === acct);
+  assert.equal(row.homeHeld, false, 'no longer held');
+  assert.deepEqual([row.lat, row.lng, row.area, row.areaMiles, row.county], [COPPER_HOUSE.y, COPPER_HOUSE.x, 'outside', 19.6, 'Walton'], 'where staff placed it stands over JobTread’s point');
+  assert.equal(row.placed.by, 'Linzi');
+  await previewStatus(env, acct, 'Approved').catch((e) => assert.notEqual(e.message, HELD_APPROVAL));
+  // Placed again (a slip of the mouse) is fine; a home a map service found isn't placed by hand
+  await placeHomeByStaff(env, acct, { lat: COPPER_HOUSE.y + 0.001, lng: COPPER_HOUSE.x, by: 'Linzi' });
+  esri = point(COPPER_HOUSE.x, COPPER_HOUSE.y, { Addr_type: 'PointAddress', StAddr: '420 Copper Ridge Dr', Subregion: 'Walton County', Match_addr: '420 Copper Ridge Dr, Loganville, Georgia, 30052' });
+  const sub2 = await submitDraft(env, await readyDraft({ ...answersAt(COPPER), boundary: AREA_VALUES.far }));
+  assert.equal(sub2.ok, false, 'found 19.6 miles out with stop on: stopped at the form');
+  await form({ beyond: 'warn' });
+  const sub3 = await submitDraft(env, await readyDraft({ ...answersAt(COPPER), boundary: AREA_VALUES.far }));
+  await processApplication(env, sub3.id, { fetchImpl: fetch });
+  const found = await getApplication(env.DB, sub3.id);
+  await assert.rejects(placeHomeByStaff(env, found.jt_account_id, { lat: 34, lng: -84 }), /Esri already found this home/);
 });
 
 test('the default outline is the one in use (the miles above are the live ones)', () => {

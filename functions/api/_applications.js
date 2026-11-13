@@ -47,9 +47,9 @@ import { readApplicant, sendIntake, ensureCommsSchema, ensureCommunityProjectTyp
 import { formFor, ensureFormSchema, getLiveForm } from './_application-forms.js';
 import { spanishToDo, catchUpSpanish } from './_translate.js';
 import { isUpload, isInput, answerText, progressPercent, renderMessage, choice, AREA_VALUES, kindOf, isOrganizationKind, rolesFor } from './_application-form.js';
-import { checkServiceArea, areaText, addressKey, checkableAddress, bandOf, sameHouse, sourceName } from './_geo.js';
+import { checkServiceArea, areaText, addressKey, checkableAddress, bandOf, sameHouse, sourceName, homeUnplaced, countyAt } from './_geo.js';
 import { esriLocator, esriOn } from './_esri.js';
-import { placeHome } from '../../public/admin/area-shared.js';
+import { placeHome, areaRules } from '../../public/admin/area-shared.js';
 import { maybeSyncApplicants, familiesWithHomes } from './_applicants.js';
 import { runJotformBackfill, jotformSecondLook } from './_jotform-backfill.js';
 import { runNotifications } from './_applicant-notify.js';
@@ -995,7 +995,7 @@ export function staffEmail(app, accountId) {
   const areaHtml = !area ? null
     : area.status === 'inside' ? `${pill(area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside', TONES.green)}`
     : area.status === 'outside' ? `${pill(`About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ', close' : ''}`, TONES.amber)}`
-    : `${pill('Couldn’t check the address', TONES.amber)}`;
+    : `${pill('Not found on any map: place the home in Applicants', TONES.amber)}`;
   const countyClash = area?.county && a.county && area.county !== a.county ? ` <span class="muted" style="color:${mail.MUTED};">${esc(sourceName(area).replace(/^the /, 'The '))} says ${esc(area.county)} County.</span>` : '';
   const repeatHtml = repeats.length
     ? `${pill('Possible repeat', TONES.amber)} ${esc(repeats.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}${m.status ? `, ${m.status}` : ''}`).join('; '))}`
@@ -1050,7 +1050,7 @@ export function staffSlack(app, accountId) {
   const areaWords = !area ? null
     : area.status === 'inside' ? (area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside')
     : area.status === 'outside' ? `⚠️ About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ' (close)' : ''}`
-    : '⚠️ Couldn’t check the address';
+    : '⚠️ No map service found the home, so it waits: place it in Applicants (its Home card) before approving';
   const countyClash = area?.county && a.county && area.county !== a.county ? ` (${sourceName(area)} says ${area.county} County)` : '';
   return slackCard({
     icon: '📝',
@@ -1080,13 +1080,13 @@ function areaPill(area) {
   if (!area) return null;
   if (area.status === 'inside') return pill(area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside', TONES.green);
   if (area.status === 'outside') return pill(`About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ', close' : ''}`, TONES.amber);
-  return pill('Couldn’t check the address', TONES.amber);
+  return pill('Not found on any map: place the home in Applicants', TONES.amber);
 }
 function areaWords(area) {
   if (!area) return null;
   if (area.status === 'inside') return area.edgeMiles != null && area.edgeMiles < 1 ? 'Inside, near the edge' : 'Inside';
   if (area.status === 'outside') return `⚠️ About ${area.miles} ${area.miles === 1 ? 'mile' : 'miles'} outside${bandOf(area) === 'near' ? ' (close)' : ''}`;
-  return '⚠️ Couldn’t check the address';
+  return '⚠️ No map service found the home, so it waits: place it in Applicants (its Home card) before approving';
 }
 const repeatWords = (repeats) => repeats.slice(0, 2).map((m) => `${m.name}${m.year ? ` (${m.year})` : ''}${m.status ? `, ${m.status}` : ''}`).join('; ') + (repeats.length > 2 ? ` and ${repeats.length - 2} more` : '');
 /** An organization's spaces as the staff read them, "Something else" spelled out */
@@ -1179,6 +1179,49 @@ function ageOn(birthdate, on) {
 }
 
 /** A staff-only comment on the account (not emailed to anyone) */
+/**
+ * Staff place a home no map service found (Applicants → the family's Home card): the spot they clicked is
+ * checked against the service area like any home, its county read from the Census's map, JobTread's County
+ * field set from it, and a note left on the account. That clears the hold on approving. A home a map service
+ * found isn't placed by hand (its own point stands); one staff placed can be placed again.
+ * → { area, beyond, applicationId }
+ */
+export async function placeHomeByStaff(env, accountId, { lat, lng, by = 'Staff', fetchImpl = fetch, now = Date.now() } = {}) {
+  const la = Number(lat);
+  const ln = Number(lng);
+  // Georgia, with a little to spare: every family SOARD serves lives there
+  if (!Number.isFinite(la) || !Number.isFinite(ln) || la < 30.2 || la > 35.1 || ln < -85.7 || ln > -80.7) throw new Error('That spot isn’t in Georgia. Click where the home is.');
+  await ensureSchema(env.DB);
+  const app = applicationRow(await env.DB.prepare('SELECT * FROM applications WHERE jt_account_id = ? AND deleted_at IS NULL ORDER BY submitted_at DESC LIMIT 1').bind(accountId).first());
+  if (!app) throw new Error('This family didn’t apply on the website form, so there’s no check to place.');
+  const s = app.jt_state;
+  if (s.area && !homeUnplaced(s.area) && s.area.source !== 'staff') throw new Error(`${sourceName(s.area).replace(/^the /, 'The ')} already found this home, so it isn’t placed by hand.`);
+  const form = await formFor(env.DB, { kind: app.kind, year: app.year });
+  const rules = areaRules(form.serviceArea);
+  const p = placeHome(la, ln, rules);
+  const county = await countyAt(la, ln, fetchImpl).catch(() => null);
+  const name = String(by || 'Staff').trim().slice(0, 80) || 'Staff';
+  const at = iso(now);
+  s.area = {
+    status: p.band === 'inside' ? 'inside' : p.band === 'unknown' ? 'unknown' : 'outside', band: p.band, miles: p.miles, edgeMiles: p.edgeMiles, nearMiles: rules.nearMiles,
+    lat: la, lng: ln, county, source: 'staff', by: name, at, notFound: true,
+  };
+  await saveState(env.DB, app, {}, now);
+  const jt = fetchImpl;
+  // JobTread's County field, from where the home is (the intake had nothing to set it from)
+  if (county && s.location?.id) {
+    const value = await jobtreadCounty(env, county, jt, now).catch(() => null);
+    if (value) await pave(env.JOBTREAD_GRANT_KEY, { updateLocation: { $: { id: s.location.id, customFieldValues: { [JT_FIELDS.county]: value } } } }, jt).catch(() => null);
+  }
+  const beyond = form.serviceArea?.beyond || 'warn';
+  const lines = [`${name} placed the home on the map: ${areaText(s.area)}.`];
+  if (county) lines.push(`${county} County, from the Census’s map.`);
+  if (p.band === 'far' && beyond === 'stop') lines.push('That is farther out than Settings → Service area allows: the form stops families found this far out.');
+  lines.push('No map service had found this home, so it was held until someone placed it. It can be approved now.');
+  await postInternal(env, accountId, 'Service area check (placed by staff)', lines.join('\n\n'), jt).catch(() => {});
+  return { area: s.area, beyond, applicationId: app.id };
+}
+
 async function postInternal(env, accountId, name, message, fetchImpl) {
   if (!accountId) return;
   await pave(env.JOBTREAD_GRANT_KEY, {
@@ -1410,6 +1453,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
       const field = areaFieldOf(form) || { type: 'radio', options: [] };
       const said = answerText(field, app.answers.boundary, true);
       lines.push(fromForm ? 'The form placed the home from its address as the family typed it, so they didn’t answer this themselves.' : `The family's answer: ${said || 'not given'}`);
+      if (homeUnplaced(s.area)) lines.push(`Held: no map service found this home, so the family’s answer isn’t taken for it. Before approving, place the home on the map: ${SITE_ORIGIN}/admin/#applications/applicants (the family’s Home card).`);
       await postInternal(env, accountId, 'Service area check (automatic)', lines.join('\n\n'), jt).catch(() => {});
     }
   });
