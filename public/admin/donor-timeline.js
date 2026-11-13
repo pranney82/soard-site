@@ -40,7 +40,10 @@ const STYLE = `
 .dn-tl__quiet { margin: 0; font-size: var(--fs-xs); color: var(--color-text-muted); overflow-wrap: anywhere; }
 .dn-tl__list, .dn-tl__month ol { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
 .dn-tl__month + .dn-tl__month { margin-top: .5rem; }
-.dn-tl__month h4 { position: sticky; top: var(--top-h, 56px); z-index: 1; margin: 0; padding: .4rem 0; background: var(--color-bg-card); font-size: var(--fs-xs); font-weight: 650; color: var(--color-text-muted); letter-spacing: .02em; }
+/* A month's heading stays in sight while its lines scroll by: at the window's top on a computer, under the top bar
+   (and the publish strip) where there is one, never a gap above it with lines showing through */
+.dn-tl__month h4 { position: sticky; top: 0; z-index: 2; margin: 0; padding: .5rem 0 .4rem; background: var(--color-bg-card); box-shadow: 0 1px 0 var(--color-border); font-size: var(--fs-xs); font-weight: 650; color: var(--color-text-muted); letter-spacing: .02em; }
+@media (max-width: 1024px) { .dn-tl__month h4 { top: var(--top-h, 56px); } }
 .dn-tl__item { display: grid; grid-template-columns: 4.6rem 14px minmax(0, 1fr) auto; gap: .15rem .6rem; align-items: start; padding: .6rem .35rem; border-top: 1px solid var(--color-border); border-radius: 8px; min-width: 0; }
 .dn-tl__month li:first-child.dn-tl__item { border-top: none; }
 .dn-tl__item.is-flash { background: var(--tone-warn-surface, #FFF9DB); }

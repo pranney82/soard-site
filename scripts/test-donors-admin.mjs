@@ -254,6 +254,7 @@ try {
   await page.keyboard.press('Enter');
   await page.waitForSelector('.dn-tl__item.is-flash', { timeout: 3000 }).catch(() => {});
   ok(!!(await page.$('.dn-tl__item.is-flash')), 'Enter shows that day in the list, marked');
+  ok(await page.$eval('.dn-tl__month h4', (h) => getComputedStyle(h).top) === '0px', 'a month’s heading sticks at the very top on a computer (no top bar there, so no gap with lines showing through)');
   await page.evaluate(() => [...document.querySelectorAll('.dn-tl__filters .pill')].find((b) => b.textContent.trim().startsWith('Gifts'))?.click());
   await wait(150);
   ok(await page.$$eval('.dn-tl__item', (els) => els.length > 0 && els.every((e) => ['gift', 'thanks'].includes(e.dataset.kind))), 'Gifts: only the gifts (and their thank-yous)');
@@ -569,6 +570,7 @@ try {
   await ph.page.goto(`${origin}/admin/#donors/ct_jane`, { waitUntil: 'networkidle2' });
   await ph.page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   await phoneChecks(ph.page, 'A donor, phone');
+  ok(await ph.page.$eval('.dn-tl__month h4', (h) => Math.round(parseFloat(getComputedStyle(h).top)) === Math.round(document.querySelector('.mobile-bar').getBoundingClientRect().height)).catch(() => false), 'on a phone, a month’s heading sticks just under the top bar');
   await ph.page.screenshot({ path: join(OUT, 'donor-phone.png'), fullPage: true });
   await ph.page.goto(`${origin}/admin/#donors/org/p%3Aacme`, { waitUntil: 'networkidle2' });
   await ph.page.waitForSelector('.dn-tl__list', { timeout: 8000 });
