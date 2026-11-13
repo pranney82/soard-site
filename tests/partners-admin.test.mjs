@@ -454,3 +454,11 @@ test('Nothing to take off, a page gone, or bad logos to put back', async () => {
   await assert.rejects(pageLogosOff({ DB }, { table: 'kids', slug: 'gone', urls: [] }), /isn’t there/);
   await assert.rejects(pageLogosOn({ DB }, { table: 'kids', slug: 'k1', logos: [{ url: 'javascript:alert(1)' }] }), /Nothing to put back/);
 });
+
+test('a level change can say the level it expects to start from: one moved meanwhile is left as it is, and said', async () => {
+  const DB = await db({ partners: [P('up'), P('sig', { level: 'signature', order: 0 })] });
+  const r = await updatePartners({ DB }, [{ slug: 'up', set: { level: 'champion' }, from: { level: ['builder', 'friend'] } }, { slug: 'sig', set: { level: 'champion' }, from: { level: ['builder', 'friend'] } }]);
+  assert.equal(r.status, 200);
+  assert.deepEqual([r.body.changed, r.body.refused], [['up'], ['sig']]);
+  assert.equal((await rowOf(DB, 'partners', 'sig')).data.level, 'signature', 'never lowered');
+});

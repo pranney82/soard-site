@@ -16,7 +16,9 @@ import { h, htm, render } from './vendor.js';
 const html = htm.bind(h);
 let seq = 0;
 
-export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = false, careful = danger, dismiss = false } = {}) {
+// `closeOnMove`: the question is about the page it was asked on, so going elsewhere (Back, a link) answers it as
+// Escape does, never leaving it over another page to act on the one left
+export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = false, careful = danger, dismiss = false, closeOnMove = false } = {}) {
   return new Promise((resolve) => {
     const host = document.createElement('div');
     document.body.append(host);
@@ -27,6 +29,8 @@ export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = fals
       if (done) return;
       done = true;
       window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('hashchange', moved);
+      window.removeEventListener('popstate', moved);
       render(null, host);
       host.remove();
       if (!document.querySelector('.modal-overlay')) document.body.classList.remove('modal-open');
@@ -46,6 +50,8 @@ export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = fals
       else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
     };
     window.addEventListener('keydown', onKey, true);
+    function moved() { finish(dismiss); }
+    if (closeOnMove) { window.addEventListener('hashchange', moved); window.addEventListener('popstate', moved); }
     document.body.classList.add('modal-open');
     // A double click's second half lands on the overlay the first one opened: it isn't a click outside
     const openedAt = Date.now();

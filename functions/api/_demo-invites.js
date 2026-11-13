@@ -56,10 +56,10 @@ import { SOARD_ORG_ID, todayEastern, easternParts, loadKidsAndProjects } from '.
 import {
   readConfig as readInviteConfig, ensureSchema as ensureInviteSchema, fetchStaff, guestGroups, renderTemplate,
   JOB_ACCESS, FIELD_STATUS, FIELD_MAKEOVER_TYPE, DEFAULT_ORGANIZER, DEFAULT_TEST_GUESTS, SANDBOX_JOB_ID, BY_HAND,
-  isTestJob, borrowRealAddress, NOT_STAFF, EMAIL_ALIASES, STAFF_DOMAIN, INACTIVE_STATUSES, pave, normEmail, isEmail,
+  isTestJob, borrowRealAddress, EMAIL_ALIASES, STAFF_DOMAIN, INACTIVE_STATUSES, pave, normEmail, isEmail,
   fieldValues, hhmm, displayName, hashOf, alertList, escapeHtml, lockJob, unlockJob,
 } from './_reveal-invites.js';
-import { isGroupInbox, readState as readBoardState } from './_board-roles.js';
+import { isGroupInbox, NOT_STAFF, readState as readBoardState } from './_board-roles.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent, listEvents } from './_google-calendar.js';
 import { sendEmails, slackPost, slackIssue, slackResolved, emailConfigured } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';

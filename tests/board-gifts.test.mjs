@@ -44,7 +44,9 @@ test('a major gift is $1,000 or more after refunds, through the same screen as t
   // A partial refund that takes it under $1,000 isn't a major gift; one that doesn't shows what was kept
   assert.equal(giftOf(payment({ amount: 120000, refund_status: 'partial', refunds: [{ amount: 30000, status: 'succeeded' }] })), null);
   assert.equal(giftOf(payment({ amount: 500000, refund_status: 'partial', refunds: [{ amount: 100000, status: 'succeeded' }, { amount: 50000, status: 'failed' }] })).cents, 400000);
-  for (const p of [payment({ refund_status: 'full' }), payment({ type: 'imported' }), payment({ status: 'failed' }), payment({ metadata: { soardSelfTest: true } })]) assert.equal(giftOf(p), null);
+  for (const p of [payment({ refund_status: 'full' }), payment({ status: 'failed' }), payment({ metadata: { soardSelfTest: true } })]) assert.equal(giftOf(p), null);
+  // A gift imported into Zeffy (a gala's, from its auction platform) is this year's giving: on the board
+  assert.ok(giftOf(payment({ type: 'imported' })), 'an imported gift counts on the board');
 });
 
 test('who gave: a name, a company and the person who gave for it, never an email or address', () => {
@@ -206,4 +208,8 @@ test('Keep anonymous in Donors & Partners hides the giver on the board, the pers
   assert.equal(by.pay_p2.anonymous, true, 'a gift for an organization kept anonymous');
   assert.equal(by.pay_p2.company, '');
   assert.equal(by.pay_p3.name, 'Kim Park', 'everyone else as they were');
+});
+
+test('an imported gift refunded in full, failed or of nothing is never on the board', () => {
+  for (const p of [payment({ type: 'imported', refund_status: 'full' }), payment({ type: 'imported', status: 'failed' }), payment({ type: 'imported', amount: 0 })]) assert.equal(giftOf(p), null);
 });

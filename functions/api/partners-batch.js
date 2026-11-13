@@ -133,8 +133,13 @@ export async function updatePartners(env, updates, userEmail = 'unknown') {
 
   const bySlug = new Map(updates.map((u) => [u.slug, u]));
   const placed = new Map(); // slug → its new place, so a second try keeps it
+  // `from: { level: [...] }`: changed only from one of those levels, as it is at the moment it's written (Move to
+  // Champion is an upgrade from Builder or Friend: a partner moved to Signature meanwhile is left as it is)
+  const refused = new Set();
   const change = (slug, before) => {
     const u = bySlug.get(slug);
+    if (Array.isArray(u.from?.level) && !u.from.level.includes(before.level || 'friend')) { refused.add(slug); return before; }
+    refused.delete(slug);
     const patch = { ...(u.set || {}) };
     if (u.add?.length || u.remove?.length) {
       const startFrom = 'category' in patch ? (patch.category || []) : (Array.isArray(before.category) ? before.category : before.category ? [before.category] : []);
@@ -165,7 +170,7 @@ export async function updatePartners(env, updates, userEmail = 'unknown') {
   const now = new Date().toISOString();
   const { done, conflicts } = await writeChecked(DB, 'partners', rows, change, now);
   const shas = await record(env, 'partners', done, userEmail, now, 'Update partner');
-  return { status: 200, body: { success: true, changed: done.map((c) => c.slug), conflicts, shas } };
+  return { status: 200, body: { success: true, changed: done.map((c) => c.slug), conflicts, shas, ...(refused.size ? { refused: [...refused] } : {}) } };
 }
 
 export async function swapLogo(env, { from, to, name } = {}, userEmail = 'unknown') {

@@ -15,13 +15,15 @@
  * rather than the list looking quiet.
  */
 import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
-import { ask } from './ask.js';
+import { ask as askAnywhere } from './ask.js';
 import { useDialog } from './dialog.js';
 import { EmailFrame } from './email-sheet.js';
 import { zeffyPaymentUrl } from './zeffy-links.js';
+import { call, change, lostAnswer, draftKey, keepDraft, draftOf, noteSaved, editKey, editDrafts, TAB, HOME } from './donor-api.js';
 
 const html = htm.bind(h);
-const API = '/api/donors-admin';
+// (a question asked here closes when the page moves on: Back, another address)
+const ask = (o) => askAnywhere({ ...o, closeOnMove: true });
 // Lines drawn at first; "Show more" draws the next ones (a long-time donor has hundreds)
 const STEP = 60;
 // A timeline read again after this long, else kept (moving between donors and back doesn't read Gmail again)
@@ -145,15 +147,6 @@ export const nameOf = (email, staff = []) => {
 const first = (email, staff) => nameOf(email, staff).split(' ')[0];
 const names = (list, staff) => { const n = [...new Set((list || []).map((e) => first(e, staff)).filter(Boolean))]; return n.length <= 2 ? n.join(' and ') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`; };
 
-async function call(params = '', body = null) {
-  try {
-    const r = await fetch(`${API}${params}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) } : { headers: { Accept: 'application/json' } });
-    const j = await r.json().catch(() => null);
-    return j ? (j.success ? j : { ...j, status: r.status }) : { success: false, error: 'The site didn’t answer.', status: r.status };
-  } catch {
-    return { success: false, error: 'The site didn’t answer.' };
-  }
-}
 
 // ─── The lines ──────────────────────────────────────────────────────
 
@@ -191,7 +184,7 @@ export function linesOf({ gifts = [], notes = [], items = [] }) {
 
 /** A gift in a few words: where it came from and how */
 const giftMeta = (g, byWho) => [byWho && g.by ? `from ${g.by}` : null, g.how, g.every ? g.every[0].toUpperCase() + g.every.slice(1) : null, g.parts > 1 ? `in ${g.parts} charges` : null,
-  !byWho && g.forCompany ? `for ${g.forCompany}` : null, g.through ? `through ${g.through}` : null, g.anonymous ? 'anonymous' : null, g.refunded ? 'refunded in full' : null,
+  !byWho && g.forCompany ? `for ${g.forCompany}` : null, g.through ? `through ${g.through}` : null, g.anonymous ? 'anonymous' : null, g.refunded ? 'refunded in full' : g.refundedPart ? `${usd(g.refundedPart)} refunded` : null,
   g.sold ? 'a ticket or purchase, not counted as giving' : null].filter(Boolean);
 
 /** Who did what, the line above a line's title */
@@ -227,8 +220,9 @@ const withLocal = (full, quick) => (!quick ? full : { ...full, items: [...full.i
  * subject: the page's key (notes are said against it); ref: its address for the read (a contact id, g:<payment>, or
  * an organization's key); gifts and notes from the page; onChanged reads the page again (a note added)
  */
-export function Timeline({ subject, refOf, org = false, name, gifts = [], notes = [], staff = [], me = null, ctx, onChanged, zeffy = false, focusGift = null }) {
+export function Timeline({ subject, keys = [], refOf, org = false, name, gifts = [], notes = [], staff = [], me = null, ctx, onChanged, zeffy = false, focusGift = null, thankAgain = null }) {
   useStyles();
+  const ns = useNotes({ subject, keys, notes, name, ctx, onDone: onChanged });
   const [data, setData] = useState(() => cache.get(refOf)?.data || null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -315,8 +309,11 @@ export function Timeline({ subject, refOf, org = false, name, gifts = [], notes 
   const past = all.filter((x) => !(x.kind === 'meeting' && x.at > now));
   const soon = all.filter((x) => x.kind === 'meeting' && x.at > now).sort((a, b) => a.at - b.at);
   const counts = new Map();
-  for (const x of past) counts.set(GROUP_OF[x.kind], (counts.get(GROUP_OF[x.kind]) || 0) + 1);
-  const list = filter === 'all' ? past : past.filter((x) => GROUP_OF[x.kind] === filter);
+  // (a filter counts what it's named for: Gifts its gifts, the thank-yous that show with them uncounted)
+  for (const x of past) if (x.kind !== 'thanks') counts.set(GROUP_OF[x.kind], (counts.get(GROUP_OF[x.kind]) || 0) + 1);
+  // (a filter whose lines have all gone, the last note deleted: Everything again, never an empty list with nothing pressed)
+  const shownFilter = filter !== 'all' && !counts.get(filter) ? 'all' : filter;
+  const list = shownFilter === 'all' ? past : past.filter((x) => GROUP_OF[x.kind] === shownFilter);
   // Worked out as it draws (never a paint later): the gift a link opened at is always among the lines drawn
   const giftAt = keepGift.current ? list.findIndex((x) => x.gift && (x.gift.ids || [x.gift.id]).includes(keepGift.current)) : -1;
   const upTo = Math.max(shown, giftAt + 10);
@@ -324,6 +321,8 @@ export function Timeline({ subject, refOf, org = false, name, gifts = [], notes 
     const el = document.querySelector(`.dn-tl__item[data-line="${CSS.escape(id)}"]`);
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    el.focus({ preventScroll: true });
     el.classList.add('is-flash');
     setTimeout(() => el.classList.remove('is-flash'), 2400);
   });
@@ -338,21 +337,26 @@ export function Timeline({ subject, refOf, org = false, name, gifts = [], notes 
   const sources = data?.sources || [];
   return html`<section class="card kd-sec dn-tl" aria-labelledby="dn-tl-h">
     <header class="dn-tl__head"><h3 id="dn-tl-h" tabindex="-1">Timeline</h3>
-      <span class="dn-tl__state"><span role="status">${busy ? html`<span class="spinner" aria-hidden="true" /> Reading email, meetings, calls and newsletters…` : data ? `Read ${ago(data.checkedAt)}` : ''}</span>
-        ${data || err ? html`<button type="button" class="link dn-linkbtn dn-tl__again" aria-disabled=${busy ? 'true' : null} onClick=${() => { if (!busy) read(true); }}>Read again</button>` : null}</span></header>
-    <${NoteBox} subject=${subject} name=${name} zeffy=${zeffy} ctx=${ctx} onDone=${onChanged} />
+      <span class="dn-tl__state"><span role="status">${busy ? html`<span class="spinner" aria-hidden="true" /> Reading email, meetings, calls and newsletters…` : err ? 'Not read just now' : data ? `Read ${ago(data.checkedAt)}` : ''}</span>
+        ${data || err || busy ? html`<button type="button" class="link dn-linkbtn dn-tl__again" aria-disabled=${busy ? 'true' : null} onClick=${() => { if (!busy) read(true); }}>Read again</button>` : null}</span></header>
+    <${NoteBox} ns=${ns} name=${name} zeffy=${zeffy} />
     ${past.length ? html`<${Glance} lines=${past} kit=${data?.kit} onDay=${showDay} />` : null}
     <${Notices} sources=${sources} err=${err} retry=${() => { document.querySelector('.dn-tl__again')?.focus(); read(true); }} searched=${data?.subject?.searched} staff=${staff} kit=${data?.kit} />
     ${soon.length ? html`<div class="dn-tl__soon"><h4>Coming up</h4><ul>${soon.map((x) => html`<li key=${x.id}><strong>${x.title}</strong> · ${longDate(x.at)}${x.allDay ? '' : `, ${clock(x.at)}`} · ${whoLine(x, { staff })}</li>`)}</ul></div>` : null}
     ${past.length ? html`<div class="dn-tl__filters" role="group" aria-label="Show">
-      <button type="button" class="pill pill--sm" aria-pressed=${String(filter === 'all')} onClick=${() => { keepGift.current = null; setFilter('all'); setShown(STEP); }}>Everything <span class="count">${past.length}</span></button>
-      ${GROUPS.filter(([k]) => counts.get(k)).map(([k, words]) => html`<button key=${k} type="button" class="pill pill--sm" aria-pressed=${String(filter === k)} onClick=${() => { keepGift.current = null; setFilter(k); setShown(STEP); }}>${words} <span class="count">${counts.get(k)}</span></button>`)}
+      <button type="button" class="pill pill--sm" aria-pressed=${String(shownFilter === 'all')} onClick=${() => { keepGift.current = null; setFilter('all'); setShown(STEP); }}>Everything <span class="count">${past.length}</span></button>
+      ${GROUPS.filter(([k]) => counts.get(k)).map(([k, words]) => html`<button key=${k} type="button" class="pill pill--sm" aria-pressed=${String(shownFilter === k)} onClick=${() => { keepGift.current = null; setFilter(k); setShown(STEP); }}>${words} <span class="count">${counts.get(k)}</span></button>`)}
     </div>` : null}
     ${!past.length ? (busy || (!data && !err) ? html`<div class="dn-tl__skel" aria-hidden="true">${[90, 70, 80].map((w) => html`<span class="skel" style=${`--w:${w}%`}></span>`)}</div>`
       : html`<p class="dn-tl__empty">Nothing yet. Gifts, notes, email with the team, calls, meetings and newsletters show here as they happen.</p>`)
-      : html`<${Lines} lines=${list.slice(0, upTo)} staff=${staff} me=${me || data?.me || null} org=${org} name=${name} now=${now} ctx=${ctx} onOpen=${setOpen} onChanged=${onChanged} />`}
+      : html`<${Lines} lines=${list.slice(0, upTo)} staff=${staff} me=${me || data?.me || null} org=${org} name=${name} now=${now} ctx=${ctx} onOpen=${setOpen} ns=${ns} thankAgain=${thankAgain} />`}
     ${list.length > upTo || data?.more?.mail || data?.more?.quo ? html`<div class="dn-tl__more">
-      ${list.length > upTo ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setShown(upTo + STEP)}>Show ${Math.min(STEP, list.length - upTo)} more</button>` : null}
+      ${list.length > upTo ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => {
+        // (the focus to the first line it shows, as the list's Show more does: never left on a button that's gone)
+        const at = upTo;
+        setShown(upTo + STEP);
+        requestAnimationFrame(() => { const el = document.querySelectorAll('.dn-tl__list .dn-tl__item')[at]; if (!el) return; if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1'); el.focus(); });
+      }}>Show ${Math.min(STEP, list.length - upTo)} more</button>` : null}
       ${list.length <= upTo && (data?.more?.mail || data?.more?.quo) && (filter === 'all' || filter === 'email' || filter === 'phone') ? html`<button type="button" class="btn btn-ghost btn-sm" aria-busy=${older ? 'true' : null} onClick=${showOlder}>${older ? html`<span class="spinner spinner-14" />` : null}Show older email and calls</button>` : null}
     </div>` : null}
     ${open ? html`<${OpenSheet} x=${open} refOf=${refOf} staff=${staff} name=${name} onClose=${() => setOpen(null)} />` : null}
@@ -386,7 +390,7 @@ function Notices({ sources, err, retry, searched, staff, kit = null }) {
   </div>`;
 }
 
-function Lines({ lines, staff, me, org, name, now, ctx, onOpen, onChanged }) {
+function Lines({ lines, staff, me, org, name, now, ctx, onOpen, ns, thankAgain }) {
   const months = [];
   for (const x of lines) {
     const m = x.undated ? 'Date unknown' : x.year ? String(x.year) : monthOf(x.at);
@@ -398,12 +402,12 @@ function Lines({ lines, staff, me, org, name, now, ctx, onOpen, onChanged }) {
   const seen = new Map();
   for (const g of months) { const n = (seen.get(g.m) || 0) + 1; seen.set(g.m, n); g.key = `${g.m}#${n}`; }
   return html`<ol class="dn-tl__list" aria-label="Timeline, newest first">${months.map((g) => html`<li key=${g.key} class="dn-tl__month"><h4>${g.m}</h4>
-    <ol>${g.lines.map((x) => html`<${Line} key=${x.id} x=${x} staff=${staff} me=${me} org=${org} name=${name} now=${now} ctx=${ctx} onOpen=${onOpen} onChanged=${onChanged} />`)}</ol></li>`)}</ol>`;
+    <ol>${g.lines.map((x) => html`<${Line} key=${x.id} x=${x} staff=${staff} me=${me} org=${org} name=${name} now=${now} ctx=${ctx} onOpen=${onOpen} ns=${ns} thankAgain=${thankAgain} />`)}</ol></li>`)}</ol>`;
 }
 
 const whenOf = (x) => (x.undated ? '' : x.year ? String(x.year) : x.kind === 'gift' || x.allDay ? shortDate(x.at) : html`${shortDate(x.at)}<span class="dn-tl__clock">${clock(x.at)}</span>`);
 
-function Line({ x, staff, me, org, name, now, ctx, onOpen, onChanged }) {
+function Line({ x, staff, me, org, name, now, ctx, onOpen, ns, thankAgain }) {
   const dot = dotOf(x, now);
   const base = { class: 'dn-tl__item', 'data-line': x.id, 'data-kind': x.kind, 'data-day': x.undated ? null : dayOf(x.at) };
   const cell = (body, amt = null) => html`<li ...${base} data-gift=${x.gift?.id || null} data-gifts=${x.gift ? (x.gift.ids || [x.gift.id]).join(' ') : null}>
@@ -411,16 +415,24 @@ function Line({ x, staff, me, org, name, now, ctx, onOpen, onChanged }) {
     <div class="dn-tl__body">${body}</div>${amt != null ? html`<span class="dn-tl__amt">${amt}</span>` : html`<span></span>`}</li>`;
   if (x.kind === 'gift') {
     const g = x.gift;
-    const t = g.thanks;
+    // Each thank-you of the gift (one in parts, or part refunded, has more than one), with To thank again on one said
+    // by mistake (the toast's Undo lasts seconds)
+    const thanks = g.thanksAll || (g.thanks ? [g.thanks] : []);
+    // (a gift in kind Zeffy has no value for is said so, never "$0")
+    const amount = (t) => (t.inKind ? `${usd(t.inKind)} in kind` : !Number(t.cents) && t.why === 'kind' ? 'a gift in kind' : usd(t.cents));
     return cell(html`<span class="dn-tl__who">${g.sold ? 'A ticket or purchase' : g.inKind ? 'A gift in kind' : 'A gift'}${org && g.by ? ` from ${g.by}` : ''}</span>
       <span class="dn-tl__title">${g.campaign || 'A gift'}</span>
       <span class="dn-tl__meta">${giftMeta(g, org).filter((m) => !(org && m === `from ${g.by}`)).join(' · ')}
-        ${t?.state === 'todo' ? html`<span class="tag dn-tag--thank">To thank</span>` : t?.state === 'thanked' ? html`<span>Thanked${t.by ? ` by ${first(t.by, staff)}` : ''}</span>` : t?.state === 'skipped' ? html`<span>No thank-you needed</span>` : null}</span>
+        ${thanks.map((t) => {
+          const part = thanks.length > 1 && t.cents != null ? ` (${amount({ cents: t.cents, inKind: t.inKind })})` : '';
+          return html`${t.state === 'todo' ? html`<span class="tag dn-tag--thank">To thank${part}</span>` : t.state === 'thanked' ? html`<span>Thanked${t.at ? ` ${shortDate(Date.parse(t.at))}` : ''}${t.by ? ` by ${first(t.by, staff)}` : ''}${part}</span>` : t.state === 'skipped' ? html`<span>No thank-you needed${t.by ? ` (${first(t.by, staff)})` : ''}${part}</span>` : null}
+            ${thankAgain && ['thanked', 'skipped'].includes(t.state) ? html`<button type="button" class="link dn-linkbtn" aria-label=${`To thank again: ${amount({ cents: t.cents ?? g.cents, inKind: t.inKind ?? g.inKind, why: t.why })}, ${shortDate(x.at)}`} onClick=${() => thankAgain(t)}>To thank again</button>` : null}`;
+        })}</span>
       <span class="dn-tl__do"><a class="link" href=${zeffyPaymentUrl(g.id)} target="_blank" rel="noopener" aria-label=${`Open in Zeffy: ${g.campaign || 'gift'}, ${shortDate(x.at)}`}>Open in Zeffy</a>
         ${g.mercury ? html`<a class="link" href=${g.mercury} target="_blank" rel="noopener">See the check in Mercury</a>` : null}</span>`,
     g.inKind ? html`${usd(g.inKind)}<span class="dn-sub">in kind</span>` : g.sold || g.refunded ? '–' : usd(g.cents));
   }
-  if (x.kind === 'note') return html`<${NoteLine} x=${x} base=${base} dot=${dot} staff=${staff} name=${name} ctx=${ctx} onChanged=${onChanged} />`;
+  if (x.kind === 'note') return html`<${NoteLine} x=${x} base=${base} dot=${dot} staff=${staff} ns=${ns} />`;
   const opens = (x.kind === 'email' && x.thread) || x.kind === 'call' || x.kind === 'text' || (x.kind === 'kit' && x.sends?.length) || (x.kind === 'site' && x.emailId);
   // My own copy of it (each mailbox's conversation has its own id in Gmail)
   const mine = x.kind === 'email' && me ? x.copies?.[me] : null;
@@ -449,79 +461,347 @@ function Line({ x, staff, me, org, name, now, ctx, onOpen, onChanged }) {
 
 // ─── Notes ──────────────────────────────────────────────────────────
 
-/** A new note, at the top of the timeline (⌘/Ctrl + Enter saves) */
-function NoteBox({ subject, name, zeffy, ctx, onDone }) {
-  const [text, setText] = useState('');
+/**
+ * The team's notes: the box at the top of the timeline and each note on it, one state for both (one note changed at a
+ * time; words never lost: a change whose note was deleted meanwhile goes to the box). Every change is sent until it
+ * really answers (./donor-api.js change), and what's being written is kept in this browser until it's saved
+ */
+function useNotes({ subject, keys = [], notes = [], name, ctx, onDone }) {
+  const kNew = draftKey(subject, 'new');
+  const here = keys.length ? keys : [subject];
+  // Words typed here before and not saved (left, reloaded, another tab): back in their box. Saved since (the save
+  // landed after the page was left, or in another tab), the note is in the list, so the words aren't put back
+  const [had] = useState(() => {
+    let n = draftOf(kNew);
+    // (the kept words carry the note's id only while they're what Add note sent: that id in the list is them)
+    if (n?.id && notes.some((x) => x.id === n.id)) { keepDraft(kNew, null); n = null; }
+    // (that they came with the page is said once: kept again as they are, a later reload says "from before")
+    if (n?.moved) keepDraft(kNew, { text: n.text, ...(n.id ? { id: n.id } : {}), ...(n.sending ? { sending: n.sending } : {}), ...(n.parts ? { parts: n.parts } : {}) });
+    // A change being made to one of this page's notes, kept: the latest back in its editor (saved since, it's done).
+    // Only this tab's own (a reload), or one left a while (no tab typing it now): one another tab is typing stays theirs
+    let e = null;
+    for (const d of editDrafts()) {
+      const note = notes.find((x) => x.id === d.id);
+      if (note && note.body === String(d.draft || '').trim()) { keepDraft(editKey(d.id), null); continue; }
+      if (note && !d.edit && (d.home === HOME || Date.now() - d.at > 120e3) && (!e || d.at > e.at)) e = d;
+    }
+    // (Add note pressed a moment ago, on a page left before its answer: it's still landing, never said to be unsaved)
+    const landing = !!n?.sending && Date.now() - n.sending < 60e3;
+    return { text: n?.text || '', id: n?.id || null, moved: !!n?.moved, landing, edit: e };
+  });
+  const [text, setText] = useState(had.text);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(had.edit?.id ?? null);
+  const [draft, setDraft] = useState(had.edit?.draft || '');
+  // The note's words when Change was pressed: changed by a teammate since, it shows above the person's own
+  const [from, setFrom] = useState(had.edit?.from ?? null);
   const box = useRef(null);
+  // The note being added: named here and in the kept words, so Add note pressed again (after an answer that was lost,
+  // after leaving and coming back, in another tab) saves it once
+  const pending = useRef(had.id ? { id: had.id, text: had.text.trim() } : null);
+  // The change being saved: named by its press, so pressed again it's the same one
+  const sentEdit = useRef(null);
+  const textNow = useRef(text);
+  textNow.current = text;
+  // (this page's own save still out: what it hears of that note is its own)
+  const saving = useRef(null);
+  const gone = useRef(false);
+  useEffect(() => () => { gone.current = true; }, []);
+  // (left: an answer that comes back afterwards changes nothing here)
+  const dead = gone;
+  // The change being made here, as it is now: kept again if another tab drops it (Cancel there on the same note)
+  const editNow = useRef(null);
+  editNow.current = editing !== null && from !== null && draft.trim() !== String(from).trim() ? { id: editing, from, draft, subject: notes.find((x) => x.id === editing)?.subject || subject } : null;
+  useEffect(() => {
+    const on = (e) => { const x = editNow.current; if (x && e.key === editKey(x.id) && !e.newValue) keepDraft(editKey(x.id), x); };
+    window.addEventListener('storage', on);
+    return () => window.removeEventListener('storage', on);
+  }, []);
+  // Words typed and not saved: kept as they're typed (a move, Back, a reload never loses them), gone once saved. Kept
+  // only as the person types or their words are put in the box: emptied after a save, the box writes nothing (another
+  // tab's words kept since stay kept)
+  const keepNew = (t) => keepDraft(kNew, t.trim() ? { text: t, ...(pending.current?.text === t.trim() ? { id: pending.current.id } : {}) } : null);
+  const type = (t) => { setText(t); keepNew(t); };
+  // (words that go to the box: after what's there)
+  const toBox = (words) => { const x = textNow.current; type(x.trim() ? `${x.trimEnd()}\n\n${words}` : words); };
+  // A change being made, kept by its note as it's typed (the same words it began with: nothing to keep)
+  useEffect(() => {
+    if (editing === null || from === null) return;
+    const note = notes.find((x) => x.id === editing);
+    // (a write that comes after Save was pressed, the words unchanged since: it keeps the press it was sent with)
+    const sentAs = draftOf(editKey(editing));
+    keepDraft(editKey(editing), draft.trim() !== String(from).trim() ? { id: editing, from, draft, subject: note?.subject || subject, ...(sentAs?.edit && sentAs.draft === draft ? { edit: sentAs.edit } : {}) } : null);
+  }, [editing, draft, from]);
+  // Saved by this page before it was left and opened again (the save landed after): the page read again shows it
+  useEffect(() => {
+    // (by the note's id: saved under the address the page had before it moved, it's this note all the same)
+    const on = (e) => { if (e.detail?.id && e.detail.id === pending.current?.id && saving.current !== e.detail.id) onDone(); };
+    window.addEventListener('soard-note-saved', on);
+    return () => window.removeEventListener('soard-note-saved', on);
+  }, [subject]);
+  // The same giver open in another tab: a box showing that tab's words follows them (the words, the note's id once its
+  // Add note is pressed), and empties when that tab saves them, so the same words never become two notes. Words typed
+  // here are this person's: never replaced or emptied by the other tab. A note saved in another tab: this page reads
+  // again, so it shows
+  useEffect(() => {
+    const read = (x) => { try { return JSON.parse(x || 'null'); } catch { return null; } };
+    const on = (e) => {
+      if (e.key === 'soard-note-saved') { const m = read(e.newValue); if (m && m.tab !== TAB && (m.subject === subject || (m.id && m.id === pending.current?.id))) onDone(); return; }
+      if (e.key !== kNew || saving.current) return;
+      const was = read(e.oldValue);
+      const now = read(e.newValue);
+      if (now?.movedTo) { onDone(); return; }
+      const box = textNow.current.trim();
+      const showing = !box || (!!was && was.tab !== TAB && box === String(was.text || '').trim());
+      if (now) {
+        if (!showing) return;
+        if (now.id) pending.current = { id: now.id, text: String(now.text || '').trim() };
+        if (String(now.text || '') !== textNow.current) setText(String(now.text || ''));
+        return;
+      }
+      // (gone there, saved or emptied: a box showing it empties; words of this tab's own are kept again)
+      if (showing) { if (box) { pending.current = null; setText(''); } return; }
+      keepNew(textNow.current);
+    };
+    window.addEventListener('storage', on);
+    return () => window.removeEventListener('storage', on);
+  }, [subject]);
+  // (back where they were: said so, once, saying where)
+  useEffect(() => {
+    const said = [];
+    if (had.text.trim() && !had.landing) said.push(had.moved ? 'The note you were writing came here with the page.' : 'Your note from before is back in its box.');
+    if (had.edit) said.push('Your change to a note is back in its editor.');
+    if (said.length) ctx.addToast(`${said.join(' ')} Not saved yet.`, 'info');
+    // A change whose Save was sent and its answer never heard (the page left, the answers lost): asked whether it was
+    // made. Made: done, never put back (a teammate's words since are never overwritten with it). Not made: back in its
+    // editor, as any kept change
+    const sent = editDrafts().filter((d) => d.edit && notes.some((x) => x.id === d.id) && (d.home === HOME || Date.now() - d.at > 120e3));
+    if (sent.length) (async () => {
+      let back = null;
+      let made = false;
+      for (const d of sent) {
+        let w = await call(`?edit=${encodeURIComponent(d.edit)}`);
+        // (sent a moment ago, the page reloaded or left as it went: its save may still be on its way, so asked again
+        // until it's made or a while has passed, never called unsaved while it lands)
+        while (w.success && !w.applied && d.sending && Date.now() - d.sending < 30e3 && !dead.current) {
+          await new Promise((ok) => setTimeout(ok, 1500));
+          w = await call(`?edit=${encodeURIComponent(d.edit)}`);
+        }
+        if (w.success && w.applied) { keepDraft(editKey(d.id), null); made = true; }
+        else if (w.success && (!back || d.at > back.at)) back = d;
+      }
+      // (made while the page was away: it reads again, so the note shows as it is now)
+      if (made && !dead.current) onDone();
+      if (!back || dead.current || editNow.current) return;
+      setDraft(back.draft);
+      setFrom(back.from);
+      setEditing(back.id);
+      ctx.addToast('Your change to a note is back in its editor. Not saved yet.', 'info');
+    })();
+    // A change kept for a note of this page's that isn't on it now: asked where it is (never guessed). Deleted while
+    // away: its words to the new note box, said so; elsewhere: it stays kept with its note, for that page
+    const away = editDrafts().filter((d) => d.subject && here.includes(d.subject) && !notes.some((x) => x.id === d.id) && String(d.draft || '').trim() && (d.home === HOME || Date.now() - d.at > 120e3));
+    if (!away.length) return;
+    (async () => {
+      const gone = [];
+      for (const d of away) { const w = await call(`?note=${encodeURIComponent(d.id)}`); if (w.status === 404) gone.push(d); }
+      if (!gone.length || dead.current) return;
+      for (const d of gone) keepDraft(editKey(d.id), null);
+      toBox(gone.map((d) => String(d.draft).trim()).join('\n\n'));
+      ctx.addToast(gone.length === 1 ? 'A note you were changing was deleted by someone else while you were away: your words are in the new note box, not saved yet.' : 'Notes you were changing were deleted by someone else while you were away: your words are in the new note box, not saved yet.', 'info');
+    })();
+  }, []);
+  // The page drawn again under another key (joined under another lead, a Zeffy merge) while typing in the box: the
+  // focus back in it, where it was, so the typing goes on
+  useEffect(() => {
+    const f = noteFocus;
+    noteFocus = null;
+    if (!f || Date.now() - f.at > 2000 || !here.includes(f.from)) return;
+    const el = f.edit ? document.getElementById(`dn-note-${f.edit}`) : box.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    try { el.setSelectionRange(f.start, f.end); } catch { /* not a text box */ }
+  }, []);
+  useEffect(() => () => {
+    const a = document.activeElement;
+    if (a && (a === box.current || a.id?.startsWith('dn-note-'))) noteFocus = { from: subject, edit: a === box.current ? null : a.id.slice(8), start: a.selectionStart, end: a.selectionEnd, at: Date.now() };
+  }, []);
+  // The focus back on a note's Change (after saving or leaving a change), or the next note's (after a delete), else the box
+  const focusNote = (id) => requestAnimationFrame(() => (document.querySelector(`[data-note="${CSS.escape(id || '')}"] .dn-note__change`) || box.current)?.focus());
+  // Saved after all (its answer lost, the page read again, or saved in another tab): it's in the list, so the box
+  // empties (only when the box still holds those words: typed on since, the box keeps it all, and says the first part
+  // saved)
+  useEffect(() => {
+    if (!pending.current || !notes.some((n) => n.id === pending.current.id)) return;
+    const { id, text: said } = pending.current;
+    pending.current = null;
+    if (draftOf(kNew)?.id === id) keepDraft(kNew, null);
+    if (text.trim() === said) setText('');
+    else ctx.addToast('That note is saved. The box still has what you typed since: change it to what’s new, then Add note.', 'info');
+  }, [notes]);
+  // A change saved after all (its answers lost, the page read again): the note reads as they wrote it, so it's done.
+  // The note being changed gone from this page: a Zeffy contact's note (its record taken off this page, by the person
+  // or a teammate) goes on being changed on its own page; one of this page's own was deleted, and the person's words
+  // go to the new note box. Never lost
+  useEffect(() => {
+    if (editing && !notes.some((x) => x.id === editing)) {
+      // Gone from this page: where it is now is asked, never guessed. Deleted: the person's words go to the new note
+      // box. On another page now (its record taken off this one, split off, or the person's notes moved): the change
+      // stays kept with that note, and that page opens it again
+      const id = editing;
+      const words = draft.trim();
+      setEditing(null);
+      setFrom(null);
+      (async () => {
+        const w = await call(`?note=${encodeURIComponent(id)}`);
+        if (dead.current) return;
+        if (w.status === 404) {
+          keepDraft(editKey(id), null);
+          if (!words) return;
+          toBox(words);
+          ctx.addToast('The note you were changing was deleted by someone else. Your words are in the new note box: Add note saves them.', 'info');
+          requestAnimationFrame(() => box.current?.focus());
+          return;
+        }
+        const there = w.success ? (w.org ? `#donors/org/${encodeURIComponent(w.org)}` : w.donor ? `#donors/${encodeURIComponent(w.donor)}` : null) : null;
+        ctx.addToast(w.success ? `The note you were changing isn’t on this page now${w.name ? `: it’s on ${w.name}’s page` : ''}. Your change is kept with it there.` : 'The note you were changing isn’t on this page now, and the site didn’t say where it is. Your change is kept: it comes back when that note shows.', 'info', there ? { label: 'Open', fn: () => { location.hash = there; } } : null);
+      })();
+      return;
+    }
+    const n = editing && notes.find((x) => x.id === editing);
+    if (n && from !== null && n.body !== from && n.body === draft.trim()) { keepDraft(editKey(n.id), null); setEditing(null); setFrom(null); focusNote(n.id); }
+  }, [notes]);
   const add = async (e) => {
     e?.preventDefault();
     const t = text.trim();
     if (!t || busy) return;
+    if (!pending.current || pending.current.text !== t) pending.current = { id: crypto.randomUUID(), text: t };
+    const id = pending.current.id;
+    // (the kept words named as this note now, and landing: left, reloaded or open in another tab meanwhile, it's the
+    // same note)
+    keepDraft(kNew, { text, id, sending: Date.now() });
+    saving.current = id;
     setBusy(true);
-    const r = await call('', { act: 'note-add', key: subject, body: t });
+    const r = await change({ act: 'note-add', key: subject, body: t, id });
+    // Saved: the kept words go (only while they're still these: another tab's typed since stay), wherever the person is
+    // now, never back in a box as not saved; every other tab hears of it. Not saved: kept, no longer landing
+    const kept = draftOf(kNew);
+    if (r.success) {
+      if (kept?.id === id) keepDraft(kNew, null);
+      window.dispatchEvent(new CustomEvent('soard-note-saved', { detail: { subject, id } }));
+      noteSaved(subject, id);
+    } else if (kept?.id === id) keepDraft(kNew, { text: kept.text, id });
+    saving.current = null;
+    if (gone.current) {
+      // (left while it saved: said only when it may not have, the words kept for the page)
+      if (!r.success) ctx.addToast(`Your note about ${name} may not have saved. ${lostAnswer(r) ? 'The site didn’t answer. ' : ''}Its words are kept on their page: open it again to see.`, 'error');
+      return;
+    }
     setBusy(false);
-    if (!r.success) { ctx.addToast(r.error, 'error'); return; }
+    if (!r.success) { ctx.addToast(r.error, 'error'); requestAnimationFrame(() => box.current?.focus()); return; }
+    pending.current = null;
     setText('');
     await onDone();
     box.current?.focus();
   };
-  return html`<form class="dn-note-new" onSubmit=${add}>
-    <textarea id="dn-note-text" aria-label=${`A note about ${name}`} ref=${box} class="form-input" rows="2" maxlength="4000" placeholder=${`A note about ${name}: a call, a visit, what they care about`} value=${text} readOnly=${busy} aria-busy=${busy ? 'true' : null}
-      onInput=${(e) => setText(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); add(); } }}></textarea>
+  // (a change kept for this note, begun on another page or in another tab: back in its editor, not begun again)
+  const start = (n) => { if (busy) return; const kept = draftOf(editKey(n.id)); setDraft(kept?.draft ?? n.body); setFrom(kept?.from ?? n.body); setEditing(n.id); };
+  const stop = (n) => { keepDraft(editKey(n.id), null); setEditing(null); setFrom(null); focusNote(n.id); };
+  const save = async (n) => {
+    const t = draft.trim();
+    if (!t || busy) return;
+    if (t === n.body) { stop(n); return; }
+    // Named by this press (pressed again after a lost answer: the same one), and kept as sent: a page that never hears
+    // the answer asks whether it was made, never puts it back over a teammate's words once it was
+    if (!sentEdit.current || sentEdit.current.note !== n.id || sentEdit.current.text !== t) sentEdit.current = { note: n.id, text: t, edit: crypto.randomUUID() };
+    const editId = sentEdit.current.edit;
+    keepDraft(editKey(n.id), { id: n.id, from: from ?? n.body, draft, subject: n.subject || subject, edit: editId, sending: Date.now() });
+    setBusy(true);
+    let r = await change({ act: 'note-edit', id: n.id, body: t, was: n.body, edit: editId });
+    // (its answers lost: asked whether it was made)
+    if (!r.success && lostAnswer(r)) { const w = await call(`?edit=${encodeURIComponent(editId)}`); if (w.success && w.applied) r = { success: true, same: true }; }
+    if (r.success) { sentEdit.current = null; if (draftOf(editKey(n.id))?.edit === editId) keepDraft(editKey(n.id), null); }
+    // (refused: kept as words, no longer sent; never heard: the press stays, so the next look asks whether it was made)
+    else if (!lostAnswer(r) && draftOf(editKey(n.id))?.edit === editId) keepDraft(editKey(n.id), { id: n.id, from: from ?? n.body, draft, subject: n.subject || subject });
+    if (r.success) noteSaved(subject, n.id);
+    if (gone.current) { if (!r.success) ctx.addToast(`Your change to a note about ${name} may not have saved. Its words are kept on their page: open it again to see.`, 'error'); return; }
+    setBusy(false);
+    if (!r.success) {
+      // Never the person's words lost: deleted since, they go to the new note box; changed since, they stay in the
+      // editor with the note as it is now above them (Save then puts theirs in its place)
+      if (r.status === 404) {
+        keepDraft(editKey(n.id), null);
+        setEditing(null);
+        setFrom(null);
+        toBox(t);
+        ctx.addToast('That note was deleted since you looked. Your words are in the new note box: Add note saves them.', 'error');
+        await onDone();
+        box.current?.focus();
+        return;
+      }
+      ctx.addToast(r.status === 409 ? `${r.error} Your words are still in the box.` : r.error, 'error');
+      if (r.status === 409) await onDone();
+      return;
+    }
+    setEditing(null);
+    setFrom(null);
+    await onDone();
+    focusNote(n.id);
+  };
+  const del = async (n) => {
+    if (busy || !(await ask({ title: 'Delete this note?', text: 'It’s gone for everyone, and can’t be brought back.', yes: 'Delete', danger: true }))) return;
+    // (the focus after: the next note's Change, as the timeline shows them, else the one before, else the box)
+    const shown = [...document.querySelectorAll('[data-note]')].map((el) => el.dataset.note);
+    const i = shown.indexOf(n.id);
+    const next = shown[i + 1] || shown[i - 1] || null;
+    setBusy(true);
+    // (only the note as it shows here: changed by a teammate since, it isn't deleted and shows as it is now)
+    const r = await change({ act: 'note-delete', id: n.id, was: n.body });
+    setBusy(false);
+    if (!r.success) { ctx.addToast(r.error, 'error'); await onDone(); return; }
+    noteSaved(subject, n.id);
+    ctx.addToast('Note deleted', 'success');
+    await onDone();
+    focusNote(next);
+  };
+  return { text, type, busy, box, add, editing, draft, setDraft, from, start, stop, save, del };
+}
+
+// (where the typing was when the notes were drawn again under another key)
+let noteFocus = null;
+
+// ⌘/Ctrl + Enter saves, as in a message
+const saveKeys = (fn) => (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); fn(); } };
+
+/** A new note, at the top of the timeline */
+function NoteBox({ ns, name, zeffy }) {
+  return html`<form class="dn-note-new" onSubmit=${ns.add}>
+    <textarea id="dn-note-text" aria-label=${`A note about ${name}`} ref=${ns.box} class="form-input" rows="2" maxlength="4000" placeholder=${`A note about ${name}: a call, a visit, what they care about`} value=${ns.text} readOnly=${ns.busy} aria-busy=${ns.busy ? 'true' : null}
+      onInput=${(e) => ns.type(e.target.value)} onKeyDown=${saveKeys(ns.add)}></textarea>
     <div class="dn-note-new__do"><span class="dn-sub">Only the team sees notes.${zeffy ? ' Notes written in Zeffy before stay there.' : ''}</span>
-      <button type="submit" class="btn btn-primary btn-sm" disabled=${!text.trim()} aria-disabled=${busy ? 'true' : null}>Add note</button></div>
+      <button type="submit" class="btn btn-primary btn-sm" disabled=${!ns.text.trim()} aria-disabled=${ns.busy ? 'true' : null}>Add note</button></div>
   </form>`;
 }
 
 /** A note on the timeline: anyone on the team can change or delete it */
-function NoteLine({ x, base, dot, staff, name, ctx, onChanged }) {
+function NoteLine({ x, base, dot, staff, ns }) {
   const n = x.note;
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(n.body);
-  const [busy, setBusy] = useState(false);
-  const focusChange = (id) => requestAnimationFrame(() => (document.querySelector(`.dn-tl__item[data-line="${CSS.escape(id)}"] .dn-note__change`) || document.getElementById('dn-note-text'))?.focus());
-  const stop = () => { setEditing(false); focusChange(x.id); };
-  const save = async () => {
-    const t = draft.trim();
-    if (!t || busy) return;
-    if (t === n.body) { stop(); return; }
-    setBusy(true);
-    const r = await call('', { act: 'note-edit', id: n.id, body: t });
-    setBusy(false);
-    if (!r.success) { ctx.addToast(r.error, 'error'); return; }
-    setEditing(false);
-    await onChanged();
-    focusChange(x.id);
-  };
-  const del = async () => {
-    if (busy || !(await ask({ title: 'Delete this note?', text: 'It’s gone for everyone, and can’t be brought back.', yes: 'Delete', danger: true }))) return;
-    // The focus to the next note's Change, else the note box
-    const notesNow = [...document.querySelectorAll('.dn-tl__item[data-kind="note"]')].map((el) => el.dataset.line);
-    const i = notesNow.indexOf(x.id);
-    const next = notesNow[i + 1] || notesNow[i - 1] || null;
-    setBusy(true);
-    const r = await call('', { act: 'note-delete', id: n.id });
-    setBusy(false);
-    if (!r.success) { ctx.addToast(r.error, 'error'); return; }
-    ctx.addToast('Note deleted', 'success');
-    await onChanged();
-    focusChange(next);
-  };
+  const editing = ns.editing === n.id;
   const by = n.by ? nameOf(n.by, staff) : 'Someone';
   return html`<li ...${base}>
     <span class="dn-tl__when">${shortDate(x.at)}<span class="dn-tl__clock">${clock(x.at)}</span></span><span class=${`dn-tl__dot dn-tl__dot--${dot}`} aria-hidden="true"></span>
     <div class="dn-tl__body" data-note=${n.id}>
       <span class="dn-tl__who">${by} wrote a note</span>
-      ${editing ? html`<textarea aria-label="Change the note" class="form-input" rows="3" maxlength="4000" value=${draft} readOnly=${busy} aria-busy=${busy ? 'true' : null} data-escape="local"
-          onInput=${(e) => setDraft(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); stop(); return; } if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); } }}
+      ${editing && ns.from !== null && n.body !== ns.from ? html`<p class="dn-sub" id=${`dn-note-now-${n.id}`}>Changed since you began. It reads now:</p><p class="dn-tl__note dn-note__body">${n.body}</p>` : null}
+      ${editing ? html`<textarea id=${`dn-note-${n.id}`} aria-label="Change the note" class="form-input" rows="3" maxlength="4000" value=${ns.draft} readOnly=${ns.busy} aria-busy=${ns.busy ? 'true' : null} data-escape="local"
+          onInput=${(e) => ns.setDraft(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); ns.stop(n); return; } saveKeys(() => ns.save(n))(e); }}
           ref=${(el) => { if (el && !el.dataset.focused) { el.dataset.focused = '1'; el.focus(); } }}></textarea>
-        <span class="dn-row-do"><button type="button" class="btn btn-primary btn-sm" disabled=${!draft.trim()} aria-disabled=${busy ? 'true' : null} onClick=${save}>Save</button>
-          <button type="button" class="btn btn-ghost btn-sm" onClick=${() => { if (!busy) stop(); }}>Cancel</button></span>`
+        <span class="dn-row-do"><button type="button" class="btn btn-primary btn-sm" disabled=${!ns.draft.trim()} aria-disabled=${ns.busy ? 'true' : null} onClick=${() => ns.save(n)}>Save</button>
+          <button type="button" class="btn btn-ghost btn-sm" onClick=${() => { if (!ns.busy) ns.stop(n); }}>Cancel</button></span>`
       : html`<p class="dn-tl__note dn-note__body">${n.body}</p>`}
       ${n.editedAt ? html`<span class="dn-tl__meta">changed${n.editedBy && n.editedBy !== n.by ? ` by ${first(n.editedBy, staff)}` : ''} ${shortDate(Date.parse(n.editedAt))}</span>` : null}
-      ${editing ? null : html`<span class="dn-tl__do"><button type="button" class="link dn-linkbtn dn-note__change" onClick=${() => { if (!busy) { setDraft(n.body); setEditing(true); } }}>Change</button>
-        <button type="button" class="link dn-linkbtn" onClick=${del}>Delete</button></span>`}
+      ${ns.editing ? null : html`<span class="dn-tl__do"><button type="button" class="link dn-linkbtn dn-note__change" onClick=${() => ns.start(n)}>Change</button>
+        <button type="button" class="link dn-linkbtn" onClick=${() => ns.del(n)}>Delete</button></span>`}
     </div><span></span></li>`;
 }
 
@@ -561,7 +841,8 @@ function Glance({ lines, kit, onDay }) {
   useEffect(() => {
     const el = wrap.current;
     if (!el) return undefined;
-    const fit = () => setW(Math.max(160, Math.round(el.clientWidth)));
+    // (as wide as its column, a narrow phone's too: never wider, cut off at its right)
+    const fit = () => setW(Math.max(100, Math.round(el.clientWidth)));
     fit();
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
     ro?.observe(el);

@@ -9,7 +9,8 @@
  *     path: "src/content/kids/amari.json",
  *     content: "{ ... }",        // file content as JSON string
  *     message: "Update amari",   // used as git commit message
- *     sha: "..."                 // ignored — D1 uses upsert
+ *     sha: "..."                 // the version it was read at: changed since → 409
+ *     create: true               // a new record: one already at that path (added meanwhile) → 409, never overwritten
  *   }
  *
  * Env bindings: DB (D1)
@@ -27,12 +28,13 @@ import { coverOf } from './_job-covers.js';
 import { syncCoverForKid } from './_kid-status.js';
 import { recheckWaiting } from './_kid-partners.js';
 import { wakeRevealDesigns } from './_reveal-design-auto.js';
+import { keepGiftsForPartnerName } from './_donor-crm.js';
 
 export async function onRequestPost(context) {
   try {
     const { DB } = context.env;
     const userEmail = context.data?.userEmail || 'unknown';
-    const { path, content, message, sha: clientSha } = await context.request.json();
+    const { path, content, message, sha: clientSha, create = false } = await context.request.json();
 
     if (!path || content === undefined || !message) {
       return Response.json(
@@ -82,6 +84,13 @@ export async function onRequestPost(context) {
     // sha comes from read-content, which hashes the stored JSON string with
     // generateSha() — so compare against generateSha(oldRaw). No sha, or no
     // existing row (a create) → proceed as before.
+    // Adding a new record where one is already (another tab, a teammate, a list read before it was added): never
+    // overwrites it
+    if (create === true && oldRaw !== null) {
+      // The very record it would add (this save sent again after its answer was lost): done already
+      if (oldRaw === jsonStr) return Response.json({ success: true, sha: await generateSha(oldRaw), same: true });
+      return Response.json({ success: false, error: 'There’s one at that address already: someone added it since this list was read. Nothing was changed.' }, { status: 409 });
+    }
     // A person loaded with a sha whose row is gone was renamed or deleted
     // meanwhile: saving would bring the old record back as a duplicate
     if (clientSha && oldRaw === null && parsed.table === 'team') {
@@ -122,6 +131,12 @@ export async function onRequestPost(context) {
       }
     }
 
+    // A partner card added or renamed: the gifts Donors & Partners counted for a name by itself stay where they count
+    // (written first: if the save is then refused, they're only linked where they counted already)
+    if (parsed.table === 'partners' && (data?.name || parsed.slug) !== (oldData?.name || (oldData ? parsed.slug : null))) {
+      await keepGiftsForPartnerName(DB, { slug: parsed.slug, name: data?.name, by: userEmail, now: Date.parse(now) });
+    }
+
     // 1. Write to D1 FIRST (source of truth — prebuild reads from D1, not GitHub)
     if (parsed.type === 'site') {
       await DB.prepare(
@@ -131,6 +146,10 @@ export async function onRequestPost(context) {
       const { table, slug } = parsed;
       const extractor = EXTRACTORS[table];
 
+      // A create (create: true) is a plain INSERT: two at one address at the same moment, the second is refused by the
+      // database itself, never written over the first
+      const verb = create === true ? 'INSERT' : 'INSERT OR REPLACE';
+      const taken = (e) => { if (create === true && /UNIQUE constraint/i.test(String(e?.message || e))) throw Object.assign(new Error('There’s one at that address already: someone added it a moment ago. Nothing was changed.'), { status: 409 }); throw e; };
       if (extractor && !isCreate) {
         // Written only if the stored record is still the one read above: a sync or a credit card landing between
         // that read and this write isn't overwritten (the editor is told to reload instead)
@@ -147,12 +166,12 @@ export async function onRequestPost(context) {
         const allValues = [slug, jsonStr, now, ...colValues];
 
         await DB.prepare(
-          `INSERT OR REPLACE INTO ${table} (${allCols.join(', ')}) VALUES (${placeholders})`
-        ).bind(...allValues).run();
+          `${verb} INTO ${table} (${allCols.join(', ')}) VALUES (${placeholders})`
+        ).bind(...allValues).run().catch(taken);
       } else {
         await DB.prepare(
-          `INSERT OR REPLACE INTO ${table} (slug, data, updated_at) VALUES (?, ?, ?)`
-        ).bind(slug, jsonStr, now).run();
+          `${verb} INTO ${table} (slug, data, updated_at) VALUES (?, ?, ?)`
+        ).bind(slug, jsonStr, now).run().catch(taken);
       }
     }
 
@@ -212,6 +231,7 @@ export async function onRequestPost(context) {
       gitCommit: gitStatus,
     });
   } catch (err) {
+    if (err.status === 409) return Response.json({ success: false, error: err.message }, { status: 409 });
     console.error("[save-content]", err);
     return Response.json(
       { success: false, error: err.message || "An unexpected error occurred" },

@@ -1290,6 +1290,9 @@ try {
     ok(acme?.level === 'champion' && acme.website === 'https://acmetile.com' && acme.order > lastChampOrder, `Acme saved as the last Champion (order ${acme?.order})`);
 
     // Delete from the row menu, then bring it back from Recently deleted
+    // (the dialog gone, and the focus back on what opened it: the page scrolled there before the row's menu opens)
+    await page.waitForFunction(() => !document.querySelector('.modal-overlay') && document.activeElement && document.activeElement !== document.body, { timeout: 5000 }).catch(() => {});
+    await sleep(300);
     const rm = await rowMenu(page, 'Acme Tile Co.', 'Delete');
     if (process.env.DEBUG) console.log('rowMenu', rm, await page.evaluate(dialogTitle), await $text(page, '.ppl-menu__pop [role=menuitem]'));
     await page.waitForSelector('.pt-del__lead');

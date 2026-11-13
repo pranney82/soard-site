@@ -76,7 +76,15 @@ const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS donor_payments_contact ON donor_payments(contact)',
   'CREATE INDEX IF NOT EXISTS donor_payments_at ON donor_payments(at)',
   'CREATE INDEX IF NOT EXISTS donor_payments_checked ON donor_payments(checked_at)',
+  // A monthly gift's first time (./_donor-thanks.js), and gifts first seen since a time (the thank-you run's question)
+  'CREATE INDEX IF NOT EXISTS donor_payments_sub ON donor_payments(sub)',
+  'CREATE INDEX IF NOT EXISTS donor_payments_seen ON donor_payments(first_seen)',
+  // A giver known by email: whose contact it is now (./_donor-crm.js followMerges, every whole read)
+  'CREATE INDEX IF NOT EXISTS donor_payments_email ON donor_payments(email)',
   'CREATE TABLE IF NOT EXISTS donor_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+  // When the site first saw each payment, kept after one leaves the list (a read that left it out): back in it, it's
+  // the gift it always was, never new (an old check To thank as if it came today)
+  'CREATE TABLE IF NOT EXISTS donor_seen (id TEXT PRIMARY KEY, first_seen TEXT NOT NULL)',
 ];
 const ready = new WeakSet();
 export async function ensureDonors(DB) {
@@ -110,7 +118,8 @@ const SPONSOR = /sponsor|underwrit|presenting/i;
 const GIFT_ITEMS = new Set(['donation', 'additional_donation']);
 const NOT_GIVING = new Set(['shop', 'auction', 'raffle', 'sweepstakes']);
 /** Money received, after refunds that went through */
-export const netOf = (p) => (String(p?.dispute?.status || '').toLowerCase() === 'lost' ? 0
+// Refunded in full is nothing given, whether or not Zeffy listed the refund itself
+export const netOf = (p) => (String(p?.dispute?.status || '').toLowerCase() === 'lost' || String(p?.refund_status || '').toLowerCase() === 'full' ? 0
   : Math.max(0, Number(p?.amount || 0) - (p?.refunds || []).filter((r) => r?.status === 'succeeded').reduce((t, r) => t + (Number(r.amount) || 0), 0)));
 /**
  * How much of a payment is giving: its donation items and sponsorship tickets, after refunds. Zeffy doesn't say what
@@ -159,13 +168,13 @@ const COLS = ['id', 'contact', 'at', 'cents', 'net', 'giving', 'in_kind', 'type'
 export const READ_COLS = [...COLS, 'was_contact'];
 // first_seen keeps the first time any read saw it; everything else is what Zeffy says now. A payment whose contact
 // changed keeps the one it had (SET reads the row as it was)
-const UPSERT = `INSERT INTO donor_payments (${COLS.join(', ')}) VALUES (${COLS.map(() => '?').join(', ')})
+const UPSERT = `INSERT INTO donor_payments (${COLS.join(', ')}) VALUES (${COLS.map((c) => (c === 'first_seen' ? 'COALESCE((SELECT s.first_seen FROM donor_seen s WHERE s.id = ?), ?)' : '?')).join(', ')})
   ON CONFLICT(id) DO UPDATE SET ${COLS.filter((c) => !['id', 'first_seen', 'checked_at'].includes(c)).map((c) => `${c} = excluded.${c}`).join(', ')},
     checked_at = MAX(donor_payments.checked_at, excluded.checked_at),
     was_contact = CASE WHEN donor_payments.contact IS NOT NULL AND donor_payments.contact IS NOT excluded.contact THEN donor_payments.contact ELSE donor_payments.was_contact END`;
 async function putRows(DB, rows) {
   await ensureDonors(DB);
-  for (let i = 0; i < rows.length; i += 50) await DB.batch(rows.slice(i, i + 50).map((r) => DB.prepare(UPSERT).bind(...COLS.map((c) => r[c] ?? null))));
+  for (let i = 0; i < rows.length; i += 50) await DB.batch(rows.slice(i, i + 50).map((r) => DB.prepare(UPSERT).bind(...COLS.flatMap((c) => (c === 'first_seen' ? [r.id, r[c] ?? null] : [r[c] ?? null])))));
 }
 
 /** A payment the gift webhook just delivered: in the list at once, and To thank at once if it needs a thank-you */
@@ -174,7 +183,13 @@ export async function noteDonorPayment(env, p, { now = Date.now(), thanks = true
   await ensureDonors(env.DB);
   const row = rowFromPayment(p, new Date(now).toISOString());
   if (!row) return false;
+  const before = await env.DB.prepare('SELECT contact FROM donor_payments WHERE id = ?').bind(row.id).first().catch(() => null);
   await putRows(env.DB, [row]);
+  if (before?.contact && row.contact && before.contact !== row.contact) {
+    try { await (await import('./_donor-crm.js')).followMerges(env.DB, { now }); } catch (e) { console.error('[donors] merges', e.message); }
+  }
+  // A giver known by email whose gift brings a Zeffy contact: what was said about them goes to it now, not in 15 minutes
+  if (row.contact && row.email) { try { await (await import('./_donor-crm.js')).followEmail(env.DB, row.email); } catch (e) { console.error('[donors] email', e.message); } }
   if (thanks) await (await import('./_donor-thanks.js')).syncThanks(env, { now, ask: false });
   return true;
 }
@@ -221,8 +236,12 @@ async function dropUnseen(DB, { from = 0, to = Number.MAX_SAFE_INTEGER, since, n
   const big = gone > HOLD_MIN && (kind === 'fill' || gone > total * HOLD_SHARE);
   const agreed = held?.kind === kind && now - Date.parse(held.at) <= HOLD_AGREE_MS && Math.abs(held.count - gone) <= Math.max(2, held.count * 0.05);
   if (big && !agreed) return { dropped: 0, held: { kind, count: gone, of: total, at: new Date(now).toISOString() } };
-  const r = await DB.prepare(`DELETE FROM donor_payments WHERE ${where}`).bind(from, to, since, grace).run();
-  return { dropped: r.meta?.changes || 0, held: null };
+  // (when each was first seen, kept: one listed again is the gift it was)
+  const [, r] = await DB.batch([
+    DB.prepare(`INSERT OR IGNORE INTO donor_seen (id, first_seen) SELECT id, first_seen FROM donor_payments WHERE ${where}`).bind(from, to, since, grace),
+    DB.prepare(`DELETE FROM donor_payments WHERE ${where}`).bind(from, to, since, grace),
+  ]);
+  return { dropped: r?.meta?.changes || 0, held: null };
 }
 
 /** The last WINDOW_DAYS, read whole: settles that window only when it reached Zeffy's last page */
@@ -358,7 +377,10 @@ export function donorOf(key, rows, { now = Date.now(), kids = [] } = {}) {
   // Years in a row, counting back from this year (or last year, while this year has nothing yet)
   let streak = 0;
   for (let y = byYear.has(thisYear) ? thisYear : thisYear - 1; byYear.has(y); y--) streak++;
-  const newest = [...rows].sort((a, b) => b.at - a.at);
+  // Named as their own Zeffy records name them, the newest (one joined from several: the name they gave under last),
+  // never by a gift that only shares their email
+  const own = String(key).startsWith('c:') ? rows.filter((r) => r.contact) : [];
+  const newest = [...(own.length ? own : rows)].sort((a, b) => b.at - a.at);
   const named = newest.find((r) => clean(r.first) || clean(r.last)) || newest[0] || {};
   // As the board and Slack say it: a name typed in both boxes ("Pella" / "Pella") once
   const person = givenName({ first_name: named.first, last_name: named.last });
@@ -368,7 +390,9 @@ export function donorOf(key, rows, { now = Date.now(), kids = [] } = {}) {
   const latest = given[0] || null;
   const largest = given.length ? given.reduce((a, g) => (g.cents > a.cents ? g : a)) : null;
   const total = given.reduce((t, g) => t + g.cents, 0);
-  const stage = !latest ? (inKind ? 'inkind' : 'none') : nowS - first.at < NEW_MS / 1000 ? 'new' : nowS - latest.at <= LAPSED_MS / 1000 ? 'active' : 'lapsed';
+  // (a gift in kind Zeffy has no value for is a gift all the same)
+  const gaveInKind = inKind > 0 || rows.some((r) => r.method === 'in_kind' && String(r.refund || '') !== 'full');
+  const stage = !latest ? (gaveInKind ? 'inkind' : 'none') : nowS - first.at < NEW_MS / 1000 ? 'new' : nowS - latest.at <= LAPSED_MS / 1000 ? 'active' : 'lapsed';
   return {
     key,
     contact: rows.find((r) => r.contact)?.contact || null,
@@ -419,15 +443,29 @@ export async function rowsFor(DB, keys) {
   return [...own, ...loose, ...others];
 }
 /**
- * Rows by donor. A payment Zeffy has no contact for, under an email a contact has, is that contact's (the newest one
- * with it), so one person isn't two donors
+ * Rows by donor. A payment Zeffy has no contact for, under an email a contact has, is that contact's, so one person
+ * isn't two donors. An email several contacts share (a household): the one whose name it gives, else the newest
  */
+const nameOfRow = (r) => clean(`${clean(r.first)} ${clean(r.last)}`).toLowerCase();
 const contactsByEmail = (rows) => {
   const m = new Map();
-  for (const r of [...rows].sort((a, b) => a.at - b.at)) if (r.contact && r.email) m.set(r.email, `c:${r.contact}`);
+  for (const r of [...rows].sort((a, b) => a.at - b.at)) {
+    if (!r.contact || !r.email) continue;
+    const list = m.get(r.email) || [];
+    const key = `c:${r.contact}`;
+    const had = list.find((x) => x.key === key);
+    if (had) { had.at = r.at; if (nameOfRow(r)) had.names.add(nameOfRow(r)); } else list.push({ key, at: r.at, names: new Set(nameOfRow(r) ? [nameOfRow(r)] : []) });
+    m.set(r.email, list);
+  }
   return m;
 };
-const keyIn = (r, byEmail) => (!r.contact && r.email && byEmail.has(r.email) ? byEmail.get(r.email) : donorKey(r));
+const keyIn = (r, byEmail) => {
+  const list = !r.contact && r.email ? byEmail.get(r.email) : null;
+  if (!list?.length) return donorKey(r);
+  if (list.length === 1) return list[0].key;
+  const named = list.filter((x) => nameOfRow(r) && x.names.has(nameOfRow(r)));
+  return (named.length ? named : list).reduce((a, b) => (b.at > a.at ? b : a)).key;
+};
 /**
  * Who each row counts for: { person: who paid, owner: who it counts for }. Without the site's own knowledge (`crm`,
  * ./_donor-crm.js: organizations and "the same person") both are the person who paid
@@ -454,8 +492,17 @@ export async function donorsView(env, { now = Date.now(), crm = null, rows: give
     if (d.stage === 'none' && !(crm && String(key).startsWith('o:') && crm.isOrg(key))) continue;
     const { years, ...rest } = d;
     if (crm && crm.isOrg(key)) {
-      // An organization: its name as the site has it, and where it is on the website
-      people.push({ ...rest, ...crm.orgFacts(key), key, ref: key, type: 'org', owner: crm.lookedAfterBy(key) });
+      // An organization: its name as the site has it, and where it is on the website. Who gave for it (their names and
+      // emails) is searched too: a person whose every gift counts for it is found by their own name, at its row
+      const givers = new Map();
+      for (const r of list) {
+        const p = place(r).person;
+        const g = givers.get(p) || { name: givenName({ first_name: r.first, last_name: r.last }) || '', emails: new Set() };
+        if (r.email) g.emails.add(String(r.email).toLowerCase());
+        givers.set(p, g);
+      }
+      people.push({ ...rest, ...crm.orgFacts(key), key, ref: key, type: 'org', owner: crm.lookedAfterBy(key),
+        givers: [...givers.values()].slice(0, 40).map((g) => ({ name: g.name, emails: [...g.emails].slice(0, 3) })) });
       continue;
     }
     // Its address in admin: the Zeffy contact, or one of its gifts (never an email or a name in a link)
@@ -484,7 +531,8 @@ export async function donorsView(env, { now = Date.now(), crm = null, rows: give
 const HOW = { cheque: 'Check', check: 'Check', daf: 'Donor-advised fund', in_kind: 'In kind', card: 'Card', ach: 'Bank transfer', manual: 'By hand', cash: 'Cash', other: 'Other' };
 /** How a gift came, in words */
 export function howOf(g) {
-  if (g.type === 'imported') return 'Imported from before Zeffy';
+  // (an earlier system's history, or a gala's gifts from its auction platform)
+  if (g.type === 'imported') return 'Imported into Zeffy';
   const m = String(g.method || '').toLowerCase();
   return HOW[m] || (g.type === 'manual' ? 'Entered by hand' : m ? m[0].toUpperCase() + m.slice(1).replace(/_/g, ' ') : 'Online');
 }
@@ -533,11 +581,15 @@ export async function giftsView(env, d, mine, kids = [], { by = false } = {}) {
       const charges = g.ids || [g.id];
       const r = byId.get(g.id) || {};
       const refunded = charges.every((id) => { const x = byId.get(id); return x && x.cents > 0 && !x.net; });
+      // (part of it refunded: how much, so the gift's line says why it's less than was given)
+      const refundedPart = refunded ? 0 : charges.reduce((t, id) => { const x = byId.get(id); return t + (x && Number(x.cents) > Number(x.net) ? Number(x.cents) - Number(x.net || 0) : 0); }, 0);
       return {
-        id: g.id, ids: charges, at: g.at, cents: g.inKind ? 0 : g.cents, inKind: g.inKind ? g.cents : 0,
-        campaign: g.campaign || '', how: howOf(g), every: g.every || '', parts: g.parts || 1, anonymous: g.anonymous,
+        id: g.id, ids: charges, at: g.at, cents: g.inKind ? 0 : g.cents, inKind: g.inKind ? g.cents : 0, kind: !!g.inKind,
+        // (a gift in charges that came different ways says each: "Card and Check")
+        campaign: g.campaign || '', how: [...new Set(charges.map((id) => byId.get(id)).filter(Boolean).map((x) => howOf(x)))].join(' and ') || howOf(g), every: g.every || '', parts: g.parts || 1, anonymous: g.anonymous,
         forCompany: r.corporate && r.company && r.method !== 'daf' ? r.company : null, through: r.method === 'daf' ? r.company || null : null,
         refunded: refunded || undefined,
+        refundedPart: refundedPart > 0 ? refundedPart : undefined,
         sold: !refunded && !g.inKind && !g.cents ? true : undefined,
         mercury: charges.map((id) => checks.get(id)).find(Boolean) || null,
         ...(by ? { by: givenName({ first_name: r.first, last_name: r.last }) || r.email || '' } : {}),
@@ -561,12 +613,16 @@ export async function donorOfPayment(env, id, { crm = null } = {}) {
   const r = await env.DB.prepare(`SELECT ${READ_COLS.join(', ')} FROM donor_payments WHERE id = ?`).bind(String(id)).first();
   if (!r) return null;
   if (crm) {
-    const rows = await rowsFor(env.DB, r.contact ? [`c:${r.contact}`] : r.email ? [`e:${r.email}`] : [donorKey(r)]);
+    // As the list places it: with every record a person said is the same giver (a joined record's organization)
+    const own = r.contact ? `c:${r.contact}` : r.email ? `e:${r.email}` : donorKey(r);
+    const keys = crm.keysOf(crm.canon(own));
+    const rows = await rowsFor(env.DB, keys.includes(own) ? keys : [...keys, own]);
     return placer(rows.some((x) => x.id === r.id) ? rows : [...rows, r], crm)(r).owner;
   }
   // As groupRows has it: no contact, but an email a contact has, is that contact's
   if (!r.contact && r.email) {
-    const c = await env.DB.prepare('SELECT contact FROM donor_payments WHERE contact IS NOT NULL AND email = ? ORDER BY at DESC LIMIT 1').bind(r.email).first();
+    const cs = (await env.DB.prepare('SELECT contact, first, last, at FROM donor_payments WHERE contact IS NOT NULL AND email = ? ORDER BY at DESC LIMIT 50').bind(r.email).all()).results || [];
+    const c = cs.find((x) => nameOfRow(r) && nameOfRow(x) === nameOfRow(r)) || cs[0];
     if (c?.contact) return `c:${c.contact}`;
   }
   return donorKey(r);

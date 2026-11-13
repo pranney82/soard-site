@@ -17,6 +17,8 @@ import { createRequire } from 'node:module';
 import { createD1 } from '../tests/lib/d1-shim.mjs';
 import { onRequestGet as donorsGet, onRequestPost as donorsPost } from '../functions/api/donors-admin.js';
 import * as D from '../functions/api/_donors.js';
+import * as C from '../functions/api/_donor-crm.js';
+import { updatePartners } from '../functions/api/partners-batch.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/donors/');
@@ -57,6 +59,8 @@ const payments = [
   pay({ id: 'maria_1', created: S(NOW - 25 * DAY), amount: 5000, contact: 'ct_maria1', email: 'maria@example.com', first: 'Maria', last: 'Lopez' }),
   pay({ id: 'maria_2', created: S(NOW - 300 * DAY), amount: 7000, contact: 'ct_maria2', email: 'mlopez@example.org', first: 'Maria J.', last: 'Lopez' }),
   pay({ id: 'ann_ivers', created: S(NOW - 45 * DAY), amount: 3000000, contact: 'ct_ann', email: 'ann@example.com', first: 'Ann', last: 'Ivers', company: 'Ivers Foundation' }),
+  // A foundation giving under its own Zeffy record, under Champion's amount: is it an organization?
+  pay({ id: 'lark_1', created: S(NOW - 50 * DAY), amount: 100000, contact: 'ct_lark', email: 'office@larkwren.example', first: 'Lark & Wren', last: 'Foundation' }),
   ...Array.from({ length: 130 }, (_, i) => pay({ id: `fill_${i}`, created: S(NOW - (i + 2) * DAY), amount: 1000 + i * 10, contact: `ct_fill_${i}`, email: `filler${i}@example.com`, first: 'Filler', last: `Donor ${String(i).padStart(3, '0')}` })),
 ];
 const realFetch = globalThis.fetch;
@@ -74,10 +78,11 @@ globalThis.fetch = async (input, init = {}) => {
   return Response.json({ object: 'list', data, has_more: more, next_cursor: more ? data.at(-1).id : null });
 };
 
-const partnerRow = (slug, d) => `INSERT INTO partners VALUES ('${slug}', '${JSON.stringify(d).replace(/'/g, "''")}')`;
+const partnerRow = (slug, d) => `INSERT INTO partners (slug, name, level, data) VALUES ('${slug}', '${String(d.name).replace(/'/g, "''")}', '${d.level || 'friend'}', '${JSON.stringify(d).replace(/'/g, "''")}')`;
 const DB = await createD1({ schemaSql: ['CREATE TABLE kids (slug TEXT, name TEXT, data TEXT)', "INSERT INTO kids VALUES ('kyle', 'Kyle', '{\"name\":\"Kyle\"}')",
   'CREATE TABLE audit_log (id INTEGER PRIMARY KEY, user_email TEXT, action TEXT, entity_type TEXT, entity_slug TEXT, entity_name TEXT, changes TEXT, path TEXT, git_status TEXT, created_at TEXT)',
-  'CREATE TABLE partners (slug TEXT PRIMARY KEY, data TEXT)', partnerRow('acme', { name: 'Acme Builders', level: 'friend', category: ['funding'], logo: '' }), partnerRow('pella', { name: 'Pella', level: 'friend', category: ['build'], logo: '' }),
+  // As the site has it (scripts/schema.sql): the real partner changes write its columns too
+  'CREATE TABLE partners (slug TEXT PRIMARY KEY, name TEXT NOT NULL, level TEXT, category TEXT, featured INTEGER DEFAULT 0, data TEXT NOT NULL, updated_at TEXT)', partnerRow('acme', { name: 'Acme Builders', level: 'friend', category: ['funding'], logo: '' }), partnerRow('pella', { name: 'Pella', level: 'friend', category: ['build'], logo: '' }),
   // The team, as Google's list has it: who can be an owner (the site's own account never)
   'CREATE TABLE staff_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
   `INSERT INTO staff_state (key, data) VALUES ('directory', '${JSON.stringify({ ok: true, accounts: [{ email: 'alex@soardcharity.com', aliases: [], name: 'Alex Rivera', active: true }, { email: 'jordan@soardcharity.com', aliases: [], name: 'Jordan Hale', active: true }, { email: 'automation@soardcharity.com', aliases: [], name: 'Agent Gracie', active: true }] })}')`,
@@ -100,12 +105,30 @@ async function send(res, response) {
 }
 const calls = [];
 const saved = [];
+// An answer lost on the way back (a 524): the change is made, and the page is told the site didn't answer
+let lose = null;
+// Every change the page sent (its act and state): a double click is one press
+const posts = [];
+// In another area of the admin (the walk serves Donors only): its errors aren't counted
+let awayFromDonors = false;
+// A slow answer: the change waits this long (ms) before it's made and answered
+let slow = null;
 function serve() {
   const server = createServer(async (req, res) => {
     const u = new URL(req.url, 'http://x');
     if (u.pathname === '/api/donors-admin') {
       calls.push(u.search);
       const request = await toRequest(req);
+      if (req.method === 'POST') posts.push(await request.clone().json().catch(() => ({})));
+      if (req.method === 'POST' && slow) {
+        const b = await request.clone().json().catch(() => ({}));
+        const ms = slow(b);
+        if (ms) { slow = null; await new Promise((r) => setTimeout(r, ms)); }
+      }
+      if (req.method === 'POST' && lose) {
+        const b = await request.clone().json().catch(() => ({}));
+        if (lose(b)) { lose = null; await donorsPost({ env, request, data: { userEmail: 'alex@soardcharity.com' } }); res.writeHead(524, { 'Content-Type': 'text/html' }); return res.end('<html>A timeout occurred</html>'); }
+      }
       return send(res, req.method === 'POST' ? await donorsPost({ env, request, data: { userEmail: 'alex@soardcharity.com' } }) : await donorsGet({ env, request, data: { userEmail: 'alex@soardcharity.com' } }));
     }
     // Partners as the admin reads and saves them, over the same D1
@@ -117,20 +140,15 @@ function serve() {
       const b = await readBody(req);
       const m = /^src\/content\/partners\/([a-z0-9-]+)\.json$/.exec(b.path || '');
       if (!m) return send(res, Response.json({ success: false, error: 'Path not allowed in this walk' }, { status: 403 }));
-      await DB.prepare('INSERT OR REPLACE INTO partners (slug, data) VALUES (?, ?)').bind(m[1], b.content).run();
+      await DB.prepare('INSERT OR REPLACE INTO partners (slug, name, level, data) VALUES (?, ?, ?, ?)').bind(m[1], JSON.parse(b.content).name || m[1], JSON.parse(b.content).level || 'friend', b.content).run();
       saved.push(m[1]);
       return send(res, Response.json({ success: true, sha: 'y' }));
     }
+    // The real partner changes (functions/api/partners-batch.js), as the admin's Partners page makes them
     if (u.pathname === '/api/partners-batch' && req.method === 'POST') {
       const b = await readBody(req);
-      const changed = [];
-      for (const up of b.updates || []) {
-        const row = await DB.prepare('SELECT data FROM partners WHERE slug = ?').bind(up.slug).first();
-        if (!row) continue;
-        await DB.prepare('UPDATE partners SET data = ? WHERE slug = ?').bind(JSON.stringify({ ...JSON.parse(row.data), ...up.set }), up.slug).run();
-        changed.push(up.slug);
-      }
-      return send(res, Response.json({ success: true, changed, conflicts: [] }));
+      const r = await updatePartners(env, b.updates, 'alex@soardcharity.com');
+      return send(res, Response.json(r.body, { status: r.status }));
     }
     if (u.pathname === '/api/checks-admin') return send(res, Response.json({ success: true, list: [], waiting: 0, sending: true, joinOk: true, dontReasons: {}, writeTest: { ok: true }, limited: false, shown: 0, all: 0, configured: { mercury: true, zeffy: true, ai: true } }));
     if (u.pathname.startsWith('/api/list-content')) return send(res, Response.json({ success: true, items: [], total: 0, hasMore: false }));
@@ -151,8 +169,11 @@ async function open(browser, origin, viewport, hash = '#donors') {
   const page = await browser.newPage();
   await page.setViewport(viewport);
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
+  // (while the walk is in another area, which it doesn't serve, that area's errors aren't the Donors pages')
+  page.on('console', (m) => { if (!awayFromDonors && m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
+  page.on('pageerror', (e) => { if (!awayFromDonors) errors.push(e.message); });
+  // (the browser's own "leave with a note unsaved?" on a reload with words typed: answered, so a step never stalls)
+  page.on('dialog', (d) => { d.accept().catch(() => {}); });
   await page.setRequestInterception(true);
   page.on('request', (req) => (new URL(req.url()).origin === origin ? req.continue() : req.abort()));
   await page.goto(`${origin}/admin/${hash}`, { waitUntil: 'networkidle2' });
@@ -186,6 +207,13 @@ async function axe(page, label) {
 async function phoneChecks(page, label) {
   const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(sideways <= 1, `${label}: no sideways scroll (${sideways}px)`);
+  // Nothing runs off the right edge, clipped where the page can't scroll (what scrolls inside its own row is fine)
+  const off = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const scrolls = (e) => { for (let a = e.parentElement; a && !a.matches('.main'); a = a.parentElement) if (/auto|scroll/.test(getComputedStyle(a).overflowX)) return true; return false; };
+    return [...document.querySelectorAll('.dn, .dn *')].filter((e) => e.offsetParent && e.getBoundingClientRect().right > vw + 1 && !scrolls(e)).slice(0, 4).map((e) => `${e.tagName}.${String(e.className).split(' ')[0]} to ${Math.round(e.getBoundingClientRect().right)}px`);
+  });
+  ok(off.length === 0, `${label}: everything inside the screen's width${off.length ? `: ${off.join(', ')}` : ''}`);
   // A box inside its label is tapped by the label
   const small = await page.evaluate(() => [...document.querySelectorAll('.dn button, .dn a, .dn input, .dn select, .dn label')].map((e) => (e.matches('label input') ? e.closest('label') : e)).filter((e) => e.offsetParent && e.getBoundingClientRect().height < 40).map((e) => `${e.tagName} ${e.textContent.trim().slice(0, 20)} ${Math.round(e.getBoundingClientRect().height)}`));
   ok(small.length === 0, `${label}: touch targets 40px or more${small.length ? `: ${small.slice(0, 5).join(', ')}` : ''}`);
@@ -202,8 +230,10 @@ try {
   ok(JSON.stringify(await page.$$eval('.hub-tab', (b) => b.map((x) => x.textContent.replace(/\d+/g, '').trim()))) === JSON.stringify(['Donors', 'Partners', 'Community partners', 'Checks']), 'the area’s tabs: Donors, Partners, Community partners, Checks');
   ok(/^Donors$/.test(await textOf(page, '.hub-tab.active')), 'the Donors tab is open');
   const pills = await page.$$eval('.ppl-filter', (b) => b.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
-  ok(pills[0] === 'Everyone 138' && pills[1] === 'Organizations 1' && /^New \d+$/.test(pills[2]) && /^Lapsed 1$/.test(pills[4]) && pills[5] === 'Not yet this year 0' && /^Needs you \d+$/.test(pills[6]), `people and organizations counted (${pills.join(' | ')}); a ticket buyer isn’t a donor; nothing to thank from before thank-yous began`);
-  ok((await rowNames(page)).length === 100 && /Show 38 more of 138/.test(await textOf(page, '.dn-more')), 'the first 100, then Show more');
+  ok(pills[0] === 'Everyone 139' && pills[1] === 'Organizations 1' && /^New \d+$/.test(pills[2]) && /^Lapsed 1$/.test(pills[4]) && pills[5] === 'Not yet this year 0' && /^Needs you \d+$/.test(pills[6]), `people and organizations counted (${pills.join(' | ')}); a ticket buyer isn’t a donor; nothing to thank from before thank-yous began`);
+  ok((await rowNames(page)).length === 100 && /Show 39 more of 139/.test(await textOf(page, '.dn-more')), 'the first 100, then Show more');
+  const badge = () => page.$eval('.sidebar a[href="#donors"]', (a) => a.querySelector('.nav-count')?.textContent.trim() || '').catch(() => 'no link');
+  ok(await badge() === '', 'no count on Donors & Partners in the sidebar while no gift waits for a thank-you');
   await page.screenshot({ path: join(OUT, 'people.png') });
   await showShot(page, '1-donors');
   await axe(page, 'the People list');
@@ -329,9 +359,13 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.dn-suggest button')].find((b) => /Move to Champion/.test(b.textContent))?.click());
   await page.waitForSelector('.ask-overlay', { timeout: 4000 }).catch(() => {});
   ok(/JobTread/.test(await textOf(page, '.ask-overlay')) && await page.evaluate(() => document.activeElement?.getAttribute('data-ask') === 'no'), 'Move to Champion asks first (JobTread changes too), the focus on Cancel');
+  // Its answer lost on the way back: it went through, and the page says so (never "couldn't" for a move that worked)
+  lose = (b) => b.act === 'level' && b.move === true;
   await page.evaluate(() => document.querySelector('.ask-overlay [data-ask="yes"]')?.click());
   await page.waitForFunction(() => !document.querySelector('.dn-suggest'), { timeout: 8000 }).catch(() => {});
   ok((await partnersNow()).find((x) => x.slug === 'acme')?.level === 'champion', 'Acme is Champion (on the next publish)');
+  ok(lose === null && !(await page.evaluate(() => [...document.querySelectorAll('.toast')].some((t) => /Couldn’t move/.test(t.textContent)))), 'its answer lost on the way back: no “Couldn’t move” for a move that worked');
+  ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some((t) => /Acme Builders moves to Champion when you publish/.test(t.textContent) && [...t.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Publish'))), 'a partner’s level waits for Publish: its message offers Publish');
   ok(/Champion partner/.test(await textOf(page, '.dn-head h2')) && !(await page.$('.dn-suggest')), 'the page says Champion, and the suggestion is gone');
   await page.click('.kd-rail .dn-check input');
   await page.waitForFunction(() => /Kept anonymous/.test(document.querySelector('.dn-head h2')?.textContent || ''), { timeout: 6000 }).catch(() => {});
@@ -356,6 +390,7 @@ try {
   await page.waitForSelector('.dn-needs', { timeout: 8000 });
   const needText = await textOf(page, '.dn-needs');
   ok(/Is “Pella Window & Door of Georgia” Pella\?/.test(needText) && /Same person\? Maria Lopez and Maria J\. Lopez/.test(needText) && /Ivers Foundation gave \$30,000/.test(needText), `a near name, one person twice, a big giver (${needText.slice(0, 160)})`);
+  ok(/Is Lark & Wren Foundation an organization\?/.test(needText) && /It gave \$1,000 in all/.test(needText), 'a foundation under Champion’s amount that shows as a person is asked about too');
   await page.screenshot({ path: join(OUT, 'needs.png'), fullPage: true });
   await showShot(page, '2-needs-you');
   await axe(page, 'Needs you');
@@ -365,14 +400,17 @@ try {
   await press('Same person');
   ok(!/Maria/.test(await textOf(page, '.dn-needs, .dn-done')), 'Same person: asked no more');
   await press('Keep it as an organization');
-  ok(/Nothing needs you/.test(await textOf(page, '.dn-done')), 'nothing left');
+  ok(!/Ivers/.test(await textOf(page, '.dn-needs, .dn-done')), 'Ivers kept as an organization: asked no more');
+  await press('No, it’s a person');
+  ok(/Nothing needs you/.test(await textOf(page, '.dn-done')), 'No, it’s a person: nothing left');
+  ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some((t) => /Lark & Wren Foundation stays a person/.test(t.textContent) && !/publish/i.test(t.textContent))), 'it says so, and offers no Publish (nothing here is on the website)');
   // The search from before is kept (Back keeps the place): cleared first
   await page.$eval('input[aria-label="Search donors"]', (i) => { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
   await page.evaluate(() => [...document.querySelectorAll('.ppl-filter')].find((b) => b.textContent.trim().startsWith('Organizations'))?.click());
   await wait(500);
   const orgs = await rowNames(page);
   ok(['Acme Builders', 'Ivers Foundation', 'Pella'].every((n) => orgs.includes(n)) && orgs.length === 3, `Organizations: Acme, Pella (linked), Ivers (kept here) (${orgs.join(', ')})`);
-  ok((await rowNames(page)).length && (await page.evaluate(() => [...document.querySelectorAll('.ppl-filter')].find((b) => b.textContent.trim().startsWith('Everyone'))?.textContent.replace(/\s+/g, ' ').trim())) === 'Everyone 138', 'the two Marias are one; Pella and Ivers took their gifts from Lee and Ann');
+  ok((await rowNames(page)).length && (await page.evaluate(() => [...document.querySelectorAll('.ppl-filter')].find((b) => b.textContent.trim().startsWith('Everyone'))?.textContent.replace(/\s+/g, ' ').trim())) === 'Everyone 139', 'the two Marias are one; Pella and Ivers took their gifts from Lee and Ann');
 
   console.log('Put on the website');
   await page.evaluate(() => [...document.querySelectorAll('.dn-name')].find((b) => b.textContent.trim() === 'Ivers Foundation')?.click());
@@ -469,7 +507,7 @@ try {
   await page.goto(`${origin}/admin/#donors`, { waitUntil: 'networkidle2' });
   await page.waitForSelector('.dn-table', { timeout: 8000 });
   // The list shows the copy it read last at once, then reads again: wait for that read (the new donors in it)
-  await page.waitForFunction(() => /Everyone 142/.test(document.querySelector('.ppl-filters')?.textContent.replace(/\s+/g, ' ') || ''), { timeout: 8000 }).catch(() => {});
+  await page.waitForFunction(() => /Everyone 143/.test(document.querySelector('.ppl-filters')?.textContent.replace(/\s+/g, ' ') || ''), { timeout: 8000 }).catch(() => {});
   await wait(300);
   const pills2 = await page.$$eval('.ppl-filter', (b) => b.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
   ok(pills2.includes('To thank 2') && pills2.includes('Not yet this year 1'), `To thank counts the check and the $2,000 gift, not the $40 one; the year-end list has last year’s donor (${pills2.join(' | ')})`);
@@ -493,20 +531,30 @@ try {
   ok(/No one looks after them yet/.test(await textOf(page, '.dn-needs')), 'and who looks after them');
   await showShot(page, '7-to-thank');
   await axe(page, 'To thank');
-  // Thanked, then Undo
+  ok(await badge() === '2', `the sidebar counts the gifts to thank on Donors & Partners (${await badge()})`);
+  ok(/2 gifts wait for a thank-you/.test(await textOf(page, '.sidebar a[href="#donors"]')), 'and says so to a screen reader');
+  // Thanked, then Undo: just after a website save elsewhere (the admin once took any message then as waiting for Publish)
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('soard-content-changed')));
   await page.evaluate(() => [...document.querySelectorAll('.dn-need')].find((li) => /Rosa Diaz/.test(li.textContent))?.querySelector('.btn-primary')?.click());
   await page.waitForFunction(() => document.querySelectorAll('.dn-needs[aria-label="To thank"] .dn-need').length === 1, { timeout: 8000 }).catch(() => {});
   ok(/Thank Tom Banks/.test(await textOf(page, '.dn-needs')) && !/Rosa/.test(await textOf(page, '.dn-needs')), 'Thanked: off the list');
   await page.waitForFunction(() => /To thank 1/.test(document.querySelector('.ppl-filters')?.textContent.replace(/\s+/g, ' ') || ''), { timeout: 8000 }).catch(() => {});
   ok(/To thank 1/.test(await textOf(page, '.ppl-filters')), 'and the count goes down');
+  await page.waitForFunction(() => document.querySelector('.sidebar a[href="#donors"] .nav-count')?.textContent.trim() === '1', { timeout: 6000 }).catch(() => {});
+  ok(await badge() === '1', `the sidebar’s count goes down at once (${await badge()})`);
+  const thankToast = await page.evaluate(() => [...document.querySelectorAll('.toast')].filter((t) => /Thanked: \$250 from Rosa Diaz/.test(t.textContent)).map((t) => ({ text: t.textContent, buttons: [...t.querySelectorAll('button')].map((b) => b.textContent.trim()) })).at(-1));
+  ok(thankToast && !/publish/i.test(thankToast.text) && JSON.stringify(thankToast.buttons) === '["Undo"]', `a thank-you is never offered Publish, even just after a website save (${JSON.stringify(thankToast)})`);
   await page.evaluate(() => [...document.querySelectorAll('.toast')].filter((t) => /Thanked: \$250 from Rosa Diaz/.test(t.textContent)).at(-1)?.querySelectorAll('button').forEach((b) => { if (b.textContent.trim() === 'Undo') b.click(); }));
   await page.waitForFunction(() => document.querySelectorAll('.dn-needs[aria-label="To thank"] .dn-need').length === 2, { timeout: 8000 }).catch(() => {});
   ok(/Rosa Diaz/.test(await textOf(page, '.dn-needs')), 'Undo puts it back');
+  await page.waitForFunction(() => document.querySelector('.sidebar a[href="#donors"] .nav-count')?.textContent.trim() === '2', { timeout: 6000 }).catch(() => {});
+  ok(await badge() === '2', 'and the sidebar’s count with it');
   // His page, from the list
   await page.evaluate(() => [...document.querySelectorAll('.dn-need')].find((li) => /Tom Banks/.test(li.textContent))?.querySelectorAll('a').forEach((a) => { if (a.textContent.trim() === 'Open Tom Banks') a.click(); }));
   await page.waitForSelector('.dn-thank', { timeout: 8000 });
   await page.waitForFunction(() => location.hash === '#donors/ct_tom', { timeout: 6000 }).catch(() => {});
   ok((await page.evaluate(() => location.hash)) === '#donors/ct_tom', 'Open goes to his page, at his own address');
+  ok(await page.evaluate(() => window.scrollY < 80 && document.querySelector('.dn-thank').getBoundingClientRect().top < window.innerHeight), 'opened from To thank: his page from the top, the To thank box in sight (not scrolled to the gift)');
   ok(/To thank 1/.test(await textOf(page, '.dn-thank')) && /\$2,000/.test(await textOf(page, '.dn-thank')), 'his page says what to thank him for, at the top');
   ok(/To thank/.test(await giftsText(page)), 'and the gift says so too');
   // Owner
@@ -515,6 +563,29 @@ try {
   await page.select('#dn-owner-pick', 'alex@soardcharity.com');
   await page.waitForFunction(() => /Looked after by Alex Rivera/.test([...document.querySelectorAll('.dn-tl__item[data-kind="team"], .dn-tl__item[data-kind="thanks"]')].map((e) => e.textContent).join(' ')), { timeout: 8000 }).catch(() => {});
   ok(await page.$eval('#dn-owner-pick', (s) => s.value) === 'alex@soardcharity.com', 'Owner: Alex looks after him');
+  // Read in the order it shows: from Owner, the next stop is what shows right after it (just below, in its column),
+  // never a card far down the page with the page's own column skipped
+  const nextAfterOwner = await page.evaluate(() => {
+    const all = [...document.querySelectorAll('.kd-layout a[href], .kd-layout button, .kd-layout select, .kd-layout textarea, .kd-layout input')].filter((e) => !e.disabled && e.getClientRects().length);
+    const o = document.querySelector('#dn-owner-pick');
+    const n = all[all.indexOf(o) + 1];
+    const a = o.getBoundingClientRect();
+    const b = n?.getBoundingClientRect() || { top: 0, left: 0 };
+    return { dy: Math.round(b.top - a.top), dx: Math.round(b.left - a.left), inMain: !!n?.closest('.kd-main') };
+  });
+  ok(nextAfterOwner.dy > 0 && nextAfterOwner.dy < 700 && Math.abs(nextAfterOwner.dx) < 80, `Tab from Owner goes to what shows right after it (${JSON.stringify(nextAfterOwner)})`);
+  // And on a narrow screen (one column), the page's own column comes right after Owner
+  await page.setViewport({ width: 900, height: 900 });
+  await wait(400);
+  const narrowNext = await page.evaluate(() => {
+    const all = [...document.querySelectorAll('.kd-layout a[href], .kd-layout button, .kd-layout select, .kd-layout textarea, .kd-layout input')].filter((e) => !e.disabled && e.getClientRects().length);
+    const o = document.querySelector('#dn-owner-pick');
+    const n = all[all.indexOf(o) + 1];
+    return { inMain: !!n?.closest('.kd-main'), dy: Math.round((n?.getBoundingClientRect().top || 0) - o.getBoundingClientRect().top) };
+  });
+  ok(narrowNext.inMain && narrowNext.dy > 0 && narrowNext.dy < 700, `one column: Tab from Owner goes to the page’s own column, right below (${JSON.stringify(narrowNext)})`);
+  await page.setViewport({ width: 1440, height: 1000 });
+  await wait(300);
   ok(/Looked after by Alex Rivera/.test(await teamText(page)), 'the timeline says who did what, at once (no reading again)');
   // Notes
   await page.click('#dn-note-text');
@@ -542,7 +613,9 @@ try {
   // Thanked on his page
   await page.evaluate(() => document.querySelector('.dn-thank .btn-primary')?.click());
   await page.waitForFunction(() => !document.querySelector('.dn-thank'), { timeout: 8000 }).catch(() => {});
-  ok(!(await page.$('.dn-thank')) && /Thanked by Alex/.test(await giftsText(page)), 'Thanked on his page: the box goes, the gift says when and by whom');
+  ok(!(await page.$('.dn-thank')) && /Thanked [A-Z][a-z]{2} \d+ by Alex/.test(await giftsText(page)), 'Thanked on his page: the box goes, the gift says when and by whom');
+  // (the timeline's own lines read again once the page has: a moment after)
+  await page.waitForFunction(() => /Thanked: \$2,000 from Tom Banks/.test([...document.querySelectorAll('.dn-tl__item[data-kind="team"], .dn-tl__item[data-kind="thanks"]')].map((e) => e.textContent).join(' ')), { timeout: 8000 }).catch(() => {});
   ok(/Thanked: \$2,000 from Tom Banks/.test(await teamText(page)), 'and the timeline has it, said by whom and when');
   // Delete the note, after asking
   await page.evaluate(() => [...document.querySelectorAll('.dn-tl__item[data-kind="note"] button')].find((b) => b.textContent.trim() === 'Delete')?.click());
@@ -550,8 +623,17 @@ try {
   await page.evaluate(() => document.querySelector('.ask-overlay [data-ask="yes"]')?.click());
   await page.waitForFunction(() => !document.querySelector('.dn-tl__item[data-kind="note"]'), { timeout: 8000 }).catch(() => {});
   ok(!(await page.$('.dn-tl__item[data-kind="note"]')), 'Delete, after asking: the note is gone');
-  // The list by owner
+  // Opened from To thank: Back says so and goes there (working down the list), and the list is a pill away
+  ok(/← To thank/.test(await textOf(page, '.dn-back')), `Back says where it goes (${await textOf(page, '.dn-back')})`);
   await page.evaluate(() => document.querySelector('.dn-back')?.click());
+  await page.waitForSelector('.dn-needs[aria-label="To thank"], .dn-done', { timeout: 8000 });
+  ok((await page.evaluate(() => location.hash)) === '#donors/thanks', 'Back from a donor opened from To thank: To thank again');
+  // (his gift thanked on his page: the one that took its place has the focus, to work on down the list)
+  await page.waitForFunction(() => document.activeElement?.closest('.dn-needs[aria-label="To thank"] > li'), { timeout: 4000 }).catch(() => {});
+  await wait(300);
+  ok(await page.evaluate(() => !!document.activeElement?.closest('.dn-needs[aria-label="To thank"] > li') && !/Tom Banks/.test(document.activeElement.closest('li').textContent)), `and the focus on the gift that took his place, never lost to the page (${await page.evaluate(() => `${document.activeElement?.tagName} "${(document.activeElement?.textContent || '').slice(0, 40)}"`)})`);
+  // The list by owner
+  await page.evaluate(() => [...document.querySelectorAll('.ppl-filter')].find((b) => b.textContent.trim().startsWith('Everyone'))?.click());
   await page.waitForSelector('.dn-table', { timeout: 8000 });
   ok(JSON.stringify(await page.$$eval('.dn-owner-filter option', (o) => o.map((x) => x.textContent.trim()))) === JSON.stringify(['Anyone', 'Me', 'No one', 'Jordan Hale']), 'Owner: Anyone, Me, No one, then the team');
   await page.select('.dn-owner-filter select', 'alex@soardcharity.com');
@@ -560,13 +642,387 @@ try {
   ok(/Looked after by you/.test(await textOf(page, '.dn-status')), 'and the line above says so');
   await page.select('.dn-owner-filter select', '');
   await wait(150);
+
+  console.log('Found in review');
+  // The To thank count follows the Owner filter like every other count: Rosa's gift (no one looks after her)
+  await page.select('.dn-owner-filter select', 'alex@soardcharity.com');
+  await wait(250);
+  ok(/To thank 0/.test(await textOf(page, '.ppl-filters')), `To thank counts what the Owner filter shows (${await textOf(page, '.ppl-filters')})`);
+  await page.select('.dn-owner-filter select', 'none');
+  await wait(250);
+  ok(/To thank 1/.test(await textOf(page, '.ppl-filters')), 'No one: Rosa’s gift');
+  await page.select('.dn-owner-filter select', '');
+  await wait(150);
+  // One donor's address, then another's: the second donor's page, nothing of the first left open on it; Back, the first
+  const h2 = (name) => page.waitForFunction((n) => (document.querySelector('.dn-head h2')?.textContent || '').includes(n), { timeout: 8000 }, name).catch(() => {});
+  await page.evaluate(() => { location.hash = '#donors/ct_uma'; });
+  await h2('Uma Small');
+  await page.evaluate(() => [...document.querySelectorAll('.dn button')].find((b) => /Count it for an organization|Add a Zeffy name|Same person as/.test(b.textContent))?.click());
+  await page.waitForSelector('.dn-picker', { timeout: 4000 }).catch(() => {});
+  const pickerWas = !!(await page.$('.dn-picker'));
+  await page.evaluate(() => { location.hash = '#donors/ct_rosa'; });
+  await h2('Rosa Diaz');
+  ok(pickerWas && !(await page.$('.dn-picker')) && /Rosa Diaz/.test(await textOf(page, '.dn-head h2')), 'another donor’s address: their page, with nothing of the one before left open on it');
+  await page.evaluate(() => history.back());
+  await h2('Uma Small');
+  ok((await page.evaluate(() => location.hash)) === '#donors/ct_uma' && /Uma Small/.test(await textOf(page, '.dn-head h2')), 'Back: the first donor again, at their address');
+  // The Owner picker keeps the focus while it saves (a disabled one drops it to the page)
+  await page.evaluate(() => { location.hash = '#donors/ct_rosa'; });
+  await h2('Rosa Diaz');
+  await page.focus('#dn-owner-pick');
+  await page.select('#dn-owner-pick', 'jordan@soardcharity.com');
+  await page.waitForFunction(() => /Looked after by Jordan Hale/.test([...document.querySelectorAll('.dn-tl__item[data-kind="team"], .dn-tl__item[data-kind="thanks"]')].map((e) => e.textContent).join(' ')), { timeout: 8000 }).catch(() => {});
+  ok(await page.evaluate(() => document.activeElement?.id === 'dn-owner-pick'), 'the Owner picker keeps the focus');
+  // Escape leaves a note's change, the focus back on its Change
+  await page.click('#dn-note-text');
+  await page.keyboard.type('Asked for a tour.');
+  await page.evaluate(() => [...document.querySelectorAll('.dn-note-new button')].find((b) => b.textContent.trim() === 'Add note')?.click());
+  await page.waitForSelector('.dn-tl__item[data-kind="note"] .dn-note__change', { timeout: 8000 }).catch(() => {});
+  await page.click('.dn-tl__item[data-kind="note"] .dn-note__change');
+  await page.waitForSelector('.dn-tl__item[data-kind="note"] textarea', { timeout: 4000 }).catch(() => {});
+  await page.keyboard.press('Escape');
+  await wait(200);
+  ok(!(await page.$('.dn-tl__item[data-kind="note"] textarea')) && await page.evaluate(() => document.activeElement?.classList.contains('dn-note__change')), 'Escape leaves a change to a note, the focus back on its Change');
+  // Thanked on To thank, then Undo from somewhere else: every count and list agrees again
+  await page.evaluate(() => { location.hash = '#donors/thanks'; });
+  await page.waitForSelector('.dn-needs[aria-label="To thank"] .dn-need', { timeout: 8000 });
+  await page.evaluate(() => document.querySelector('.dn-needs[aria-label="To thank"] .dn-need .btn-primary')?.click());
+  await page.waitForSelector('.dn-done', { timeout: 8000 }).catch(() => {});
+  ok(await page.evaluate(() => document.activeElement?.matches('.dn-done')), 'the last one said: the focus on the words saying nothing is left');
+  await page.evaluate(() => { location.hash = '#donors'; });
+  await page.waitForSelector('.dn-table', { timeout: 8000 });
+  await page.evaluate(() => [...document.querySelectorAll('.toast')].filter((t) => /Thanked: \$250 from Rosa Diaz/.test(t.textContent)).at(-1)?.querySelectorAll('button').forEach((b) => { if (b.textContent.trim() === 'Undo') b.click(); }));
+  await page.waitForFunction(() => /To thank 1/.test(document.querySelector('.ppl-filters')?.textContent.replace(/\s+/g, ' ') || '') && document.querySelector('.sidebar a[href="#donors"] .nav-count')?.textContent.trim() === '1', { timeout: 8000 }).catch(() => {});
+  ok(/To thank 1/.test(await textOf(page, '.ppl-filters')) && await badge() === '1', `Undo from another page: the list’s count and the sidebar’s agree (${await textOf(page, '.ppl-filters')} | ${await badge()})`);
+  // Opened from To thank, then a link elsewhere (a Slack gift link in the same tab): Back is to the list, the gift marked
+  await page.evaluate(() => { location.hash = '#donors/thanks'; });
+  await page.waitForSelector('.dn-needs[aria-label="To thank"] .dn-need a', { timeout: 8000 });
+  await page.evaluate(() => [...document.querySelectorAll('.dn-needs[aria-label="To thank"] .dn-need a')].find((a) => /^Open /.test(a.textContent.trim()))?.click());
+  await page.waitForSelector('.dn-head h2', { timeout: 8000 });
+  ok(/← To thank/.test(await textOf(page, '.dn-back')), 'opened from To thank: Back says To thank');
+  await page.evaluate(() => { location.hash = '#donors/gift/jane_acme'; });
+  await page.waitForFunction(() => /← Donors|← /.test(document.querySelector('.dn-back')?.textContent || '') && !!document.querySelector('.dn-tl__list, .dn-head'), { timeout: 8000 }).catch(() => {});
+  await wait(600);
+  ok(/← Donors/.test(await textOf(page, '.dn-back')), `a link followed after that: Back is to the list again (${await textOf(page, '.dn-back')})`);
+  // ─── Found in the seventh round ───
+  // An owner and Keep anonymous whose answers are lost on the way back: the page reads again and shows what was saved
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_7'; });
+  await page.waitForSelector('#dn-owner-pick', { timeout: 8000 });
+  lose = (b) => b.act === 'owner';
+  await page.evaluate(() => { const s = document.querySelector('#dn-owner-pick'); s.value = 'jordan@soardcharity.com'; s.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.waitForFunction(() => document.querySelector('#dn-owner-pick')?.value === 'jordan@soardcharity.com' && !document.querySelector('#dn-owner-pick[aria-busy="true"]'), { timeout: 8000 }).catch(() => {});
+  await wait(400);
+  ok(await page.$eval('#dn-owner-pick', (s) => s.value) === 'jordan@soardcharity.com', 'an owner saved whose answer was lost: the page shows Jordan, as saved');
+  lose = (b) => b.act === 'anon';
+  await page.click('.kd-rail .dn-check input');
+  await page.waitForFunction(() => document.querySelector('.kd-rail .dn-check input')?.checked && /Kept anonymous/.test(document.querySelector('.dn-head h2')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+  ok(await page.$eval('.kd-rail .dn-check input', (i) => i.checked) && /Kept anonymous/.test(await textOf(page, '.dn-head h2')), 'Keep anonymous saved whose answer was lost: the box shows it on, as saved');
+  // A note a teammate changed while it was being changed: the person's words stay, the note as it is now above them
+  await page.click('#dn-note-text');
+  await page.keyboard.type('Likes the gala.');
+  await page.evaluate(() => [...document.querySelectorAll('.dn-note-new button')].find((b) => b.textContent.trim() === 'Add note')?.click());
+  await page.waitForSelector('.dn-tl__item[data-kind="note"] .dn-note__change', { timeout: 8000 });
+  await page.click('.dn-tl__item[data-kind="note"] .dn-note__change');
+  await page.waitForSelector('.dn-tl__item[data-kind="note"] textarea', { timeout: 4000 });
+  await DB.prepare("UPDATE donor_notes SET body = 'Likes the gala; bring a guest.', edited_by = 'jordan@soardcharity.com' WHERE body = 'Likes the gala.'").run();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Call in May.');
+  await page.evaluate(() => [...document.querySelectorAll('.dn-tl__item[data-kind="note"] button')].find((b) => b.textContent.trim() === 'Save')?.click());
+  await page.waitForFunction(() => /It reads now/.test([...document.querySelectorAll('.dn-tl__item[data-kind="note"]')].map((e) => e.textContent).join(' ')), { timeout: 8000 }).catch(() => {});
+  ok(/Call in May/.test(await page.$eval('.dn-tl__item[data-kind="note"] textarea', (t) => t.value).catch(() => '')) && /bring a guest/.test(await notesText(page)), 'a note changed by a teammate meanwhile: the person’s words stay in the box, the note as it is now above them');
+  await DB.prepare("DELETE FROM donor_notes WHERE body = 'Likes the gala; bring a guest.'").run();
+  await page.evaluate(() => [...document.querySelectorAll('.dn-tl__item[data-kind="note"] button')].find((b) => b.textContent.trim() === 'Save')?.click());
+  await page.waitForFunction(() => /Call in May/.test(document.querySelector('#dn-note-text')?.value || ''), { timeout: 8000 }).catch(() => {});
+  ok(/Call in May/.test(await page.$eval('#dn-note-text', (t) => t.value)), 'deleted meanwhile: the person’s words go to the new note box');
+  // (the words cleared from the box, so the moves that follow don't ask about a note)
+  await page.click('#dn-note-text', { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await wait(200);
+  // Someone whose every gift counts for an organization is found by their own name, at the organization's row
+  await C.act(env, { act: 'link', kind: 'contact', subject: 'ct_fill_5', org: 'p:pella' }, 'alex@soardcharity.com');
+  await page.goto(`${origin}/admin/#donors`, { waitUntil: 'networkidle2' });
+  await page.waitForSelector('.dn-table', { timeout: 15000 });
+  await page.click('input[aria-label="Search donors"]', { clickCount: 3 });
+  await page.keyboard.type('Donor 005');
+  await wait(400);
+  ok((await rowNames(page)).includes('Pella') && /given by Filler Donor 005/.test(await textOf(page, '.dn-table tbody')), `a giver whose gifts all count for an organization is found at its row (${(await rowNames(page)).join(', ')})`);
+  await page.click('input[aria-label="Search donors"]', { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  // Undo from a toast by keyboard: the focus on the thank-you put back, never on a heading no one sees
+  await page.evaluate(() => { location.hash = '#donors/thanks'; });
+  await page.waitForSelector('.dn-needs[aria-label="To thank"] [data-thank] .btn-primary', { timeout: 8000 }).catch(() => {});
+  const undoId = await page.evaluate(() => document.querySelector('.dn-needs[aria-label="To thank"] [data-thank]')?.dataset.thank || '');
+  await page.evaluate(() => document.querySelector('.dn-needs[aria-label="To thank"] [data-thank] .btn-primary')?.click());
+  await page.waitForFunction(() => [...document.querySelectorAll('.toast .toast-undo')].length, { timeout: 8000 }).catch(() => {});
+  await page.evaluate(() => [...document.querySelectorAll('.toast .toast-undo')].at(-1)?.focus());
+  await page.keyboard.press('Enter');
+  await page.waitForFunction((id) => document.activeElement?.closest?.(`[data-thank="${id}"]`), { timeout: 8000 }, undoId).catch(() => {});
+  const undoAt = await page.evaluate(() => ({ at: document.activeElement?.outerHTML.slice(0, 80), items: [...document.querySelectorAll('[data-thank]')].map((li) => li.dataset.thank), toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.trim().slice(0, 50)) }));
+  ok(!!undoId && await page.evaluate((id) => !!document.activeElement?.closest?.(`[data-thank="${id}"]`), undoId), `Undo from a toast by keyboard: the focus on the thank-you put back (${undoId} ${JSON.stringify(undoAt)})`);
+  // Thanked whose answer is lost on the way back: it's sent once more and says what happened (Thanked, with Undo);
+  // then ⌘Z / Ctrl+Z is its Undo, the focus on the thank-you put back
+  lose = (b) => b.act === 'thanks' && b.state === 'thanked';
+  const lostId = await page.evaluate(() => document.querySelector('.dn-needs[aria-label="To thank"] [data-thank]')?.dataset.thank || '');
+  await page.evaluate(() => document.querySelector('.dn-needs[aria-label="To thank"] [data-thank] .btn-primary')?.click());
+  await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => /^Thanked:/.test(t.textContent.trim())), { timeout: 8000 }).catch(() => {});
+  ok(!!lostId && lose === null && await page.evaluate(() => { const ts = [...document.querySelectorAll('.toast')]; return ts.some((t) => /^Thanked:/.test(t.textContent.trim()) && t.querySelector('.toast-undo')) && !ts.some((t) => /didn’t answer/.test(t.textContent)); }), 'Thanked whose answer was lost: “Thanked” with its Undo, never “didn’t answer” for one that saved');
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await page.keyboard.press('z');
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await page.waitForFunction((id) => document.activeElement?.closest?.(`[data-thank="${id}"]`), { timeout: 8000 }, lostId).catch(() => {});
+  ok(await page.evaluate((id) => !!document.activeElement?.closest?.(`[data-thank="${id}"]`), lostId), '⌘Z / Ctrl+Z undoes it: back on the list, the focus on it');
+  // A double click on Thanked is one press: the item that moves up under the pointer isn't thanked too
+  await page.waitForSelector('.dn-needs[aria-label="To thank"] [data-thank] .btn-primary', { timeout: 8000 }).catch(() => {});
+  const before = posts.filter((b) => b.act === 'thanks' && b.state === 'thanked').length;
+  const box = await page.$eval('.dn-needs[aria-label="To thank"] [data-thank] .btn-primary', (b) => { const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }).catch(() => null);
+  if (box) await page.mouse.click(box.x, box.y, { clickCount: 1 });
+  await wait(250);
+  if (box) await page.mouse.click(box.x, box.y, { clickCount: 2 });
+  await wait(1500);
+  ok(!!box && posts.filter((b) => b.act === 'thanks' && b.state === 'thanked').length - before === 1, `a double click on Thanked thanks one gift (${posts.filter((b) => b.act === 'thanks' && b.state === 'thanked').length - before})`);
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await page.keyboard.press('z');
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await wait(800);
+  // A held Enter is one press: its repeats never answer the item that takes the focus next
+  await page.waitForSelector('.dn-needs[aria-label="To thank"] [data-thank] .btn-primary', { timeout: 8000 }).catch(() => {});
+  const heldBefore = posts.filter((b) => b.act === 'thanks' && b.state === 'thanked').length;
+  await page.focus('.dn-needs[aria-label="To thank"] [data-thank] .btn-primary').catch(() => {});
+  await page.keyboard.down('Enter');
+  for (let i = 0; i < 12; i++) { await wait(60); await page.keyboard.down('Enter'); }
+  await page.keyboard.up('Enter');
+  await wait(1200);
+  ok(posts.filter((b) => b.act === 'thanks' && b.state === 'thanked').length - heldBefore === 1, `a held Enter on Thanked thanks one gift (${posts.filter((b) => b.act === 'thanks' && b.state === 'thanked').length - heldBefore})`);
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await page.keyboard.press('z');
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await wait(800);
+  // The page changing columns (the window made narrower) keeps the focus where it was: typing goes on
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_9'; });
+  await page.waitForSelector('#dn-note-text', { timeout: 8000 });
+  await page.click('#dn-note-text');
+  await page.keyboard.type('Met at the');
+  await page.setViewport({ width: 900, height: 900 });
+  await wait(500);
+  await page.keyboard.type(' gala');
+  ok(await page.$eval('#dn-note-text', (t) => t.value) === 'Met at the gala' && await page.evaluate(() => document.activeElement?.id === 'dn-note-text'), `the window made narrower: the note box keeps the focus, and the typing (${await page.$eval('#dn-note-text', (t) => t.value)})`);
+  await page.setViewport({ width: 1440, height: 1000 });
+  await wait(300);
+  // Browser Back with the note typed: the page goes (nothing asks), and coming back the words are in the box
+  const hereNow = await page.evaluate(() => location.hash);
+  await page.evaluate(() => history.back());
+  await page.waitForFunction((h) => location.hash !== h, { timeout: 6000 }, hereNow).catch(() => {});
+  ok(!(await page.$('.ask-overlay')) && await page.evaluate((h) => location.hash !== h, hereNow), 'Back with a note typed: the page goes, nothing asks');
+  await page.evaluate(() => history.forward());
+  await page.waitForFunction(() => /Met at the gala/.test(document.querySelector('#dn-note-text')?.value || ''), { timeout: 8000 }).catch(() => {});
+  ok(await page.evaluate((h) => location.hash === h, hereNow) && await page.$eval('#dn-note-text', (t) => t.value).catch(() => '') === 'Met at the gala', 'back on the page: the words typed are in the box again');
+  await page.reload({ waitUntil: 'networkidle2' });
+  await page.waitForSelector('#dn-note-text', { timeout: 8000 });
+  ok(await page.$eval('#dn-note-text', (t) => t.value) === 'Met at the gala', 'and after a reload too');
+  await page.click('#dn-note-text', { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  // A note half written, then Count it for an organization: the page becomes the organization's, the words go with it
+  await page.click('#dn-note-text');
+  await page.keyboard.type('Wants a tour of a finished room');
+  await wait(300);
+  await page.evaluate(() => [...document.querySelectorAll('.dn button')].find((b) => /Count it for an organization/.test(b.textContent))?.click());
+  await page.waitForSelector('.dn-picker input', { timeout: 5000 });
+  await page.type('.dn-picker input', 'Acme');
+  await page.waitForFunction(() => [...document.querySelectorAll('.dn-picker__item')].some((b) => /Acme Builders/.test(b.textContent)), { timeout: 6000 }).catch(() => {});
+  await page.evaluate(() => [...document.querySelectorAll('.dn-picker__item')].find((b) => /Acme Builders/.test(b.textContent))?.click());
+  await page.waitForFunction(() => /Acme Builders/.test(document.querySelector('.dn-head h2')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector('#dn-note-text', { timeout: 8000 }).catch(() => {});
+  ok(/Acme Builders/.test(await textOf(page, '.dn-head h2')) && await page.$eval('#dn-note-text', (t) => t.value).catch(() => '') === 'Wants a tour of a finished room', `counted for an organization: the note being written is in its note box (${await page.$eval('#dn-note-text', (t) => t.value).catch(() => 'none')})`);
+  await page.click('#dn-note-text', { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await wait(300);
+  // Put on the website from a page read before a teammate took the organization out: nothing is made
+  const { key: walkOrg } = await C.act(env, { act: 'org-new', name: 'Walkthrough Works', links: [] }, 'alex@soardcharity.com');
+  await page.evaluate((k) => { location.hash = `#donors/org/${encodeURIComponent(k)}`; }, walkOrg);
+  await page.waitForFunction(() => /Walkthrough Works/.test(document.querySelector('.dn-head h2')?.textContent || ''), { timeout: 8000 });
+  await C.act(env, { act: 'org-delete', key: walkOrg }, 'jordan@soardcharity.com');
+  const savedBefore = saved.length;
+  await page.evaluate(() => [...document.querySelectorAll('.kd-rail button')].find((b) => /Put it on the website/.test(b.textContent))?.click());
+  await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => /taken out since this page was read/.test(t.textContent)), { timeout: 8000 }).catch(() => {});
+  ok(saved.length === savedBefore && !(await page.$('.kd-dialog')) && await page.evaluate(() => [...document.querySelectorAll('.toast')].some((t) => /taken out since this page was read/.test(t.textContent))), 'taken out by a teammate meanwhile: Put it on the website says so and makes no partner card');
+  // A note whose save is slow, the page left while it saves: back on the page, it's in the list once, the box empty,
+  // never back in its box as not saved (and Add note can't make it twice)
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_11'; });
+  await page.waitForSelector('#dn-note-text', { timeout: 8000 });
+  await page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => { t.dataset.before = '1'; }));
+  await page.click('#dn-note-text');
+  await page.keyboard.type('Sent the gala photos');
+  slow = (b) => (b.act === 'note-add' ? 2000 : 0);
+  await page.evaluate(() => [...document.querySelectorAll('.dn-note-new button')].find((b) => b.textContent.trim() === 'Add note')?.click());
+  await wait(200);
+  await page.evaluate(() => history.back());
+  await wait(3000);
+  await page.evaluate(() => history.forward());
+  await page.waitForFunction(() => [...document.querySelectorAll('.dn-note__body')].some((n) => /Sent the gala photos/.test(n.textContent)), { timeout: 8000 }).catch(() => {});
+  const after = { box: await page.$eval('#dn-note-text', (t) => t.value).catch(() => '?'), shown: await page.$$eval('.dn-note__body', (l) => l.filter((n) => /Sent the gala photos/.test(n.textContent)).length), toasts: await page.evaluate(() => [...document.querySelectorAll('.toast:not([data-before])')].map((t) => t.textContent.trim())) };
+  ok(after.box === '' && after.shown === 1 && !after.toasts.some((t) => /not saved yet/.test(t)), `a note saved after the page was left: in the list once, its box empty, nothing says it isn’t saved (${JSON.stringify(after)})`);
+  ok((await DB.prepare("SELECT COUNT(*) AS n FROM donor_notes WHERE body = 'Sent the gala photos'").first()).n === 1, 'and saved once');
+  // Back through another area: the list as it was (its search), not fresh
+  await page.evaluate(() => { location.hash = '#donors'; });
+  await page.waitForSelector('input[aria-label="Search donors"]', { timeout: 8000 });
+  await page.$eval('input[aria-label="Search donors"]', (i) => { i.value = 'Filler'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await wait(500);
+  await page.evaluate(() => [...document.querySelectorAll('.dn-table .dn-name')].find((b) => /Filler Donor 012/.test(b.textContent))?.click());
+  await page.waitForFunction(() => /Filler Donor 012/.test(document.querySelector('.dn-head h2')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+  // (another area from the sidebar: the first one that isn't Donors)
+  awayFromDonors = true;
+  await page.evaluate(() => [...document.querySelectorAll('.sidebar a.nav-item')].find((a) => /^#[a-z]/.test(a.getAttribute('href') || '') && !/^#donors/.test(a.getAttribute('href')))?.click());
+  await page.waitForFunction(() => !/^#donors/.test(location.hash), { timeout: 6000 }).catch(() => {});
+  const away = await page.evaluate(() => location.hash);
+  await wait(1200);
+  await page.evaluate(() => history.back());
+  await page.waitForFunction(() => /Filler Donor 012/.test(document.querySelector('.dn-head h2')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+  await wait(1000);
+  awayFromDonors = false;
+  await page.evaluate(() => history.back());
+  await page.waitForSelector('input[aria-label="Search donors"]', { timeout: 8000 }).catch(() => {});
+  await wait(400);
+  ok(!/^#donors/.test(away) && await page.$eval('input[aria-label="Search donors"]', (i) => i.value).catch(() => '') === 'Filler', `Back through another area (${away}): the list as it was, its search kept`);
+  await page.$eval('input[aria-label="Search donors"]', (i) => { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
   ok(!calls.some((c) => /%40|@/.test(c)), 'still no email in any request');
   ok(errors.length === 0, `no console errors on the laptop${errors.length ? `: ${errors.slice(0, 3).join(' | ')}` : ''}`);
 
+  console.log('Found in round 18');
+  // Two tabs on one giver: words typed in the second while the first saves the note are never wiped
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_14'; });
+  await page.waitForSelector('#dn-note-text', { timeout: 8000 });
+  const tabB = await open(browser, origin, { width: 1280, height: 900 }, '#donors/ct_fill_14');
+  await tabB.page.waitForSelector('#dn-note-text', { timeout: 15000 });
+  await page.click('#dn-note-text');
+  await page.keyboard.type('Hello from tab A');
+  await tabB.page.waitForFunction(() => document.querySelector('#dn-note-text')?.value === 'Hello from tab A', { timeout: 4000 }).catch(() => {});
+  const mirrored = await tabB.page.$eval('#dn-note-text', (t) => t.value);
+  slow = (b) => (b.act === 'note-add' ? 2000 : 0);
+  await page.evaluate(() => [...document.querySelectorAll('.dn-note-new button')].find((b) => b.textContent.trim() === 'Add note')?.click());
+  await wait(300);
+  await tabB.page.click('#dn-note-text');
+  await tabB.page.keyboard.press('End');
+  await tabB.page.keyboard.type(', and B adds this');
+  await wait(3200);
+  await tabB.page.waitForFunction(() => [...document.querySelectorAll('.dn-note__body')].some((n) => /Hello from tab A/.test(n.textContent)), { timeout: 6000 }).catch(() => {});
+  const bNow = { box: await tabB.page.$eval('#dn-note-text', (t) => t.value), notes: await tabB.page.$$eval('.dn-note__body', (l) => l.map((n) => n.textContent.trim())) };
+  ok(mirrored === 'Hello from tab A' && /and B adds this/.test(bNow.box) && bNow.notes.includes('Hello from tab A'), `two tabs: the second's words typed while the first saved stay in its box, and it shows the note saved (${JSON.stringify(bNow)})`);
+  ok((await DB.prepare("SELECT COUNT(*) AS n FROM donor_notes WHERE body = 'Hello from tab A'").first()).n === 1, 'and the note is saved once');
+  await tabB.page.click('#dn-note-text', { clickCount: 3 });
+  await tabB.page.keyboard.press('Backspace');
+  await wait(200);
+  await tabB.page.close();
+  // A note half written and left; a teammate counts the giver for an organization: opening them again, the words are
+  // on the organization's page they now open
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_15'; });
+  await page.waitForSelector('#dn-note-text', { timeout: 8000 });
+  await page.click('#dn-note-text');
+  await page.keyboard.type('Wants to sponsor a room');
+  await wait(300);
+  await page.evaluate(() => { location.hash = '#donors'; });
+  await page.waitForSelector('.dn-table', { timeout: 8000 });
+  await C.act(env, { act: 'link', kind: 'contact', subject: 'ct_fill_15', subjects: ['ct_fill_15'], org: 'p:acme' }, 'jordan@soardcharity.com');
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_15'; });
+  await page.waitForFunction(() => /Acme Builders/.test(document.querySelector('.dn-head h2')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector('#dn-note-text', { timeout: 8000 }).catch(() => {});
+  ok(/Wants to sponsor a room/.test(await page.$eval('#dn-note-text', (t) => t.value).catch(() => '')), `counted for an organization by a teammate while away: the words written on their page are on the organization's (${await page.$eval('#dn-note-text', (t) => t.value).catch(() => 'none')})`);
+  await page.click('#dn-note-text', { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await wait(200);
+  // A note being changed, then Same person with a record that leads: the change goes on, in its own editor
+  await C.act(env, { act: 'note-add', key: 'c:ct_fill_16', body: 'Prefers a call in the morning', id: 'note-walk-r18' }, 'alex@soardcharity.com');
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_16'; });
+  await page.waitForSelector('.dn-tl__item[data-kind="note"] .dn-note__change', { timeout: 8000 });
+  await page.click('.dn-tl__item[data-kind="note"] .dn-note__change');
+  await page.waitForSelector('.dn-tl__item[data-kind="note"] textarea', { timeout: 4000 });
+  await page.keyboard.press('End');
+  await page.keyboard.type(', never after 5');
+  await wait(300);
+  await page.evaluate(() => [...document.querySelectorAll('.kd-rail button, .dn button')].find((b) => /Same person as another donor/.test(b.textContent))?.click());
+  await page.waitForSelector('.dn-picker input', { timeout: 4000 });
+  await page.type('.dn-picker input', 'Filler Donor 104');
+  await page.waitForFunction(() => [...document.querySelectorAll('.dn-picker__item')].some((b) => /Filler Donor 104/.test(b.textContent)), { timeout: 6000 }).catch(() => {});
+  await page.evaluate(() => [...document.querySelectorAll('.dn-picker__item')].find((b) => /Filler Donor 104/.test(b.textContent))?.click());
+  await page.waitForFunction(() => !document.querySelector('.dn-picker'), { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector('.dn-tl__item[data-kind="note"] textarea', { timeout: 8000 }).catch(() => {});
+  const editNow = { editor: await page.$eval('.dn-tl__item[data-kind="note"] textarea', (t) => t.value).catch(() => 'none'), box: await page.$eval('#dn-note-text', (t) => t.value).catch(() => '?') };
+  ok(editNow.editor === 'Prefers a call in the morning, never after 5' && editNow.box === '', `joined under another record mid-change: the change goes on in its note's editor, never a new note (${JSON.stringify(editNow)})`);
+  await page.keyboard.press('Escape');
+  await wait(200);
+  // Typing in the note box when the page is read again under another key (a teammate joins them under another lead):
+  // the typing goes on in the box, never to the page
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_18'; });
+  await page.waitForSelector('#dn-note-text', { timeout: 8000 });
+  await page.click('#dn-note-text');
+  await page.keyboard.type('First half typed, ');
+  await C.act(env, { act: 'same', a: 'c:ct_fill_18', b: 'c:ct_fill_102', same: true }, 'jordan@soardcharity.com');
+  await page.evaluate(() => window.dispatchEvent(new Event('soard-thanks-moved')));
+  await page.waitForFunction(() => document.activeElement?.id === 'dn-note-text' && document.querySelector('.dn-tl')?.isConnected, { timeout: 8000 }).catch(() => {});
+  await wait(600);
+  await page.keyboard.type('second half right after.');
+  await wait(300);
+  ok(await page.$eval('#dn-note-text', (t) => t.value).catch(() => '') === 'First half typed, second half right after.', `joined under another lead while typing: the typing goes on in the box (${await page.$eval('#dn-note-text', (t) => t.value).catch(() => 'none')})`);
+  await page.click('#dn-note-text', { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await wait(200);
+  // An owner picked, then Back at once while it saves: the list shows them once it's saved
+  await page.evaluate(() => { location.hash = '#donors/ct_fill_17'; });
+  await page.waitForSelector('#dn-owner-pick', { timeout: 8000 });
+  slow = (b) => (b.act === 'owner' ? 1500 : 0);
+  await page.select('#dn-owner-pick', 'jordan@soardcharity.com');
+  await page.evaluate(() => document.querySelector('.dn-back')?.click());
+  await page.waitForSelector('.dn-table', { timeout: 8000 });
+  await page.waitForFunction(() => /Jordan/.test([...document.querySelectorAll('.dn-row')].find((r) => /Filler Donor 017/.test(r.textContent))?.textContent || ''), { timeout: 8000 }).catch(() => {});
+  ok(/Jordan/.test(await page.evaluate(() => [...document.querySelectorAll('.dn-row')].find((r) => /Filler Donor 017/.test(r.textContent))?.textContent || '')), 'an owner picked, then Back at once: saved, and the list shows them once it is');
+  // Straight from the list to another area and Back: the list as it was (search, sort)
+  await page.$eval('input[aria-label="Search donors"]', (i) => { i.value = 'Filler'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.select('.dn-sort-by select', 'name');
+  await wait(400);
+  const hereList = await page.evaluate(() => location.hash);
+  awayFromDonors = true;
+  await page.evaluate(() => [...document.querySelectorAll('.sidebar a.nav-item')].find((a) => /^#[a-z]/.test(a.getAttribute('href') || '') && !/^#donors/.test(a.getAttribute('href')))?.click());
+  await page.waitForFunction(() => !/^#donors/.test(location.hash), { timeout: 6000 }).catch(() => {});
+  const away2 = await page.evaluate(() => location.hash);
+  await wait(1200);
+  await page.evaluate(() => history.back());
+  await page.waitForSelector('input[aria-label="Search donors"]', { timeout: 8000 }).catch(() => {});
+  await wait(1000);
+  awayFromDonors = false;
+  const listNow = { from: hereList, away: away2, at: await page.evaluate(() => location.hash), q: await page.$eval('input[aria-label="Search donors"]', (i) => i.value).catch(() => '?'), sort: await page.$eval('.dn-sort-by select', (x) => x.value).catch(() => '?') };
+  ok(listNow.q === 'Filler' && listNow.sort === 'name', `straight from the list to another area and Back: its search and sort as they were (${JSON.stringify(listNow)})`);
+  await page.$eval('input[aria-label="Search donors"]', (i) => { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.select('.dn-sort-by select', 'latest');
+  // A giver of millions, with cents: on a phone the list and the Giving tiles show it whole
+  for (const p of [pay({ id: 'mega_1', created: S(NOW - 3 * DAY), amount: 125000050, contact: 'ct_mega', email: 'mega@example.com', first: 'Mega', last: 'Giver' })]) { payments.push(p); await D.noteDonorPayment(env, p, { now: NOW }); }
+  const xs = await open(browser, origin, { width: 360, height: 780, isMobile: true, hasTouch: true });
+  await xs.page.waitForSelector('.dn-table', { timeout: 15000 });
+  await xs.page.$eval('input[aria-label="Search donors"]', (i) => { i.value = 'Mega'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await wait(400);
+  const cut = await xs.page.evaluate(() => { const td = [...document.querySelectorAll('.dn-row td.num')].find((c) => c.offsetParent); const card = document.querySelector('.dn-list'); return td && card ? { amount: td.textContent.trim(), right: Math.round(td.getBoundingClientRect().right), edge: Math.round(card.getBoundingClientRect().right) } : null; });
+  ok(cut && cut.amount === '$1,250,000.50' && cut.right <= cut.edge, `360px: a total of millions shows whole in the list (${JSON.stringify(cut)})`);
+  await xs.page.evaluate(() => { location.hash = '#donors/ct_mega'; });
+  await xs.page.waitForSelector('.dn-tile', { timeout: 8000 });
+  const tilesOut = await xs.page.evaluate(() => [...document.querySelectorAll('.dn-tile__value')].filter((v) => v.scrollWidth > v.clientWidth + 1 || v.getBoundingClientRect().right > v.closest('.dn-tile').getBoundingClientRect().right || v.getClientRects().length > 1 || v.getBoundingClientRect().height > parseFloat(getComputedStyle(v).lineHeight || '0') * 1.5).map((v) => v.textContent));
+  ok(tilesOut.length === 0, `360px: every Giving tile holds its amount on one line (${tilesOut.join(', ') || 'all fit'})`);
+  await phoneChecks(xs.page, 'A giver of millions, 360px');
+  await xs.page.close();
   console.log('Phone');
   const ph = await open(browser, origin, { width: 390, height: 844, isMobile: true, hasTouch: true });
   await ph.page.waitForSelector('.dn-table', { timeout: 15000 });
   await phoneChecks(ph.page, 'People, phone');
+  // A message with a long unbroken name wraps, its button in reach
+  await ph.page.evaluate(() => { location.hash = '#donors/ct_uma'; });
+  await ph.page.waitForSelector('#dn-owner-pick', { timeout: 8000 });
+  await ph.page.evaluate(() => { const s = document.querySelector('#dn-owner-pick'); s.value = 'jordan@soardcharity.com'; s.dispatchEvent(new Event('change', { bubbles: true })); });
+  await ph.page.waitForSelector('.toast', { timeout: 6000 }).catch(() => {});
+  await ph.page.evaluate(() => { const t = document.querySelector('.toast-container'); t.insertAdjacentHTML('beforeend', '<div class="toast toast-success" role="alert" id="walk-long"><span class="toast-action"><span>Thanked: $250 from ' + 'Averyveryveryveryverylongunbrokenname'.repeat(3) + '</span><button class="toast-undo">Undo</button></span></div>'); });
+  const longToast = await ph.page.evaluate(() => { const b = document.querySelector('#walk-long .toast-undo').getBoundingClientRect(); const r = document.querySelector('#walk-long').getBoundingClientRect(); document.querySelector('#walk-long').remove(); return { right: Math.round(b.right), toast: Math.round(r.right), vw: document.documentElement.clientWidth }; });
+  ok(longToast.right <= longToast.vw && longToast.toast <= longToast.vw, `a message with a long unbroken name keeps Undo on the screen (${JSON.stringify(longToast)})`);
+  await ph.page.goto(`${origin}/admin/#donors`, { waitUntil: 'networkidle2' });
+  await ph.page.waitForSelector('.dn-table', { timeout: 15000 });
   await ph.page.goto(`${origin}/admin/#donors/ct_jane`, { waitUntil: 'networkidle2' });
   await ph.page.waitForSelector('.dn-tl__list', { timeout: 8000 });
   await phoneChecks(ph.page, 'A donor, phone');

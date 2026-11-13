@@ -1732,8 +1732,14 @@
 
     /* ─── Toast with Undo ──────────── */
     .toast-action {
-      display: inline-flex; align-items: center; gap: 0.5rem;
+      display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0;
     }
+    /* A long unbroken name wraps: the words never push the button out of reach */
+    .toast, .toast-action > span { overflow-wrap: anywhere; min-width: 0; }
+    .toast-undo { flex-shrink: 0; }
+    /* The key that does it, on a keyboard's screen (never a phone's) */
+    .toast-key { flex-shrink: 0; font-size: var(--fs-xs); opacity: .7; }
+    @media (pointer: coarse) { .toast-key { display: none; } }
     .toast-undo {
       position: relative;
       background: none; border: 1px solid rgba(255,255,255,0.4);
@@ -2875,6 +2881,9 @@
     .modal.kd-dialog--lg { max-width: 820px; }
     .modal.kd-dialog--xl { max-width: 1120px; }
     .kd-dialog__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.25rem 0.9rem; border-bottom: 1px solid var(--color-border); }
+    .kd-dialog__titles { min-width: 0; overflow-wrap: anywhere; }
+    /* A dialog's title with a long unbroken name in it wraps, never runs off a phone */
+    .modal :is(h2, h3) { overflow-wrap: anywhere; }
     .modal .kd-dialog__head h2 { margin: 0; font-size: var(--fs-lg); font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; }
     .modal .kd-dialog__sub { margin: 0.25rem 0 0; font-size: var(--fs-xs); }
     .kd-dialog__body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1.1rem 1.25rem; }
@@ -4924,11 +4933,11 @@
         const r = await fetch(`/api/read-content?path=${encodeURIComponent(path)}`);
         return apiJson(r, '/api/read-content');
       },
-      async saveContent(path, content, message, sha) {
+      async saveContent(path, content, message, sha, { create = false } = {}) {
         const r = await fetch('/api/save-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path, content, message, sha }),
+          body: JSON.stringify({ path, content, message, sha, ...(create ? { create: true } : {}) }),
         });
         const data = await apiJson(r, '/api/save-content');
         if (data.success) window.dispatchEvent(new CustomEvent('soard-content-changed'));
@@ -7929,6 +7938,8 @@
 
     // ─── Toast System ───────────────────────
     let toastId = 0;
+    // ⌘Z / Ctrl+Z (not while typing, nor in a dialog): the newest message's Undo, wherever the focus is
+    const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || '') ? { show: '⌘Z', aria: 'Meta+Z' } : { show: 'Ctrl+Z', aria: 'Control+Z' };
     // The newest three show; older ones fold into "N more" (each still times out
     // on its own). Using a toast's action (Undo, Publish) closes it, so what
     // follows replaces it instead of stacking on top
@@ -8076,9 +8087,16 @@
     // needs nothing back, and focusing a field then would open a phone's keyboard)
     let toastFocusFrom = null;
     document.addEventListener('focusin', (e) => { if (!e.target.closest?.('.toast-container')) toastFocusFrom = e.target; });
+    // (where it was gone with the change, an Undo that took a row away: the page's own heading, one that shows, never
+    // the screen-reader-only "SOARD Admin")
     const toastFocusBack = () => setTimeout(() => {
       const a = document.activeElement;
-      if ((!a || a === document.body) && toastFocusFrom?.isConnected) toastFocusFrom.focus({ preventScroll: true });
+      if (a && a !== document.body) return;
+      if (toastFocusFrom?.isConnected && toastFocusFrom.getClientRects().length) { toastFocusFrom.focus({ preventScroll: true }); return; }
+      const h = [...document.querySelectorAll('.main h1, .main h2')].find((x) => !x.closest('.sr-only') && x.getClientRects().length);
+      if (!h) return;
+      if (!h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1');
+      h.focus({ preventScroll: true });
     }, 150);
     // What scrolls under a point, past the toasts (a wheel or a swipe on a toast that's on a dialog scrolls the
     // dialog). While a dialog is open, only what's in it: never the page behind it (null: nothing to scroll)
@@ -8097,6 +8115,23 @@
       const box = useRef(null);
       const swipe = useRef(null);
       useEffect(() => { if (toasts.length <= TOAST_SHOWN) setAll(false); }, [toasts.length]);
+      const latest = useRef(toasts);
+      latest.current = toasts;
+      // ⌘Z / Ctrl+Z, not while typing or in a dialog: the newest message's Undo, wherever the focus is. A held key's
+      // repeats undo nothing more; a screen with its own Cmd/Ctrl+Z (the application form's editor) has it first
+      useEffect(() => {
+        const key = (e) => {
+          if (String(e.key || '').toLowerCase() !== 'z' || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.defaultPrevented) return;
+          const el = e.target;
+          const typing = el?.closest?.('textarea, [contenteditable=""], [contenteditable="true"]') || (el?.matches?.('input') && !/^(checkbox|radio|button|submit|reset|range|color|file)$/i.test(el.type || ''));
+          if (typing || document.querySelector('[aria-modal="true"]')) return;
+          const t = [...latest.current].reverse().find((x) => x.action?.label === 'Undo');
+          if (!t || e.repeat) return;
+          setTimeout(() => { if (!e.defaultPrevented) { onDismiss?.(t.id); t.action.fn(); } }, 0);
+        };
+        window.addEventListener('keydown', key);
+        return () => window.removeEventListener('keydown', key);
+      }, []);
       // Placed as soon as this render is on the page, before it's painted (a microtask), and again as dialogs open,
       // close or change size while any toast shows
       queueMicrotask(() => placeToasts(box.current));
@@ -8130,8 +8165,9 @@
       // never what's under it; a swipe that started on it scrolls instead, and doesn't close it
       const keep = (e) => { if (!(e.target.closest('.toast-error') && !e.target.closest('button, a'))) e.preventDefault(); };
       // (An error's words take focus when pressed, to be selectable: closing it puts focus back where it was)
+      // (a double click's second half does nothing: the toast above slides under the pointer as one closes)
       const closeOn = (id) => (e) => {
-        if (e.target.closest('button, a') || swipe.current?.moved || String(window.getSelection?.() || '')) return;
+        if (e.detail > 1 || e.target.closest('button, a') || swipe.current?.moved || String(window.getSelection?.() || '')) return;
         onDismiss?.(id);
         if (e.target.closest('.toast-error')) toastFocusBack();
       };
@@ -8156,7 +8192,7 @@
       const toast = (t) => html`<div key=${t.id} class=${`toast toast-${t.type}${t.id === newest ? ' is-newest' : ''}`} onMouseDown=${keep} onClick=${closeOn(t.id)}>
           ${t.action ? html`<span class="toast-action">
             <span>${t.msg}</span>
-            <button class="toast-undo" onClick=${(e) => { onDismiss?.(t.id); act(t.action.fn, e); }} aria-label=${typeof t.msg === 'string' ? `${t.action.label}: ${t.msg}` : null}>${t.action.label}</button>
+            <button class="toast-undo" onClick=${(e) => { if (e.detail > 1) return; onDismiss?.(t.id); act(t.action.fn, e); }} aria-label=${typeof t.msg === 'string' ? `${t.action.label}: ${t.msg}` : null} aria-keyshortcuts=${t.action.label === 'Undo' ? UNDO_KEY.aria : null}>${t.action.label}</button>${t.action.label === 'Undo' ? html`<span class="toast-key" aria-hidden="true">${UNDO_KEY.show}</span>` : null}
           </span>` : t.msg}
         </div>`;
       // Two live regions: each new message is said once, alone (never all of them again), an error at once
@@ -17063,7 +17099,8 @@
         const level = f.level;
         const record = PS.partnerRecord({ name: f.name, slug, logo: f.logo, website: f.website, level, category: f.category, featured: false,
           order: PS.levelOf(level).sortable ? PS.nextOrder(partners, level) : 0 });
-        const res = await api.saveContent(PT_PATH(slug), JSON.stringify(record, null, 2), `Add partner: ${record.name}`).catch((e) => ({ success: false, error: e.message }));
+        // A new card: never over one added since this list was read (another tab putting the same name on the website)
+        const res = await api.saveContent(PT_PATH(slug), JSON.stringify(record, null, 2), `Add partner: ${record.name}`, undefined, { create: true }).catch((e) => ({ success: false, error: e.message }));
         setSaving(false);
         if (!res.success) { addToast(`Couldn’t add ${record.name}: ${res.error}`, 'error'); return; }
         logActivity('created', 'partner', record.name);
@@ -26160,19 +26197,58 @@ ${sections || '<p>No one yet.</p>'}
     };
 
     /** A number or flag the sidebar shows, shared by every reader: one request
-     *  at a time, refreshed while someone's looking and the tab is visible */
-    function sharedPoll(url, read, everyMs) {
-      const s = { v: read(null), at: 0, subs: new Set(), timer: null };
+     *  at a time, refreshed while someone's looking and the tab is visible, and
+     *  at once on `on`: an event an area sends when it changes what's counted
+     *  (read again), or when it has just read the number itself ({ detail: { value } }) */
+    // `moved` (an event name) is sent when what `mark` reads changes between two looks (a teammate's change in another
+    // tab): never on the first look
+    // `backAfterMs`: back on the tab after that long, it looks again at once (never waits for the next turn)
+    function sharedPoll(url, read, everyMs, { on = null, moved = null, mark = null, revOf = null, ownRev = null, backAfterMs = everyMs / 2 } = {}) {
+      const s = { v: read(null), at: 0, subs: new Set(), timer: null, n: 0, mark: undefined, had: false, own: new Set() };
+      // (`revOf`: the mark's change number. Every number passed since the last look this tab's own (`ownRev` events
+      // name them): nothing to announce; any other, someone else's, so whoever shows the same thing reads again)
+      const onlyOurs = (was, m) => {
+        if (!revOf) return s.quiet;
+        const a = revOf(was);
+        const b = revOf(m);
+        if (a == null || b == null || b <= a) return false;
+        for (let x = a + 1; x <= b; x++) if (!s.own.has(x)) return false;
+        return true;
+      };
+      const put = (v) => { if (v !== s.v) { s.v = v; s.subs.forEach((f) => f(v)); } };
+      // Only the newest answer counts: a slow one from before a change never lands over the number after it
       const refresh = async () => {
         s.at = Date.now();
+        const mine = ++s.n;
         try {
           const r = await fetch(url, { cache: 'no-store' });
           if (!r.ok) return;
-          const v = read(await r.json());
-          if (v !== s.v) { s.v = v; s.subs.forEach((f) => f(v)); }
+          const j = await r.json();
+          // (read says undefined when the answer has no number: the last one stays, never a 0 that hides the badge)
+          const v = read(j);
+          if (v === undefined) return;
+          const m = mark ? mark(j) : v;
+          // Only the newest answer counts. With change numbers, the one that has seen the most changes (an earlier read
+          // answering late may have seen a teammate's change the later one didn't); else the one asked last
+          const b = revOf && m != null ? revOf(m) : null;
+          // (two answers at the same change number: the one asked later, as without them)
+          if (b != null ? s.top != null && (b < s.top || (b === s.top && mine < s.topN)) : mine !== s.n) return;
+          if (b != null) { s.top = b; s.topN = mine; }
+          put(v);
+          // Changed by someone else (a teammate in another tab): whoever shows the same thing reads again (`moved`)
+          if (m === undefined || m === null) return;
+          const was = s.mark;
+          s.mark = m;
+          if (moved && s.had && m !== was && !onlyOurs(was, m)) window.dispatchEvent(new Event(moved));
+          s.quiet = false;
+          if (revOf) { const b = revOf(m); if (b != null) for (const x of s.own) if (x <= b) s.own.delete(x); }
+          s.had = true;
         } catch { /* keeps what it had until the next look */ }
       };
-      const back = () => { if (!document.hidden && Date.now() - s.at > everyMs / 2) refresh(); };
+      // (this tab's own change: the next look takes the mark it moved to quietly, never announcing it as a teammate's)
+      const heard = (e) => { if (!revOf) s.quiet = true; if (e?.detail && 'value' in e.detail) { s.at = Date.now(); s.n++; put(e.detail.value); } refresh(); };
+      const mine = (e) => { if (Number.isFinite(e?.detail?.rev)) s.own.add(e.detail.rev); };
+      const back = () => { if (!document.hidden && Date.now() - s.at > backAfterMs) refresh(); };
       function use() {
         const [v, setV] = useState(s.v);
         useEffect(() => {
@@ -26180,11 +26256,18 @@ ${sections || '<p>No one yet.</p>'}
           if (s.subs.size === 1) {
             s.timer = setInterval(() => { if (!document.hidden) refresh(); }, everyMs);
             document.addEventListener('visibilitychange', back);
+            if (on) window.addEventListener(on, heard);
+            if (ownRev) window.addEventListener(ownRev, mine);
           }
           if (Date.now() - s.at > everyMs / 2) refresh();
           return () => {
             s.subs.delete(setV);
-            if (!s.subs.size) { clearInterval(s.timer); document.removeEventListener('visibilitychange', back); }
+            if (!s.subs.size) {
+              clearInterval(s.timer);
+              document.removeEventListener('visibilitychange', back);
+              if (on) window.removeEventListener(on, heard);
+              if (ownRev) window.removeEventListener(ownRev, mine);
+            }
           };
         }, []);
         return v;
@@ -26197,6 +26280,8 @@ ${sections || '<p>No one yet.</p>'}
     const advisoryNew = sharedPoll('/api/advisory-applications-admin?count=1', (j) => (j?.success ? j.new || 0 : 0), 300e3);
     // Families at Applied, waiting for a first look: Applications' badge
     const applicantsNew = sharedPoll('/api/applicants-count', (j) => (j?.success ? j.applied || 0 : 0), 300e3);
+    // Gifts waiting for a thank-you (Donors & Partners → To thank): its badge. Donors says when one is marked
+    const thanksWaiting = sharedPoll('/api/donors-admin?counts=1', (j) => (j === null ? 0 : j?.success && Number.isFinite(j.thanks) ? j.thanks : undefined), 300e3, { on: 'soard-thanks-changed', moved: 'soard-thanks-moved', backAfterMs: 15e3, mark: (j) => (j?.success && typeof j.thanksMark === 'string' ? j.thanksMark : undefined), revOf: (m) => { const x = parseInt(String(m ?? '').split('|')[0], 10); return Number.isFinite(x) ? x : null; }, ownRev: 'soard-donors-rev' });
     // One of the Board area's admins (Board → Members): the menu and ⌘K show Board only to them
     const boardAdminGate = sharedPoll('/api/board-admin?me=1', (j) => j?.admin === true, 30 * 60e3);
     const navShown = (it, boardAdmin) => it.gate !== 'board' || boardAdmin;
@@ -26512,13 +26597,17 @@ ${sections || '<p>No one yet.</p>'}
         setDeploying(false);
       };
 
-      const addToast = (msg, type = 'info', action = null) => {
-        // A save only reaches the admin's database: every save's success
-        // message says when the site changes, and offers Publish
-        if (type === 'success' && !action && Date.now() - lastSaveAt.current < 4000) {
+      const addToast = (msg, type = 'info', action = null, opts = null) => {
+        const publish = opts?.publish;
+        // A save only reaches the admin's database: a change that waits for
+        // Publish says when the site changes, and offers Publish. The caller
+        // says whether its change waits (publish: true or false); one that
+        // doesn't say is taken as waiting when a website save just happened
+        const waits = type === 'success' && (publish ?? (!action && Date.now() - lastSaveAt.current < 4000));
+        if (waits) {
           // (unless the message already says so)
           if (!/publish/i.test(String(msg))) msg = `${String(msg).replace(/[.!…]+$/, '')}. The site updates when you publish.`;
-          action = { label: 'Publish', fn: () => promptDeploy() };
+          action ||= { label: 'Publish', fn: () => promptDeploy() };
         }
         const id = ++toastId;
         setToasts(t => [...t, { id, msg, type, action }]);
@@ -26662,10 +26751,15 @@ ${sections || '<p>No one yet.</p>'}
         askToLeave(globalDirtyReason()).then((ok) => { if (ok) { setGlobalDirty(false); go(); } });
       };
       const navigate = (v, slug = null, tab = null, filter = null) => leaveThen(() => {
+        // (an area opened by name, from the sidebar: it shows fresh, as it first does; the event names the area, so
+        // another area's opening leaves this one's place for Back to find)
+        window.dispatchEvent(new CustomEvent('soard-nav', { detail: v }));
         // The address follows the area. One the caller already set inside it
         // (#broadcast/invites, #site/newsletter) stays as it is. A Site Config page asked for by name goes in it too.
         const to = v === 'site-hub' && tab ? `#site/${tab}` : addressOf(v);
         if (to !== null && viewOfHash() !== navIdOf(v)) history.pushState(null, '', to);
+        // Donors from its own sidebar link, on one of its pages: to its list (as other areas close their open item)
+        else if (v === 'donors' && to && location.hash !== to) location.hash = to;
         setView(v);
         setEditSlug(slug);
         setSubTab(tab);
@@ -26741,6 +26835,14 @@ ${sections || '<p>No one yet.</p>'}
       const [donorPartner, setDonorPartner] = useState(null);
       // Left Donors & Partners while it was open: answered "no", so nothing waits on it and it doesn't come back
       useEffect(() => { if (view !== 'donors' && donorPartner) { donorPartner.resolve(null); setDonorPartner(null); } }, [view]);
+      // Its Add dialog is about the page it was opened on: going elsewhere (Back, a link) closes it, adding nothing
+      useEffect(() => {
+        if (!donorPartner) return;
+        const away = () => { donorPartner.resolve(null); setDonorPartner(null); };
+        window.addEventListener('hashchange', away);
+        window.addEventListener('popstate', away);
+        return () => { window.removeEventListener('hashchange', away); window.removeEventListener('popstate', away); };
+      }, [donorPartner]);
       const [deleteLoading, setDeleteLoading] = useState(false);
 
       const handleListDelete = async () => {
@@ -26827,6 +26929,7 @@ ${sections || '<p>No one yet.</p>'}
       const liveOn = liveNow.use();
       const advisoryCount = advisoryNew.use();
       const appliedCount = applicantsNew.use();
+      const thanksCount = thanksWaiting.use();
       const familyReplies = useReplies();
       const me = useIdentity();
       const mine = useMemo(() => personOfIdentity(me, team), [me, team]);
@@ -26844,6 +26947,7 @@ ${sections || '<p>No one yet.</p>'}
         if (id === 'applications' && appliedCount) return { n: appliedCount, note: `${plural(appliedCount, 'family waits', 'families wait')} for a first look` };
         if (id === 'press-hub' && pressNeedsLook) return { n: pressNeedsLook, note: `${plural(pressNeedsLook, 'found article needs', 'found articles need')} a look` };
         if (id === 'people-hub' && advisoryCount) return { n: advisoryCount, note: `${plural(advisoryCount, 'new advisory application', 'new advisory applications')}` };
+        if (id === 'donors' && thanksCount) return { n: thanksCount, note: `${plural(thanksCount, 'gift waits', 'gifts wait')} for a thank-you` };
         return null;
       };
       // A plain click moves inside the admin; ⌘/Ctrl/Shift/middle click opens the area's address in a new tab
@@ -27134,12 +27238,12 @@ ${sections || '<p>No one yet.</p>'}
 
           // ─── Donors: ./donors.js (#donors, #donors/checks, #donors/<contact id>, #donors/gift/<payment id>) ───
           case 'donors':
-            return html`<${DonorsLazy} addToast=${addToast} partners=${partners} partnersCount=${partners.length} communityCount=${communityPartners.length}
+            return html`<${DonorsLazy} addToast=${addToast} partners=${partners} partnersCount=${partners.length} communityCount=${communityPartners.length} onPartnersChanged=${loadData}
                 createPartner=${(prefill) => new Promise((resolve) => setDonorPartner({ prefill, resolve }))} />
               ${donorPartner ? html`<${PartnerCreateDialog} partners=${partners} addToast=${addToast}
                 prefill=${{ ...donorPartner.prefill, category: 'funding', note: 'They go on the Partners page under Funding, as a Friend, when you publish. Their gifts in Donors & Partners go with them.' }}
                 onClose=${() => { donorPartner.resolve(null); setDonorPartner(null); }}
-                onCreated=${(slug) => { donorPartner.resolve(slug); setDonorPartner(null); loadData(); }} />` : null}`;
+                onCreated=${(slug, name) => { donorPartner.resolve({ slug, name }); setDonorPartner(null); loadData(); }} />` : null}`;
 
           // ─── Board: ./board-admin.js (#board, #board/meeting/<id>, #board/documents…) ───
           case 'board':

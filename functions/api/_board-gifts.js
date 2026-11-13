@@ -3,7 +3,7 @@
  * ===========================================================================
  * Every gift of $1,000 or more this year from Zeffy, newest first: the line
  * Slack's "Major gift" alert draws (./_zeffy.js MAJOR_GIFT_CENTS), so a major
- * gift means one thing everywhere. A gift Zeffy took in several charges (it
+ * gift means one thing everywhere, gifts imported into Zeffy included (a gala's). A gift Zeffy took in several charges (it
  * takes $5,000 at most in one) is one gift (giftsOf). A row is the amount (less anything
  * refunded), who gave (a company and the person who gave for it), the
  * campaign, the day, and whether it's monthly or in kind. Never an email,
@@ -68,7 +68,10 @@ export function giftOf(p, kids = []) {
 
 /** One Zeffy payment as a board row whatever its size, or null when it doesn't count (the Slack alert's screen, nothing kept after refunds) */
 function rowOf(p, kids = []) {
-  if (screenPayment(p) || p?.metadata?.soardSelfTest === true) return null;
+  // As Slack screens a payment, except a gift imported into Zeffy counts here (a gala's, brought in from its auction
+  // platform, is this year's giving; Slack leaves imports out because they aren't new arrivals). Peter, Nov 12 2026
+  // (screened as if taken in Zeffy: an import refunded in full, failed or of nothing still never shows)
+  if (screenPayment(p?.type === 'imported' ? { ...p, type: 'online' } : p) || p?.metadata?.soardSelfTest === true) return null;
   const refunded = (p.refunds || []).filter((r) => r?.status === 'succeeded').reduce((t, r) => t + (Number(r.amount) || 0), 0);
   const cents = Number(p.amount) - refunded;
   if (!(cents > 0)) return null;

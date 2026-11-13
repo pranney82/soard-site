@@ -15,6 +15,14 @@ import { useEffect, useRef } from './vendor.js';
 
 const STOPS = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
 
+// Where the focus was when it went into a dialog: what opened it, even when something focused inside it first (the
+// admin puts the focus on a dialog's first field as it opens)
+const inDialog = (x) => x?.closest?.('[role="dialog"], [role="alertdialog"], [aria-modal="true"]');
+let cameFrom = null;
+if (typeof document !== 'undefined') {
+  document.addEventListener('focusin', (e) => { if (inDialog(e.target) && e.relatedTarget && !inDialog(e.relatedTarget)) cameFrom = e.relatedTarget; }, true);
+}
+
 /** Tab goes round inside el, and never behind it */
 export function holdTab(e, el) {
   const stops = [...el.querySelectorAll(STOPS)].filter((x) => x.getClientRects().length);
@@ -31,9 +39,10 @@ export function useDialog(ref, onClose, busy = false, { returnTo = null } = {}) 
   const busyRef = useRef(busy);
   busyRef.current = busy;
   useEffect(() => {
-    const opener = document.activeElement;
+    const now = document.activeElement;
+    const opener = now && now !== document.body && !ref.current?.contains(now) ? now : ref.current?.contains(now) ? cameFrom : null;
     document.body.classList.add('modal-open');
-    if (ref.current && !ref.current.contains(opener)) ref.current.focus();
+    if (ref.current && !ref.current.contains(now)) ref.current.focus();
     const onKey = (e) => {
       // A field marked data-escape="local" uses Escape itself (cancelling an inline edit)
       if (e.key === 'Escape' && e.target?.closest?.('[data-escape="local"]')) return;

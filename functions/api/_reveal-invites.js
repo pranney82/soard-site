@@ -67,6 +67,7 @@ import { limit } from './_rate-limit.js';
 import { syncKidStatuses } from './_kid-status.js';
 import { syncKitInvite, holdKitInvite, inviteFacts } from './_reveal-invite-kit.js';
 import { LEVEL_ROLES, TRADE_ROLE } from './_partner-roles.js';
+import { NOT_STAFF } from './_board-roles.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
 export const FIELD_STATUS = '22P52qfFub9b';
@@ -161,8 +162,6 @@ const CONFIRMED_ROLES = {
 };
 const BOARD_ROLE = 'Board Member';
 export const BOARD_ROLE_ID = '22PgGdtxTATR';
-// Logins with staff roles that aren't people: the Qualification Committee, the DATAx integration and the website's own JobTread login
-export const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com', 'automation@soardcharity.com', 'peter+automation@soardcharity.com']);
 // JobTread logins that aren't where that person wants reveal invites
 // The Advisory Board's group address is a sponsor's login on one job, but every advisor already gets every reveal invite
 // by name, so it's left off reveals or each would get two. Demo Day uses it. (Not NOT_STAFF: Demo Day shares that list.)

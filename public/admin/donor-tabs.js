@@ -26,6 +26,7 @@ async function readCount() {
 }
 let styled = false;
 const STYLE = `.hub-tab .ppl-tab-count.is-warn { background: var(--tone-warn-bg); color: var(--tone-warn-fg); }
+@media (max-width: 560px) { .hub-tabs.dn-area-tabs { flex-wrap: wrap; overflow-x: visible; row-gap: .25rem; mask-image: none; -webkit-mask-image: none; } }
 .kd-card--giving { order: 3; }`;
 const useStyle = () => { if (!styled) { styled = true; const el = document.createElement('style'); el.dataset.module = 'donor-tabs'; el.textContent = STYLE; document.head.append(el); } };
 const usd = (cents) => { const c = Math.round(Number(cents) || 0); return `$${(c / 100).toLocaleString('en-US', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })}`; };
@@ -42,7 +43,7 @@ export function AreaTabs({ current, partners = null, community = null, onPick })
   }, []);
   const tab = (id, label, count = null, warn = false) => html`<button type="button" class=${`hub-tab${current === id ? ' active' : ''}`} aria-current=${current === id ? 'page' : null}
     onClick=${() => onPick(id)}>${label}${count != null ? html`<span class=${`ppl-tab-count${warn ? ' is-warn' : ''}`}>${count}</span>` : null}</button>`;
-  return html`<nav class="hub-tabs" aria-label="Donors & Partners">
+  return html`<nav class="hub-tabs dn-area-tabs" aria-label="Donors & Partners">
     ${tab('donors', 'Donors')}
     ${tab('partners', 'Partners', partners)}
     ${tab('community', 'Community partners', community)}

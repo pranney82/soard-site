@@ -27,6 +27,9 @@ export const ADVISORY_COMMITTEE = 'Advisory Board';
 // SOARD's group inboxes: everyone in the group reads what's sent there, so a sign-in code to one opens nothing
 export const GROUP_INBOXES = Object.freeze(['board@soardcharity.com', 'advisory@soardcharity.com']);
 export const isGroupInbox = (email) => GROUP_INBOXES.includes(normEmail(email).replace(/\+[^@]*@/, '@'));
+// Logins with staff roles that aren't people: the Qualification Committee, the DATAx integration and the website's own
+// logins. Never a reveal or Demo Day guest, never a donor's owner
+export const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com', 'automation@soardcharity.com', 'peter+automation@soardcharity.com']);
 
 export const normEmail = (e) => String(e || '').trim().toLowerCase();
 const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');

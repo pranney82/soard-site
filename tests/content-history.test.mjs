@@ -96,3 +96,37 @@ test('save-content keeps a version of each site document, and history serves it'
   assert.equal(old.data.categories[0].label, 'About');
   assert.equal((await get('collection=nope&slug=faq')).success, false);
 });
+
+test('save-content with create: a new record where one is already (added since the list was read) is refused, never overwritten', async () => {
+  const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
+  const save = (content, create) => saveContent({ env: { DB }, data: { userEmail: 'staff@soardcharity.com' }, waitUntil: () => {},
+    request: new Request('https://admin.test/api/save-content', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: 'src/content/partners/bright-futures.json', content: JSON.stringify(content), message: 'Add partner', ...(create ? { create: true } : {}) }) }) });
+  assert.equal((await save({ name: 'Bright Futures', slug: 'bright-futures', level: 'champion', category: ['funding'] }, true)).status, 200, 'new: saved');
+  const again = await save({ name: 'Bright Futures', slug: 'bright-futures', level: 'friend', category: ['funding'] }, true);
+  assert.equal(again.status, 409, 'there already: refused');
+  assert.equal(JSON.parse((await DB.prepare("SELECT data FROM partners WHERE slug = 'bright-futures'").first()).data).level, 'champion', 'the first one stands');
+  assert.equal((await save({ name: 'Bright Futures', slug: 'bright-futures', level: 'builder', category: ['funding'] }, false)).status, 200, 'an ordinary save still updates');
+});
+
+test('save-content create at an address taken a moment before (no record when it looked): the database refuses the second', async () => {
+  const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
+  // As if the first save landed between this save's look and its write
+  const realPrepare = DB.prepare.bind(DB);
+  let landed = false;
+  DB.prepare = (sql) => {
+    if (!landed && /^INSERT INTO partners/.test(sql)) { landed = true; return { bind: (...v) => ({ run: async () => { await realPrepare("INSERT INTO partners (slug, name, data, updated_at) VALUES ('race-co', 'Race Co', '{\"name\":\"Race Co\",\"level\":\"champion\"}', 'x')").run(); return realPrepare(sql).bind(...v).run(); } }) }; }
+    return realPrepare(sql);
+  };
+  const r = await saveContent({ env: { DB }, data: { userEmail: 'staff@soardcharity.com' }, waitUntil: () => {},
+    request: new Request('https://admin.test/api/save-content', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: 'src/content/partners/race-co.json', content: JSON.stringify({ name: 'Race Co', slug: 'race-co', level: 'friend', category: ['funding'] }), message: 'Add partner', create: true }) }) });
+  assert.equal(r.status, 409);
+  assert.equal(JSON.parse((await realPrepare("SELECT data FROM partners WHERE slug = 'race-co'").first()).data).level, 'champion');
+});
+
+test('save-content create sent again after its answer was lost (the very record there): done, never refused', async () => {
+  const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
+  const save = () => saveContent({ env: { DB }, data: { userEmail: 'staff@soardcharity.com' }, waitUntil: () => {},
+    request: new Request('https://admin.test/api/save-content', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: 'src/content/partners/again-co.json', content: JSON.stringify({ name: 'Again Co', slug: 'again-co', level: 'friend', category: ['funding'] }), message: 'Add partner', create: true }) }) });
+  assert.equal((await save()).status, 200);
+  assert.equal((await save()).status, 200);
+});

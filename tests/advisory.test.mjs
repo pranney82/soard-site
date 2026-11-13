@@ -25,7 +25,8 @@ import { linkFrom, answerFromLink, askEmail, sendAsk, sendWelcome, mailLog } fro
 import { advisoryFileFor } from '../functions/api/advisory-file.js';
 import { onRequestGet as actionGet, onRequestPost as actionPost } from '../functions/api/advisory-action.js';
 import { onRequestPost as pledgePost } from '../functions/api/sponsors-admin.js';
-import { guestGroups, NO_REVEAL_INVITE, NOT_STAFF } from '../functions/api/_reveal-invites.js';
+import { guestGroups, NO_REVEAL_INVITE } from '../functions/api/_reveal-invites.js';
+import { NOT_STAFF } from '../functions/api/_board-roles.js';
 import { countedPledges } from '../functions/api/_makeover-costs.js';
 import { listPeople } from '../functions/api/_demo-invites.js';
 import { pickKid, clearKid } from '../functions/api/_advisory-sponsor.js';
