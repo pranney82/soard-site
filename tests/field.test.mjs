@@ -344,3 +344,10 @@ test('admin: Connect JobTread goes to JobTread and comes back to the photo page;
   // Never anyone outside SOARD
   assert.equal((await fieldAdmin.onRequestGet(ctx('https://sunshineonaranneyday.com/api/field-admin', { email: 'someone@gmail.com' }))).status, 403);
 });
+
+test('the connect link opens behind the admin sign-in, never on an /api/ route a fresh phone browser can’t sign in to', () => {
+  const u = new URL(CONNECT_URL);
+  assert.equal(u.origin, 'https://sunshineonaranneyday.com');
+  assert.equal(u.pathname, '/admin/photos/');
+  assert.equal(u.searchParams.get('connect'), '1');
+});

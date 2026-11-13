@@ -28,8 +28,13 @@ import { dayIn } from '../../public/admin/events-shared.js';
 const AUTHORIZE = 'https://app.jobtread.com/oauth/authorize';
 const TOKEN = 'https://api.jobtread.com/oauth/token';
 export const CALLBACK = `${SITE_URL}/api/jobtread-callback`;
-/** Where a person connects their JobTread (signed in to the admin first, as any admin page) */
-export const CONNECT_URL = `${SITE_URL}/api/field-admin?connect=1`;
+/**
+ * Where a person connects their JobTread. It's the photo page, behind the admin's sign-in, which goes straight on
+ * to JobTread's sign-in (/api/field-admin?connect=1) when they aren't connected yet. Never /api/field-admin itself:
+ * the /api/ routes don't send anyone to sign in, so a phone's fresh browser (a link opened from Claude) would get
+ * "Unauthorized" there.
+ */
+export const CONNECT_URL = `${SITE_URL}/admin/photos/?connect=1`;
 /** The page that adds photos when the box in Claude can't open the phone's camera */
 export const photosPage = ({ jobId, date }) => `${SITE_URL}/admin/photos/?job=${encodeURIComponent(jobId)}${date ? `&date=${date}` : ''}`;
 export const jobUrl = (id) => `https://app.jobtread.com/jobs/${id}`;

@@ -2,7 +2,9 @@
  * /admin/photos/ — photos onto a JobTread daily log from a phone's browser
  * ===========================================================================
  * The backup for the photo box in Claude (the box's "Buttons not working? Open this in your browser" opens this
- * page on the same job and day), and where "Connect JobTread" comes back to (?jobtread=connected|…). The box
+ * page on the same job and day), where Claude's "connect your JobTread" link opens (?connect=1 goes straight on to
+ * JobTread's sign-in, once the admin's sign-in has let them in), and where "Connect JobTread" comes back to
+ * (?jobtread=connected|…). The box
  * itself is the same one Claude shows (/mcp-app/photo-box-1.js); here it reaches the site through
  * /api/field-admin, as the person signed in. ?job=<JobTread job id>&date=YYYY-MM-DD.
  */
@@ -55,7 +57,13 @@ async function start() {
   if (!job) {
     const { connection } = await api('/api/field-admin');
     if (connection.linked) say(`Photos and logs you add through Claude show as ${connection.name} in JobTread. Open this page from the photo box in Claude to add photos here.`, 'JobTread is connected.');
-    else { say('Connect your JobTread once, so what you add through Claude shows your name.'); showConnect(connection.broken ? 'Connect again' : 'Connect JobTread'); }
+    else {
+      say('Connect your JobTread once, so what you add through Claude shows your name.');
+      showConnect(connection.broken ? 'Connect again' : 'Connect JobTread');
+      // Opened to connect (Claude's link, ./functions/api/_field.js CONNECT_URL): on to JobTread's sign-in without
+      // a second tap. Coming back from JobTread carries ?jobtread= and never ?connect=, so this can't go round again.
+      if (q.get('connect')) { say('Taking you to JobTread to connect…'); location.replace($('connect').href); }
+    }
     return;
   }
   let info;
