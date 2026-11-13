@@ -29,9 +29,9 @@
  * (./_application-form-org.js). Each kind has its own versions (a `kind`
  * column), draft, live form and settings; every function takes { kind }
  * and defaults to the family form. Organizations share the family form's
- * service area, so the map has one outline; their own settings are who gets
- * the new-application email and when status emails go out
- * (application_form_rules_kinds).
+ * service area, so the map has one outline, and its email timing; their own
+ * settings are who gets the new-application email and whether the service
+ * area is checked at all (application_form_rules_kinds).
  */
 
 import { DEFAULT_DEFINITION, normalizeDefinition, validateDefinition, resolveForm, diffDefinitions, kindOf, defaultDefinitionFor, englishStrings, translationStatus, withDoneScreen } from './_application-form.js';
@@ -55,10 +55,12 @@ const SCHEMA = [
 /** The definition keys that are settings (saved at once) rather than form wording */
 export const RULE_KEYS = ['staffEmails', 'serviceArea', 'notify'];
 /**
- * An organization form's own settings: only who gets its new-application email. Its service
- * area and email timing are the family form's, and so is that list until staff give it its own.
+ * An organization form's own settings: who gets its new-application email, and whether it
+ * checks the service area at all (areaCheck: false takes organizations from anywhere). Its
+ * service area and email timing are the family form's, and so is that list until staff give it its own.
  */
-const KIND_RULE_KEYS = { family: RULE_KEYS, organization: ['staffEmails'] };
+const KIND_RULE_KEYS = { family: RULE_KEYS, organization: ['staffEmails', 'areaCheck'] };
+const ALL_RULE_KEYS = [...new Set(Object.values(KIND_RULE_KEYS).flat())];
 const FROM_FAMILY = ['serviceArea', 'notify', 'staffEmails'];
 const _ready = new WeakSet();
 export async function ensureFormSchema(DB) {
@@ -95,7 +97,7 @@ export function pickRules(def, kind = 'family') {
 /** The definition with the saved settings laid over it (a copy; null rules = as it is) */
 export function withRules(def, rules) {
   if (!def || !rules) return def;
-  return { ...def, ...pickRules(rules) };
+  return { ...def, ...Object.fromEntries(ALL_RULE_KEYS.filter(k => rules[k] !== undefined).map(k => [k, rules[k]])) };
 }
 
 /** The saved settings of a form: { rules, updatedAt, updatedBy }, or null when none were ever saved */
@@ -317,6 +319,7 @@ export function ruleChanges(a, b) {
   for (const k of ['inReview', 'decision', 'welcome']) if (a.notify?.waits?.[k] !== b.notify?.waits?.[k]) add(`notify.waits.${k}`, a.notify?.waits?.[k], b.notify?.waits?.[k]);
   if (a.serviceArea?.nearMiles !== b.serviceArea?.nearMiles) add('serviceArea.nearMiles', a.serviceArea?.nearMiles ?? null, b.serviceArea?.nearMiles ?? null);
   if ((a.serviceArea?.beyond || 'warn') !== (b.serviceArea?.beyond || 'warn')) add('serviceArea.beyond', a.serviceArea?.beyond || 'warn', b.serviceArea?.beyond || 'warn');
+  if ((a.areaCheck !== false) !== (b.areaCheck !== false)) add('areaCheck', a.areaCheck !== false, b.areaCheck !== false);
   const quiet = (n) => (n?.quiet && n.quiet.start !== n.quiet.end ? `${hourText(n.quiet.start)} to ${hourText(n.quiet.end)}` : 'off');
   if (quiet(a.notify) !== quiet(b.notify)) add('notify.quiet', quiet(a.notify), quiet(b.notify));
   if ((a.notify?.summary !== false) !== (b.notify?.summary !== false)) add('notify.summary', a.notify?.summary !== false, b.notify?.summary !== false);
@@ -324,7 +327,8 @@ export function ruleChanges(a, b) {
 }
 
 /**
- * Save settings: `patch` holds any of staffEmails, serviceArea, notify. They
+ * Save settings: `patch` holds any of staffEmails, serviceArea, notify (an
+ * organization form's: staffEmails, areaCheck). They
  * apply at once, to the live form and the draft alike (no Put live). `base`
  * is the updatedAt this editor last saw; if someone else saved since, nothing
  * is written and `conflict` comes back with theirs, unless `force`.
@@ -363,9 +367,14 @@ export async function saveFormRules(DB, patch, { user = 'admin', base = null, fo
       ON CONFLICT(id) DO UPDATE SET rules = excluded.rules, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
       .bind(JSON.stringify(next), at, user).run();
   } else {
+    // Only what this form has of its own: what was saved, plus what this save changed. A list that
+    // follows makeovers isn't copied in when only the service-area switch moved
+    const own = { ...(saved?.rules || {}) };
+    for (const key of Object.keys(p)) own[key] = next[key];
+    if (backToFamily) delete own.staffEmails;
     await DB.prepare(`INSERT INTO application_form_rules_kinds (kind, rules, updated_at, updated_by) VALUES (?, ?, ?, ?)
       ON CONFLICT(kind) DO UPDATE SET rules = excluded.rules, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
-      .bind(k, JSON.stringify(backToFamily ? {} : next), at, user).run();
+      .bind(k, JSON.stringify(own), at, user).run();
   }
   if (changes.some(c => c.field === 'application.serviceArea')) await keepOutline(DB, current.serviceArea.polygon, next.serviceArea.polygon, { user, at, since: saved?.updatedAt || null });
   clearFormCache();

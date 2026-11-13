@@ -460,6 +460,14 @@ export const STOPS = DEFAULT_DEFINITION.stops;
 export const FORM_KINDS = ['family', 'organization'];
 export const kindOf = (v) => (v === 'organization' || v?.kind === 'organization' ? 'organization' : 'family');
 export const isOrganizationKind = (v) => kindOf(v) === 'organization';
+/**
+ * Community projects can take organizations from anywhere (Admin → Applications → Settings →
+ * Community projects). With `areaCheck: false` on the organization form, its service-area
+ * question, the words that introduce it (AREA_INTRO_IDS) and its map are left off: nobody is
+ * told they're outside the area or stopped for it. The address is still asked. Makeovers always check.
+ */
+export const AREA_INTRO_IDS = ['serviceAreaText'];
+export const areaCheckOn = (def) => !(isOrganizationKind(def) && def?.areaCheck === false);
 export const lockedFieldsFor = (kind) => (isOrganizationKind(kind) ? ORG_LOCKED_FIELDS : LOCKED_FIELDS);
 export const defaultDefinitionFor = (kind) => (isOrganizationKind(kind) ? ORG_DEFAULT_DEFINITION : DEFAULT_DEFINITION);
 export const defaultMessagesFor = (kind) => (isOrganizationKind(kind) ? ORG_DEFAULT_MESSAGES : DEFAULT_MESSAGES);
@@ -625,7 +633,13 @@ export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', ve
   const tr = useLang === 'en' ? {} : (def.i18n?.[useLang]?.strings || {});
   const t = (path, en) => fillYear(tr[path] || en, y);
   const area = areaRules(def.serviceArea, DEFAULT_SERVICE_AREA.polygon);
-  const pages = (def.pages || []).map(p => ({
+  // Community projects open to anywhere: no service-area question, its words or its map (a page left empty by that goes too)
+  const areaOn = areaCheckOn(def);
+  const shown = areaOn ? (def.pages || []) : (def.pages || [])
+    .map(p => ({ p, fields: (p.fields || []).filter(f => f.type !== 'area' && !AREA_INTRO_IDS.includes(f.id)) }))
+    .filter(({ p, fields }) => fields.length || !(p.fields || []).length)
+    .map(({ p, fields }) => ({ ...p, fields }));
+  const pages = shown.map(p => ({
     id: p.id,
     title: t(`page:${p.id}`, p.title),
     ...(p.showIf ? { showIf: p.showIf } : {}),
@@ -681,6 +695,7 @@ export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', ve
     reminders: { ...rem, subject: fillYear(tr['reminder:subject'] || rem.subject, y), body: fillYear(tr['reminder:body'] || rem.body, y) },
     staffEmails: Array.isArray(def.staffEmails) && def.staffEmails.length ? def.staffEmails : DEFAULT_STAFF_EMAILS,
     serviceArea: area,
+    ...(kind === 'organization' ? { areaCheck: areaOn } : {}),
     notify: notifySettings(def.notify),
   };
 }
@@ -865,7 +880,7 @@ export function normalizeDefinition(input) {
     for (const [path, text] of Object.entries(tr?.kept || {}).slice(0, 2000)) if (strings[path]) kept[str(path, 400)] = String(text ?? '').slice(0, HTML_MAX);
     i18n[lang] = { strings, sources, ...(Object.keys(kept).length ? { kept } : {}) };
   }
-  return { schema: 2, ...(kind === 'organization' ? { kind } : {}), title: str(d.title || defaultDefinitionFor(kind).title, 200), pages, stops, done, messages, staffEmails, reminders, notify: notifySettings(d.notify), serviceArea, i18n };
+  return { schema: 2, ...(kind === 'organization' ? { kind, areaCheck: d.areaCheck !== false } : {}), title: str(d.title || defaultDefinitionFor(kind).title, 200), pages, stops, done, messages, staffEmails, reminders, notify: notifySettings(d.notify), serviceArea, i18n };
 }
 
 const JT_TYPES_FOR = {

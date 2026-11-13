@@ -2196,6 +2196,30 @@ try {
     ok(!(await getFormRules(DB, { kind: 'organization' }))?.rules?.staffEmails && !!(await page.$('[data-org-staff="same"]')), 'and back to the makeovers list');
     const log = await page.$$eval('.afe-log-card li', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
     ok(/Community project email goes to the makeovers list again/.test(log[0] || '') && !/goes to selection/.test(log[0] || ''), `which history says in one line (${(log[0] || '').slice(0, 90)})`);
+
+    // The service area: on as built; off takes organizations from anywhere, and the list keeps following makeovers
+    const areaRow = () => text(page, '[data-org-area]');
+    ok(await page.$eval('#afe-org-area', (e) => e.checked) && /Only inside the service area/.test(await areaRow()), `the service area switch starts on (${(await areaRow()).slice(0, 60)})`);
+    await page.click('#afe-org-area');
+    await sleep(150);
+    ok(/Anywhere/.test(await areaRow()) && /Organizations anywhere can apply/.test(await areaRow()), 'off says organizations anywhere can apply');
+    ok(/where community projects can be/.test(await text(page, '.afe-savebar')) && !/community project email/.test(await text(page, '.afe-savebar')), 'the save bar names it, and only it');
+    await shot(page, '32a-org-area-off.png');
+    await clickText(page, '.afe-savebar button', /^Save$/);
+    await page.waitForFunction(() => !document.querySelector('.afe-savebar'), { timeout: 8000 }).catch(() => {});
+    let orgRulesNow = (await getFormRules(DB, { kind: 'organization' }))?.rules || {};
+    ok(orgRulesNow.areaCheck === false && !orgRulesNow.staffEmails && !!(await page.$('[data-org-staff="same"]')), `saved off, the list still the makeovers' (${JSON.stringify(orgRulesNow)})`);
+    clearFormCache();
+    const orgForm = resolveForm((await getLiveForm(DB, { kind: 'organization' })).definition, { year: '2027' });
+    ok(!orgForm.pages.some((p) => p.fields.some((f) => f.type === 'area')), 'and the community project form no longer asks about the service area');
+    ok(/Community projects opened to organizations anywhere/.test(await text(page, '.afe-log-card')), 'history says so');
+    await page.click('#afe-org-area');
+    await sleep(150);
+    await clickText(page, '.afe-savebar button', /^Save$/);
+    await page.waitForFunction(() => !document.querySelector('.afe-savebar'), { timeout: 8000 }).catch(() => {});
+    orgRulesNow = (await getFormRules(DB, { kind: 'organization' }))?.rules || {};
+    ok(orgRulesNow.areaCheck === true && /Only inside the service area/.test(await areaRow()), 'and back on');
+
     await page.$eval('[data-org-staff]', (e) => e.scrollIntoView({ block: 'center' }));
     await shot(page, '32-org-settings.png');
 

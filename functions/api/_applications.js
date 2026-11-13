@@ -1446,14 +1446,22 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
     s.area = fromForm
       ? { status: fa.band === 'inside' ? 'inside' : 'outside', band: fa.band, miles: fa.miles, edgeMiles: fa.edgeMiles, nearMiles: fa.nearMiles, lat: fa.lat, lng: fa.lng, county: fa.county, matched: fa.matched, ...(fa.source ? { source: fa.source } : {}), from: 'form' }
       : await checkServiceArea(addressText(app.answers.address), form.serviceArea, fetchImpl, { esri: esriLocator(env, fetchImpl) });
-    if (s.area.status !== 'inside' || (s.area.county && app.answers.county && s.area.county !== app.answers.county)) {
+    // A community project form taking organizations from anywhere doesn't check: being outside isn't
+    // flagged (a county that disagrees, or a home no map service found, still is)
+    const checked = !!areaFieldOf(form);
+    const countyClash = !!(s.area.county && app.answers.county && s.area.county !== app.answers.county);
+    const unplaced = homeUnplaced(s.area);
+    if ((checked && s.area.status !== 'inside') || countyClash || unplaced) {
       const lines = [areaText(s.area)];
       if (s.area.matched) lines.push(`Found by ${sourceName(s.area)}: ${s.area.matched}`);
-      if (s.area.county && app.answers.county && s.area.county !== app.answers.county) lines.push(`The family picked ${app.answers.county} County; ${sourceName(s.area)} says ${s.area.county} County.`);
-      const field = areaFieldOf(form) || { type: 'radio', options: [] };
-      const said = answerText(field, app.answers.boundary, true);
-      lines.push(fromForm ? 'The form placed the home from its address as the family typed it, so they didn’t answer this themselves.' : `The family's answer: ${said || 'not given'}`);
-      if (homeUnplaced(s.area)) lines.push(`Held: no map service found this home, so the family’s answer isn’t taken for it. Before approving, place the home on the map: ${SITE_ORIGIN}/admin/#applications/applicants (the family’s Home card).`);
+      if (countyClash) lines.push(`The family picked ${app.answers.county} County; ${sourceName(s.area)} says ${s.area.county} County.`);
+      if (checked) {
+        const said = answerText(areaFieldOf(form), app.answers.boundary, true);
+        lines.push(fromForm ? 'The form placed the home from its address as the family typed it, so they didn’t answer this themselves.' : `The family's answer: ${said || 'not given'}`);
+      }
+      if (unplaced) lines.push(checked
+        ? `Held: no map service found this home, so the family’s answer isn’t taken for it. Before approving, place the home on the map: ${SITE_ORIGIN}/admin/#applications/applicants (the family’s Home card).`
+        : `Held: no map service found this address. Before approving, place it on the map: ${SITE_ORIGIN}/admin/#applications/applicants (its Home card).`);
       await postInternal(env, accountId, 'Service area check (automatic)', lines.join('\n\n'), jt).catch(() => {});
     }
   });

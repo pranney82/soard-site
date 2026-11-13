@@ -12,7 +12,7 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
 import {
   ORG_DEFAULT_DEFINITION, ORG_LOCKED_FIELDS, DEFAULT_DEFINITION, validateDefinition, normalizeDefinition, resolveForm, renderMessage,
-  kindOf, rolesFor, formErrors, applicationForm, fieldError, isWebAddress,
+  kindOf, rolesFor, formErrors, applicationForm, fieldError, isWebAddress, allFields, AREA_VALUES,
 } from '../functions/api/_application-form.js';
 import {
   getLiveForm, getDraftForm, saveDraftForm, putDraftLive, listFormVersions, restoreFormVersion, saveFormRules, getFormRules, formFor, clearFormCache,
@@ -155,6 +155,69 @@ test('community projects run on the makeovers’ email timing, and their list un
   assert.deepEqual(org.staffEmails, ['intake@soardcharity.com']);
   // Already following: a second "back" saves nothing
   assert.deepEqual((await saveFormRules(env.DB, { staffEmails: null }, { ...peter, kind: 'organization' })).changes, []);
+});
+
+test('community projects can take organizations from anywhere: no service-area question, map, warning or stop; makeovers still check', async () => {
+  const peter = { user: 'peter@soardcharity.com' };
+  const MACON = { lat: 32.83603, lng: -83.63183, county: 'Bibb', matched: '700 POPLAR ST, MACON, GA, 31201' };
+  w.world.census = { '700 poplar': MACON };
+  const FAR = { line1: '700 Poplar St', line2: '', city: 'Macon', state: 'GA', zip: '31201' };
+  const areaIds = (f) => allFields(f).filter((x) => x.type === 'area' || x.id === 'serviceAreaText').map((x) => x.id);
+  // On as built, and makeovers stop families far out: an organization that far out is stopped too
+  let org = await formFor(env.DB, { year: YEAR, kind: 'organization' });
+  assert.equal(org.areaCheck, true);
+  assert.deepEqual(areaIds(org), ['serviceAreaText', 'boundary']);
+  await saveFormRules(env.DB, { serviceArea: { beyond: 'stop' } }, peter);
+  clearFormCache();
+  const stopped = await submitDraft(env, await readyOrgDraft(orgAnswers({ address: FAR, boundary: AREA_VALUES.inside })));
+  assert.deepEqual([stopped.ok, stopped.stop], [false, 'outside']);
+
+  // Off: saved as the organization form's own, its list still following makeovers
+  const off = await saveFormRules(env.DB, { areaCheck: false }, { ...peter, kind: 'organization' });
+  assert.deepEqual(off.changes, [{ field: 'application.areaCheck', from: true, to: false }]);
+  assert.deepEqual((await getFormRules(env.DB, { kind: 'organization' })).rules, { areaCheck: false });
+  clearFormCache();
+  org = await formFor(env.DB, { year: YEAR, kind: 'organization' });
+  assert.equal(org.areaCheck, false);
+  assert.deepEqual(areaIds(org), [], 'no question, and not the words that introduce it');
+  assert.ok(allFields(org).some((f) => f.id === 'address'), 'the address is still asked');
+  assert.ok(org.pages.some((p) => p.id === 'service-area'), 'its page stays, for the address');
+  // The page resolves the definition itself: it gets the same form
+  const pub = applyApi.publicDefinition((await getLiveForm(env.DB, { kind: 'organization' })).definition);
+  assert.equal(pub.areaCheck, false);
+  assert.deepEqual(areaIds(resolveForm(pub, { year: YEAR })), []);
+  // Makeovers still check
+  const fam = await formFor(env.DB, { year: YEAR });
+  assert.deepEqual(allFields(fam).filter((f) => f.type === 'area').map((f) => f.id), ['boundary']);
+  assert.equal(fam.areaCheck, undefined);
+
+  // The same far-out organization now applies, and JobTread gets no "outside" note
+  const sub = await submitDraft(env, await readyOrgDraft(orgAnswers({ address: FAR, boundary: undefined })));
+  assert.equal(sub.ok, true, JSON.stringify(sub));
+  assert.equal((await processApplication(env, sub.id, { fetchImpl: w.fetchImpl })).status, 'done');
+  const app = await getApplication(env.DB, sub.id);
+  assert.equal(app.answers.boundary, undefined);
+  assert.equal(app.jt_state.formArea, undefined, 'the form didn’t check');
+  assert.equal(app.jt_state.area.county, 'Bibb', 'the county still comes from the address');
+  const [acct] = Object.values(w.world.accounts);
+  assert.equal(acct.comments.some((c) => c.name === 'Service area check (automatic)'), false);
+
+  // The list changing later keeps the switch; so does going back to the makeovers' list
+  const own = await saveFormRules(env.DB, { staffEmails: ['holly@soardcharity.com'] }, { ...peter, kind: 'organization' });
+  assert.deepEqual((await getFormRules(env.DB, { kind: 'organization' })).rules, { areaCheck: false, staffEmails: ['holly@soardcharity.com'] });
+  await saveFormRules(env.DB, { staffEmails: null }, { ...peter, kind: 'organization', base: own.updatedAt });
+  assert.deepEqual((await getFormRules(env.DB, { kind: 'organization' })).rules, { areaCheck: false });
+  // A draft put live while it's off doesn't keep it off once it's turned back on
+  const draftDef = (await getDraftForm(env.DB, { kind: 'organization' }))?.definition || (await getLiveForm(env.DB, { kind: 'organization' })).definition;
+  await saveDraftForm(env.DB, { ...draftDef, title: 'Edited while off {year}' }, { ...peter, kind: 'organization' });
+  assert.equal((await putDraftLive(env.DB, { ...peter, kind: 'organization' })).ok, true);
+  const on = await saveFormRules(env.DB, { areaCheck: true }, { ...peter, kind: 'organization' });
+  assert.deepEqual(on.changes, [{ field: 'application.areaCheck', from: false, to: true }]);
+  clearFormCache();
+  org = await formFor(env.DB, { year: YEAR, kind: 'organization' });
+  assert.equal(org.title, 'Edited while off 2027');
+  assert.equal(org.areaCheck, true);
+  assert.deepEqual(areaIds(org), ['serviceAreaText', 'boundary']);
 });
 
 test('JobTread gets an organization’s account: its name, its contacts, the spaces JobTread knows, nothing of a child’s', () => {

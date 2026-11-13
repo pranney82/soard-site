@@ -111,7 +111,7 @@ export function publicDefinition(def) {
   }
   const sa = def?.serviceArea;
   return {
-    schema: def?.schema || 2, ...(isOrganizationKind(def) ? { kind: 'organization' } : {}), title: def?.title, pages: def?.pages || [], stops: def?.stops || {}, ...(def?.done ? { done: def.done } : {}), i18n,
+    schema: def?.schema || 2, ...(isOrganizationKind(def) ? { kind: 'organization', ...(def?.areaCheck === false ? { areaCheck: false } : {}) } : {}), title: def?.title, pages: def?.pages || [], stops: def?.stops || {}, ...(def?.done ? { done: def.done } : {}), i18n,
     ...(sa ? { serviceArea: { polygon: sa.polygon, nearMiles: sa.nearMiles, beyond: sa.beyond } } : {}),
   };
 }
@@ -233,9 +233,10 @@ export async function onRequestPost(context) {
   if (action === 'resume') {
     if (body.reminders === 'off') await stopReminders(env.DB, draft.id);
     // The last area check, placed against today's area, so the map shows the home again
+    // (none on a community project form that takes organizations from anywhere)
     let area = null;
-    if (draft.area) {
-      const form = await formFor(env.DB, { kind: draft.kind, year: draft.year });
+    const form = draft.area ? await formFor(env.DB, { kind: draft.kind, year: draft.year }) : null;
+    if (form && areaFieldOf(form)) {
       area = placedArea(draft.area, draft.answers?.address, form.serviceArea)
         || (draft.area.reason === 'no-match' && draft.area.key === addressKey(draft.answers?.address) ? draft.area : null);
     }

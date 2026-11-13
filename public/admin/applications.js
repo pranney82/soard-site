@@ -4832,6 +4832,7 @@ function historyLines(h) {
     if (f === 'closesAt') return c.to ? `Set to close ${longWhen(c.to)}` : fields.has('open') ? null : 'Took off the scheduled close';
     if (f === 'staffEmails') return fields.has('staffEmails.family') ? null : `${h.kind === 'organization' ? 'Community project email' : 'New-application email'} goes to ${c.to || 'nobody'}`;
     if (f === 'staffEmails.family') return 'Community project email goes to the makeovers list again';
+    if (f === 'areaCheck') return c.to === false ? 'Community projects opened to organizations anywhere' : 'Community projects checked against the service area again';
     if (f === 'serviceArea') return `Reshaped the service area (${plural(c.to, 'corner')})`;
     if (f === 'serviceArea.nearMiles') return c.to > 0 ? `“Close to the area” is now within ${plural(c.to, 'mile')}` : 'Turned “close to the area” off';
     if (f === 'serviceArea.beyond') return c.to === 'stop' ? 'Families far outside the area are now stopped' : 'Families far outside the area can now apply';
@@ -4857,6 +4858,8 @@ function useAppSettings(addToast, active) {
   // and as edited (null: the same people as makeovers)
   const [orgRules, setOrgRules] = useState(null);
   const [orgEmails, setOrgEmails] = useState(null);
+  // Whether the community project form checks the service area, as edited (off: organizations from anywhere)
+  const [orgArea, setOrgArea] = useState(true);
   const [since, setSince] = useState(null);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
@@ -4868,7 +4871,8 @@ function useAppSettings(addToast, active) {
   const [cap, setCap] = useState(null);             // where the season stands against its limit (applications-admin capNow)
   const [ways, setWays] = useState({});             // ways to open or close switched on by hand, kept open while blank until Save or Discard
   const orgListOf = (r) => (!r || r.sameAsMakeovers ? null : clone(r.values.staffEmails || []));
-  const takeOrg = (r) => { if (r) { setOrgRules(r); setOrgEmails(orgListOf(r)); } };
+  const orgAreaOf = (r) => r?.values?.areaCheck !== false;
+  const takeOrg = (r) => { if (r) { setOrgRules(r); setOrgEmails(orgListOf(r)); setOrgArea(orgAreaOf(r)); } };
   const take = (j) => { if (j.since !== undefined) setSince(j.since); if (j.history) setHistory(j.history); if (j.area) setArea(j.area); if (j.cap !== undefined) setCap(j.cap); };
   const load = async () => {
     setError(null);
@@ -4888,7 +4892,9 @@ function useAppSettings(addToast, active) {
 
   const appFields = saved && edit ? SETTINGS_FIELDS.filter(k => (saved[k] || '') !== (edit[k] || '')) : [];
   const changedRules = rules && rulesEdit ? RULE_FIELDS.filter(k => !sameRule(rules.values[k], rulesEdit[k])) : [];
-  const changedOrg = !!orgRules && !sameRule(orgEmails, orgListOf(orgRules));
+  const changedOrgList = !!orgRules && !sameRule(orgEmails, orgListOf(orgRules));
+  const changedOrgArea = !!orgRules && orgArea !== orgAreaOf(orgRules);
+  const changedOrg = changedOrgList || changedOrgArea;
   const dirty = appFields.length > 0 || changedRules.length > 0 || changedOrg;
   const orgProblem = orgEmails ? rulesProblems({ staffEmails: orgEmails }).staffEmails : null;
   const problems = { ...settingsProblems(edit, saved, Date.now(), cap), ...rulesProblems(rulesEdit), ...(orgProblem ? { orgStaffEmails: orgProblem } : {}), ...serverErrors };
@@ -4950,9 +4956,11 @@ function useAppSettings(addToast, active) {
     if (j.history) setHistory(j.history);
     return true;
   };
-  // The community project list on its own: null puts it back to the makeovers' list
+  // The community project settings on their own, just what changed: a list of null puts it back to the
+  // makeovers' list, and areaCheck is whether the form checks the service area
   const saveOrg = async () => {
-    const j = await call(API, { rules: { staffEmails: orgEmails }, base: orgRules.updatedAt, kind: 'organization' });
+    const patch = { ...(changedOrgList ? { staffEmails: orgEmails } : {}), ...(changedOrgArea ? { areaCheck: orgArea } : {}) };
+    const j = await call(API, { rules: patch, base: orgRules.updatedAt, kind: 'organization' });
     if (j.status === 409 && j.conflict) {
       const theirs = { values: j.conflict.rules, updatedAt: j.conflict.updatedAt, updatedBy: j.conflict.updatedBy };
       setOrgRules(r => ({ ...r, ...theirs }));
@@ -4999,12 +5007,13 @@ function useAppSettings(addToast, active) {
   }, [active]);
 
   return {
-    saved, edit, rules, rulesEdit, orgRules, orgEmails, since, history, area, cap, ways, error, busy, dirty, appFields, changedRules, changedOrg, problems, invalid, conflict, rulesConflict, save, setOpen, reload: load,
+    saved, edit, rules, rulesEdit, orgRules, orgEmails, orgArea, since, history, area, cap, ways, error, busy, dirty, appFields, changedRules, changedOrg, changedOrgList, changedOrgArea, problems, invalid, conflict, rulesConflict, save, setOpen, reload: load,
     setOrgEmails: (v) => { setOrgEmails(v); setServerErrors(x => { const y = { ...x }; delete y.orgStaffEmails; return y; }); },
+    setOrgArea: (v) => setOrgArea(!!v),
     setWay: (k, v) => setWays(w => (!!w[k] === v ? w : { ...w, [k]: v })),
     set: (patch) => { setEdit(e => ({ ...e, ...patch })); setServerErrors(x => { const y = { ...x }; Object.keys(patch).forEach(k => delete y[k]); return y; }); },
     setRules: (patch) => { setRulesEdit(r => ({ ...r, ...patch })); setServerErrors(x => { const y = { ...x }; Object.keys(patch).forEach(k => delete y[k]); return y; }); },
-    discard: () => { setEdit(saved); setWays({}); if (rules) setRulesEdit(clone(rules.values)); setOrgEmails(orgListOf(orgRules)); setConflict(false); setRulesConflict(null); setServerErrors({}); },
+    discard: () => { setEdit(saved); setWays({}); if (rules) setRulesEdit(clone(rules.values)); setOrgEmails(orgListOf(orgRules)); setOrgArea(orgAreaOf(orgRules)); setConflict(false); setRulesConflict(null); setServerErrors({}); },
   };
 }
 
@@ -5268,7 +5277,8 @@ function SaveBar({ s }) {
     touched(['closedMessage', 'fullMessage', 'formUrl']) && 'what families read',
     touched(['orgOpen', 'orgClosedMessage']) && 'community projects',
     ...s.changedRules.map(k => RULE_NAME[k]),
-    s.changedOrg && 'the community project email',
+    s.changedOrgList && 'the community project email',
+    s.changedOrgArea && 'where community projects can be',
   ].filter(Boolean);
   const closing = closesOnSave(s);
   const who = s.rulesConflict?.updatedBy || null;
@@ -5331,6 +5341,14 @@ function OrgApplicationsCard({ s }) {
         <input id="afe-org-closed" class="form-input" maxlength="200" value=${e.orgClosedMessage || ''} placeholder=${DEFAULT_ORG_CLOSED} onInput=${(ev) => s.set({ orgClosedMessage: ev.target.value })} />
         <span class="afe-hint">Blank shows “${DEFAULT_ORG_CLOSED}”</span>
       </div>
+      ${s.orgRules && html`
+        <div class="afe-field afe-set-fields" data-org-area=${s.orgArea ? 'on' : 'off'}>
+          <span class="afe-label">Service area</span>
+          <label class="afe-switch"><input type="checkbox" role="switch" id="afe-org-area" aria-describedby="afe-org-area-h" checked=${s.orgArea} onChange=${(ev) => s.setOrgArea(ev.target.checked)} />${s.orgArea ? 'Only inside the service area' : 'Anywhere'}</label>
+          <span class="afe-hint" id="afe-org-area-h">${s.orgArea
+            ? 'Organizations see the service area map and their address is checked against it, the same as makeovers. The Service area card below sets what happens outside it.'
+            : 'Organizations anywhere can apply. The form still asks for the address, but doesn’t show the map or ask about the service area. Makeovers still use it.'}</span>
+        </div>`}
       ${s.orgRules && (same
         ? html`
           <div class="afe-field afe-set-fields" data-org-staff="same">
