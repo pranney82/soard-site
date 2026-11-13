@@ -22,6 +22,8 @@ const ORG = '22NJw42j5GLg';
 const ME = 'cnielsen@soardcharity.com';
 const CHRISTIAN = { id: '22Np33yErAWi', name: 'Christian Nielsen', emailAddress: 'cnielsen@soardcharity.com', membership: '22Np33yEqmcR', internal: true };
 const CLAREECE = { id: '22NMyXFKXgN8', name: 'Clareece Cunningham', emailAddress: 'ccunningham@soardcharity.com', membership: '22NMyXFKY5GR', internal: true };
+// Someone on a task who isn't SOARD staff (a trade): not on the team list, still named on the task
+const TRADE = { id: '22TradeUser01', name: 'Jordan Tiler', emailAddress: 'jordan@example.com', membership: '22TradeMemb01', internal: false };
 const GRACIE = { id: '22PhY3AgmSXA', name: 'Agent Gracie', emailAddress: 'automation@soardcharity.com', membership: '22PhY3AgkgiZ', internal: true };
 const FAMILY = { id: '22FamilyUsr01', name: 'A Parent', emailAddress: 'parent@example.com', membership: '22FamilyMem01', internal: false };
 
@@ -40,7 +42,7 @@ function fakeJobTread() {
     logs: [{ id: '22LogClareece', jobId: '22PRvFGCAdMM', date: '2026-11-12', notes: 'Clareece dropped off tile.', user: CLAREECE, files: [] }],
     uploads: {}, files: [], tasks: [
       { id: '22TaskFrame01', jobId: '22PRvFGCAdMM', name: 'Framing', startDate: '2026-11-12', endDate: '2026-11-13', progress: null, isToDo: false, assignees: [] },
-      { id: '22TaskTile001', jobId: '22PRvFGCAdMM', name: 'Tile', startDate: '2026-11-16', endDate: '2026-11-18', progress: null, isToDo: false, assignees: [CHRISTIAN] },
+      { id: '22TaskTile001', jobId: '22PRvFGCAdMM', name: 'Tile', startDate: '2026-11-16', endDate: '2026-11-18', progress: null, isToDo: false, assignees: [CHRISTIAN, TRADE] },
       { id: '22TaskDone001', jobId: '22PRvFGCAdMM', name: 'Demo', startDate: '2026-11-11', endDate: '2026-11-11', progress: 1, isToDo: false, assignees: [] },
     ],
     calls: [], n: 0, failFileFor: new Set(),
@@ -56,12 +58,15 @@ function fakeJobTread() {
       if (where?.and) { const [[, , a], [, , b]] = where.and; logs = logs.filter((l) => l.date >= a && l.date <= b); }
       out.dailyLogs = { nodes: logs.map(logOut) };
     }
-    if (sel.tasks) out.tasks = { nextPage: null, nodes: w.tasks.filter((t) => t.jobId === j.id).map(taskOut) };
+    if (sel.tasks) {
+      out.tasks = { nextPage: null, nodes: w.tasks.filter((t) => t.jobId === j.id).map((t) => taskOut(t, sel.tasks.nodes)) };
+    }
     return out;
   };
   const logOut = (l) => ({ id: l.id, date: l.date, notes: l.notes, createdAt: '2026-11-12T15:00:00Z', user: { id: l.user.id, name: l.user.name }, files: { count: l.files.length }, job: { id: l.jobId, name: w.jobs.find((j) => j.id === l.jobId)?.name } });
-  const taskOut = (t) => ({ id: t.id, name: t.name, startDate: t.startDate, endDate: t.endDate, startTime: null, endTime: null, progress: t.progress, isToDo: t.isToDo, taskType: null,
-    job: { id: t.jobId, name: w.jobs.find((j) => j.id === t.jobId)?.name }, assignedMemberships: { nodes: t.assignees.map((u) => ({ id: u.membership, user: { name: u.name } })) } });
+  const taskOut = (t, sel = null) => ({ id: t.id, name: t.name, startDate: t.startDate, endDate: t.endDate, startTime: null, endTime: null, progress: t.progress, isToDo: t.isToDo, taskType: null,
+    ...(!sel || sel.job ? { job: { id: t.jobId, name: w.jobs.find((j) => j.id === t.jobId)?.name } } : {}),
+    assignedMemberships: { nodes: t.assignees.map((u) => (!sel || sel.assignedMemberships?.nodes?.user ? { id: u.membership, user: { name: u.name } } : { id: u.membership })) } });
   const bad = (text) => new Response(text, { status: 400 });
 
   const fetchImpl = async (url, init) => {
@@ -80,10 +85,18 @@ function fakeJobTread() {
       else if (k === 'organization') {
         const o = {};
         if (v.jobs) o.jobs = { nextPage: null, nodes: w.jobs.filter((j) => !j.closedOn).map((j) => jobOut(j, v.jobs.nodes)) };
-        if (v.memberships) o.memberships = { nodes: [CHRISTIAN, CLAREECE, GRACIE].map((u) => ({ id: u.membership, user: { name: u.name, emailAddress: u.emailAddress } })) };
+        if (v.memberships) {
+          const where = v.memberships.$?.where;
+          const ids = Array.isArray(where) && where[0] === 'id' ? where[2] : null;
+          o.memberships = { nodes: [CHRISTIAN, CLAREECE, GRACIE, ...(ids ? [TRADE] : [])].filter((u) => !ids || ids.includes(u.membership)).map((u) => ({ id: u.membership, user: { name: u.name, emailAddress: u.emailAddress } })) };
+        }
         if (v.dailyLogs) { const [[, , a], [, , b]] = v.dailyLogs.$.where.and; o.dailyLogs = { nodes: w.logs.filter((l) => l.date >= a && l.date <= b).map(logOut) }; }
         out.organization = o;
-      } else if (k === 'job') { const j = w.jobs.find((x) => x.id === v.$.id); out.job = j ? jobOut(j, v) : null; }
+      } else if (k === 'job') {
+        // As the real JobTread (seen Nov 13 2026): a task list that reaches through each task's people to their names is refused
+        if (v.tasks?.nodes?.assignedMemberships?.nodes?.user) return new Response('Request Entity Too Large', { status: 413 });
+        const j = w.jobs.find((x) => x.id === v.$.id); out.job = j ? jobOut(j, v) : null;
+      }
       else if (k === 'dailyLog') { const l = w.logs.find((x) => x.id === v.$.id); out.dailyLog = l ? { id: l.id, job: { id: l.jobId } } : null; }
       else if (k === 'task') { const t = w.tasks.find((x) => x.id === v.$.id); out.task = t ? taskOut(t) : null; }
       else if (k === 'createDailyLog') { const id = nid(); w.logs.push({ id, jobId: v.$.jobId, date: v.$.date, notes: v.$.notes, user, files: [] }); out.createDailyLog = { createdDailyLog: { id } }; }
@@ -262,7 +275,8 @@ test('the schedule: late and coming up; a new start keeps the task’s length; d
   const p = await asPerson(env, ME);
   const s = await jobTasks(p, '22PRvFGCAdMM', {}, NOW);
   assert.deepEqual(s.tasks.map((t) => t.name), ['Demo', 'Framing', 'Tile']);
-  assert.equal(s.tasks[2].who[0], 'Christian Nielsen');
+  // The list asks JobTread only for who's on each task (the fake refuses more, as JobTread does), then their names
+  assert.deepEqual(s.tasks[2].who, ['Christian Nielsen', 'Jordan Tiler'], 'a trade on the task is named too');
   const moved = await changeTask(p, { taskId: '22TaskTile001', startDate: '2026-11-20' }, NOW);
   assert.deepEqual([moved.before.start, moved.before.end, moved.after.start, moved.after.end], ['2026-11-16', '2026-11-18', '2026-11-20', '2026-11-22']);
   const update = jt.w.calls.find((c) => c.k === 'updateTask');

@@ -383,17 +383,28 @@ export async function photosDone(env, p, { jobId, date, logId, files }, now = Da
 
 // ── The schedule ───────────────────────────────────────────────────────────
 
+/** One task, asked for by its id */
 const TASK = {
   id: {}, name: {}, startDate: {}, endDate: {}, startTime: {}, endTime: {}, progress: {}, isToDo: {},
   taskType: { name: {} }, job: { id: {}, name: {} },
   assignedMemberships: { $: { size: 10 }, nodes: { id: {}, user: { name: {} } } },
 };
-const shapeTask = (t, day) => ({
+/**
+ * Each task in a job's list. JobTread refuses a list that reaches through each task's people to their names
+ * ("Request Entity Too Large", even 50 at a time; seen live Nov 13 2026 on Lizzie's 80 tasks), so the list asks
+ * only who is on each task, by membership id, and namesOf() looks the names up in one flat request.
+ */
+const TASK_ROW = {
+  id: {}, name: {}, startDate: {}, endDate: {}, startTime: {}, endTime: {}, progress: {}, isToDo: {},
+  taskType: { name: {} },
+  assignedMemberships: { $: { size: 10 }, nodes: { id: {} } },
+};
+const shapeTask = (t, day, names) => ({
   id: t.id, name: t.name, kind: t.isToDo ? 'to-do' : 'schedule', type: t.taskType?.name || null,
   start: t.startDate || null, end: t.endDate || null, ...(t.startTime ? { startTime: t.startTime } : {}),
   done: (t.progress ?? 0) >= 1, progress: Math.round((t.progress ?? 0) * 100),
   overdue: !!t.endDate && t.endDate < day && (t.progress ?? 0) < 1,
-  who: (t.assignedMemberships?.nodes || []).map((m) => m.user?.name).filter(Boolean),
+  who: (t.assignedMemberships?.nodes || []).map((m) => m.user?.name || names?.get(m.id)).filter(Boolean),
 });
 
 /**
@@ -408,7 +419,7 @@ export async function jobTasks(p, jobId, { from, to } = {}, now = Date.now()) {
   let page = '';
   let name = '';
   for (let i = 0; i < 3; i++) {
-    const r = await p.q({ job: { $: { id: jobId }, id: {}, name: {}, tasks: { $: { size: 100, where: ['isGroup', '=', false], ...(page ? { page } : {}) }, nextPage: {}, nodes: TASK } } });
+    const r = await p.q({ job: { $: { id: jobId }, id: {}, name: {}, tasks: { $: { size: 100, where: ['isGroup', '=', false], ...(page ? { page } : {}) }, nextPage: {}, nodes: TASK_ROW } } });
     if (!r?.job) throw new Error('That job isn’t in JobTread');
     name = r.job.name;
     all.push(...(r.job.tasks?.nodes || []));
@@ -417,10 +428,22 @@ export async function jobTasks(p, jobId, { from, to } = {}, now = Date.now()) {
   }
   const inWindow = (t) => (t.endDate || t.startDate || '') >= start && (t.startDate || t.endDate || '') <= end;
   const open = (t) => (t.progress ?? 0) < 1;
-  const tasks = all.filter((t) => (open(t) && (!t.startDate || t.startDate <= end)) || inWindow(t))
-    .map((t) => shapeTask(t, day))
+  const shown = all.filter((t) => (open(t) && (!t.startDate || t.startDate <= end)) || inWindow(t));
+  const names = await namesOf(p, shown.flatMap((t) => (t.assignedMemberships?.nodes || []).map((m) => m.id)));
+  const tasks = shown.map((t) => shapeTask(t, day, names))
     .sort((a, b) => String(a.start || a.end || '9999').localeCompare(String(b.start || b.end || '9999')) || a.name.localeCompare(b.name));
   return { job: { id: jobId, name }, from: start, to: end, tasks };
+}
+
+/** Membership ids → Map(id → the person's name), 50 to a request (anyone on a task: staff, a trade, a vendor) */
+async function namesOf(p, ids) {
+  const want = [...new Set(ids.filter(Boolean))];
+  const names = new Map();
+  for (let i = 0; i < want.length; i += 50) {
+    const r = await p.q({ organization: { $: { id: SOARD_ORG_ID }, memberships: { $: { size: 50, where: ['id', 'in', want.slice(i, i + 50)] }, nodes: { id: {}, user: { name: {} } } } } });
+    for (const m of r?.organization?.memberships?.nodes || []) if (m.user?.name) names.set(m.id, m.user.name);
+  }
+  return names;
 }
 
 /** SOARD's team in JobTread → [{ membershipId, name }]; never the website's own login (Agent Gracie), which no task is for */
