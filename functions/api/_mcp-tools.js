@@ -31,6 +31,7 @@ import { TOOLS as ROOM_TOOLS } from './_mcp/rooms.js';
 import { TOOLS as MONEY_TOOLS } from './_mcp/money.js';
 import { TOOLS as PEOPLE_TOOLS } from './_mcp/people.js';
 import { TOOLS as OPS_TOOLS } from './_mcp/ops.js';
+import { TOOLS as FIELD_TOOLS } from './_mcp/field.js';
 
 const kitUrl = (id) => `https://app.kit.com/campaigns/${encodeURIComponent(id)}`;
 
@@ -328,7 +329,7 @@ const HANDLERS = {
 const PREVIEWED = new Set(['save_written_email', 'set_email_words']);
 const ALL = [
   ...BASE.map((t) => ({ ...t, ...(PREVIEWED.has(t.name) ? { _meta: SHOWS_EMAIL } : {}), run: HANDLERS[t.name] })),
-  ...PREVIEW_TOOLS, ...PAGE_TOOLS, ...ROOM_TOOLS, ...MONEY_TOOLS, ...PEOPLE_TOOLS, ...OPS_TOOLS,
+  ...PREVIEW_TOOLS, ...PAGE_TOOLS, ...ROOM_TOOLS, ...MONEY_TOOLS, ...PEOPLE_TOOLS, ...OPS_TOOLS, ...FIELD_TOOLS,
 ];
 const BY_NAME = new Map(ALL.map((t) => [t.name, t]));
 if (BY_NAME.size !== ALL.length) throw new Error('[mcp] two tools share a name');
@@ -400,5 +401,6 @@ export function serverInstructions(now = Date.now()) {
     'A family’s details stay with SOARD staff: never in an email, a post or anything public. Donors who asked to give anonymously are never named publicly.',
     `This month’s Monthly Impact (for the month just ended) is ${monthlyKey(month)}.`,
     'Write the way SOARD does (the How SOARD writes guide): warm, plain and specific, no em dashes, “kids” and “families”.',
+    'Field work in JobTread (daily logs, photos, the schedule) is done as the person, so JobTread shows their name. Name a job by the kid (“Lizzie”, “Max Daniel”). When they say what happened on a job, save it with daily_log straight away, in their words (fix only spelling): a log is their own record, so it needs no yes first, and the photo box opens under it. Whenever they mention photos or pictures for a job, use add_photos: the box opens in the chat and the photos go from their phone onto that day’s log. For the schedule, read job_tasks, show the change (a new start alone keeps a task’s length; the tasks linked after it move too) and wait for their yes before change_task or add_task. If a tool says to connect JobTread first, give them that link as it is.',
   ].join(' ');
 }

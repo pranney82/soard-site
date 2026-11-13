@@ -201,5 +201,10 @@ test('<script define:vars> in src/ fails the build', () => {
 test('the repo: public/_headers has a strict line per route that matches its enforced line', () => {
   const r = renderHeaders(readFileSync(join(ROOT, 'public/_headers'), 'utf8'), () => []);
   assert.deepEqual(r.errors, []);
-  assert.deepEqual(r.policies.map((p) => p.pattern), ['/*', '/trade-partners/*', '/apply/form/*', '/admin/*']);
+  assert.deepEqual(r.policies.map((p) => p.pattern), ['/*', '/trade-partners/*', '/apply/form/*', '/admin/*', '/admin/photos/*']);
+  // JobTread's upload address (the photo page, ./functions/api/_field.js) is open to /admin/photos/ alone
+  const text = readFileSync(join(ROOT, 'public/_headers'), 'utf8');
+  const block = (pattern) => text.slice(text.indexOf(`\n${pattern}\n`) + 1).split('\n\n')[0];
+  assert.ok(!block('/admin/*').includes('storage.googleapis.com'));
+  assert.equal(block('/admin/photos/*').match(/https:\/\/storage\.googleapis\.com/g).length, 2);
 });

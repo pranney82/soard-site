@@ -204,6 +204,11 @@ PUBLIC_GET_ROUTES.push('/api/printer-ws', '/api/printer-ws/');
 // and the code is useless without SOARD's keys; rate limited below
 PUBLIC_GET_ROUTES.push('/api/books-callback');
 
+// Where JobTread sends a person back after "Connect JobTread" (/api/field-admin?connect=1): the one-time
+// state the site made for them is checked inside (_field.js), and the key is kept only for someone on
+// SOARD's team in JobTread; rate limited below
+PUBLIC_GET_ROUTES.push('/api/jobtread-callback');
+
 // ─── Rate Limiting ──────────────────────────────────────────────────
 // Each limited route allows 5 calls per address (clientIp: IPv6 by its /64)
 // per 60 seconds. The in-memory count is a cheap first filter that only sees
@@ -214,7 +219,7 @@ const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
 const RATE_LIMITED_POST_ROUTES = new Set(['/api/book-stats', '/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/live-watch', '/api/profile-request', '/api/advisory-apply', '/api/advisory-action', '/api/vendor-docs', '/api/trade-partner', '/api/board-rsvp']);
 // Public GET routes that fan out to paid upstreams / build large responses.
-const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos', '/api/books-callback']);
+const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos', '/api/books-callback', '/api/jobtread-callback']);
 // The application form autosaves every step and uploads photos one by one, so
 // a family filling it in makes far more than 5 calls a minute; it gets its own bucket.
 // Per minute per address. A watch party or a gala table shares one Wi-Fi, so the

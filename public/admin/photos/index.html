@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#F5F4F0" />
+  <meta name="color-scheme" content="light" />
+  <title>SOARD Photos</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="stylesheet" href="./photos.css" />
+</head>
+<body>
+  <!-- Photos onto a JobTread daily log, from a phone: the backup for Claude's photo box, and where "Connect JobTread" lands (./photos.js, /api/field-admin) -->
+  <main class="wrap">
+    <header class="top">
+      <img class="logo" src="/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="SOARD" width="40" height="40" />
+      <h1>Photos</h1>
+    </header>
+    <p class="note" id="note" role="status" aria-live="polite">Getting things ready…</p>
+    <a class="btn" id="connect" href="/api/field-admin?connect=1" hidden>Connect JobTread</a>
+    <div class="card" id="box" hidden></div>
+  </main>
+  <script type="module" src="./photos.js"></script>
+</body>
+</html>
