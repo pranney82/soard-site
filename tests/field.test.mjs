@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
   startLink, finishLink, asPerson, linkStatus, findJob, writeLog, readLogs, photoSlots, photosDone, jobTasks,
-  changeTask, addTask, fileName, CONNECT_URL, CALLBACK,
+  changeTask, addTask, fileName, CONNECT_URL, CALLBACK, looksLike,
 } from '../functions/api/_field.js';
 import { TOOLS, callTool } from '../functions/api/_mcp-tools.js';
 import { readResource, complete, PROMPTS } from '../functions/api/_mcp/guide.js';
@@ -29,7 +29,7 @@ const FAMILY = { id: '22FamilyUsr01', name: 'A Parent', emailAddress: 'parent@ex
 function fakeJobTread() {
   const w = {
     keys: { 'key-christian': CHRISTIAN, 'key-clareece': CLAREECE, 'key-gracie': GRACIE, 'key-family': FAMILY },
-    codes: { 'code-christian': 'key-christian', 'code-gracie': 'key-gracie', 'code-family': 'key-family' },
+    codes: { 'code-christian': 'key-christian', 'code-clareece': 'key-clareece', 'code-gracie': 'key-gracie', 'code-family': 'key-family' },
     jobs: [
       { id: '22PRvFGCAdMM', name: 'Lizzie Francis (2026)', closedOn: null, pm: 'Christian', status: 'Build' },
       { id: '22PRvFFCCvET', name: 'Peter Raish (2026)', closedOn: null, pm: 'Christian', status: 'Build' },
@@ -144,7 +144,7 @@ test('connecting: JobTread’s sign-in comes back here, the key is kept for some
   assert.match(state, /^[a-f0-9]{48}$/);
   const got = await finishLink(env, { code: 'code-christian', state }, { now: NOW });
   assert.deepEqual(got, { email: ME, name: 'Christian Nielsen', back: '/admin/photos/?job=22PRvFGCAdMM' });
-  assert.deepEqual(await linkStatus(env, ME), { linked: true, name: 'Christian Nielsen', since: new Date(NOW).toISOString(), broken: false });
+  assert.deepEqual(await linkStatus(env, ME), { linked: true, name: 'Christian Nielsen', since: new Date(NOW).toISOString(), broken: false, likely: true });
   // The same sign-in can't be used again
   await assert.rejects(finishLink(env, { code: 'code-christian', state }, { now: NOW }), { code: 'STATE' });
   // Too old
@@ -282,9 +282,13 @@ test('the schedule: late and coming up; a new start keeps the task’s length; d
 const data = (r) => r.structuredContent;
 
 test('through Claude: not connected gives the link; connected, a log opens the photo box on that day’s log', async () => {
-  const none = await callTool(env, 'daily_log', { job: 'Lizzie', notes: 'Demo done.' }, ME);
-  assert.equal(none.isError, true);
-  assert.ok(none.content[0].text.includes(CONNECT_URL));
+  // Not connected: an answer, not a failure, so the chat still opens the box or the window, with the button in it
+  for (const [tool, args] of [['daily_log', { job: 'Lizzie', notes: 'Demo done.' }], ['add_photos', { job: 'Lizzie' }], ['job_tasks', { job: 'Lizzie' }]]) {
+    const none = await callTool(env, tool, args, ME);
+    assert.ok(!none.isError, tool);
+    assert.deepEqual([data(none).connected, data(none).connect], [false, CONNECT_URL], tool);
+    assert.ok(none.content[0].text.includes(CONNECT_URL), tool);
+  }
   await connectChristian();
   const r = data(await callTool(env, 'daily_log', { job: 'Lizzie', notes: 'Demo done.' }, ME));
   assert.equal(r.log.was, 'created');
@@ -414,6 +418,23 @@ test('the + menu’s field shortcuts: tap one, say the job; the job is suggested
   assert.deepEqual(await ask('max'), ['Max Daniel (2026)', 'Maxwell Stone (2026)']);
   assert.deepEqual(await ask('max d'), ['Max Daniel (2026)']);
   assert.equal((await ask('')).length, 4, 'every open job');
+});
+
+test('connected as a JobTread login that isn’t them (Nov 13: Peter as DATAx): Claude and the page say so', async () => {
+  assert.ok(looksLike('Christian Nielsen', 'cnielsen@soardcharity.com'));
+  assert.ok(looksLike('Peter Ranney', 'peter@soardcharity.com'));
+  assert.ok(looksLike('Clareece Cunningham', 'ccunningham@soardcharity.com'));
+  assert.ok(!looksLike('DATAx', 'peter@soardcharity.com'));
+  assert.ok(!looksLike('Qualification Committee', 'peter@soardcharity.com'));
+  const s = new URL(await startLink(env, ME, { now: NOW })).searchParams.get('state');
+  await finishLink(env, { code: 'code-clareece', state: s }, { now: NOW });
+  assert.equal((await linkStatus(env, ME)).likely, false);
+  const c = data(await callTool(env, 'jobtread_connection', {}, ME));
+  assert.equal(c.looksLikeThem, false);
+  assert.equal(c.connect, CONNECT_URL);
+  assert.match(c.said, /doesn’t look like them/);
+  const page = await (await fieldAdmin.onRequestGet(ctx('https://sunshineonaranneyday.com/api/field-admin'))).json();
+  assert.equal(page.connection.likely, false);
 });
 
 // ─── The admin side ───

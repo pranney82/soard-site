@@ -64,8 +64,12 @@ export async function whoIs(request, env) {
   return { email };
 }
 
-/** Cached by the client for an hour, never by anyone between (2026-07-28 CacheableResult) */
-const CACHE = Object.freeze({ ttlMs: 3600000, cacheScope: 'private' });
+/**
+ * Cached by the client for five minutes, never by anyone between (2026-07-28 CacheableResult). It was an hour, and on
+ * Nov 13 Claude kept the tool list from before a new tool went live: five minutes means a new tool or window reaches
+ * the chat without anyone reconnecting, for a list the server answers in a moment.
+ */
+const CACHE = Object.freeze({ ttlMs: 300000, cacheScope: 'private' });
 const CAPS_LEGACY = Object.freeze({ tools: { listChanged: false }, prompts: { listChanged: false }, resources: { subscribe: false, listChanged: false }, completions: {} });
 const CAPS_MODERN = Object.freeze({ tools: {}, prompts: {}, resources: {}, completions: {} });
 const promptDef = ({ get, ...p }) => p;
@@ -175,8 +179,32 @@ export function headerProblem(request, msg) {
   return null;
 }
 
+/**
+ * Someone's browser on this address (Nov 13: Peter landed here after Claude signed him out, ?__cf_access_message=logged_out,
+ * and saw {"error":"Use POST"}): a plain page that says what it is and how to connect. Claude's own requests never ask for HTML.
+ */
+const PAGE_CSS = 'body{margin:0;background:#faf8f5;color:#1f1d1a;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}main{max-width:560px;margin:0 auto;padding:40px 20px}h1{font-size:22px;margin:0 0 12px}p,li{margin:0 0 12px}ol{padding-left:22px}.note{background:#fdf3d9;color:#6b4300;border-radius:12px;padding:12px 14px}code{background:#eee9e2;border-radius:6px;padding:1px 6px}a{color:inherit}@media (prefers-color-scheme:dark){body{background:#1d1c1a;color:#f2efe9}.note{background:#3a2c0c;color:#f6d58e}code{background:#2a2926}}';
+export function browserPage(message) {
+  const out = message === 'logged_out';
+  const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex">
+<title>The SOARD connection for Claude</title><style>${PAGE_CSS}</style></head><body><main>
+<h1>The SOARD connection for Claude</h1>
+${out ? '<p class="note">You’re signed out of the SOARD connection. That’s all this page means: connect again in Claude whenever you’re ready.</p>' : ''}
+<p>This address is for Claude, not for a browser. To use SOARD in Claude:</p>
+<ol><li>Open Claude, then <strong>Settings</strong>, then <strong>Connectors</strong>.</li><li>Find <strong>SOARD</strong> and press <strong>Connect</strong>.</li><li>Sign in with your SOARD Google account.</li></ol>
+<p>Then start a new chat and try <code>Lizzie’s schedule</code> or <code>photos for Lizzie</code>, or press <strong>+</strong> and choose <strong>SOARD</strong> for the shortcuts.</p>
+<p><a href="/admin/">Go to the admin</a></p>
+</main></body></html>`;
+  return new Response(body, { status: 200, headers: {
+    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  } });
+}
+const wantsPage = (request) => { const a = request.headers.get('Accept') || ''; return /text\/html/.test(a) && !/text\/event-stream/.test(a); };
+
 export async function onRequest(context) {
   const { request, env } = context;
+  if (request.method === 'GET' && wantsPage(request)) return browserPage(new URL(request.url).searchParams.get('__cf_access_message'));
   // One POST per request or notification; there's no stream to open and no session to end
   if (request.method !== 'POST') return json({ error: 'Use POST' }, 405, { Allow: 'POST' });
   const origin = request.headers.get('Origin');

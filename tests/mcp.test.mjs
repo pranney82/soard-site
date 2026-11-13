@@ -117,6 +117,19 @@ test('only SOARD staff, signed in through the connection’s own Access applicat
   const get = await onRequest({ request: new Request('https://sunshineonaranneyday.com/mcp'), env });
   assert.equal(get.status, 405);
   assert.equal(get.headers.get('Allow'), 'POST');
+  // A stream asked for: still no
+  assert.equal((await onRequest({ request: new Request('https://sunshineonaranneyday.com/mcp', { headers: { Accept: 'text/event-stream' } }), env })).status, 405);
+  // A person's browser (Nov 13: after Claude signed Peter out): what this is and how to connect, never a tool or anyone's data
+  const page = await onRequest({ request: new Request('https://sunshineonaranneyday.com/mcp?__cf_access_message=logged_out', { headers: { Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' } }), env });
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('Content-Type'), /text\/html/);
+  assert.match(page.headers.get('Content-Security-Policy'), /default-src 'none'/);
+  const html = await page.text();
+  assert.match(html, /You’re signed out of the SOARD connection/);
+  assert.match(html, /Settings<\/strong>, then <strong>Connectors/);
+  assert.ok(!/—/.test(html), 'no em dashes');
+  const plain = await (await onRequest({ request: new Request('https://sunshineonaranneyday.com/mcp', { headers: { Accept: 'text/html' } }), env })).text();
+  assert.ok(!/signed out/.test(plain));
 });
 
 // ─── The protocol, both eras ───

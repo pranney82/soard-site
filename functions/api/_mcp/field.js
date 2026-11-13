@@ -43,15 +43,19 @@ const MAX_CHANGES = 40;
 const first = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 const jobRow = (j, me) => ({ id: j.id, name: j.name, status: j.status, pm: j.pm, ...(me && j.pm && first(j.pm).toLowerCase() === first(me).toLowerCase() ? { yours: true } : {}) });
 
-/** Run a field tool as the person; not connected → the link to connect, in words Claude passes on */
+/**
+ * Run a field tool as the person. Not connected (or JobTread stopped taking their key): the link to connect, as an
+ * answer rather than a failure, so the chat still opens the photo box or the schedule window, which shows the button.
+ */
+const connectFirst = (err) => done({ connected: false, connect: CONNECT_URL, said: `${err.message} Give them this link as it is (the window above has the button too); after they connect, try again.` });
 async function asThem(env, me, work) {
   let p;
   try { p = await asPerson(env, me); } catch (err) {
-    if (err.code === 'LINK') return refuse(`${err.message} Give them this link as it is; after they connect, try again.`);
+    if (err.code === 'LINK') return connectFirst(err);
     throw err;
   }
   try { return await work(p); } catch (err) {
-    if (err.code === 'LINK') return refuse(`${err.message} Give them this link as it is; after they connect, try again.`);
+    if (err.code === 'LINK') return connectFirst(err);
     return refuse(String(err.message || 'That didn’t work.'));
   }
 }
@@ -186,6 +190,8 @@ async function taskAdd(env, { job, ...rest }, me) {
 
 async function connection(env, _args, me) {
   const s = await linkStatus(env, me);
+  if (s.linked && !s.likely) return done({ connected: true, as: s.name, since: s.since?.slice(0, 10) || null, connect: CONNECT_URL, looksLikeThem: false,
+    said: `Connected as “${s.name}” in JobTread, which doesn’t look like them: everything they do here shows as ${s.name}. If that isn’t them, they sign out of JobTread in their browser, sign in as themselves, then connect again here: ${CONNECT_URL}` });
   if (s.linked) return done({ connected: true, as: s.name, since: s.since?.slice(0, 10) || null, said: `Connected: what they do here shows as ${s.name} in JobTread.` });
   return done({ connected: false, connect: CONNECT_URL, said: s.broken ? `Their JobTread connection stopped working. They connect it again, once: ${CONNECT_URL}` : `Not connected yet. They connect their JobTread once, here: ${CONNECT_URL}` });
 }
@@ -275,7 +281,9 @@ export function photoBoxHtml() {
   const call = async (name, args) => {
     const r = await app.callServerTool({ name, arguments: args });
     if (r?.isError) throw new Error(r?.content?.[0]?.text || 'That didn’t work. Try again.');
-    return r?.structuredContent || {};
+    const s = r?.structuredContent || {};
+    if (s.connected === false && s.connect) throw new Error(\`Your JobTread connection stopped working. Connect it again, then try again: \${s.connect}\`);
+    return s;
   };
   let target = null;
   const box = mountPhotoBox(document.getElementById('box'), {
@@ -289,7 +297,7 @@ export function photoBoxHtml() {
     if (s.photoBox) { target = s.photoBox; return box.setTarget(target); }
     const said = String(r?.content?.[0]?.text || '');
     // Not connected yet: the button goes where they connect, then they ask again
-    if (said.includes(CONNECT)) return box.waiting('Connect your JobTread once, so your photos and logs show your name. Then ask again.', { label: 'Connect JobTread', url: CONNECT });
+    if (s.connect || said.includes(CONNECT)) return box.waiting('Connect your JobTread once, so your photos and logs show your name. Then ask again.', { label: 'Connect JobTread', url: s.connect || CONNECT });
     box.waiting(r?.isError ? said.slice(0, 300) : '');
   };
   await app.connect();
@@ -311,7 +319,10 @@ export function scheduleHtml() {
   const call = async (name, args) => {
     const r = await app.callServerTool({ name, arguments: args });
     if (r?.isError) throw new Error(r?.content?.[0]?.text || 'That didn’t work. Try again.');
-    return r?.structuredContent || {};
+    const s = r?.structuredContent || {};
+    // JobTread stopped taking their key part-way (90 days unused): the window keeps the change and shows the button
+    if (s.connected === false && s.connect) throw Object.assign(new Error('Your JobTread connection stopped working. Connect it again, then press Save again.'), { connect: s.connect });
+    return s;
   };
   const CONNECT = ${JSON.stringify(CONNECT_URL)};
   const sched = mountSchedule(document.getElementById('sched'), {
@@ -338,7 +349,7 @@ export function scheduleHtml() {
     const view = s.view || (s.job && Array.isArray(s.tasks) ? s : null);
     if (view) return sched.show(view, { changed: s.changed || [] });
     const said = String(r?.content?.[0]?.text || '');
-    if (said.includes(CONNECT)) return sched.waiting('Connect your JobTread once, so your schedule changes show your name. Then ask again.', { label: 'Connect JobTread', url: CONNECT });
+    if (s.connect || said.includes(CONNECT)) return sched.waiting('Connect your JobTread once, so your schedule changes show your name. Then ask again.', { label: 'Connect JobTread', url: CONNECT });
     sched.waiting(r?.isError ? said.slice(0, 300) : '');
   };
   await app.connect();

@@ -261,11 +261,11 @@ export function mountSchedule(root, opts) {
     $('size').setAttribute('aria-label', big ? 'Back to the chat size' : 'Make the schedule bigger');
   }
   /** A line of news, where the person is looking: at: a task's id (under it), 'bar' (under the list) or 'top' */
-  function setNote(text, { warn = false, undo = null, at = 'top' } = {}) {
-    st.note = text ? { text, warn, undo, at } : null;
+  function setNote(text, { warn = false, undo = null, at = 'top', connect = '' } = {}) {
+    st.note = text ? { text, warn, undo, at, connect } : null;
     $('live').textContent = text || '';
   }
-  const noteHtml = (n) => `<div class="sc-note${n.warn ? ' sc-warn' : ''}"><span>${esc(n.text)}</span>${n.undo?.length ? `<button type="button" class="sc-tool" data-undo="1"${st.busy ? ' disabled' : ''}>Undo</button>` : ''}</div>`;
+  const noteHtml = (n) => `<div class="sc-note${n.warn ? ' sc-warn' : ''}"><span>${esc(n.text)}</span>${n.undo?.length ? `<button type="button" class="sc-tool" data-undo="1"${st.busy ? ' disabled' : ''}>Undo</button>` : ''}${n.connect ? `<button type="button" class="sc-tool" data-connect="${esc(n.connect)}">Connect JobTread</button>` : ''}</div>`;
   function placeNote() {
     const n = st.note;
     $('topNote').innerHTML = n && n.at === 'top' ? noteHtml(n) : '';
@@ -308,7 +308,7 @@ export function mountSchedule(root, opts) {
         <span class="sc-tags">${tags}</span>
       </button>
       ${open ? editorHtml(t) : ''}
-      ${!open && st.note && st.note.at === t.id ? noteHtml(st.note) : ''}
+      ${st.note && st.note.at === t.id ? noteHtml(st.note) : ''}
     </li>`;
   }
   function groupHtml(g) {
@@ -485,7 +485,8 @@ export function mountSchedule(root, opts) {
     } catch (err) {
       st.busy = false;
       const why = err?.message || 'JobTread didn’t take it. Try again.';
-      if (from === 'task' && st.draft) { st.draft.problem = why; setNote(''); }
+      if (err?.connect) { if (st.draft) st.draft.problem = ''; $('barP').textContent = ''; setNote(why, { warn: true, at: from === 'task' ? changes[0].taskId : 'bar', connect: err.connect }); }
+      else if (from === 'task' && st.draft) { st.draft.problem = why; setNote(''); }
       else if (from === 'ticks') { $('barP').textContent = why; setNote(''); }
       else setNote(why, { warn: true, at });
       paint();
@@ -512,6 +513,8 @@ export function mountSchedule(root, opts) {
     st.saved = new Set(ok.map((x) => x.taskId));
     st.changed = new Set();
     if (r?.view) st.view = r.view;
+    // Done, and from before the list's days (an old late one ticked done): it stays in view under Done, saved, with its Undo
+    if (r?.view) for (const x of ok) if (x.after && !st.view.tasks.some((t) => t.id === x.taskId)) st.view.tasks.push({ ...x.after });
     const undo = undoing ? null : ok.map((x) => undoOf(x.before || {}, changes.find((c) => c.taskId === x.taskId) || {})).filter(Boolean);
     if (ok.length) {
       const text = `${undoing ? 'Put back' : 'Saved'} in JobTread: ${lines.join('; ')}.${also.length ? ` Also moved, linked after it: ${listOf(also.slice(0, 6))}${also.length > 6 ? ` and ${also.length - 6} more` : ''}.` : ''}${bad.length && from !== 'task' ? ` ${bad.length} didn’t save.` : ''}`;
@@ -588,7 +591,8 @@ export function mountSchedule(root, opts) {
         paint();
       } catch (err) {
         st.busy = false;
-        s.problem = err?.message || 'JobTread didn’t add it. Try again.';
+        s.problem = err?.connect ? '' : err?.message || 'JobTread didn’t add it. Try again.';
+        if (err?.connect) setNote(err.message, { warn: true, at: 'bar', connect: err.connect });
         paint();
         sync();
       }
@@ -603,6 +607,7 @@ export function mountSchedule(root, opts) {
     const b = e.target.closest('button');
     if (!b || b.disabled || !root.contains(b)) return;
     if (b.dataset.undo && st.note?.undo?.length) return save(st.note.undo, { undoing: true, from: 'undo' });
+    if (b.dataset.connect) return opts.openLink?.(b.dataset.connect);
     if (b.dataset.tick) return tick(b.dataset.tick);
     if (b.dataset.open) return openTask(b.dataset.open);
     if (b.dataset.more) { st.shown.add(b.dataset.more); return paint(); }
@@ -661,7 +666,7 @@ export function mountSchedule(root, opts) {
       showView(v?.view || v, { keep: true });
     } catch (err) {
       st.busy = false;
-      setNote(err?.message || 'The schedule didn’t come back. Try again.', { warn: true, at: 'top' });
+      setNote(err?.message || 'The schedule didn’t come back. Try again.', { warn: true, at: 'top', connect: err?.connect || '' });
       paint();
     }
   }

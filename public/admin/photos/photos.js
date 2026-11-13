@@ -30,6 +30,17 @@ const showConnect = (label = 'Connect JobTread') => {
   a.hidden = false;
 };
 
+/** Who the connection acts as: their name on everything through Claude. A login that doesn't look like them (Nov 13:
+ * Peter's browser was signed in to JobTread as DATAx, an integration's login) says so, with the way to fix it. */
+function sayWho(c, fresh) {
+  if (!c?.linked) return false;
+  if (c.likely === false) {
+    say(`Everything you do through Claude shows as “${c.name}” in JobTread, and that doesn’t look like you. If it isn’t you: sign out of JobTread in this browser (app.jobtread.com), sign in as yourself, then press Connect again.`, `Connected as ${c.name}.`);
+    showConnect('Connect again');
+  } else say(`Your logs, photos and schedule changes through Claude show as ${c.name} in JobTread.${fresh ? ' Go back to Claude and carry on.' : ' Open this page from the photo box in Claude to add photos here.'}`, `Connected as ${c.name}.`);
+  return true;
+}
+
 const AFTER = {
   connected: ['Your logs, photos and schedule changes through Claude now show your name in JobTread. Go back to Claude and carry on.', 'JobTread is connected.'],
   declined: ['JobTread wasn’t connected: the sign-in was cancelled.', ''],
@@ -52,11 +63,12 @@ async function start() {
     const [text, strong] = AFTER[result];
     say(text, strong);
     if (result !== 'connected') showConnect(result === 'declined' ? 'Connect JobTread' : 'Connect again');
+    else { try { sayWho((await api('/api/field-admin')).connection, true); } catch { /* the words above stay */ } }
     if (!job) return;
   }
   if (!job) {
     const { connection } = await api('/api/field-admin');
-    if (connection.linked) say(`Photos and logs you add through Claude show as ${connection.name} in JobTread. Open this page from the photo box in Claude to add photos here.`, 'JobTread is connected.');
+    if (sayWho(connection, false)) { /* said */ }
     else {
       say('Connect your JobTread once, so what you add through Claude shows your name.');
       showConnect(connection.broken ? 'Connect again' : 'Connect JobTread');

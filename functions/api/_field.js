@@ -123,11 +123,23 @@ export async function finishLink(env, { code, state }, { fetchImpl = fetch, now 
   return { email: row.email, name: user.name || '', back: row.back || '' };
 }
 
-/** Whether this person's JobTread is connected → { linked, name, since, broken } */
+/**
+ * Whether a JobTread login's name looks like the person signed in (a word of it in their email: "Christian Nielsen"
+ * and cnielsen@): a connection made while the browser was signed in to JobTread as someone else (Nov 13: Peter as
+ * DATAx, an integration's login) shows as that login on everything, so the pages and Claude say so.
+ */
+export function looksLike(name, email) {
+  const local = String(email || '').split('@')[0].toLowerCase().replace(/[^a-z]/g, '');
+  const words = String(name || '').toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3);
+  return !local || !words.length || words.some((w) => local.includes(w));
+}
+
+/** Whether this person's JobTread is connected → { linked, name, since, broken, likely } (likely: the login looks like them) */
 export async function linkStatus(env, email) {
   await ready(env.DB);
   const row = await env.DB.prepare('SELECT user_name, linked_at, error FROM jt_links WHERE email = ?').bind(email).first();
-  return row ? { linked: !row.error, name: row.user_name || null, since: row.linked_at, broken: !!row.error } : { linked: false, name: null, since: null, broken: false };
+  return row ? { linked: !row.error, name: row.user_name || null, since: row.linked_at, broken: !!row.error, likely: looksLike(row.user_name, email) }
+    : { linked: false, name: null, since: null, broken: false, likely: true };
 }
 
 /** Forget this person's key (their JobTread profile can delete it too) */
